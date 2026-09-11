@@ -19,6 +19,9 @@ export const EVENT_TYPES = ['card_created', 'leg_started', 'leg_progress', 'leg_
 export const STATUSES = ['backlog', 'queued', 'running', 'handing_off', 'waiting_human',
   'needs_approval', 'paused', 'done', 'failed', 'killed']
 const CLOSED = ['done', 'failed', 'killed']
+// card.json keys `update --patch` may set (everything else goes through a named flag)
+export const PATCHABLE = ['pipeline', 'leases', 'land_attempts', 'land_mode', 'test_command', 'title', 'trunk',
+  'bounce_reason', 'kill_requested', 'worktree', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'last_bundle']
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,39}$/i
 
 export const ROOT = process.env.BATON_HOME || join(homedir(), '.baton')
@@ -293,6 +296,23 @@ async function main() {
     const actor = parseActor(args.actor ?? '{"type":"human","id":"local"}')
     if (!actor) die(2, ACTOR_HELP)
     assertNoSecrets(task, args.title)
+    // Pipeline: validated upstream by src/pipeline.mjs (bin/baton.mjs); here
+    // only the shape is checked. Default = the `build` preset over the chain.
+    let pipeline
+    try {
+      pipeline = args.pipeline ? JSON.parse(args.pipeline)
+        : [{ name: 'build', kind: 'agent', prompt: 'build', chain: chain.map((c) => ({ adapter: c.adapter, ...(c.mode ? { mode: c.mode } : {}), ...(c.max_turns ? { maxTurns: c.max_turns } : {}), ...(c.model ? { model: c.model } : {}) })) }]
+    } catch { die(2, 'invalid --pipeline (expected a JSON array of stations)') }
+    if (!Array.isArray(pipeline) || !pipeline.length || pipeline.some((s) => !s || typeof s.name !== 'string' || typeof s.kind !== 'string')) {
+      die(2, 'invalid --pipeline (expected a non-empty JSON array of {name, kind, chain?, prompt?})')
+    }
+    let leases = []
+    if (args.leases) {
+      try { leases = JSON.parse(args.leases) } catch { die(2, 'invalid --leases (expected a JSON array of path globs)') }
+      if (!Array.isArray(leases) || leases.some((l) => typeof l !== 'string')) die(2, 'invalid --leases (expected a JSON array of path globs)')
+    }
+    const landMode = args['land-mode'] ?? 'ff'
+    if (!['ff', 'pr'].includes(landMode)) die(2, `invalid --land-mode "${landMode}" (allowed: ff, pr)`)
     const d = new Date()
     const pad = (n) => String(n).padStart(2, '0')
     const id = `card-${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}-${slug}`
@@ -300,8 +320,10 @@ async function main() {
     if (existsSync(dir)) die(2, `card already exists: ${id}`)
     mkdirSync(join(dir, 'runs'), { recursive: true })
     const card = {
-      card_id: id, title: args.title || task.slice(0, 80), task, repo, chain,
-      pipeline: null, station: '-', leg: 0, leases: [], status: 'backlog',
+      card_id: id, title: args.title || task.slice(0, 80), task, repo, trunk: args.trunk || 'main', chain,
+      pipeline, station: '-', leg: 0, leases, status: 'backlog',
+      land_mode: landMode, test_command: args['test-command'] || null, land_attempts: 0,
+      worktree: null, bounce_reason: null, kill_requested: false,
       session_id: null, created_at: now(), updated_at: now(), actor,
     }
     writeFileSync(join(dir, 'card.json'), JSON.stringify(card, null, 2) + '\n')
@@ -367,6 +389,17 @@ async function main() {
       card.leg = leg
       patch.leg = leg
     }
+    if (args.patch) {
+      // Orchestrator/board fields; allowlisted so the ledger stays the schema owner.
+      let p
+      try { p = JSON.parse(args.patch) } catch { die(2, 'invalid --patch (expected a JSON object)') }
+      if (!p || typeof p !== 'object' || Array.isArray(p)) die(2, 'invalid --patch (expected a JSON object)')
+      for (const k of Object.keys(p)) {
+        if (!PATCHABLE.includes(k)) die(2, `--patch key "${k}" not allowed (allowed: ${PATCHABLE.join(', ')})`)
+        card[k] = p[k]
+        patch[k] = p[k]
+      }
+    }
     card.updated_at = now()
     writeFileSync(join(dir, 'card.json'), JSON.stringify(card, null, 2) + '\n')
     writeActive()
@@ -374,11 +407,20 @@ async function main() {
       op: 'update', method: 'PATCH', path: SYNC_PATHS.update(id),
       body: patch,
     })
+  } else if (cmd === 'log') {
+    // Non-card events (scheduler start/stop): $BATON_HOME/events-<actor-key>.jsonl
+    assertNoSecrets(args.summary, args.body)
+    const actor = parseActor(need(args, 'actor'))
+    if (!actor) die(2, ACTOR_HELP)
+    const ev = { ts: now(), card_id: null, actor, station: '-', leg: 0, type: need(args, 'type', EVENT_TYPES), summary: need(args, 'summary') }
+    if (args.body) ev.body = args.body
+    mkdirSync(ROOT, { recursive: true })
+    appendFileSync(join(ROOT, `events-${actorKey(actor)}.jsonl`), JSON.stringify(ev) + '\n')
   } else if (cmd === 'sync') {
     const anyRemaining = await flushUnsynced(args.card)
     process.exit(anyRemaining ? 1 : 0)
   } else {
-    die(2, `unknown command "${cmd ?? ''}" (expected create|append|update|sync)`)
+    die(2, `unknown command "${cmd ?? ''}" (expected create|append|update|log|sync)`)
   }
 }
 

@@ -264,11 +264,15 @@ Bundles are saved `--repo-local` inside the worktree so the next agent finds
 them in its cwd. Storage: `.context-handoffs/index.json` in the worktree.
 `checkpoint` / `rescue` (hook-driven passive checkpoints) are not used.
 
-**Machine state (verified live 2026-09-10):** the CLI on PATH is 0.1.0 from
-the Store Python; the source checkout is 0.4.0 (`--notes`, `--repo-local`,
-`--update`, drift). Phase 4 installs 0.4.0 from PyPI (or from the checkout if
-PyPI lags) before the handoff tests run and records the version in
-`docs/cli-contracts.md`.
+**Machine state (verified live 2026-09-10):** the CLI on PATH was 0.1.0 from
+the Store Python; PyPI and the source checkout are 0.4.0 (`--notes`,
+`--repo-local`, `--update`, drift). Phase 5 installed 0.4.0 from PyPI, then
+the local checkout in editable mode because 0.4.0 has no `--version` flag:
+the checkout gained `--version` and `tests/test_version.py` (76 upstream
+tests green, not pushed). `src/handoff.mjs` reads the version through
+`importlib.metadata` when the flag is absent, so a plain `pip install -U
+context-handoff-bundle` still works. Live-verified in phase 5: `save
+--repo-local --notes`, `validate`, `load`, `list --repo-only`, `show`.
 
 ## project-launch-button-policy
 

@@ -176,6 +176,12 @@ function fsDiff(cwd, before) {
 function legOpts(args) {
   const opts = {}
   if (args.mode) opts.mode = args.mode
+  if (args['env-json']) {
+    // Extra child variables (e.g. FAKE_MODE for the fake adapter); the adapter's
+    // env() still sanitizes the result, so auth keys cannot be smuggled in.
+    try { opts.extraEnv = JSON.parse(args['env-json']) } catch { die(2, 'invalid --env-json') }
+    if (!opts.extraEnv || typeof opts.extraEnv !== 'object') die(2, 'invalid --env-json')
+  }
   if (args['max-turns']) {
     opts.maxTurns = parseInt(args['max-turns'], 10)
     if (!Number.isInteger(opts.maxTurns) || opts.maxTurns < 1) die(2, `invalid --max-turns "${args['max-turns']}"`)
@@ -189,6 +195,7 @@ function legArgv(opts) {
   if (opts.mode) out.push('--mode', opts.mode)
   if (opts.maxTurns) out.push('--max-turns', String(opts.maxTurns))
   if (opts.resume) out.push('--resume', opts.resume)
+  if (opts.extraEnv) out.push('--env-json', JSON.stringify(opts.extraEnv))
   return out
 }
 
@@ -269,7 +276,7 @@ async function main() {
       writeRun(id, n, { ...readRun(id, n), status: 'failed', exit_code: null, ended_at: now(), refusal: err.message })
       process.exit(13)
     }
-    const childEnv = adapter.env(process.env)
+    const childEnv = adapter.env({ ...process.env, ...(opts.extraEnv ?? {}) })
     // A stale DONE marker from an earlier leg must not count for this one.
     rmSync(join(cwd, '.baton', 'DONE'), { force: true })
     const headAtStart = gitHead(cwd)
