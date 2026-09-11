@@ -74,11 +74,19 @@
   }
 
   const tail = (id) => String(id).split('-').slice(-2).join('-')
+  const shared = () => Boolean(view && view.share && view.share.on)
+  const isMine = (s) => Boolean(view && view.you && s.owner && view.you.name === s.owner)
 
   async function act(id, action, btn) {
     btn.disabled = true
     try {
-      if (action === 'remove') {
+      if (action.startsWith('requests/')) {
+        await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
+        toast(action.endsWith('approve') ? 'approved; the terminal hands off in a few seconds' : 'dismissed')
+      } else if (action === 'request-handoff') {
+        await api(`/api/sessions/${encodeURIComponent(id)}/request-handoff`, { method: 'POST' })
+        toast('asked; the owner of that terminal decides')
+      } else if (action === 'remove') {
         const r = await api(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
         toast(r.worktree ? (r.worktree.removed ? 'removed, with its worktree and branch' : `removed; worktree kept: ${r.worktree.reason}`) : 'removed')
       } else {
@@ -95,7 +103,12 @@
     if (!L) return null
     const who = L.by && L.by !== 'local' ? ` · by ${L.by}` : ''
     if (L.state === 'landing') return el('div', { class: 'session-note warn' }, [`landing ${L.branch} onto ${L.base}: rebase, tests, fast-forward…`])
-    if (L.state === 'landed') return el('div', { class: 'session-note ok', title: L.summary || '' }, [`✓ landed on ${L.base} · ${String(L.sha).slice(0, 7)} · ${L.files.length} file${L.files.length === 1 ? '' : 's'} +${L.insertions}/-${L.deletions}${L.tested ? '' : ' · untested'}${who}`])
+    if (L.state === 'landed') {
+      // another human's card carries the state and the sha, never the file list
+      const n = L.files ? L.files.length : null
+      const counts = n === null ? '' : ` · ${n} file${n === 1 ? '' : 's'} +${L.insertions || 0}/-${L.deletions || 0}${L.tested ? '' : ' · untested'}`
+      return el('div', { class: 'session-note ok', title: L.summary || '' }, [`✓ landed on ${L.base} · ${String(L.sha).slice(0, 7)}${counts}${who}`])
+    }
     if (L.state === 'noop') return el('div', { class: 'session-note' }, [`nothing to land: ${L.branch} has no changes beyond ${L.base}`])
     if (L.state === 'interrupted') return el('div', { class: 'session-note bad' }, ['the landing was cut off (the board restarted); press Land again'])
     return el('div', { class: 'session-note bad', title: L.detail || '' }, [`✗ bounced (${L.reason}): ${String(L.detail || '').split('\n')[0].slice(0, 160)}${who}`])
@@ -103,15 +116,18 @@
 
   function renderSession(s) {
     const [label, cls] = STATUS[s.status] || [s.status, 'muted']
-    const card = el('article', { class: `session-card adapter-${s.agent} status-${s.status}${s.overlap.length ? ' overlapping' : ''}${s.active ? '' : ' inactive'}`, 'data-session-id': s.session_id })
+    const card = el('article', { class: `session-card adapter-${s.agent} status-${s.status}${s.overlap.length ? ' overlapping' : ''}${s.active ? '' : ' inactive'}${s.hidden ? ' hidden-card' : ''}`, 'data-session-id': s.session_id })
     card.appendChild(el('div', { class: 'session-head' }, [
       el('span', { class: `pill adapter-${s.agent} state-active` }, [el('span', { class: 'pill-adapter' }, [s.agent]), s.account !== 'default' ? el('span', { class: 'pill-mode' }, [s.account]) : null]),
       el('span', { class: `chip status-chip ${cls}` }, [label]),
+      shared() && s.owner ? el('span', { class: `chip owner-chip${isMine(s) ? ' mine' : ''}`, title: `${s.owner} started this terminal${isMine(s) ? ' (you)' : ''}` }, [s.owner]) : null,
       s.lineage && s.lineage.from ? el('span', { class: 'chip status-chip muted', title: 'this terminal started with another agent' }, [`from ${s.lineage.from}`]) : null,
       el('span', { class: 'spacer' }),
       el('span', { class: 'session-elapsed', title: `started ${new Date(s.started_at).toLocaleString()}` }, [ago(s.elapsed_ms)]),
     ]))
-    card.appendChild(el('div', { class: 'session-task', title: s.task || '' }, [s.task ? (s.task.length > 140 ? s.task.slice(0, 140) + '…' : s.task) : el('span', { class: 'muted' }, ['no prompt yet'])]))
+    card.appendChild(el('div', { class: 'session-task', title: s.hidden ? '' : (s.task || '') }, [
+      s.hidden ? el('span', { class: 'muted' }, ['prompt hidden']) : (s.task ? (s.task.length > 140 ? s.task.slice(0, 140) + '…' : s.task) : el('span', { class: 'muted' }, ['no prompt yet'])),
+    ]))
     card.appendChild(el('div', { class: 'session-meta' }, [
       el('span', { class: 'mono', title: s.cwd }, [s.repo_name || s.cwd, s.branch ? `@${s.branch}` : '']),
       s.worktree ? el('span', { class: 'chip worktree-chip', title: `another session was live in the checkout, so this one works in ${s.worktree.path}, branch ${s.worktree.branch}, cut from ${s.worktree.base || 'a detached HEAD'}` }, [`own worktree · from ${s.worktree.base || 'HEAD'}`]) : null,
@@ -137,7 +153,26 @@
     }
     const landNote = landLine(s)
     if (landNote) card.appendChild(landNote)
+    for (const r of s.requests || []) card.appendChild(el('div', { class: 'session-note warn' }, [`${r.by} asked for a hand-off ${ago(Date.now() - Date.parse(r.at))} ago`]))
     const actions = el('div', { class: 'card-actions' })
+    // someone else's terminal: nothing to press but a request the owner approves
+    if (s.hidden) {
+      card.appendChild(el('div', { class: 'session-note' }, [`read-only: ${s.owner || 'another human'} owns this terminal`]))
+      if (s.active) {
+        const q = el('button', { type: 'button', title: `ask ${s.owner || 'the owner'} to hand this terminal off; they approve it on their own board` }, ['Request handoff'])
+        q.addEventListener('click', () => act(s.session_id, 'request-handoff', q))
+        actions.appendChild(q)
+      }
+      card.appendChild(actions)
+      return card
+    }
+    for (const r of s.requests || []) {
+      const ok = el('button', { type: 'button', title: `hand this terminal off for ${r.by}` }, [`Approve ${r.by}`])
+      ok.addEventListener('click', () => act(s.session_id, `requests/${encodeURIComponent(r.by)}/approve`, ok))
+      const no = el('button', { type: 'button', class: 'danger' }, ['Dismiss'])
+      no.addEventListener('click', () => act(s.session_id, `requests/${encodeURIComponent(r.by)}/dismiss`, no))
+      actions.append(ok, no)
+    }
     if (s.worktree) {
       const l = el('button', { type: 'button', disabled: s.land_blocker ? '' : null, title: s.land_blocker || `commit this terminal's work on ${s.worktree.branch}, rebase it onto ${s.worktree.base}, run the tests, fast-forward ${s.worktree.base}; a bounce says why` }, ['Land'])
       l.addEventListener('click', () => act(s.session_id, 'land', l))
@@ -188,6 +223,11 @@
 
   function render(v) {
     view = v
+    const who = document.getElementById('whoami')
+    if (who) {
+      who.hidden = !(v.share && v.share.on)
+      who.textContent = v.share && v.share.on && v.you ? `you are ${v.you.name}${v.you.role === 'owner' ? '' : ' (guest)'} · ${v.share.people} on this board` : ''
+    }
     renderAccounts(v.accounts || [])
     renderSessions(v)
     renderTrunk(v)

@@ -17,7 +17,8 @@ import { remove as removeWorktree } from '../src/worktree.mjs'
 import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../src/scheduler.mjs'
 import { availableActions } from '../src/chain.mjs'
 import { up, down, status, openBoard } from '../src/launcher.mjs'
-import { attach } from '../src/attach.mjs'
+import { attach, ensureBoard } from '../src/attach.mjs'
+import { readShare, addPerson, removePerson, rotate as rotateToken, turnOn, turnOff, linkFor, personNamed } from '../src/share.mjs'
 import { AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, sessionDir, appendEvent } from '../src/sessions.mjs'
 import { addAccount, removeAccount, listAccountRows, LAYOUT } from '../src/accounts.mjs'
 import { listUsage, fmtReset } from '../src/usage.mjs'
@@ -119,6 +120,71 @@ async function main() {
     if (cmd === 'rm') { if (isActive(s)) die(3, `session ${id} is still active; end it first`); removeSession(id); return out(`removed ${id}`) }
     if (cmd === 'simulate-limit') return simulateLimit(s)
     die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm|simulate-limit)`)
+  }
+  if (group === 'share') {
+    // Multiplayer, off by default: the board binds a shared address only once
+    // at least one person has a token, and every human has their own.
+    const share = readShare()
+    const restartBoard = async () => { down(); const b = await ensureBoard({ open: false }); return b }
+    const showLink = (person, token, s) => {
+      out(`${person.name} is on the board (${person.role}). Their link, shown once:`)
+      out(`  ${linkFor(s, token)}`)
+      out(person.role === 'owner' ? 'Open it on this machine, or any machine that can reach that address.' : 'They see the terminals lane read-only: no prompts, no file names, no logs, no bundles. They can ask for a hand-off; you approve it on the card.')
+    }
+    if (!cmd || cmd === 'ls' || cmd === 'status') {
+      if (!share.on || !share.people.length) {
+        out('share is off: the board is on 127.0.0.1 and only this machine can reach it.')
+        out('Turn it on: baton share on            (the Tailscale address; --bind lan, or --bind <address>)')
+        return
+      }
+      out(`share is on: http://${share.bind}:${share.port} (${share.bind_kind})`)
+      for (const p of share.people) out(`  ${p.name.padEnd(16)} ${p.role.padEnd(6)} added ${String(p.created_at).slice(0, 10)}${p.last_seen ? `  last seen ${String(p.last_seen).slice(0, 16).replace('T', ' ')}` : ''}`)
+      out('')
+      out('A token is shown once. Lost one? baton share rotate <name>. Everyone out: baton share off')
+      return
+    }
+    if (cmd === 'on') {
+      const a = parseArgs(rest)
+      try {
+        const r = await turnOn({ bind: a.bind ?? 'tailscale', port: a.port ? parseInt(a.port, 10) : undefined, owner: a.owner })
+        await restartBoard()
+        out(`share is on: the board is at http://${r.share.bind}:${r.share.port} (${r.share.bind_kind})`)
+        if (r.token) showLink(r.owner, r.token, r.share)
+        out('Add someone: baton share add <name>')
+        out('No TLS: keep this on Tailscale or a network you trust. Anyone with a link sees that your terminals exist and how much usage is left.')
+      } catch (err) { die(2, err.message) }
+      return
+    }
+    if (cmd === 'add') {
+      const name = args._[0] || die(2, 'usage: baton share add <name> [--role owner|guest]')
+      try {
+        const r = addPerson(name, { role: args.role === 'owner' ? 'owner' : 'guest', share })
+        showLink(r.person, r.token, r.share)
+        if (!r.share.on) out('share is still off: baton share on')
+      } catch (err) { die(2, err.message) }
+      return
+    }
+    if (cmd === 'rotate') {
+      const name = args._[0] || die(2, 'usage: baton share rotate <name>')
+      try {
+        const r = rotateToken(name, share)
+        out(`${name}'s old link stopped working.`)
+        showLink(r.person, r.token, r.share)
+      } catch (err) { die(2, err.message) }
+      return
+    }
+    if (cmd === 'rm') {
+      const name = args._[0] || die(2, 'usage: baton share rm <name>')
+      if (!personNamed(share, name)) die(3, `no one called "${name}" on this board`)
+      removePerson(name, share)
+      return out(`${name} is off the board; their link stopped working.`)
+    }
+    if (cmd === 'off') {
+      turnOff()
+      await restartBoard()
+      return out('share is off: the board is back on 127.0.0.1 and the links stopped working.')
+    }
+    die(2, `unknown share command "${cmd}" (status|on|add|rotate|rm|off)`)
   }
   if (group === 'accounts') {
     if (cmd === 'add') {
@@ -249,13 +315,15 @@ async function main() {
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|accounts|up|down|status|open|card|scheduler|uninstall)`)
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|accounts|share|up|down|status|open|card|scheduler|uninstall)`)
   out(`baton 0.2.0 — your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                a second live session in one checkout gets its own worktree (--no-worktree to share)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>
   accounts ls|add <agent> <name>|rm|terms        optional second login for claude or codex
+  share status|on|add <name>|rotate <name>|rm <name>|off
+                                more than one human on the board, off by default
   down | status | open          the board
   uninstall [--yes]             removes only what Baton added (~/.baton)
   extras (v0.1 pipelines): up, card ..., scheduler ...   presets: ${PRESET_NAMES.join(', ')}`)

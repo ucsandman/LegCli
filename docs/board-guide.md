@@ -23,6 +23,8 @@ kanban-final-1280.png     kanban-final-400.png
 ```
 
 The `demo-*` sequence is walked through in [DEMO.md](DEMO.md).
+`share-owner-1280.png` and `share-guest-1280.png` are the same shared board
+seen by its owner and by a guest (2026-09-11, live over Tailscale).
 `terminals-1280.png` is the Terminals lane after a live Land (2026-09-11, three
 haiku sessions on a throwaway repo): one card landed on main, the other
 bounced with `rebase-conflict` on README.md, and the landed-on-trunk list names
@@ -112,6 +114,8 @@ counted as live.
 | button | shown when | what it does |
 |--------|------------|--------------|
 | Land | the session has its own worktree, active or not; disabled with the reason on hover while it is landing or when the worktree is gone | `POST /api/sessions/:id/land` (202): commits what the agent left on `baton/<id>`, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the land line shows the result |
+| Request handoff | the board is shared and this terminal is someone else's | `POST /api/sessions/:id/request-handoff` (202): asks the owner; nothing happens until they approve |
+| Approve `<name>` / Dismiss | the board is shared and someone asked for a hand-off on your terminal | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
 | Hand off now | the session is active | `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
 | Remove | the session is not active | `DELETE /api/sessions/:id`: forgets the session record; its worktree and branch go too when the worktree is clean and the branch is already on its base, otherwise they stay and the toast says why |
@@ -128,6 +132,23 @@ commit a Land put there says `landed by <agent> (<id tail>)` in green (from
 `~/.baton/landings.jsonl`, which outlives the session); any other commit shows
 its git author. It answers "what actually got in, and from which terminal"
 without leaving the board.
+
+## A shared board (more than one human)
+
+With `baton share` on (off by default), the head of the terminals lane says
+`you are <name>` and how many people are on the board, and every card carries
+an owner chip: green when the terminal is yours, grey when it is not
+(`docs/screenshots/share-owner-1280.png` is the owner's board,
+`share-guest-1280.png` the same moment as a guest).
+
+A card that belongs to someone else is drawn with a dashed border and says
+`read-only: <name> owns this terminal`. Its prompt reads `prompt hidden`, it
+has no file chips, no limit text, no bundle line and no log, and its only
+button is **Request handoff**. The owner sees `<name> asked for a hand-off
+<when>` on their own card with **Approve** and **Dismiss**.
+
+A guest's board has no Pipelines section, no New card button and no Floor link:
+that side belongs to the owner of the machine, and the API answers 403.
 
 ## Pipelines: board layout
 

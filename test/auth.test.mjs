@@ -26,10 +26,20 @@ test('isLoopback / tokenMatches / authorize units', () => {
   assert.equal(tokenMatches('abc', 'abd'), false)
   assert.equal(tokenMatches('abc', 'ab'), false)
   assert.equal(tokenMatches('', ''), false)
-  assert.deepEqual(authorize({ token: '', req: { headers: {} }, url: new URL('http://x/api/health') }), { ok: true, subject: 'local' })
+  assert.deepEqual(authorize({ token: '', req: { headers: {} }, url: new URL('http://x/api/health') }), { ok: true, subject: 'local', person: null })
   assert.equal(authorize({ token: 't', req: { headers: {} }, url: new URL('http://x/api/health') }).ok, false)
   assert.equal(authorize({ token: 't', req: { headers: { authorization: 'Bearer t' } }, url: new URL('http://x/api/health') }).ok, true)
   assert.equal(authorize({ token: 't', req: { headers: {} }, url: new URL('http://x/api/events?token=t') }).ok, true)
+  // with share on, the token names a person; a loopback request is the owner
+  const share = { on: true, bind: '100.1.2.3', port: 4747, owner: 'wes', people: [{ name: 'wes', role: 'owner', token_sha256: 'c6a6e1a5c9ff3a97bd2f7f0a4bcbbb05d9e5a51b9c7c1f04c9f0c0a2d3e4f5a6' }] }
+  const req = (headers = {}, remote = '100.1.2.4') => ({ headers, socket: { remoteAddress: remote } })
+  assert.equal(authorize({ token: '', req: req(), url: new URL('http://x/api/health'), share }).ok, false, 'no token from another machine')
+  assert.equal(authorize({ token: '', req: req({}, '127.0.0.1'), url: new URL('http://x/api/health'), share }).subject, 'wes', 'loopback is the owner')
+  assert.equal(authorize({ token: '', req: req({}, '127.0.0.1'), url: new URL('http://x/api/health'), share: { ...share, loopback_owner: false } }).ok, false, 'loopback_owner false asks for a token here too')
+  assert.equal(authorize({ token: 'still-set', req: req({ authorization: 'Bearer still-set' }, '100.1.2.4'), url: new URL('http://x/api/health'), share }).ok, false, 'BATON_TOKEN does not open a shared board')
+  // non-loopback bind is allowed once people have tokens, without BATON_TOKEN
+  assert.doesNotThrow(() => checkBind({ bind: '100.1.2.3', token: '', share }))
+  assert.throws(() => checkBind({ bind: '100.1.2.3', token: '', share: { ...share, people: [] } }), BindRefused)
 })
 
 test('non-loopback bind without BATON_TOKEN refuses to start (module) and exits 3 (process) with the named error', () => {

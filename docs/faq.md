@@ -103,6 +103,16 @@ other's files. Whoever presses Land first fast-forwards trunk; the second one
 rebases onto it, or bounces with the conflicting files named on the card.
 `--no-worktree` shares the checkout when that is what you want.
 
+**Can someone else watch my board?**
+Only if you run `baton share on`, which is off by default. It binds your
+Tailscale or LAN address and prints one link per human (`baton share add
+<name>`), each with its own token. A guest sees the terminals lane read-only
+and nothing a terminal has said, read or written: no prompt, no file names, no
+paths, no limit text, no bundle, no events, no logs, and none of the pipeline
+side. The one thing they can do on your terminal is ask for a hand-off, which
+you approve or dismiss on the card. `baton share off` ends it and every link
+stops working. There is no TLS, so keep it on Tailscale or a network you trust.
+
 **What if the CLI I want isn't installed?**
 `node bin/baton.mjs up --dry` prints a preflight table with `ok`/`missing`
 per adapter. A missing adapter only matters if a card's chain names it: that

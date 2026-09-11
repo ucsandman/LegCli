@@ -9,7 +9,9 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkBind, authorize } from './auth.mjs'
+import { checkBind, authorize, remoteAddress, presentedToken } from './auth.mjs'
+import { readShare, isOn as shareIsOn } from './share.mjs'
+import { createLimiter } from './ratelimit.mjs'
 import { realPath, canonPath } from './fsx.mjs'
 import { listCards, readCard, readRuns, readEvents, cardDir, home } from './store.mjs'
 import { humanAction } from './orchestrator.mjs'
@@ -22,7 +24,7 @@ import { createScheduler, schedulerStatus, MAX_CONCURRENT } from './scheduler.mj
 import { remove as removeWorktree } from './worktree.mjs'
 import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
-import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings } from './sessions.mjs'
+import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent } from './sessions.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree } from './land.mjs'
 import { readUsage } from './usage.mjs'
 import { readAccounts } from './accounts.mjs'
@@ -221,7 +223,26 @@ function withLandings(t, landings) {
   }
 }
 
-export function sessionsView() {
+// What another human sees of a terminal that is not theirs: that it is there,
+// nothing it has said, read or written. No task, no paths, no file names, no
+// limit text, no bundle, no events.
+function redactSession(s) {
+  return {
+    session_id: s.session_id, agent: s.agent, account: s.account, status: s.status, active: s.active,
+    started_at: s.started_at, elapsed_ms: s.elapsed_ms, turns: s.turns, repo_name: s.repo_name, branch: s.branch,
+    owner: s.owner ?? null, limits: s.limits ?? null, lineage: s.lineage ?? null,
+    warning: s.warning ? { window: s.warning.window, pct: s.warning.pct, resets_at: s.warning.resets_at } : null,
+    limit: s.limit ? { reason: s.limit.reason, resets_at: s.limit.resets_at ?? null } : null,
+    waiting: s.waiting ?? null,
+    worktree: s.worktree ? { branch: s.worktree.branch, base: s.worktree.base } : null,
+    land: s.land ? { state: s.land.state, base: s.land.base ?? null, sha: s.land.sha ?? null, reason: s.land.reason ?? null } : null,
+    task: null, cwd: null, files: [], overlap: [], requests: [], hidden: true,
+    land_blocker: `read-only: this terminal belongs to ${s.owner ?? 'someone else'}`,
+  }
+}
+
+export function sessionsView({ viewer = null, share = null } = {}) {
+  const shared = Boolean(share && shareIsOn(share))
   const list = reapLost(listSessions())
   const ov = overlaps(list)
   const sessions = list.map((s) => {
@@ -249,7 +270,18 @@ export function sessionsView() {
   const canon = new Map()
   const landingsFor = (key) => landings.filter((l) => { if (!canon.has(l.repo)) canon.set(l.repo, canonPath(l.repo)); return canon.get(l.repo) === key })
   const trunk = [...repos].map(([key, r]) => { try { return withLandings(trunkFor(r), landingsFor(key)) } catch { return { repo: r, commits: [] } } })
-  return { sessions, accounts, trunk, ts: new Date().toISOString() }
+  const guest = shared && viewer && viewer.role !== 'owner'
+  const mine = (s) => !shared || !viewer || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
+  const shown = sessions.map((s) => (mine(s) ? { ...s, requests: readRequests(s.session_id).filter((r) => r.state === 'pending') } : redactSession(s)))
+  return {
+    sessions: shown,
+    accounts,
+    // a guest sees what landed, not where the repo lives on this machine
+    trunk: guest ? trunk.map((t) => ({ repo_name: t.repo_name, branch: t.branch, commits: t.commits ?? [] })) : trunk,
+    you: viewer,
+    share: { on: shared, bind: shared ? share.bind : null, people: shared ? share.people.length : 0 },
+    ts: new Date().toISOString(),
+  }
 }
 
 // ---- http helpers ----
@@ -281,26 +313,33 @@ function serveStatic(res, urlPath) {
 }
 
 // ---- SSE: watch $BATON_HOME/cards for fs events and push only what changed ----
-function createSse({ healthIntervalMs = 10000, debounceMs = 30 } = {}) {
-  const clients = new Set()
+function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => sessionsView() } = {}) {
+  const clients = new Set() // { res, viewer }
   const sig = new Map() // card_id → events already sent
   let watcher = null
   let healthTimer = null
   const pending = new Set()
   let flushTimer = null
+  // data may be a function of the client's viewer: each human gets their own
+  // payload, so a guest's stream never carries someone else's terminal.
   const broadcast = (event, data) => {
-    const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-    for (const res of clients) { try { res.write(frame) } catch {} }
+    for (const c of clients) {
+      const payload = typeof data === 'function' ? data(c.viewer) : data
+      if (payload === null || payload === undefined) continue
+      try { c.res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`) } catch {}
+    }
   }
   // Re-read and re-emit exactly one card's files — never the whole ledger.
   const refreshCard = (id) => {
     const card = readCard(id)
-    if (!card) { if (sig.has(id)) { sig.delete(id); broadcast('removed', { card_id: id }) } return }
+    // pipeline cards and their events are the owner's: a guest never gets them
+    const forOwner = (payload) => (viewer) => (viewer && viewer.role !== 'owner' ? null : payload)
+    if (!card) { if (sig.has(id)) { sig.delete(id); broadcast('removed', forOwner({ card_id: id })) } return }
     const events = readEvents(id)
     const from = sig.get(id) ?? 0
     sig.set(id, events.length)
-    broadcast('card', summarize(card))
-    for (const e of events.slice(from)) broadcast('event', e)
+    broadcast('card', forOwner(summarize(card)))
+    for (const e of events.slice(from)) broadcast('event', forOwner(e))
   }
   const flushPending = () => {
     flushTimer = null
@@ -314,7 +353,7 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30 } = {}) {
   }
   let sessionsWatcher = null
   let sessionsTimer = null
-  const pushSessions = () => { sessionsTimer = null; try { broadcast('sessions', sessionsView()) } catch (err) { log(`sessions view: ${err.message}`) } }
+  const pushSessions = () => { sessionsTimer = null; try { broadcast('sessions', (viewer) => viewFor(viewer)) } catch (err) { log(`sessions view: ${err.message}`) } }
   const startWatch = () => {
     if (watcher) return
     try {
@@ -343,34 +382,58 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30 } = {}) {
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
     pending.clear()
   }
-  const add = (res, cards) => {
-    clients.add(res)
+  const add = (res, cards, viewer = null) => {
+    const client = { res, viewer }
+    clients.add(client)
     for (const c of cards) sig.set(c.card_id, readEvents(c.card_id).length)
     startWatch()
-    res.on('close', () => { clients.delete(res); if (!clients.size) stopWatch() })
+    res.on('close', () => { clients.delete(client); if (!clients.size) stopWatch() })
   }
-  const stop = () => { stopWatch(); for (const res of clients) { try { res.end() } catch {} } clients.clear() }
+  const stop = () => { stopWatch(); for (const c of clients) { try { c.res.end() } catch {} } clients.clear() }
   return { add, stop, broadcast, clients }
 }
 
 // ---- the server ----
-export function createBoardServer({ bind = process.env.BATON_BIND || '127.0.0.1', port = Number(process.env.BATON_PORT || 4747), token = process.env.BATON_TOKEN || '', scheduler = process.env.BATON_NO_SCHEDULER !== '1' } = {}) {
-  checkBind({ bind, token })
-  const sse = createSse()
+export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN || '', scheduler = process.env.BATON_NO_SCHEDULER !== '1', share = readShare() } = {}) {
+  const shared = shareIsOn(share)
+  // with share on, the board's address and port come from share.json
+  bind = bind ?? (shared ? share.bind : (process.env.BATON_BIND || '127.0.0.1'))
+  port = port ?? (shared ? share.port : Number(process.env.BATON_PORT || 4747))
+  checkBind({ bind, token, share })
+  const limiter = createLimiter()
+  const viewFor = (viewer) => sessionsView({ viewer, share })
+  const sse = createSse({ viewFor })
   let sched = null
 
   async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
     const path = url.pathname
     if (!path.startsWith('/api/')) return serveStatic(res, path)
-    const auth = authorize({ token, req, url })
-    if (!auth.ok) return send(res, 401, { error: 'unauthorized: set Authorization: Bearer <BATON_TOKEN>' })
-    const actor = { type: 'human', id: auth.subject }
+    const ip = remoteAddress(req) || 'unknown'
+    // a token cannot be guessed at speed, and no one client can flood the board
+    if (limiter.lockedOut(ip)) return send(res, 429, { error: 'too many bad tokens from here; wait a minute' }, { 'Retry-After': String(limiter.retryAfter(ip)) })
+    const auth = authorize({ token, req, url, share })
+    if (!auth.ok) {
+      // only a token that was presented and did not match counts as a guess;
+      // a board page that has not been given a token yet is not an attacker
+      if (presentedToken(req, url)) limiter.failure(ip)
+      return send(res, 401, { error: shared ? 'unauthorized: open the board with your own link (baton share)' : 'unauthorized: set Authorization: Bearer <BATON_TOKEN>' })
+    }
+    const viewer = auth.person ? { name: auth.person.name, role: auth.person.role } : { name: auth.subject ?? 'local', role: 'owner' }
+    const rl = limiter.request(viewer.name === 'local' ? ip : viewer.name)
+    if (!rl.ok) return send(res, 429, { error: `rate limit: more than ${limiter.max} requests a minute` }, { 'Retry-After': String(rl.retry_after) })
+    const actor = { type: 'human', id: viewer.name }
+    // a guest sees the terminals lane, read-only; the pipeline side is the owner's
+    const guest = shared && viewer.role !== 'owner'
+    const ownsSession = (s) => !shared || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
     const parts = path.split('/').filter(Boolean) // ['api', ...]
+    if (guest && ['cards', 'floor', 'presets', 'adapters', 'leases'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner of this machine' })
     try {
       if (req.method === 'GET' && path === '/api/health') {
+        const you = { ...viewer, share: { on: shared, people: shared ? share.people.length : 0 } }
+        if (guest) return send(res, 200, { ok: true, version: VERSION, you })
         const cards = listCards()
-        return send(res, 200, { ok: true, version: VERSION, bind, port, home: home(), scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: detectTools(), columns: columnsFor(cards), cards: cards.length })
+        return send(res, 200, { ok: true, version: VERSION, bind, port, home: home(), you, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: detectTools(), columns: columnsFor(cards), cards: cards.length })
       }
       if (req.method === 'GET' && path === '/api/adapters') return send(res, 200, { adapters: await adaptersInfo() })
       if (req.method === 'GET' && path === '/api/presets') return send(res, 200, { presets: PRESETS })
@@ -391,23 +454,58 @@ export function createBoardServer({ bind = process.env.BATON_BIND || '127.0.0.1'
       }
       if (req.method === 'GET' && path === '/api/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
-        const cards = listCards()
-        res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map(summarize), sessions: sessionsView(), ts: new Date().toISOString() })}\n\n`)
-        sse.add(res, cards)
+        const cards = guest ? [] : listCards()
+        res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map(summarize), sessions: viewFor(viewer), ts: new Date().toISOString() })}\n\n`)
+        sse.add(res, cards, viewer)
         return
       }
-      if (req.method === 'GET' && path === '/api/sessions') return send(res, 200, sessionsView())
+      if (req.method === 'GET' && path === '/api/sessions') return send(res, 200, viewFor(viewer))
       if (parts[1] === 'sessions' && parts[2]) {
         const id = parts[2]
         const sess = readSession(id)
         if (!sess) return send(res, 404, { error: `session not found: ${id}` })
-        if (req.method === 'GET' && parts.length === 3) return send(res, 200, { session: sess, events: readSessionEvents(id) })
+        const mine = ownsSession(sess)
+        // another human's terminal: its prompts, files and events are not theirs to read
+        if (!mine && !(req.method === 'POST' && parts[3] === 'request-handoff')) {
+          return send(res, 403, { error: `read-only: this terminal belongs to ${sess.owner ?? 'someone else'}; ask for a hand-off instead` })
+        }
+        if (req.method === 'POST' && parts[3] === 'request-handoff') {
+          if (!shared) return send(res, 409, { error: 'share is off: use Hand off now' })
+          if (mine) return send(res, 409, { error: 'this terminal is yours: use Hand off now' })
+          if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
+          const list = readRequests(id).filter((r) => !(r.by === viewer.name && r.state === 'pending'))
+          list.push({ by: viewer.name, at: new Date().toISOString(), state: 'pending' })
+          writeRequests(id, list)
+          appendSessionEvent(id, { type: 'handoff_requested', by: viewer.name, summary: `${viewer.name} asked ${sess.owner ?? 'the owner'} to hand this terminal off` })
+          log(`hand-off requested for ${id} by ${viewer.name}`)
+          sse.broadcast('sessions', (v) => viewFor(v))
+          return send(res, 202, { ok: true, requested: 'handoff', by: viewer.name })
+        }
+        if (req.method === 'POST' && parts[3] === 'requests' && parts[4] && ['approve', 'dismiss'].includes(parts[5])) {
+          const who = decodeURIComponent(parts[4])
+          const list = readRequests(id)
+          const hit = list.find((r) => r.by === who && r.state === 'pending')
+          if (!hit) return send(res, 404, { error: `no pending hand-off request from ${who}` })
+          const approve = parts[5] === 'approve'
+          hit.state = approve ? 'approved' : 'dismissed'
+          hit.answered_at = new Date().toISOString()
+          hit.answered_by = viewer.name
+          writeRequests(id, list)
+          if (approve) {
+            if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
+            requestControl(id, { handoff: true, by: `${viewer.name} for ${who}` })
+          }
+          appendSessionEvent(id, { type: approve ? 'handoff_requested' : 'status', by: viewer.name, summary: `${viewer.name} ${approve ? 'approved' : 'dismissed'} ${who}'s hand-off request` })
+          sse.broadcast('sessions', (v) => viewFor(v))
+          return send(res, 200, { ok: true, request: hit })
+        }
+        if (req.method === 'GET' && parts.length === 3) return send(res, 200, { session: sess, events: readSessionEvents(id), requests: readRequests(id) })
         if (req.method === 'POST' && parts[3] === 'land') {
           const why = landBlocker(sess)
           if (why) return send(res, 409, { error: why })
           landSession(sess, { by: actor.id })
             .catch((err) => log(`land ${id}: ${err.message}`))
-            .finally(() => { trunkCache.clear(); try { sse.broadcast('sessions', sessionsView()) } catch {} })
+            .finally(() => { trunkCache.clear(); try { sse.broadcast('sessions', (v) => viewFor(v)) } catch {} })
           log(`land requested for ${id} by ${actor.id}`)
           return send(res, 202, { ok: true, requested: 'land' })
         }
@@ -423,7 +521,7 @@ export function createBoardServer({ bind = process.env.BATON_BIND || '127.0.0.1'
           let worktree = null
           if (sess.worktree) { try { worktree = pruneSessionWorktree(sess) } catch (err) { worktree = { removed: false, reason: scrub(err.message).slice(0, 200) } } }
           removeSession(id)
-          sse.broadcast('sessions', sessionsView())
+          sse.broadcast('sessions', (v) => viewFor(v))
           return send(res, 200, { removed: id, worktree })
         }
       }

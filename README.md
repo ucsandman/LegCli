@@ -43,6 +43,7 @@ or any other file of yours; `baton uninstall` removes only `~/.baton`.
 - [What Baton reads from each agent](#what-baton-reads-from-each-agent)
 - [How a handoff works](#how-a-handoff-works)
 - [Two sessions in one repo](#two-sessions-in-one-repo)
+- [More than one human](#more-than-one-human)
 - [The board](#the-board)
 - [Second accounts, and what the terms say](#second-accounts-and-what-the-terms-say)
 - [What is and is not touched](#what-is-and-is-not-touched)
@@ -168,6 +169,44 @@ ran the repo's tests and fast-forwarded main; Land on the third bounced with
 `rebase-conflict` on README.md and kept its commit on its branch; the
 landed-on-trunk list named the second terminal (the screenshot above).
 
+## More than one human
+
+Off until you run it. `baton share on` binds the board to your Tailscale
+address (or `--bind lan`, or an address you name) and gives every human their
+own name and token; until then the board stays on `127.0.0.1` and there is no
+token at all.
+
+```
+baton share on              your own link, printed once
+baton share add sam         sam's link, printed once
+baton share                 who is on the board (never a token again)
+baton share rotate sam      sam's old link stops working
+baton share off             back to 127.0.0.1; every link stops working
+```
+
+A token is kept as a sha256 hash, so a lost link is re-issued, never re-read.
+The board takes the token out of the address bar and keeps it in the browser.
+Your own browser on this machine needs no token.
+
+![What a guest sees: their own terminal in full, the other human's terminal read-only with the prompt hidden and one Request handoff button](docs/screenshots/share-guest-1280.png)
+
+What another human sees is the terminals lane, read-only. Each card says whose
+terminal it is. On a card that is not theirs there is no prompt, no file name,
+no path, no limit text, no bundle, no event log, and the only button is
+**Request handoff**; it lands on the owner's card as `sam asked for a hand-off`
+with Approve and Dismiss. The pipeline side of the board (cards, logs, the
+floor) stays the owner's alone. A terminal belongs to the human who started it:
+`BATON_PERSON=sam baton claude` on the same machine is sam's card, not yours.
+
+The security pass that goes with it: every `/api` route needs a token, the
+event stream included; twenty wrong tokens from one address and that address
+waits a minute; one identity gets 600 requests a minute; a guest gets 403 on
+everything that is not theirs; and the tests send a bad and a missing token to
+every route. There is still no TLS, so keep this on Tailscale or a network you
+trust. Verified live on 2026-09-11: two terminals on one machine, one wes's and
+one sam's, sam's board redacted wes's card, and sam's request was approved on
+wes's board and handed the terminal off.
+
 ## The board
 
 `baton <agent>` opens it; `baton open` reopens it; `baton down` stops it.
@@ -263,6 +302,9 @@ baton sessions rm <id>                 forget an ended session
 baton sessions simulate-limit <id>     the real limit path without a real wall (claude, agy)
 baton accounts ls                      logins and their 5h/7d usage
 baton accounts add <claude|codex> <name> | rm <agent> <name> | terms
+baton share                            who is on the board (off by default)
+baton share on [--bind tailscale|lan|<addr>] [--port N] | off
+baton share add|rotate|rm <name>       one link per human, printed once
 baton open | down | status             the board
 baton uninstall [--yes]
 ```
@@ -273,7 +315,9 @@ Environment, all optional: `BATON_HOME` (default `~/.baton`), `BATON_PORT`
 open the browser), `BATON_USAGE_POLL_MS` (60000), `BATON_CLAUDE_ARGS` /
 `BATON_CODEX_ARGS` / `BATON_AGY_ARGS` (extra args for a leg Baton starts after
 a hand-off, e.g. `-m gpt-5.3-codex-spark`), `BATON_CLAUDE_BIN`,
-`BATON_CODEX_BIN`, `BATON_AGY_BIN`, `BATON_CHB_BIN`.
+`BATON_CODEX_BIN`, `BATON_AGY_BIN`, `BATON_CHB_BIN`, `BATON_PERSON` (whose
+terminal this is when the board is shared), `BATON_RATE_MAX` (600 requests a
+minute per human) and `BATON_RATE_MAX_FAILURES` (20 wrong tokens per address).
 
 ## Pipelines: the v0.1 extras
 
@@ -304,10 +348,12 @@ is in [docs/concepts.md](docs/concepts.md), [docs/DEMO.md](docs/DEMO.md),
 
 ### Network exposure
 
-Baton binds `127.0.0.1`. To listen elsewhere set `BATON_BIND` and
-`BATON_TOKEN` together; without a token the server refuses to start (exit 3),
-and requests then need `Authorization: Bearer <token>`. No TLS, no per-user
-identity yet.
+Baton binds `127.0.0.1`. `baton share on` is the supported way to listen
+anywhere else: it binds your Tailscale or LAN address and every human gets
+their own token (see [More than one human](#more-than-one-human)). Without
+share, setting `BATON_BIND` to a non-loopback address needs `BATON_TOKEN` too,
+or the server refuses to start (exit 3), and requests then need
+`Authorization: Bearer <token>`. Either way there is no TLS.
 
 ## Troubleshooting
 

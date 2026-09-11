@@ -32,6 +32,8 @@ These apply to `baton claude|codex|agy`.
 | `BATON_CLAUDE_ARGS`, `BATON_CODEX_ARGS`, `BATON_AGY_ARGS` | (none) | space-separated extra arguments for a leg Baton starts on its own after a hand-off (your own `baton <agent> …` args never apply to the next agent); e.g. `BATON_CODEX_ARGS="-m gpt-5.3-codex-spark"` keeps a test chain on cheap models | `src/attach.mjs` |
 | `BATON_LIVE_DIR` | `fixtures/live/` in a dev clone, else `~/.baton/live/` | where the first real limit payload per agent and signal is kept, secrets scrubbed (`src/live-capture.mjs`); a `baton sessions simulate-limit` payload is never kept | `src/live-capture.mjs`, `scripts/live-limits.mjs` |
 
+| `BATON_PERSON` | the board's owner | whose terminal this is when the board is shared (`baton share`); it is the name on the card and the one that decides who may control it | `src/share.mjs` `whoami` |
+
 `BATON_SESSION` is not an input: Baton sets it in the agent's environment to
 the session id, so a hook or a script inside the session can find its own
 record under `$BATON_HOME/sessions/`.
@@ -149,6 +151,26 @@ header; the event stream (`EventSource`, which cannot set headers) accepts
 the same token as a `?token=` query parameter instead. There is no TLS and
 no per-user identity yet; keep `BATON_BIND` on loopback unless you have
 reviewed the roadmap's multi-human item ([ROADMAP-v2.md](ROADMAP-v2.md)).
+
+## Share (more than one human)
+
+Off until `baton share on` writes `$BATON_HOME/share.json`. That file is the
+switch and the roster; the env variables below only tune the limits.
+
+| field | meaning |
+|-------|---------|
+| `on` | share is on (it also needs a `bind` and at least one person) |
+| `bind`, `bind_kind`, `port` | where the board listens: the Tailscale address by default, `lan`, or one you named |
+| `owner` | the name a terminal belongs to when nothing else says (`BATON_PERSON`), and the name a loopback browser is treated as |
+| `people[]` | `{ name, role: owner\|guest, token_sha256, created_at }`; the token itself is printed once and never stored |
+| `loopback_owner` | default `true`: a browser on this machine is the owner without a token. Set it to `false` to ask for a link even here |
+
+| variable | default | meaning | read in |
+|----------|---------|---------|---------|
+| `BATON_RATE_MAX` | `600` | requests a minute per human (per address for an unnamed one); over it the board answers 429 with `Retry-After` | `src/ratelimit.mjs` |
+| `BATON_RATE_MAX_FAILURES` | `20` | wrong tokens a minute from one address before that address waits the window out; a request with no token at all is not counted | `src/ratelimit.mjs` |
+
+`BATON_TOKEN` is the single-token mode and is ignored while share is on.
 
 ## Card-level options
 

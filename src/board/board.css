@@ -413,6 +413,9 @@ table.floor-table th { color: var(--muted); font-weight: 600; }
 .session-note.warn { color: var(--warn); }
 .session-note.bad { color: var(--bad); }
 .session-note.ok { color: var(--ok); }
+.owner-chip { color: var(--muted); }
+.owner-chip.mine { color: var(--ok); border-color: var(--ok); }
+.session-card.hidden-card { opacity: 0.75; border-style: dashed; }
 .trunk-list .landed-by { color: var(--ok); }
 .session-files { display: flex; gap: 4px; flex-wrap: wrap; }
 .file-chip { font-family: ui-monospace, Consolas, monospace; font-size: 11px; }

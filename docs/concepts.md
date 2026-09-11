@@ -26,6 +26,7 @@ Each session gets a directory under `$BATON_HOME/sessions/<id>/`
 | `claude-settings.json` | the per-session `--settings` file, claude sessions only |
 | `agy.log` | agy's `--log-file`, agy sessions only |
 | `land.json` | the last Land of a session with its own worktree (landing, landed, noop, bounced); the board server is its only writer |
+| `requests.json` | hand-off requests from another human on a shared board (`{ by, at, state }`); the board server is its only writer |
 
 A session's status is one of `starting`, `running`, `warning`, `limit`,
 `handing_off`, `waiting`, `handed_off`, `ended`, `lost`. `lost` means the runner process
@@ -117,6 +118,26 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    in the terminal, or End on the card, quits with exit 3.
 
 `BATON_NO_HANDOFF=1` keeps the warning and the record but never switches.
+
+## Share (more than one human)
+
+`baton share` is off until you run it (`src/share.mjs`). On, it writes
+`$BATON_HOME/share.json`: where the board listens, who is on it, and one
+sha256 hash per person's token (the token itself is printed once). From then
+on:
+
+- Every `/api` request names a human: their token, or a browser on the board's
+  own machine, which is the owner.
+- A terminal belongs to the human who started it (`BATON_PERSON`, else the
+  owner). Only they, and an owner, can read or control it.
+- Everyone else sees the card without anything the terminal has said, read or
+  written, and one button: Request handoff. The request lands in the session's
+  `requests.json`; the owner approves it on the card, and the runner is told
+  who it was for.
+- The pipeline side of the board is the owner's alone (403 for a guest).
+
+`baton share off` puts the board back on `127.0.0.1` and every link stops
+working; `baton share rotate <name>` replaces one.
 
 ## Cards, stations and pipelines
 

@@ -18,6 +18,7 @@ import { get as getAdapter } from './adapters/index.mjs'
 import { AGENTS, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
 import { ensure as ensureWorktree } from './worktree.mjs'
 import { canonPath, realPath } from './fsx.mjs'
+import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
 import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage } from './usage.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail } from './taps/claude.mjs'
@@ -38,26 +39,38 @@ const USAGE_MS = Number(process.env.BATON_USAGE_POLL_MS || 60000)
 const say = (line) => process.stderr.write(`[baton] ${line}\n`)
 
 // ---- board ----
-function health(port) {
+function health(port, host = '127.0.0.1') {
   return new Promise((res) => {
-    const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 1500 }, (r) => { let d = ''; r.on('data', (c) => { d += c }); r.on('end', () => { try { res(r.statusCode === 200 ? JSON.parse(d) : null) } catch { res(null) } }) })
+    const req = http.get({ host, port, path: '/api/health', timeout: 1500 }, (r) => {
+      let d = ''
+      r.on('data', (c) => { d += c })
+      r.on('end', () => {
+        // 401 is a board: with share on, even health asks for a token
+        if (r.statusCode === 401) return res({ ok: true, guarded: true })
+        try { res(r.statusCode === 200 ? JSON.parse(d) : null) } catch { res(null) }
+      })
+    })
     req.on('error', () => res(null)); req.on('timeout', () => { req.destroy(); res(null) })
   })
 }
 
 export async function ensureBoard({ open = true } = {}) {
-  const port = Number(process.env.BATON_PORT || 4747)
-  const url = `http://127.0.0.1:${port}`
+  // with share on the board lives on the shared address, not loopback
+  const share = readShare()
+  const shared = shareIsOn(share)
+  const port = shared ? share.port : Number(process.env.BATON_PORT || 4747)
+  const host = shared ? share.bind : '127.0.0.1'
+  const url = `http://${host}:${port}`
   if (process.env.BATON_NO_BOARD === '1') return { url: null, started: false, skipped: true }
-  if (await health(port)) return { url, started: false }
+  if (await health(port, host)) return { url, started: false }
   mkdirSync(home(), { recursive: true })
   const logFd = (await import('node:fs')).openSync(join(home(), 'board.log'), 'a')
-  const child = spawn(process.execPath, [SERVER], { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd], env: { ...process.env, BATON_PORT: String(port), BATON_BIND: '127.0.0.1', BATON_QUIET: '0' } })
+  const child = spawn(process.execPath, [SERVER], { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd], env: { ...process.env, BATON_PORT: String(port), BATON_BIND: host, BATON_QUIET: '0' } })
   child.unref()
   const t0 = Date.now()
   while (Date.now() - t0 < 15000) {
-    if (await health(port)) {
-      writeFileSync(pidfile(), JSON.stringify({ pid: child.pid, port, bind: '127.0.0.1', children: [child.pid], detached: true, started_by: 'attach', started_at: new Date().toISOString() }, null, 2) + '\n')
+    if (await health(port, host)) {
+      writeFileSync(pidfile(), JSON.stringify({ pid: child.pid, port, bind: host, children: [child.pid], detached: true, started_by: 'attach', started_at: new Date().toISOString() }, null, 2) + '\n')
       if (open) openBoard(url)
       return { url, started: true }
     }
@@ -260,10 +273,10 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
       const next = Object.keys(patch).length ? updateSession(sid, patch) : s
       const ctl = takeControl(sid)
       if (ctl?.handoff) {
-        updateSession(sid, { status: 'handing_off', handoff: { reason: 'requested from the board', at: new Date().toISOString() } }, { event: { type: 'handoff_requested', summary: 'hand off requested from the board' } })
+        updateSession(sid, { status: 'handing_off', handoff: { reason: `requested from the board${ctl.by ? ` by ${ctl.by}` : ''}`, at: new Date().toISOString(), by: ctl.by ?? null } }, { event: { type: 'handoff_requested', by: ctl.by ?? null, summary: `hand off requested from the board${ctl.by ? ` by ${ctl.by}` : ''}` } })
         clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'handoff', code: null }); return
       }
-      if (ctl?.end) { clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'exit', code: null, ended: true }); return }
+      if (ctl?.end) { if (ctl.by) appendEvent(sid, { type: 'status', by: ctl.by, summary: `end requested from the board by ${ctl.by}` }); clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'exit', code: null, ended: true }); return }
       if (next.status === 'limit' && process.env.BATON_NO_HANDOFF !== '1') {
         clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'limit', code: null })
       }
@@ -334,7 +347,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
   if (g.repo && !shareCheckout) {
     try { iso = isolate({ g, cwd, sid }) } catch (err) { say(`could not make a worktree (${String(err.message).split('\n')[0].slice(0, 200)}); sharing the checkout`) }
   }
-  createSession({ id: sid, agent, account, cwd: iso?.cwd ?? cwd, repo: g.repo, branch: iso?.branch ?? g.branch, argv: args, chain, worktree: iso ? { path: iso.path, branch: iso.branch, base: iso.base } : null })
+  createSession({ id: sid, agent, account, cwd: iso?.cwd ?? cwd, repo: g.repo, branch: iso?.branch ?? g.branch, argv: args, chain, worktree: iso ? { path: iso.path, branch: iso.branch, base: iso.base } : null, owner: whoami() })
   updateSession(sid, { head_at_start: g.head, head: g.head, files_dirty: iso ? [] : g.dirty, board_url: board.url })
   say(`session ${sid} · ${agent}${account !== 'default' ? '/' + account : ''} · board ${board.url ?? 'off'}${board.started ? ' (started)' : ''} · next: ${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(' → ') || 'none'}`)
   if (iso) {

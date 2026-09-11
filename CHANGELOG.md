@@ -43,8 +43,25 @@ human on the board.
   worktrees both appending to README.md; Land on one ran the tests and
   fast-forwarded main, Land on the other bounced with `rebase-conflict` on
   README.md.
+- `baton share`: more than one human on the board, off by default. `baton share
+  on` binds the Tailscale address (or `--bind lan`, or one you name) and gives
+  every human a name and their own token, kept as a sha256 hash and printed
+  once (`baton share rotate <name>` issues a new one). A terminal belongs to
+  the human who started it (`BATON_PERSON`). Another human's card is
+  read-only: no prompt, no file names, no paths, no limit text, no bundle, no
+  events, no logs, and one **Request handoff** button that the owner approves
+  or dismisses on their own card; the pipeline side stays the owner's. The
+  security pass: a token on every `/api` route including the event stream
+  (which is computed per viewer), 403 for a guest on anything that is not
+  theirs, 20 wrong tokens from one address then a minute's wait, 600 requests
+  a minute per human, and tests that send a bad and a missing token to every
+  route. Verified live over Tailscale with two terminals on one machine, one
+  wes's and one sam's: sam's board redacted wes's card, and sam's request was
+  approved on wes's board and handed the terminal off.
 - The merge queue's test run no longer blocks its process, so the board keeps
   answering while a Land runs the tests.
+- Fixed: a board that asks for a token answered `ensureBoard`'s health probe
+  with 401, and Baton read that as "no board" and started a second one.
 - Fixed: the first dirty file on a card (and in the bundle notes) lost its
   first letter (`EADME.md`) because the porcelain status was trimmed;
   `.dashclaw-local/` no longer counts as a file being touched, and it joins

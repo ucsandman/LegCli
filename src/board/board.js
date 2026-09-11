@@ -36,6 +36,17 @@
   }
 
   // ---- helpers ----
+  // a shared link carries the person's token: keep it, then take it out of the
+  // address bar so it is not in a screenshot or the next copied URL
+  try {
+    const fromLink = new URL(location.href).searchParams.get('token')
+    if (fromLink) {
+      localStorage.setItem('batonToken', fromLink)
+      const clean = new URL(location.href)
+      clean.searchParams.delete('token')
+      history.replaceState(null, '', clean.pathname + clean.search + clean.hash)
+    }
+  } catch {}
   function getToken() { return localStorage.getItem('batonToken') || '' }
 
   async function api(path, opts = {}) {
@@ -162,13 +173,25 @@
       `scheduler: ${sched.running ? 'running' : 'stopped'}, ${sched.max_concurrent} max`
   }
 
+  // a guest on a shared board has no pipeline side: take it off the page
+  // instead of shouting 403 at them
+  const ownerOnly = (err) => /belongs to the owner of this machine/.test(err.message)
+  function guestMode() {
+    document.body.classList.add('guest')
+    for (const el of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (el) el.hidden = true
+  }
+
+  const isGuest = () => document.body.classList.contains('guest')
+
   async function fetchCards() {
+    if (isGuest()) return
     try {
       const data = await api('/api/cards')
       state.columns = data.columns
       state.cards = new Map(data.cards.map((c) => [c.card_id, c]))
       renderBoard()
     } catch (err) {
+      if (ownerOnly(err)) return guestMode()
       toast(err.message)
     }
   }
@@ -176,8 +199,11 @@
   async function loadHealth() {
     try {
       const data = await api('/api/health')
+      // a guest is told who they are by health, which is open to them
+      if (data.you && data.you.role && data.you.role !== 'owner') return guestMode()
       renderScheduler(data.scheduler)
     } catch (err) {
+      if (ownerOnly(err)) return guestMode()
       toast(err.message)
     }
   }
@@ -711,14 +737,15 @@
   }
 
   // ---- init ----
-  function init() {
+  async function init() {
     initSettings()
     initNewCardDialog()
     document.getElementById('new-card-btn').addEventListener('click', () => openNewCardDialog())
     document.getElementById('empty-new-card-btn').addEventListener('click', () => openNewCardDialog())
     document.getElementById('drawer-close').addEventListener('click', () => closeDrawer())
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.drawerId) closeDrawer() })
-    loadHealth()
+    // health first: it says whether this human owns the pipeline side at all
+    await loadHealth()
     fetchCards()
     connectSse()
     setInterval(tickElapsed, 1000)

@@ -45,9 +45,9 @@ export function isActive(s) { return ACTIVE.includes(s?.status) }
 // it one (repo stays the main checkout, for grouping and landing), else the repo.
 export function workRoot(s) { return s?.worktree?.path ?? s?.repo ?? s?.cwd ?? null }
 
-export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [], worktree = null }) {
+export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [], worktree = null, owner = null }) {
   const session = {
-    session_id: id, agent, account, cwd, repo, branch, argv, worktree,
+    session_id: id, agent, account, cwd, repo, branch, argv, worktree, owner,
     repo_name: repo ? repo.split(/[\\/]/).filter(Boolean).pop() : null,
     status: 'starting', runner_pid, pid: null,
     started_at: now(), updated_at: now(), ended_at: null, last_activity: now(),
@@ -115,6 +115,17 @@ export function readLand(id) {
 export function writeLand(id, land) {
   if (!existsSync(sessionDir(id))) return
   writeJsonAtomic(join(sessionDir(id), 'land.json'), land)
+}
+
+// Hand-off requests from another human (share mode). Server-owned, like land.json.
+export function readRequests(id) {
+  const f = join(sessionDir(id), 'requests.json')
+  if (!existsSync(f)) return []
+  try { const j = JSON.parse(readFileSync(f, 'utf8')); return Array.isArray(j) ? j : [] } catch { return [] }
+}
+export function writeRequests(id, list) {
+  if (!existsSync(sessionDir(id))) return
+  writeJsonAtomic(join(sessionDir(id), 'requests.json'), list.slice(-20))
 }
 
 // Who landed what: one line per landing, kept after the session is removed.

@@ -43,7 +43,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `turn_done` | the agent's reply for that turn, first 160 characters |
 | `warning` | a usage window crossed the warning threshold; names the window, the percentage and the next option |
 | `limit` | a usage limit was detected; carries the agent's own wording, `(simulated)` when `baton sessions simulate-limit` produced it |
-| `handoff_requested` | someone pressed Hand off now, or ran `baton sessions handoff` |
+| `handoff_requested` | someone pressed Hand off now, ran `baton sessions handoff`, or (on a shared board) asked for, approved or dismissed a hand-off; `by` names the human |
 | `handoff` | the switch happened: from, to, reason, bundle id |
 | `all_out` | every option is walled; the resets are printed and the terminal waits for the first one (`ended` with "quit while waiting" if Ctrl-C or End cuts the wait short, exit 3) |
 | `agent_exit` | the agent process exited, with its code |
@@ -70,6 +70,19 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `noop` | nothing to land | the branch had nothing beyond its base |
 | `bounced` | ✗ bounced (`<reason>`) | a step failed and the base is untouched |
 | `interrupted` | the landing was cut off | the board restarted while it was landing; press Land again |
+
+## Share roles (more than one human)
+
+`$BATON_HOME/share.json`, written by `baton share` (`src/share.mjs`).
+
+| role | the terminals lane | the pipeline side | their own terminals |
+|------|--------------------|-------------------|---------------------|
+| `owner` | every card in full | everything | control, Land, Remove, approve or dismiss a request |
+| `guest` | their own cards in full; every other card read-only, with the prompt, paths, file names, limit text, bundle and events left out | 403 | control, Land and Remove their own; **Request handoff** on anyone else's |
+
+A request is `{ by, at, state: pending\|approved\|dismissed }` in the session's
+`requests.json`; approving it sends the runner `handoff` with
+`by: "<owner> for <guest>"`.
 
 ## Card statuses
 
