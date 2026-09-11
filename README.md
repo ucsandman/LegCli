@@ -37,6 +37,33 @@ cards to land within about an hour. `land_mode: pr` opens a pull request
 instead (built as `gh pr create` argv; stub-only in this build) and parks the
 card for a human.
 
+## Optional syncs
+
+Baton ships its own board. Two mirrors exist, both off unless you set the
+flag in `.env` (copy `.env.example`):
+
+- **OpenClaw Workboard** (`BATON_SYNC_WORKBOARD=1`): every card create,
+  status change and completion runs `openclaw workboard add|move|done …` as an
+  argv child of the ledger (no shell). On the machine this was built on the
+  plugin is disabled and the CLI answers, verbatim:
+
+  > The `openclaw workboard` command is unavailable because `plugins.allow` excludes "workboard". Add "workboard" to `plugins.allow` if you want that bundled plugin CLI surface.
+
+  Baton records that once as a `status` event on the card and stays silent
+  afterwards (a marker file under `BATON_HOME`; delete it to retry). The verb
+  mapping in `src/sync/workboard.mjs` is written against a stub; check it
+  against `openclaw workboard --help` once the plugin is enabled.
+- **DashClaw** (`BATON_SYNC_DASHCLAW=1` plus `DASHCLAW_URL` and
+  `DASHCLAW_API_KEY`): every ledger event is recorded as a DashClaw action
+  (`POST /api/actions` with `agent_id`, `action_type: baton_<event>`,
+  `declared_goal`, `status`, `systems_touched`, `input_summary`) over native
+  https with a 5 s timeout. A failed record is buffered in the card's
+  `unsynced.jsonl` and replayed by `node src/ledger.mjs sync`. Verified live
+  on 2026-09-10: one card create produced one `baton_card_created` action.
+
+Neither sync can block or fail a card; a sync failure is one `status` event
+per minute at most.
+
 ## Hard constraints
 
 - Logged-in subscription CLIs only, never per-token API. Every spawn deletes

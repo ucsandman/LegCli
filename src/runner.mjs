@@ -5,8 +5,9 @@
 // State: $BATON_HOME/cards/<id>/runs/<n>/ (run.json, prompt.txt, out.log, err.log,
 // supervisor.log). Ledger writes go through src/ledger.mjs. Exports sanitizeEnv.
 import {
-  mkdirSync, readFileSync, writeFileSync, existsSync, openSync, copyFileSync, readdirSync, rmSync, statSync, renameSync,
+  mkdirSync, readFileSync, existsSync, openSync, copyFileSync, readdirSync, rmSync, statSync,
 } from 'node:fs'
+import { writeJsonAtomic } from './fsx.mjs'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { join, dirname, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -73,11 +74,8 @@ function readRun(id, n) {
 }
 
 function writeRun(id, n, r) {
-  // write-then-rename: the orchestrator and the board poll this file
-  const file = join(runDir(id, n), 'run.json')
-  const tmp = `${file}.${process.pid}.tmp`
-  writeFileSync(tmp, JSON.stringify({ ...r, updated_at: now() }, null, 2) + '\n')
-  renameSync(tmp, file)
+  // atomic: the orchestrator and the board poll this file (src/fsx.mjs)
+  writeJsonAtomic(join(runDir(id, n), 'run.json'), { ...r, updated_at: now() })
 }
 
 // Ledger writes must never crash the supervisor; failures go to its log.

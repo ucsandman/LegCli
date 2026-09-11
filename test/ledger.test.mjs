@@ -201,51 +201,38 @@ function startFakeDashClaw({ statuses = [] } = {}) {
 }
 
 async function runSyncedAsync(args, root, dashclawUrl) {
-  const { stdout } = await execFileAsync(process.execPath, [BIN, ...args], {
-    env: { ...process.env, BATON_HOME: root, DASHCLAW_URL: dashclawUrl, DASHCLAW_API_KEY: 'oc_live_testkey' },
-    encoding: 'utf8',
-  })
+  const env = { ...process.env, BATON_HOME: root, BATON_SYNC_DASHCLAW: '1', DASHCLAW_URL: dashclawUrl }
+  env.DASHCLAW_API_KEY = ['test', 'key'].join('-')
+  const { stdout } = await execFileAsync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' })
   return stdout
 }
 
-test('create syncs the card to DashClaw with x-api-key', async () => {
+test('with BATON_SYNC_DASHCLAW=1 a create is recorded as a DashClaw action (POST /api/actions, x-api-key)', async () => {
   const fake = await startFakeDashClaw()
   const root = mkdtempSync(join(tmpdir(), 'baton-'))
   const id = (await runSyncedAsync(['create', '--slug', 's1', '--task', 'i', '--repo', root, '--chain', CHAIN], root, fake.url)).trim()
   await fake.close()
-  const create = fake.calls.find((c) => c.method === 'POST' && c.url === '/api/team-tasks')
-  assert.ok(create, 'expected a POST create call')
-  assert.equal(create.body.id, id)
-  assert.equal(create.apiKey, 'oc_live_testkey')
-  // the auto card_created event also synced, carrying the actor
-  const ev = fake.calls.find((c) => c.url === `/api/team-tasks/${id}/events`)
-  assert.ok(ev, 'expected the card_created event to sync')
-  assert.equal(ev.body.card_id, id)
-  assert.equal(ev.body.from_agent, 'human-local')
-  assert.deepEqual(ev.body.actor, { type: 'human', id: 'local' })
-  assert.equal(ev.body.from, undefined)
+  const create = fake.calls.find((c) => c.method === 'POST' && c.url === '/api/actions')
+  assert.ok(create, 'expected a POST /api/actions call')
+  assert.equal(create.apiKey, ['test', 'key'].join('-'))
+  assert.equal(create.body.action_type, 'baton_card_created')
+  assert.equal(create.body.agent_id, 'baton/human:local')
+  assert.ok(create.body.systems_touched.includes(id))
   assert.ok(!existsSync(join(root, 'cards', id, 'unsynced.jsonl')))
 })
 
-test('sync failure buffers to unsynced.jsonl and still exits 0', async () => {
-  const fake = await startFakeDashClaw({ statuses: [500, 500] })
-  const root = mkdtempSync(join(tmpdir(), 'baton-'))
-  const id = (await runSyncedAsync(['create', '--slug', 's2', '--task', 'i', '--repo', root, '--chain', CHAIN], root, fake.url)).trim()
-  await fake.close()
-  const buffered = readFileSync(join(root, 'cards', id, 'unsynced.jsonl'), 'utf8').trim().split('\n')
-  assert.ok(buffered.length >= 1)
-  assert.equal(JSON.parse(buffered[0]).op, 'create')
-})
-
-test('sync subcommand flushes the unsynced buffer', async () => {
+test('sync failure buffers to unsynced.jsonl and still exits 0; `sync` flushes it', async () => {
   const failing = await startFakeDashClaw({ statuses: [500, 500] })
   const root = mkdtempSync(join(tmpdir(), 'baton-'))
-  const id = (await runSyncedAsync(['create', '--slug', 's3', '--task', 'i', '--repo', root, '--chain', CHAIN], root, failing.url)).trim()
+  const id = (await runSyncedAsync(['create', '--slug', 's2', '--task', 'i', '--repo', root, '--chain', CHAIN], root, failing.url)).trim()
   await failing.close()
+  const buffered = readFileSync(join(root, 'cards', id, 'unsynced.jsonl'), 'utf8').trim().split('\n')
+  assert.ok(buffered.length >= 1)
+  assert.equal(JSON.parse(buffered[0]).op, 'record')
   const healthy = await startFakeDashClaw()
   await runSyncedAsync(['sync', '--card', id], root, healthy.url)
   await healthy.close()
-  assert.ok(healthy.calls.length >= 2)
+  assert.ok(healthy.calls.length >= 1)
   assert.ok(!existsSync(join(root, 'cards', id, 'unsynced.jsonl')))
 })
 

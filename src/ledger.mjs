@@ -4,13 +4,14 @@
 // Subcommands: create | append | update | sync. Every event carries a validated
 // actor, the card id, the station and the leg, and lands in that actor's own
 // events-<actor-key>.jsonl. Importable: readEvents, parseActor, actorKey.
-import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, existsSync, unlinkSync, renameSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs'
+import { writeJsonAtomic } from './fsx.mjs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import http from 'node:http'
-import https from 'node:https'
 import { SECRET_PATTERNS } from './redact.mjs'
+import { notify } from './sync/index.mjs'
+import { dashclawConfig, record } from './sync/dashclaw.mjs'
 
 export const EVENT_TYPES = ['card_created', 'leg_started', 'leg_progress', 'leg_exited',
   'limit_detected', 'handoff_written', 'leg_resumed', 'station_done', 'bounced', 'landed',
@@ -81,14 +82,6 @@ export function actorKey(actor) {
 
 const ACTOR_HELP = 'invalid --actor (expected JSON {"type":"agent","adapter":"<name>"} | {"type":"human","id":"<id>"} | {"type":"baton"})'
 
-// card.json is read by the board and the tests while the ledger writes it;
-// write-then-rename keeps every reader from seeing a half-written file.
-function writeJsonAtomic(file, obj) {
-  const tmp = `${file}.${process.pid}.tmp`
-  writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n')
-  renameSync(tmp, file)
-}
-
 function cardDir(id) {
   const dir = join(ROOT, 'cards', id)
   if (!existsSync(join(dir, 'card.json'))) die(3, `card not found: ${id}`)
@@ -148,86 +141,18 @@ export function readEvents(id) {
   return events.map((e) => e.ev)
 }
 
-// --- DashClaw sync (best-effort observability; never blocks the ledger) ---
-// Endpoint paths live here so phase 9 can point them at the real target.
-const SYNC_PATHS = {
-  create: '/api/team-tasks',
-  events: (id) => `/api/team-tasks/${id}/events`,
-  update: (id) => `/api/team-tasks/${id}`,
-}
-
-function eventSyncBody(ev) {
-  return {
-    ts: ev.ts, card_id: ev.card_id, actor: ev.actor, from_agent: actorKey(ev.actor),
-    station: ev.station, leg: ev.leg,
-    type: ev.type, summary: ev.summary, body: ev.body, action_id: ev.action_id,
-  }
-}
-
-function loadDashclawConfig() {
-  let url = process.env.DASHCLAW_URL
-  let key = process.env.DASHCLAW_API_KEY
-  if (!url || !key) {
-    const envFile = join(ROOT, '.env.dashclaw')
-    if (existsSync(envFile)) {
-      for (const line of readFileSync(envFile, 'utf8').split('\n')) {
-        const m = /^\s*(DASHCLAW_URL|DASHCLAW_API_KEY)\s*=\s*(.+?)\s*$/.exec(line)
-        if (m) {
-          if (m[1] === 'DASHCLAW_URL' && !url) url = m[2]
-          if (m[1] === 'DASHCLAW_API_KEY' && !key) key = m[2]
-        }
-      }
-    }
-  }
-  return url && key ? { url: url.replace(/\/$/, ''), key } : null
-}
-
-async function dashclawRequest(cfg, op) {
-  const body = JSON.stringify(op.body)
-  const url = new URL(cfg.url + op.path)
-  const client = url.protocol === 'https:' ? https : http
-  return await new Promise((resolvePromise) => {
-    const req = client.request(url, {
-      method: op.method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'Connection': 'close',
-        'x-api-key': cfg.key,
+// --- optional syncs (src/sync): best-effort, never block the ledger ---
+async function syncNotify(kind, ev, card) {
+  const id = ev?.card_id ?? card?.card_id ?? null
+  try {
+    await notify({
+      kind, ev, card, home: ROOT,
+      report: (summary) => {
+        if (!id) return
+        appendEvent(id, { ts: now(), card_id: id, actor: { type: 'baton' }, station: card?.station ?? '-', leg: card?.leg ?? 0, type: 'status', summary })
       },
-      timeout: 5000,
-    }, (res) => {
-      res.resume()
-      res.on('end', () => {
-        // 409 on create = already synced; treat as success
-        resolvePromise((res.statusCode >= 200 && res.statusCode < 300)
-          || (op.op === 'create' && res.statusCode === 409))
-      })
     })
-    req.on('timeout', () => req.destroy())
-    req.on('error', () => resolvePromise(false))
-    req.end(body)
-  })
-}
-
-function bufferUnsynced(cardId, op) {
-  appendFileSync(join(ROOT, 'cards', cardId, 'unsynced.jsonl'), JSON.stringify(op) + '\n')
-}
-
-async function syncOp(cardId, op) {
-  const cfg = loadDashclawConfig()
-  if (!cfg) return
-  const ok = await dashclawRequest(cfg, op)
-  if (!ok) bufferUnsynced(cardId, op)
-}
-
-function assertNoSecrets(...values) {
-  for (const v of values) {
-    if (!v) continue
-    for (const [name, re] of SECRET_PATTERNS) {
-      if (re.test(v)) die(2, `refusing to log: value matches a secret pattern (${name})`)
-    }
-  }
+  } catch {}
 }
 
 function unsyncedFiles(onlyCardId) {
@@ -239,15 +164,19 @@ function unsyncedFiles(onlyCardId) {
     .filter((f) => existsSync(f))
 }
 
+// `ledger sync [--card id]`: replay buffered DashClaw records; exit 1 while any remain.
 async function flushUnsynced(onlyCardId) {
-  const cfg = loadDashclawConfig()
+  const cfg = dashclawConfig()
   let anyRemaining = false
   for (const file of unsyncedFiles(onlyCardId)) {
     const lines = readFileSync(file, 'utf8').trim().split('\n').filter(Boolean)
     const survivors = []
     for (const line of lines) {
-      const op = JSON.parse(line)
-      const ok = cfg && await dashclawRequest(cfg, op)
+      let ok = false
+      try {
+        const op = JSON.parse(line)
+        ok = Boolean(cfg) && (await record(cfg, op.ev, op.card)).ok
+      } catch { ok = false }
       if (!ok) survivors.push(line)
     }
     if (survivors.length) {
@@ -258,6 +187,15 @@ async function flushUnsynced(onlyCardId) {
     }
   }
   return anyRemaining
+}
+
+function assertNoSecrets(...values) {
+  for (const v of values) {
+    if (!v) continue
+    for (const [name, re] of SECRET_PATTERNS) {
+      if (re.test(v)) die(2, `refusing to log: value matches a secret pattern (${name})`)
+    }
+  }
 }
 
 function parseChain(raw) {
@@ -332,14 +270,7 @@ async function main() {
     }
     appendEvent(id, createdEvent)
     writeActive()
-    await syncOp(id, {
-      op: 'create', method: 'POST', path: SYNC_PATHS.create,
-      body: { id, instruction: task, title: card.title, repo, chain, status: card.status, actor },
-    })
-    await syncOp(id, {
-      op: 'append', method: 'POST', path: SYNC_PATHS.events(id),
-      body: eventSyncBody(createdEvent),
-    })
+    await syncNotify('create', createdEvent, card)
     process.stdout.write(id + '\n')
   } else if (cmd === 'append') {
     const id = need(args, 'card')
@@ -361,10 +292,7 @@ async function main() {
     if (args.body) ev.body = args.body
     if (args.action) ev.action_id = args.action
     appendEvent(id, ev)
-    await syncOp(id, {
-      op: 'append', method: 'POST', path: SYNC_PATHS.events(id),
-      body: eventSyncBody(ev),
-    })
+    await syncNotify('append', ev, card)
   } else if (cmd === 'update') {
     const id = need(args, 'card')
     const dir = cardDir(id)
@@ -402,10 +330,7 @@ async function main() {
     card.updated_at = now()
     writeJsonAtomic(join(dir, 'card.json'), card)
     writeActive()
-    await syncOp(id, {
-      op: 'update', method: 'PATCH', path: SYNC_PATHS.update(id),
-      body: patch,
-    })
+    if (patch.status) await syncNotify('status', null, card)
   } else if (cmd === 'log') {
     // Non-card events (scheduler start/stop): $BATON_HOME/events-<actor-key>.jsonl
     assertNoSecrets(args.summary, args.body)

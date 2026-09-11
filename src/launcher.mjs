@@ -13,6 +13,7 @@ import { home, listCards, readRuns } from './store.mjs'
 import { names as adapterNames, get as getAdapter, isFake } from './adapters/index.mjs'
 import { resolveChb, chbVersion } from './handoff.mjs'
 import { schedulerStatus, MAX_CONCURRENT } from './scheduler.mjs'
+import { enabledSyncs } from './sync/index.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 const SERVER = process.env.BATON_SERVER_SCRIPT || join(SRC, 'server.mjs')
@@ -76,9 +77,10 @@ export function plannedProcesses({ port = Number(process.env.BATON_PORT || 4747)
     prefix: 'server', bin: process.execPath, argv: [SERVER], env: { BATON_PORT: String(port), BATON_BIND: bind },
     note: 'board + API + scheduler + merge queue',
   }]
+  const on = enabledSyncs()
   const syncs = [
-    { prefix: 'sync:workboard', enabled: process.env.BATON_SYNC_WORKBOARD === '1', note: 'OpenClaw Workboard mirror (BATON_SYNC_WORKBOARD=1)' },
-    { prefix: 'sync:dashclaw', enabled: Boolean(process.env.DASHCLAW_URL && process.env.DASHCLAW_API_KEY), note: 'DashClaw action recording (DASHCLAW_URL + DASHCLAW_API_KEY)' },
+    { prefix: 'sync:workboard', enabled: on.includes('workboard'), note: 'OpenClaw Workboard mirror (BATON_SYNC_WORKBOARD=1); runs inside the ledger, no extra process' },
+    { prefix: 'sync:dashclaw', enabled: on.includes('dashclaw'), note: 'DashClaw action recording (BATON_SYNC_DASHCLAW=1 + DASHCLAW_URL + DASHCLAW_API_KEY); runs inside the ledger' },
   ]
   return { procs, syncs }
 }
