@@ -18,6 +18,13 @@ import {
   RUNNER, BATON_ACTOR, readCard, ledgerAppend, ledgerUpdate, cardDir, sleep,
 } from './store.mjs'
 import { scrub } from './runner.mjs'
+import * as agentStation from './stations/agent.mjs'
+import * as testStation from './stations/test.mjs'
+import * as humanStation from './stations/human.mjs'
+
+// Station kinds that run inside runCard; land stays inline below (it drives
+// the merge queue). Each handler gets the orchestrator's helpers as `ops`.
+const KIND_HANDLERS = { agent: agentStation, test: testStation, human: humanStation }
 
 const POLL_MS = Number(process.env.BATON_POLL_MS || 2000)
 const WAITING = ['done', 'failed', 'killed', 'paused', 'waiting_human', 'needs_approval']
@@ -216,49 +223,11 @@ export async function runCard(id, { actor = BATON_ACTOR } = {}) {
     if (card.status !== 'running') return card
     const st = card.pipeline[stationIndex(card.pipeline, card.station)]
     if (!st) throw new Error(`card ${id}: unknown station ${card.station}`)
-    if (st.kind === 'agent') {
-      const pending = unsettledRun(id)
-      if (pending?.driver_pid && pending.driver_pid !== process.pid && pidAlive(pending.driver_pid)) {
-        log(`card ${id}: run ${pending.run} is driven by pid ${pending.driver_pid}; not attaching`)
-        return card
-      }
-      if (pending) {
-        ledgerAppend(id, { type: 'status', station: st.name, leg: card.leg, summary: `re-attached to run ${pending.run} (${pending.status}); no new leg launched` })
-        patchRun(id, pending.run, { driver_pid: process.pid })
-      }
-      const run = pending ? await waitForRun(id, pending.run) : await runLeg(card, st, wt.path)
-      settleRun(id, run)
-      const fresh = readCard(id)
-      if (['killed', 'paused'].includes(fresh.status)) {
-        if (fresh.status === 'paused') handoffOn(fresh, st, run, wt.path, ['paused by a human; resume continues from this bundle'])
-        return fresh
-      }
-      const before = readCard(id)
-      const result = transition(before, 'leg_result', { outcome: run.outcome, handoff: run.handoff, signal: run.signal, adapter: st.chain[before.leg]?.adapter, run: run.run })
-      card = apply(id, before, result, actor)
-      if (card.status === 'handing_off') {
-        handoffOn(card, st, run, wt.path)
-        card = step(id, 'bundle_written', {}, actor)
-      }
-      continue
-    }
-    if (st.kind === 'test') {
-      const cmd = st.command ?? resolveTestCommand(card, wt.path).command
-      if (!cmd) {
-        ledgerAppend(id, { type: 'status', station: st.name, leg: 0, summary: 'test station: no test command configured; treating as green' })
-        card = step(id, 'test_result', { green: true }, actor)
-        continue
-      }
-      const t = runTestCommand(cmd, wt.path)
-      ledgerAppend(id, { type: 'status', station: st.name, leg: 0, summary: `test ${t.green ? 'green' : 'red'}: ${t.command}${t.timedOut ? ' (timed out)' : ''}`, body: t.tail })
-      if (!t.green) {
-        const bounced = transition(card, 'test_result', { green: false, reason: `test red (${t.command}, exit ${t.status}): ${t.tail.split('\n').slice(-5).join(' | ')}` })
-        // Attach the failure to a bundle so the next build leg starts from it.
-        handoffOn(card, { name: st.name, chain: [] }, { outcome: 'test_red', reason: t.tail, exit_code: t.status, adapter: 'test' }, wt.path, [`test red: ${t.command}`, t.tail.slice(0, 1500)])
-        card = apply(id, card, bounced, actor)
-        continue
-      }
-      card = step(id, 'test_result', { green: true }, actor)
+    const handler = KIND_HANDLERS[st.kind]
+    if (handler) {
+      const r = await handler.run({ id, card, station: st, worktree: wt.path, actor, ops: OPS })
+      card = r.card
+      if (r.done) return card
       continue
     }
     if (st.kind === 'land') {
@@ -275,10 +244,6 @@ export async function runCard(id, { actor = BATON_ACTOR } = {}) {
       }
       card = step(id, 'land_result', { ...r, reason: r.detail ? `${r.reason}: ${r.detail}` : r.reason }, actor)
       continue
-    }
-    if (st.kind === 'human') {
-      card = step(id, 'start', {}, actor)
-      return card
     }
     throw new Error(`unknown station kind ${st.kind}`)
   }
@@ -314,4 +279,10 @@ export function killActiveRun(id) {
     }
   }
   return killed
+}
+
+// Helpers handed to the station-kind modules (see src/stations/*.mjs).
+const OPS = {
+  readCard, ledgerAppend, step, apply, transition, handoffOn, runLeg, waitForRun,
+  unsettledRun, settleRun, patchRun, pidAlive, log, resolveTestCommand, runTestCommand,
 }
