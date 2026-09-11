@@ -46,8 +46,13 @@ const { ledgerAppend } = await import('../src/store.mjs')
 // A guest reaches the board from somewhere else. Binding the Tailscale address
 // is the only way to get a remote address that is not 127.0.0.1, which is what
 // auth.mjs keys "the machine's own browser is the owner" off.
-const WAN = '100.117.130.59'
-let wanWorks = true
+// A non-loopback address STRING for the checkBind / default-off tests and for
+// share.json's bind field. It is never bound to a socket: a request cannot be
+// given a non-loopback SOURCE address on a single host (connecting to any
+// 127/8 or local address still reports a loopback source), so "a stranger is
+// refused with no token" is proven with share.loopback_owner=false (strictBase),
+// not a real remote peer.
+const WAN = '100.64.0.1'
 
 // ---- canaries: one distinctive string per thing a guest must never see -----
 const wesRepo = initRepo('sec-wes-')
@@ -231,13 +236,10 @@ before(async () => {
   writeFileSync(join(runDir, 'err.log'), `stderr also saw ${C.runlog}\n`)
   ledgerAppend(CARD, { type: 'landed', station: 'land', leg: 0, summary: `landed ${C.cardTitle}`, body: C.landedBody })
 
-  try {
-    wanBase = await boot({ bind: WAN, share: SHARE })
-  } catch (err) {
-    wanWorks = false
-    realErr(`[test] could not bind ${WAN} (${err.message}); falling back to share.loopback_owner=false on 127.0.0.1\n`)
-    wanBase = await boot({ bind: '127.0.0.1', share: strictShare() })
-  }
+  // wanBase serves the token-presenting sweeps (wrong / guest / valid / stale
+  // token); those don't depend on the source address, so a loopback SHARE-backed
+  // board is portable and correct. The no-token refusal is strictBase's job.
+  wanBase = await boot({ bind: '127.0.0.1', share: SHARE })
   strictBase = await boot({ bind: '127.0.0.1', share: strictShare() })
   openBase = await boot({ bind: '127.0.0.1', share: SHARE })
   process.env.BATON_RATE_MAX = '30'
@@ -272,19 +274,21 @@ test('the canary detector actually fires: the owner\'s own board carries every o
 })
 
 // ---- 1. no token from a non-loopback address -------------------------------
-test('no token, from another machine: every route refuses and says nothing', async () => {
-  assert.ok(wanWorks, `the sweep runs against ${WAN}; without it the non-loopback path is untested (fallback: loopback_owner=false)`)
-  let n = 0
+test('no token, from a non-owner address: every route refuses and says nothing', async () => {
+  // loopback_owner=false (strictBase) is the portable "not the machine's own
+  // browser" case: no token presented and not the tokenless loopback owner is
+  // the same authorize refusal a real remote peer hits, with no dependency on a
+  // real non-loopback interface, so it runs on CI.
+  let swept = 0
   for (const [method, path] of apiRoutes()) {
-    const r = await request(wanBase, path, { method })
-    assert.equal(r.status, 401, `${method} ${path} with no token from a non-loopback address`)
+    const r = await request(strictBase, path, { method })
+    assert.equal(r.status, 401, `${method} ${path} with no token`)
     assert.match(r.json.error, /unauthorized/)
     assertClean(r, `${method} ${path} (no token)`)
-    n++
+    swept++
   }
-  const stream = await sseCollect(wanBase, null, { ms: 50 })
-  assert.equal(stream.status, 401, 'SSE with no token')
-  assert.ok(n === 26, `swept ${n} routes`)
+  assert.equal((await sseCollect(strictBase, null, { ms: 50 })).status, 401, 'SSE with no token')
+  assert.equal(swept, 26, `swept ${swept} routes`)
 })
 
 test('no token on loopback when share asks for one: every route refuses', async () => {
@@ -377,6 +381,10 @@ test('a rotated link and a removed human: the old token stops working everywhere
   share.removePerson('kim', SHARE)
   assert.equal(share.identify(SHARE, STALE.sam), null)
   assert.equal(share.identify(SHARE, STALE.kim), null)
+  // wanBase and openBase both hold the live SHARE object (not a snapshot), so
+  // they see the rotate (in place) and the remove (people reassigned); a stale
+  // token is always presented, so loopback_owner never grants and the refusal
+  // is real.
   for (const [who, token] of [['sam (rotated)', STALE.sam], ['kim (removed)', STALE.kim]]) {
     for (const [method, path] of apiRoutes()) {
       const r = await request(wanBase, path, { method, token })
