@@ -9,3 +9,10 @@ Durable product and design decisions that the code does not explain on its own. 
 - **Why cobalt and not the board's own dark palette.** The operator board and the sibling site declick.dev are both near-black; a third near-black surface from the same author would read as one family and as the generic dark AI-tool page. The site's warmth comes only from the agent colors inside product visuals.
 - **What the page promises.** Every number, path, version and date on it is copied from the README as verified on 2026-09-11. The terminal transcript is a labeled sample session whose `[baton]` lines are the strings `src/attach.mjs` prints and whose pointer prompt is the one `src/bundle.mjs` sends. The two-session cards are from the live run the README documents.
 - **Analytics and search.** Vercel Web Analytics is the only script besides `site.js`; nothing on the page depends on it. Search Console and Bing registration state is recorded below this entry when done.
+
+### Registration state, 2026-09-11
+
+- Google Search Console: URL-prefix property `https://baton-agents.vercel.app/`, verified by the `google-site-verification` meta tag in `site/index.html` (removing the tag revokes it); `sitemap.xml` submitted; home URL inspected and indexing requested.
+- Bing Webmaster Tools: site added manually and verified by the `msvalidate.01` meta tag (account-wide code); `sitemap.xml` submitted.
+- Vercel Web Analytics: enabled on project `baton-agents` (plan-included tier); the tag is `<script defer src="/_vercel/insights/script.js">` and it is the only script besides `site.js`.
+- Not done: a custom domain (none owned for Baton); the GitHub repository is still private, so the site's GitHub, README, FAQ and changelog links 404 for strangers until it is made public.
