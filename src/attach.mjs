@@ -184,11 +184,15 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
       const r = await fetchClaudeUsage({ configDir: spec.env.CLAUDE_CONFIG_DIR || LAYOUT.claude.home() })
       const s = readSession(sid)
       if (!s) return
-      if (r.ok && r.limits) {
+      // a 404, a body that is not JSON, or a shape with no window at all: the
+      // card says usage unknown and the StopFailure hook still owns the limit
+      const usable = r.ok && r.limits && (r.limits.five_hour || r.limits.seven_day)
+      if (usable) {
         recordUsage('claude', account, r.limits, 'claude usage endpoint')
-        updateSession(sid, { limits: r.limits, usage_source: 'claude usage endpoint' })
+        updateSession(sid, { limits: r.limits, usage_source: 'claude usage endpoint', usage_error: null })
       } else if (!s.usage_error) {
-        updateSession(sid, { usage_error: r.error ?? 'unknown' }, { event: { type: 'status', summary: `claude usage unavailable: ${r.error ?? 'unknown'}` } })
+        const why = r.error ?? 'the usage endpoint answered with no window'
+        updateSession(sid, { usage_error: why }, { event: { type: 'status', summary: `claude usage unavailable: ${why}` } })
       }
     }
     pollUsage().catch(() => {})

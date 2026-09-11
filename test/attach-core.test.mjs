@@ -202,3 +202,47 @@ test('git dirty list: a porcelain line that starts with a space keeps its first 
   assert.match(notes, /Dirty file: README\.md/)
   assert.doesNotMatch(notes, /Dirty file: EADME/)
 })
+
+test('claude usage endpoint: 404, a body that is not JSON, and a shape with no window all read as usage unknown; the wall still comes from the hook', async () => {
+  const { fetchClaudeUsage } = await import('../src/taps/claude-usage.mjs')
+  const http = await import('node:http')
+  const configDir = mkdtempSync(join(tmpdir(), 'claude-cfg-'))
+  const routes = {
+    '/404': [404, 'nope'],
+    '/garbage': [200, '<html>not json</html>'],
+    '/changed': [200, JSON.stringify({ windows: { five_hour: { pct: 10 } } })],
+    '/good': [200, JSON.stringify({ five_hour: { utilization: 12.5, resets_at: '2026-09-11T12:00:00Z' }, seven_day: { utilization: 40 } })],
+  }
+  const server = http.createServer((req, res) => { const [code, body] = routes[req.url] ?? [200, '{}']; res.writeHead(code); res.end(body) })
+  await new Promise((r) => server.listen(0, '127.0.0.1', r))
+  const base = `http://127.0.0.1:${server.address().port}`
+  try {
+    // no login at all
+    const noLogin = await fetchClaudeUsage({ configDir, url: `${base}/good` })
+    assert.equal(noLogin.ok, false)
+    assert.match(noLogin.error, /no claude\.ai login found/)
+    writeFileSync(join(configDir, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'test-token', expiresAt: Date.now() + 600000 } }))
+    const notFound = await fetchClaudeUsage({ configDir, url: `${base}/404` })
+    assert.equal(notFound.ok, false)
+    assert.equal(notFound.status, 404)
+    assert.match(notFound.error, /usage endpoint 404/)
+    const garbage = await fetchClaudeUsage({ configDir, url: `${base}/garbage` })
+    assert.equal(garbage.ok, false)
+    assert.match(garbage.error, /no JSON/)
+    const changed = await fetchClaudeUsage({ configDir, url: `${base}/changed` })
+    assert.equal(changed.ok, true, 'the endpoint answered')
+    assert.equal(changed.limits.five_hour, null, 'but nothing in it is a window Baton knows')
+    assert.equal(changed.limits.seven_day, null)
+    const good = await fetchClaudeUsage({ configDir, url: `${base}/good` })
+    assert.equal(good.limits.five_hour.pct, 12.5)
+    assert.equal(typeof good.limits.five_hour.resets_at, 'number')
+  } finally { server.close() }
+  // with no usage numbers at all, the hook still walls the account and the session
+  const s = sessions.createSession({ id: 's-nousage-claude', agent: 'claude', cwd, repo: cwd })
+  claudeTap.handleHook(s.session_id, { hook_event_name: 'StopFailure', error: 'rate_limit', last_assistant_message: 'API Error: Rate limit reached' })
+  const after = sessions.readSession(s.session_id)
+  assert.equal(after.status, 'limit')
+  assert.equal(after.limits, null, 'no percentages were ever recorded')
+  assert.equal(after.limit.reason, 'rate_limit')
+  sessions.updateSession(s.session_id, { status: 'ended' })
+})

@@ -10,6 +10,7 @@
 // Native https, not fetch: Node 24 on Windows can crash at exit with an open
 // fetch (test/lessons.test.mjs no-global-fetch).
 import https from 'node:https'
+import http from 'node:http'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { LAYOUT } from '../accounts.mjs'
@@ -39,7 +40,9 @@ function window(x) {
 function getJson(url, headers, timeoutMs) {
   return new Promise((resolvePromise) => {
     const u = new URL(url)
-    const req = https.request({ host: u.hostname, port: u.port || 443, path: u.pathname + u.search, method: 'GET', headers, timeout: timeoutMs }, (res) => {
+    // http only for a local test double through BATON_CLAUDE_USAGE_URL
+    const mod = u.protocol === 'http:' ? http : https
+    const req = mod.request({ host: u.hostname, port: u.port || (u.protocol === 'http:' ? 80 : 443), path: u.pathname + u.search, method: 'GET', headers, timeout: timeoutMs }, (res) => {
       let d = ''
       res.setEncoding('utf8')
       res.on('data', (c) => { d += c })
@@ -52,10 +55,10 @@ function getJson(url, headers, timeoutMs) {
 }
 
 // → { ok, limits: {five_hour, seven_day}|null, status, error, expired }
-export async function fetchClaudeUsage({ configDir = LAYOUT.claude.home(), timeoutMs = 8000 } = {}) {
+export async function fetchClaudeUsage({ configDir = LAYOUT.claude.home(), timeoutMs = 8000, url = USAGE_URL } = {}) {
   const t = readToken(configDir)
   if (!t) return { ok: false, limits: null, error: 'no claude.ai login found in ' + configDir }
-  const r = await getJson(USAGE_URL, { Authorization: `Bearer ${t.token}`, 'anthropic-beta': 'oauth-2025-04-20', Accept: 'application/json', 'User-Agent': 'agent-baton' }, timeoutMs)
+  const r = await getJson(url, { Authorization: `Bearer ${t.token}`, 'anthropic-beta': 'oauth-2025-04-20', Accept: 'application/json', 'User-Agent': 'agent-baton' }, timeoutMs)
   if (r.error) return { ok: false, limits: null, status: 0, error: r.error }
   if (r.status !== 200) return { ok: false, limits: null, status: r.status, expired: t.expired, error: `usage endpoint ${r.status}: ${r.text.slice(0, 120)}` }
   let j

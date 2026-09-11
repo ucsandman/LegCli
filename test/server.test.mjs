@@ -287,3 +287,21 @@ test('Land: a worktree session lands through the merge queue, a clashing one bou
   assert.match(r.json.worktree.reason, /commits that are not on main/)
   assert.equal(existsSync(join(lrepo, '.baton-worktrees', 's-land-codex')), true)
 })
+
+test('/api/health asks each adapter where its binary is, so a CLI the runner can start is never reported missing', async () => {
+  const { detectTools } = await import('../src/server.mjs')
+  const { mkdtempSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const dir = mkdtempSync(join(tmpdir(), 'baton-bins-'))
+  const fake = join(dir, 'codex.mjs')
+  writeFileSync(fake, '')
+  process.env.BATON_CODEX_BIN = fake
+  // observed live: probing the bare name said codex:false while the adapter
+  // resolves an exe the runner starts fine
+  assert.equal((await detectTools({ refresh: true })).codex, true)
+  process.env.BATON_CODEX_BIN = join(dir, 'not-here.mjs')
+  assert.equal((await detectTools({ refresh: true })).codex, false)
+  delete process.env.BATON_CODEX_BIN
+  const tools = (await api('/api/health')).json.tools
+  for (const k of ['claude', 'codex', 'agy', 'git', 'chb']) assert.equal(typeof tools[k], 'boolean', k)
+})

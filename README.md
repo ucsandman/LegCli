@@ -359,10 +359,11 @@ or the server refuses to start (exit 3), and requests then need
 
 - **The board did not open**: `baton open`, or visit http://127.0.0.1:4747.
   `~/.baton/board.log` has the server's output.
-- **claude's card shows "claude usage unavailable"**: Claude Code has no stored
-  claude.ai login in that config directory (run `claude auth login`), or the
-  stored token expired (start `claude` once, it refreshes). The wall is still
-  caught through the hook; only the percentages are missing.
+- **claude's card shows "usage unknown"**: Claude Code has no stored claude.ai
+  login in that config directory (run `claude auth login`), the stored token
+  expired (start `claude` once, it refreshes), or the usage endpoint answered
+  with something Baton does not recognise. The card says which. The wall is
+  still caught through the hook; only the percentages are missing.
 - **codex's card never shows usage**: the rollout for that directory was not
   found. codex writes it only once a thread starts; a directory codex does not
   trust yet shows its trust prompt first, answer it and the tap catches up.

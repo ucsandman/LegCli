@@ -62,6 +62,14 @@ human on the board.
   answering while a Land runs the tests.
 - Fixed: a board that asks for a token answered `ensureBoard`'s health probe
   with 401, and Baton read that as "no board" and started a second one.
+- `/api/health` asks each adapter where its binary is instead of running the
+  bare name, so the board no longer says `codex: false` while the runner starts
+  codex fine.
+- When the claude usage endpoint 404s, answers with something that is not JSON,
+  or changes shape, the card says `usage unknown (<why>) · the limit still
+  hands off` instead of showing empty bars; the wall still arrives through the
+  `StopFailure` hook. `BATON_CLAUDE_USAGE_URL` (or `fetchClaudeUsage({ url })`)
+  accepts an http test double.
 - Fixed: the first dirty file on a card (and in the bundle notes) lost its
   first letter (`EADME.md`) because the porcelain status was trimmed;
   `.dashclaw-local/` no longer counts as a file being touched, and it joins

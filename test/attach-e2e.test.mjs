@@ -93,6 +93,9 @@ test('limit → every option out → waits for the first reset → starts codex 
   assert.ok(existsSync(join(repo, '.baton', 'RESUME.md')), 'RESUME.md written for the next agent')
   assert.ok(existsSync(join(stubDir, 'live', 'claude', 'limit-rate_limit.json')), 'the (non-simulated) StopFailure was kept as live evidence')
   assert.equal(readUsage('claude', 'default').limited_reason, 'rate_limit')
+  // no usage numbers (the config dir has no login) but the wall still landed
+  assert.match(s.usage_error, /no claude\.ai login found/)
+  assert.ok(readEvents(s.session_id).some((e) => e.type === 'status' && /usage unavailable/.test(e.summary)))
 })
 
 test('End from the board while waiting quits with exit 3 and the session is ended, not lost', async (t) => {

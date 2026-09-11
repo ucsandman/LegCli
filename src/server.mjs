@@ -173,15 +173,27 @@ function parseSince(s) {
 }
 
 let toolsCache = null
-function detectTools() {
-  if (toolsCache) return toolsCache
+// Is this agent actually here? Ask its adapter to resolve the binary the
+// runner would spawn (codex's native exe, an npm entry, a BATON_<AGENT>_BIN
+// override) instead of running the bare name, which on Windows needs a shell
+// and told the board "no codex" while the runner could start it fine.
+export async function detectTools({ refresh = false } = {}) {
+  if (toolsCache && !refresh) return toolsCache
   const probe = (bin, args = ['--version']) => {
     const r = spawnSync(bin, args, { windowsHide: true, encoding: 'utf8', timeout: 8000 })
     return !r.error && r.status === 0
   }
+  const agents = {}
+  for (const name of ['claude', 'codex', 'agy']) {
+    try {
+      const { bin, viaNode, entry } = (await getAdapter(name)).resolve()
+      const target = viaNode ? (entry ?? bin) : bin
+      agents[name] = /[\\/]/.test(target) ? existsSync(target) : probe(target)
+    } catch { agents[name] = false }
+  }
   let chb = false
   try { resolveChb(); chb = true } catch {}
-  toolsCache = { claude: probe('claude'), codex: probe('codex'), agy: probe('agy'), grok: probe('grok'), chb, git: probe('git') }
+  toolsCache = { ...agents, grok: probe('grok'), chb, git: probe('git') }
   return toolsCache
 }
 
@@ -433,7 +445,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
         const you = { ...viewer, share: { on: shared, people: shared ? share.people.length : 0 } }
         if (guest) return send(res, 200, { ok: true, version: VERSION, you })
         const cards = listCards()
-        return send(res, 200, { ok: true, version: VERSION, bind, port, home: home(), you, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: detectTools(), columns: columnsFor(cards), cards: cards.length })
+        return send(res, 200, { ok: true, version: VERSION, bind, port, home: home(), you, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: await detectTools(), columns: columnsFor(cards), cards: cards.length })
       }
       if (req.method === 'GET' && path === '/api/adapters') return send(res, 200, { adapters: await adaptersInfo() })
       if (req.method === 'GET' && path === '/api/presets') return send(res, 200, { presets: PRESETS })

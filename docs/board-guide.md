@@ -66,7 +66,10 @@ One per session, active sessions first, then by start time:
   short HEAD sha. A session that started while another was live in the same
   checkout adds an `own worktree · from <base>` chip; hover gives the worktree
   path and branch.
-- **Usage bars**: the 5h and 7d windows for this session's login.
+- **Usage bars**: the 5h and 7d windows for this session's login. When the
+  endpoint has no numbers for them the card says `usage unknown (<why>) · the
+  limit still hands off` instead: no login in that config directory, an expired
+  token, a 404, a body that is not JSON, or a shape Baton does not recognise.
 - **Warning line** at `BATON_WARN_PCT`: `⚠ <window> window at <n>% · next:
   <agent>`, naming the option Baton would hand to.
 - **Limit line**: `limit: <reason> · resets <time>`, the raw limit text on

@@ -134,7 +134,8 @@
       el('span', {}, [`${s.turns || 0} turn${s.turns === 1 ? '' : 's'}`]),
       s.head ? el('span', { class: 'mono', title: 'HEAD' }, [String(s.head).slice(0, 7)]) : null,
     ]))
-    if (s.limits) card.appendChild(el('div', { class: 'session-usage' }, [bar('5h', s.limits.five_hour), bar('7d', s.limits.seven_day)]))
+    if (s.limits && (s.limits.five_hour || s.limits.seven_day)) card.appendChild(el('div', { class: 'session-usage' }, [bar('5h', s.limits.five_hour), bar('7d', s.limits.seven_day)]))
+    else if (s.usage_error) card.appendChild(el('div', { class: 'session-note', title: s.usage_error }, [`usage unknown (${String(s.usage_error).slice(0, 60)}) · the limit still hands off`]))
     if (s.warning) card.appendChild(el('div', { class: 'session-note warn' }, [`⚠ ${s.warning.window} window at ${Math.round(s.warning.pct)}% · next: ${s.chain && s.chain[0] ? s.chain[0].agent : 'none'}`]))
     if (s.limit) card.appendChild(el('div', { class: 'session-note bad', title: s.limit.detail || '' }, [`limit: ${s.limit.reason}${s.limit.resets_at ? ` · resets ${until(s.limit.resets_at)}` : ''}`]))
     if (s.handoff && s.handoff.to) card.appendChild(el('div', { class: 'session-note' }, [`${s.handoff.from ? s.handoff.from.agent : '?'} → ${s.handoff.to.agent}${s.handoff.to.account !== 'default' ? '/' + s.handoff.to.account : ''} (${s.handoff.reason})${s.bundle ? ` · bundle ${s.bundle.id}` : ''}`]))
