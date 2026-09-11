@@ -5,7 +5,9 @@
 //   baton card ls [--json] | show <id> | run <id> | rm <id> [--delete-branch] | events <id>
 //   baton card <pause|resume|kill|approve|handoff-now|rerun> <id> | reassign <id> --adapter a [--mode m]
 //   baton scheduler start [--ticks N] [--interval-ms N] | status | stop
-import { rmSync } from 'node:fs'
+import { rmSync, appendFileSync } from 'node:fs'
+import { join, dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { PRESET_NAMES } from '../src/presets.mjs'
 import { readCard, listCards, readEvents, readRuns, cardDir } from '../src/store.mjs'
@@ -16,11 +18,12 @@ import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../sr
 import { availableActions } from '../src/chain.mjs'
 import { up, down, status, openBoard } from '../src/launcher.mjs'
 import { attach } from '../src/attach.mjs'
-import { AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive } from '../src/sessions.mjs'
+import { AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, sessionDir, appendEvent } from '../src/sessions.mjs'
 import { addAccount, removeAccount, listAccountRows, LAYOUT } from '../src/accounts.mjs'
 import { listUsage, fmtReset } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
 
+const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 const out = (s) => process.stdout.write(s + '\n')
 const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code) }
 
@@ -51,6 +54,35 @@ async function cardAdd(args) {
     if (err instanceof CardInputError) die(2, err.message)
     throw err
   }
+}
+
+// Drive the real limit path without a real wall: the same StopFailure payload
+// Claude Code would send goes through src/hook.mjs (claude), or the
+// RESOURCE_EXHAUSTED line lands in the session's own agy log (agy). The
+// runner then does what it does for a real limit: bundle, stop the agent,
+// start the next option in the same terminal. The payload is marked
+// simulated: it is never kept as live evidence, and the wall it records
+// clears after two minutes. codex has no Baton-owned input, so it is refused.
+function simulateLimit(s) {
+  if (!isActive(s)) die(3, `session ${s.session_id} is not active`)
+  if (['limit', 'handing_off'].includes(s.status)) die(3, `session ${s.session_id} is already ${s.status}`)
+  if (s.agent === 'claude') {
+    const payload = {
+      hook_event_name: 'StopFailure', error: 'rate_limit', session_id: s.agent_session_id ?? undefined, transcript_path: s.transcript_path ?? undefined,
+      last_assistant_message: 'API Error: Rate limit reached (simulated by baton sessions simulate-limit)', baton_simulated: true,
+    }
+    const r = spawnSync(process.execPath, [join(SRC, 'hook.mjs'), 'claude-hook', '--session', s.session_id], { input: JSON.stringify(payload), windowsHide: true, encoding: 'utf8', timeout: 15000 })
+    if (r.status !== 0) die(1, `hook exited ${r.status}: ${(r.stderr || '').slice(0, 300)}`)
+    const after = readSession(s.session_id)
+    if (after?.status !== 'limit') die(1, `hook ran but the session is ${after?.status ?? 'gone'}, not limit`)
+    return out(`simulated: StopFailure rate_limit sent through src/hook.mjs; ${s.session_id} is at limit (wall clears in 2 min); the runner hands off within ${process.env.BATON_ATTACH_POLL_MS || 2000} ms to ${after.chain?.[0]?.agent ?? 'nothing'}`)
+  }
+  if (s.agent === 'agy') {
+    appendFileSync(join(sessionDir(s.session_id), 'agy.log'), '\nrpc error: code = ResourceExhausted desc = RESOURCE_EXHAUSTED quota (simulated by baton sessions simulate-limit)\n')
+    appendEvent(s.session_id, { type: 'status', summary: 'simulated RESOURCE_EXHAUSTED appended to the session log' })
+    return out(`simulated: RESOURCE_EXHAUSTED appended to ${join(sessionDir(s.session_id), 'agy.log')}; the runner reads it within ${process.env.BATON_ATTACH_POLL_MS || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
+  }
+  die(2, `simulate-limit drives the claude hook path (and the agy log); codex's wall comes from its own rollout file, which Baton never writes. Use "baton sessions handoff ${s.session_id}" to force the switch.`)
 }
 
 function fmtCard(c) {
@@ -85,7 +117,8 @@ async function main() {
     if (cmd === 'handoff') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { handoff: true }); return out(`handoff requested for ${id}`) }
     if (cmd === 'end') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { end: true }); return out(`end requested for ${id}`) }
     if (cmd === 'rm') { if (isActive(s)) die(3, `session ${id} is still active; end it first`); removeSession(id); return out(`removed ${id}`) }
-    die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm)`)
+    if (cmd === 'simulate-limit') return simulateLimit(s)
+    die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm|simulate-limit)`)
   }
   if (group === 'accounts') {
     if (cmd === 'add') {
@@ -220,7 +253,7 @@ async function main() {
   out(`baton 0.2.0 — your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
-  sessions ls|show|events|handoff|end|rm <id>
+  sessions ls|show|events|handoff|end|rm|simulate-limit <id>
   accounts ls|add <agent> <name>|rm|terms        optional second login for claude or codex
   down | status | open          the board
   uninstall [--yes]             removes only what Baton added (~/.baton)

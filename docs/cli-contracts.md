@@ -221,8 +221,11 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
   `BATON_USAGE_POLL_MS` ms, default 60000 (source: src/taps/claude-usage.mjs).
   observed-live 2026-09-11: 35 % five_hour, 92 % seven_day.
 - The wall: `StopFailure` hook with `error: rate_limit` (source:
-  https://code.claude.com/docs/en/hooks#stopfailure). docs-only: a real limit
-  could not be forced on the build machine.
+  https://code.claude.com/docs/en/hooks#stopfailure). **docs-only** <!-- live:claude/rate_limit -->: a real limit could not be forced on the
+  build machine. The path was run live with `baton sessions simulate-limit`
+  (the same payload through `src/hook.mjs`, marked `baton_simulated`, never
+  kept as evidence); the first real payload lands in
+  `fixtures/live/claude/limit-rate_limit.json` (src/live-capture.mjs).
 - Status line, not usable on 2.1.268: a custom `statusLine` command passed
   through `--settings`, and again through a project
   `.claude/settings.local.json`, was not run at all; an `echo` command at both
@@ -253,7 +256,8 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
   limit … try again at \<date>" (source:
   github.com/openai/codex `codex-rs/protocol/src/error.rs`
   `UsageLimitReachedError`). The event shape was read from 24 local rollouts;
-  the error itself is docs-only.
+  the error itself is **docs-only** <!-- live:codex/usage_limit_exceeded -->
+  (first real one kept as `fixtures/live/codex/limit-usage_limit_exceeded.json`).
 - Transcript: `response_item.message` with `role: user` and
   `content[].type: input_text` for prompts; `output_text` and
   `task_complete.last_agent_message` for assistant text (source:
@@ -273,7 +277,8 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
 - The wall: `RESOURCE_EXHAUSTED`, "it resets in %s", "out of quota", and
   "quota exhausted/exceeded" in the log, plus a relative reset parsed out of
   "resets in \<n>\<s|m|h|d>" (source: strings present in `agy.exe`;
-  src/taps/agy.mjs `scanLog`). docs-only: never hit live.
+  src/taps/agy.mjs `scanLog`). **docs-only** <!-- live:agy/agy-resource-exhausted -->:
+  never hit live (first real one kept as `fixtures/live/agy/limit-agy-resource-exhausted.json`).
 - Prompts and conversation id: `~/.gemini/antigravity-cli/history.jsonl`, one
   `{ display, timestamp, workspace, conversationId }` per prompt (source:
   src/taps/agy.mjs `historyFile`; observed-live 2026-09-11).

@@ -27,6 +27,8 @@ These apply to `baton claude|codex|agy`.
 | `BATON_USAGE_POLL_MS` | `60000` | how often the claude usage endpoint is polled | `src/attach.mjs` |
 | `BATON_ATTACH_POLL_MS` | `2000` | how often the session loop re-reads the taps; git is re-read every third poll | `src/attach.mjs` |
 | `BATON_CLAUDE_USAGE_URL` | `https://api.anthropic.com/api/oauth/usage` | the usage endpoint, for a test double | `src/taps/claude-usage.mjs` |
+| `BATON_CLAUDE_ARGS`, `BATON_CODEX_ARGS`, `BATON_AGY_ARGS` | (none) | space-separated extra arguments for a leg Baton starts on its own after a hand-off (your own `baton <agent> …` args never apply to the next agent); e.g. `BATON_CODEX_ARGS="-m gpt-5.3-codex-spark"` keeps a test chain on cheap models | `src/attach.mjs` |
+| `BATON_LIVE_DIR` | `fixtures/live/` in a dev clone, else `~/.baton/live/` | where the first real limit payload per agent and signal is kept, secrets scrubbed (`src/live-capture.mjs`); a `baton sessions simulate-limit` payload is never kept | `src/live-capture.mjs`, `scripts/live-limits.mjs` |
 
 `BATON_SESSION` is not an input: Baton sets it in the agent's environment to
 the session id, so a hook or a script inside the session can find its own

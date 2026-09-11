@@ -41,7 +41,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `turn` | a human prompt was submitted; carries the turn number and the first 120 characters |
 | `turn_done` | the agent's reply for that turn, first 160 characters |
 | `warning` | a usage window crossed the warning threshold; names the window, the percentage and the next option |
-| `limit` | a usage limit was detected; carries the agent's own wording |
+| `limit` | a usage limit was detected; carries the agent's own wording, `(simulated)` when `baton sessions simulate-limit` produced it |
 | `handoff_requested` | someone pressed Hand off now, or ran `baton sessions handoff` |
 | `handoff` | the switch happened: from, to, reason, bundle id |
 | `all_out` | every option is walled; the resets are printed and the process exits 3 |

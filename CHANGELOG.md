@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased (0.3.0)
+
+Closing the gaps against the two tweets: a limit path proved live, waiting
+instead of quitting, collisions stopped instead of flagged, and more than one
+human on the board.
+
+- `baton sessions simulate-limit <id>`: the same `StopFailure` `rate_limit`
+  payload Claude Code sends goes through Baton's hook, so the whole path runs
+  for real (limit status, bundle, agent stopped, the next agent started in the
+  same terminal). Verified live: a haiku session handed off to codex, which
+  read `.baton/RESUME.md` on its first turn. The simulated wall clears after
+  two minutes and is never kept as evidence. agy: the RESOURCE_EXHAUSTED line
+  is appended to the session's own log. codex is refused (use `handoff`).
+- The first real claude `StopFailure`, codex `usage_limit_exceeded` or agy
+  `RESOURCE_EXHAUSTED` is saved with secrets scrubbed under
+  `fixtures/live/<agent>/` (dev clone) or `~/.baton/live/`, and the docs rows
+  for it flip from docs-only to observed-live (`scripts/live-limits.mjs`).
+- `BATON_CLAUDE_ARGS`, `BATON_CODEX_ARGS`, `BATON_AGY_ARGS`: extra arguments
+  for a leg Baton starts after a hand-off (keep a chain on cheap models).
+- codex's card no longer shows the injected AGENTS.md block as the task.
+
 ## 0.2.0 (2026-09-11)
 
 The way in is now `baton claude`, `baton codex` or `baton agy`: the normal

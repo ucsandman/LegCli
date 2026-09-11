@@ -123,8 +123,16 @@ You can force a handoff any time: the **Hand off now** button on the card, or
 the real Claude Code TUI with all user hooks firing, the usage poll recorded
 35 % / 92 %, the 92 % warning fired, a forced handoff saved the bundle, stopped
 claude and started codex in the same terminal with the pointer prompt. A real
-limit could not be forced live; the `rate_limit` path is covered by the hook
-contract test.
+limit could not be forced live, so `baton sessions simulate-limit <id>` sends
+the same `StopFailure` `rate_limit` payload Claude Code would send through
+Baton's hook: verified end to end on a haiku session, the hook set the limit,
+the runner saved the bundle, stopped claude and started codex, which read
+`.baton/RESUME.md` on its first turn. The simulated wall clears after two
+minutes and is never kept as evidence. The first real `StopFailure`, codex
+`usage_limit_exceeded` or agy `RESOURCE_EXHAUSTED` that arrives is saved with
+secrets scrubbed under `fixtures/live/<agent>/` (a dev clone) or
+`~/.baton/live/`, and the docs rows for it flip from docs-only to
+observed-live (`node scripts/live-limits.mjs`).
 
 ## The board
 
@@ -210,6 +218,7 @@ baton sessions ls [--json]             every session and its usage
 baton sessions show|events <id>
 baton sessions handoff|end <id>        same as the board buttons
 baton sessions rm <id>                 forget an ended session
+baton sessions simulate-limit <id>     the real limit path without a real wall (claude, agy)
 baton accounts ls                      logins and their 5h/7d usage
 baton accounts add <claude|codex> <name> | rm <agent> <name> | terms
 baton open | down | status             the board
@@ -219,7 +228,9 @@ baton uninstall [--yes]
 Environment, all optional: `BATON_HOME` (default `~/.baton`), `BATON_PORT`
 (4747), `BATON_ACCOUNT` (start on a named login), `BATON_WARN_PCT` (85),
 `BATON_NO_HANDOFF=1` (warn and record, never switch), `BATON_NO_OPEN=1` (do not
-open the browser), `BATON_USAGE_POLL_MS` (60000), `BATON_CLAUDE_BIN`,
+open the browser), `BATON_USAGE_POLL_MS` (60000), `BATON_CLAUDE_ARGS` /
+`BATON_CODEX_ARGS` / `BATON_AGY_ARGS` (extra args for a leg Baton starts after
+a hand-off, e.g. `-m gpt-5.3-codex-spark`), `BATON_CLAUDE_BIN`,
 `BATON_CODEX_BIN`, `BATON_AGY_BIN`, `BATON_CHB_BIN`.
 
 ## Pipelines: the v0.1 extras

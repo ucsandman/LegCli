@@ -25,6 +25,7 @@ import { fetchClaudeUsage } from './taps/claude-usage.mjs'
 import { saveSessionBundle, resumePrompt } from './bundle.mjs'
 import { openBoard, pidfile } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
+import { captureLive } from './live-capture.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 const SERVER = join(SRC, 'server.mjs')
@@ -95,6 +96,9 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }
   const { bin, viaNode, entry } = adapter.resolve()
   const argv = []
   if (viaNode && entry) argv.push(entry)
+  // a leg Baton starts on its own (after a hand-off) takes BATON_<AGENT>_ARGS,
+  // e.g. BATON_CODEX_ARGS="-m gpt-5-mini" to keep a test chain on cheap models
+  if (prompt) args = [...(process.env[`BATON_${agent.toUpperCase()}_ARGS`] ?? '').split(/\s+/).filter(Boolean), ...args]
   if (agent === 'claude') {
     const settings = writeSettings(sessionId, { statusLine: userStatusLine(process.env.CLAUDE_CONFIG_DIR || (account !== 'default' ? envFor('claude', account).CLAUDE_CONFIG_DIR : undefined)) })
     argv.push(...args, '--settings', settings)
@@ -185,8 +189,10 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
           for (const m of r.messages.filter((x) => x.role === 'assistant').slice(-1)) appendEvent(sid, { type: 'turn_done', summary: m.text.slice(0, 160) })
           if (r.limit) {
             const u = markLimited('codex', account, { resets_at: r.limit.resets_at, reason: r.limit.reason, source: 'codex rollout task_complete.error' })
-            patch.status = 'limit'; patch.limit = { ...r.limit, resets_at: r.limit.resets_at ?? u.limited_until, at: new Date().toISOString() }
+            const { raw, ...lim } = r.limit
+            patch.status = 'limit'; patch.limit = { ...lim, resets_at: r.limit.resets_at ?? u.limited_until, at: new Date().toISOString() }
             appendEvent(sid, { type: 'limit', summary: `codex usage limit: ${r.limit.detail}` })
+            try { captureLive('codex', 'usage_limit_exceeded', raw ?? lim, { sessionId: sid }) } catch {}
           }
         }
       }
@@ -202,6 +208,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
             const u = markLimited('agy', account, { resets_at: hit.resets_at, reason: hit.signal, source: 'agy log' })
             patch.status = 'limit'; patch.limit = { reason: hit.signal, detail: hit.detail, resets_at: hit.resets_at ?? u.limited_until, at: new Date().toISOString() }
             appendEvent(sid, { type: 'limit', summary: `agy limit (${hit.signal}): ${hit.detail.slice(0, 160)}` })
+            try { captureLive('agy', hit.signal, { log_excerpt: hit.detail, resets_at: hit.resets_at }, { sessionId: sid }) } catch {}
           }
         }
         const prompts = promptsSince({ cwd: s.cwd, sinceMs: startedMs })

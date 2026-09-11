@@ -74,6 +74,7 @@ baton sessions events <id>
 baton sessions handoff <id>  same as the board button
 baton sessions end <id>
 baton sessions rm <id>       forget an ended session
+baton sessions simulate-limit <id>   drive the real limit path without a real wall (claude, agy)
 baton accounts ls            logins and their 5h/7d usage
 baton open | down | status   the board
 ```

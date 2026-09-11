@@ -11,6 +11,7 @@ import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { handleHook, handleStatusline } from './taps/claude.mjs'
 import { sessionDir } from './sessions.mjs'
+import { captureLive } from './live-capture.mjs'
 
 function readStdin() {
   return new Promise((resolve) => {
@@ -35,6 +36,10 @@ try {
   if (kind === 'claude-hook') {
     const line = handleHook(sessionId, payload)
     try { appendFileSync(join(sessionDir(sessionId), 'hook.log'), `${new Date().toISOString()} ${payload.hook_event_name ?? '?'} ${line}\n`) } catch {}
+    // the first real StopFailure per error kind is kept as evidence (never a simulated one)
+    if (payload.hook_event_name === 'StopFailure' && payload.error) {
+      try { captureLive('claude', String(payload.error), payload, { sessionId }) } catch {}
+    }
   } else if (kind === 'claude-statusline') {
     const { text } = handleStatusline(sessionId, payload)
     try { appendFileSync(join(sessionDir(sessionId), 'hook.log'), `${new Date().toISOString()} statusline rate_limits=${JSON.stringify(payload.rate_limits ?? null)}\n`) } catch {}

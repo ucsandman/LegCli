@@ -39,9 +39,13 @@ docs-only.
   `five_hour` and `seven_day`, each `{ utilization, resets_at }`. Polled every
   60 s (`BATON_USAGE_POLL_MS`). Observed live: 35 % and 92 %.
 - **The wall**: the `StopFailure` hook fires with `error: rate_limit`
-  ([docs](https://code.claude.com/docs/en/hooks#stopfailure)). docs-only: a
-  real limit could not be forced on the build machine; the path is covered by
-  the hook contract test.
+  ([docs](https://code.claude.com/docs/en/hooks#stopfailure)). Status:
+  **docs-only** <!-- live:claude/rate_limit -->. A real limit could not be
+  forced on the build machine; the path is covered by the hook contract test
+  and was driven end to end with `baton sessions simulate-limit <id>`, which
+  sends the same payload through `src/hook.mjs`. The first real `StopFailure`
+  is kept, secrets scrubbed, as `fixtures/live/claude/limit-rate_limit.json`
+  and this line flips to observed-live (`scripts/live-limits.mjs`).
 - **Why not the status line.** Baton writes a `statusLine` entry into the same
   settings file that would record `rate_limits.five_hour.used_percentage` and
   `resets_at`, and chains your own `statusLine` command first. Claude Code
@@ -73,7 +77,8 @@ docs-only.
   `codex_error_info: "usage_limit_exceeded"` and the message "You've hit your
   usage limit … try again at \<date>". The wording comes from
   `codex-rs/protocol/src/error.rs` (`UsageLimitReachedError`); the event shape
-  was observed in 24 local rollouts. The error itself is docs-only.
+  was observed in 24 local rollouts. The error itself: **docs-only** <!-- live:codex/usage_limit_exceeded -->. The first real one is kept as
+  `fixtures/live/codex/limit-usage_limit_exceeded.json`.
 - **Transcript**: user prompts from `response_item.message` with `role: user`
   and `content[].type: input_text`; assistant text from `output_text` and from
   `task_complete.last_agent_message`. Observed live.
@@ -91,7 +96,8 @@ docs-only.
   nowhere. The board shows "no % from agy" instead of empty bars.
 - **The wall**: `RESOURCE_EXHAUSTED`, "it resets in %s" and "out of quota" in
   the log. Those strings are present in `agy.exe`, and `scanLog()` also reads a
-  relative reset out of "resets in \<n>\<s|m|h|d>". docs-only: never hit live.
+  relative reset out of "resets in \<n>\<s|m|h|d>". Status: **docs-only** <!-- live:agy/agy-resource-exhausted -->, never hit live; the first real one
+  is kept as `fixtures/live/agy/limit-agy-resource-exhausted.json`.
 - **Prompts and conversation id**: `~/.gemini/antigravity-cli/history.jsonl`,
   one `{ display, timestamp, workspace, conversationId }` per prompt. Observed
   live.

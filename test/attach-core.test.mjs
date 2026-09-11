@@ -101,6 +101,7 @@ test('codex tap: rollout parsing (observed-live shapes) and discovery by cwd', (
   const lines = [
     JSON.stringify({ type: 'session_meta', payload: { id: 'thread-1', cwd, timestamp: '2026-09-11T02:33:26.241Z' } }),
     JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context>x</environment_context>' }] } }),
+    JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '# AGENTS.md instructions\n\n<INSTRUCTIONS>\nrules\n</INSTRUCTIONS>' }] } }),
     JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'add a calc module' }] } }),
     JSON.stringify({ type: 'event_msg', payload: { type: 'task_started' } }),
     JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', rate_limits: { primary: { used_percent: 22, window_minutes: 300, resets_at: 1789097419 }, secondary: { used_percent: 58, window_minutes: 10080, resets_at: 1789582802 } } } }),
@@ -126,7 +127,7 @@ test('codex tap: rollout parsing (observed-live shapes) and discovery by cwd', (
   const tail = codexTap.createTail(found.path)
   assert.equal(tail.read().length, 1)
   assert.equal(tail.read().length, 0)
-  writeFileSync(found.path, lines[3] + '\n', { flag: 'a' })
+  writeFileSync(found.path, lines.find((l) => l.includes('task_started')) + '\n', { flag: 'a' })
   assert.equal(codexTap.parseLines(tail.read()).taskStarted, 1)
 })
 

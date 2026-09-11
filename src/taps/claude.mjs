@@ -115,8 +115,10 @@ export function handleHook(sessionId, p) {
       return 'stop'
     case 'StopFailure': {
       if (p.error === 'rate_limit') {
-        const u = markLimited('claude', s.account, { reason: 'rate_limit', source: 'claude StopFailure' })
-        updateSession(sessionId, { ...base, status: 'limit', limit: { reason: 'rate_limit', detail: String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 300), resets_at: u.limited_until, at: new Date().toISOString() } }, { event: { type: 'limit', summary: `claude usage limit: ${String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 160)}` } })
+        // a simulated wall (baton sessions simulate-limit) clears after two minutes so a test never walls the real login for hours
+        const simulated = Boolean(p.baton_simulated)
+        const u = markLimited('claude', s.account, { reason: 'rate_limit', source: simulated ? 'baton simulate-limit' : 'claude StopFailure', resets_at: simulated ? Math.floor(Date.now() / 1000) + 120 : null })
+        updateSession(sessionId, { ...base, status: 'limit', limit: { reason: 'rate_limit', detail: String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 300), resets_at: u.limited_until, at: new Date().toISOString(), simulated } }, { event: { type: 'limit', summary: `claude usage limit${simulated ? ' (simulated)' : ''}: ${String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 160)}` } })
         return 'LIMIT'
       }
       appendEvent(sessionId, { type: 'error', summary: `claude ${p.error}: ${String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 160)}` })
