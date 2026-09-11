@@ -5,7 +5,7 @@
 //   baton card ls [--json] | show <id> | run <id> | rm <id> [--delete-branch] | events <id>
 //   baton card <pause|resume|kill|approve|handoff-now|rerun> <id> | reassign <id> --adapter a [--mode m]
 //   baton scheduler start [--ticks N] [--interval-ms N] | status | stop
-import { rmSync, appendFileSync } from 'node:fs'
+import { rmSync, appendFileSync, readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -25,6 +25,8 @@ import { listUsage, fmtReset } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
+// one source of truth for the version, so the help text cannot drift from the package
+const VERSION = JSON.parse(readFileSync(join(SRC, '..', 'package.json'), 'utf8')).version
 const out = (s) => process.stdout.write(s + '\n')
 const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code) }
 
@@ -316,7 +318,7 @@ async function main() {
     return
   }
   if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|accounts|share|up|down|status|open|card|scheduler|uninstall)`)
-  out(`baton 0.2.0 — your coding agents, with a board alongside and a handoff when one hits its limit
+  out(`baton ${VERSION} — your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                a second live session in one checkout gets its own worktree (--no-worktree to share)

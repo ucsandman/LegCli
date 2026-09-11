@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.3.0)
+## 0.3.0 (2026-09-11)
 
 Closing the gaps against the two tweets: a limit path proved live, waiting
 instead of quitting, collisions stopped instead of flagged, and more than one
