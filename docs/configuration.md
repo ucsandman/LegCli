@@ -148,9 +148,9 @@ other address without also setting `BATON_TOKEN` makes the server refuse to
 start, exit code `3` (`src/auth.mjs` `checkBind`/`BindRefused`). With a
 token set, every `/api/*` request needs an `Authorization: Bearer <token>`
 header; the event stream (`EventSource`, which cannot set headers) accepts
-the same token as a `?token=` query parameter instead. There is no TLS and
-no per-user identity yet; keep `BATON_BIND` on loopback unless you have
-reviewed the roadmap's multi-human item ([ROADMAP-v2.md](ROADMAP-v2.md)).
+the same token as a `?token=` query parameter instead. There is no TLS; keep
+`BATON_BIND` on loopback unless you are using `baton share`, which gives
+each human their own token (see [Share](#share-more-than-one-human)).
 
 ## Share (more than one human)
 

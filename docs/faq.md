@@ -14,11 +14,10 @@ usage limit.
 
 **Why does Baton poll an endpoint for claude's usage instead of reading the
 status line?**
-Because Claude Code 2.1.268 does not run a custom status line from a settings
-file Baton controls. An `echo` command was passed as `statusLine` through
-`--settings` and again through a project `.claude/settings.local.json`, and
-neither ran: the built-in status line stayed on screen, while hooks from the
-same `--settings` file fired. So the numbers come from
+Because Claude Code 2.1.268 did not run a custom status line from a settings
+file Baton controls when this was tried on 2026-09-11 (recorded in
+[DEVIATIONS.md](DEVIATIONS.md)); hooks from the same `--settings` file did
+fire. So the numbers come from
 `GET api.anthropic.com/api/oauth/usage` with the login Claude Code already
 stored, which is the same data `/usage` shows. Baton still writes the
 `statusLine` entry, so the endpoint poll becomes a fallback the moment a build
@@ -40,8 +39,10 @@ fetches a quota summary from the backend and writes it nowhere on disk. The
 board shows "no % from agy" rather than an empty bar. The wall itself is still
 caught: Baton passes `--log-file` per session and watches for
 `RESOURCE_EXHAUSTED`, "it resets in …" and "out of quota". Those strings are
-present in `agy.exe` but have not been hit live, so they are tagged docs-only
-in [cli-contracts.md](cli-contracts.md#agy-tap).
+present in `agy.exe`. A real `RESOURCE_EXHAUSTED` wall was caught live on
+2026-09-11 and handed the session off; the fixture in `fixtures/limits/agy/`
+is still tagged docs-only in [cli-contracts.md](cli-contracts.md#agy-tap)
+because the payload itself was never captured to `fixtures/live/agy/`.
 
 **Am I allowed to add a second account?**
 That is your call, and the terms are quoted in full in the README under
@@ -108,8 +109,9 @@ Only if you run `baton share on`, which is off by default. It binds your
 Tailscale or LAN address and prints one link per human (`baton share add
 <name>`), each with its own token. A guest sees the terminals lane read-only
 and nothing a terminal has said, read or written: no prompt, no file names, no
-paths, no limit text, no bundle, no events, no logs, and none of the pipeline
-side. The one thing they can do on your terminal is ask for a hand-off, which
+paths, no bundle, no events, no logs, and none of the pipeline side. The
+limit line keeps only the reason and the reset time, never the raw limit
+text. The one thing they can do on your terminal is ask for a hand-off, which
 you approve or dismiss on the card. `baton share off` ends it and every link
 stops working. There is no TLS, so keep it on Tailscale or a network you trust.
 

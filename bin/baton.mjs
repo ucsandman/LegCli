@@ -14,6 +14,7 @@ import { readCard, listCards, readEvents, readRuns, cardDir } from '../src/store
 import { runCard, humanAction } from '../src/orchestrator.mjs'
 import { createCard, CardInputError } from '../src/cards.mjs'
 import { remove as removeWorktree } from '../src/worktree.mjs'
+import { pruneSessionWorktree } from '../src/land.mjs'
 import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../src/scheduler.mjs'
 import { availableActions } from '../src/chain.mjs'
 import { up, down, status, openBoard } from '../src/launcher.mjs'
@@ -119,7 +120,15 @@ async function main() {
     if (cmd === 'events') { for (const e of readSessionEvents(id)) out(`${e.ts}  ${String(e.type).padEnd(18)}  ${e.summary}`); return }
     if (cmd === 'handoff') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { handoff: true }); return out(`handoff requested for ${id}`) }
     if (cmd === 'end') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { end: true }); return out(`end requested for ${id}`) }
-    if (cmd === 'rm') { if (isActive(s)) die(3, `session ${id} is still active; end it first`); removeSession(id); return out(`removed ${id}`) }
+    if (cmd === 'rm') {
+      if (isActive(s)) die(3, `session ${id} is still active; end it first`)
+      // prune the worktree and branch too, the way the board's Remove does, so
+      // the CLI twin never orphans a worktree the board can no longer reach
+      if (s.worktree) {
+        try { const r = pruneSessionWorktree(s); out(r.removed ? `removed worktree ${s.worktree.path} and branch ${s.worktree.branch}` : `kept the worktree (${r.reason}); Land it or delete it by hand`) } catch (e) { out(`worktree not pruned: ${e.message}`) }
+      }
+      removeSession(id); return out(`removed ${id}`)
+    }
     if (cmd === 'simulate-limit') return simulateLimit(s)
     die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm|simulate-limit)`)
   }
@@ -269,7 +278,10 @@ async function main() {
       process.exit(final.status === 'done' ? 0 : 1)
     }
     if (cmd === 'rm') {
-      try { removeWorktree(card.repo, id, { deleteBranch: Boolean(args['delete-branch']) }) } catch (err) { process.stderr.write(`worktree: ${err.message}\n`) }
+      try {
+        const r = removeWorktree(card.repo, id, { deleteBranch: Boolean(args['delete-branch']), force: Boolean(args.force) })
+        if (args['delete-branch'] && r.branchUnmerged && !r.branchDeleted) out(`kept branch baton/${id}: it has commits not on its base (rerun with --force to discard them)`)
+      } catch (err) { process.stderr.write(`worktree: ${err.message}\n`) }
       rmSync(cardDir(id), { recursive: true, force: true })
       return out(`removed ${id}`)
     }

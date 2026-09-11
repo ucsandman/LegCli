@@ -4,7 +4,7 @@
 // argument. Never pushes; never deletes outside <repo>/.baton-worktrees/.
 import { execFileSync } from 'node:child_process'
 import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { join, resolve, sep, isAbsolute } from 'node:path'
 import { homedir } from 'node:os'
 import { canonPath, realPath } from './fsx.mjs'
 
@@ -88,10 +88,15 @@ export function list(repo) {
 // Never committed by a landing: Baton's own directories, and the local state a
 // DashClaw hook writes into every directory an agent runs in.
 export function ensureExcludeEntries(repo) {
-  const infoDir = join(repo, '.git', 'info')
+  // a linked worktree or submodule has `.git` as a FILE, so the shared info dir
+  // must come from git, not from assuming <repo>/.git is a directory
+  let gitDir
+  try { gitDir = git(repo, ['rev-parse', '--git-common-dir']).trim() } catch { gitDir = join(repo, '.git') }
+  const infoDir = isAbsolute(gitDir) ? join(gitDir, 'info') : join(repo, gitDir, 'info')
   mkdirSync(infoDir, { recursive: true })
   const excludePath = join(infoDir, 'exclude')
-  const needed = ['.baton-worktrees/', '.baton/', '.context-handoffs/', '.dashclaw-local/']
+  // .env / .env.* so a Land never commits a secret the agent left in the worktree
+  const needed = ['.baton-worktrees/', '.baton/', '.context-handoffs/', '.dashclaw-local/', '.env', '.env.*']
   const content = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : ''
   const lines = content.split(/\r?\n/)
   const missing = needed.filter((n) => !lines.includes(n))
@@ -106,10 +111,13 @@ export function ensure(repo, cardId, { trunk = 'main' } = {}) {
   const branch = branchName(cardId)
 
   const already = list(resolvedRepo).find((w) => samePath(w.path, wtPath))
-  if (already) {
+  if (already && existsSync(wtPath)) {
     ensureExcludeEntries(resolvedRepo)
     return { path: wtPath, branch, created: false }
   }
+  // git still lists a worktree whose directory was deleted by hand; prune the
+  // stale admin entry so `worktree add` below does not refuse the path
+  if (already) git(resolvedRepo, ['worktree', 'prune'])
 
   let branchExists = true
   try {
@@ -136,7 +144,7 @@ export function ensure(repo, cardId, { trunk = 'main' } = {}) {
   return result
 }
 
-export function remove(repo, cardId, { deleteBranch = false } = {}) {
+export function remove(repo, cardId, { deleteBranch = false, force = false } = {}) {
   const resolvedRepo = resolve(repo)
   const wtPath = worktreePath(resolvedRepo, cardId)
   const worktreesDir = join(resolvedRepo, '.baton-worktrees')
@@ -153,17 +161,30 @@ export function remove(repo, cardId, { deleteBranch = false } = {}) {
     removed = true
   }
 
+  // `git branch -d` refuses an unmerged branch; only escalate to `-D` (which
+  // discards commits) when the caller explicitly forces it. branchUnmerged
+  // tells the caller work would be lost.
   let branchDeleted = false
+  let branchUnmerged = false
   if (deleteBranch) {
     try {
-      git(resolvedRepo, ['branch', '-D', branch])
+      git(resolvedRepo, ['branch', '-d', branch])
       branchDeleted = true
     } catch {
-      branchDeleted = false
+      branchUnmerged = true
+      if (force) { try { git(resolvedRepo, ['branch', '-D', branch]); branchDeleted = true } catch { branchDeleted = false } }
     }
   }
 
-  return { removed, branchDeleted }
+  return { removed, branchDeleted, branchUnmerged }
+}
+
+// Uncommitted files in a card's worktree (empty when the worktree is clean or
+// absent). Used by the board's Remove to refuse discarding agent work silently.
+export function worktreeDirty(repo, cardId) {
+  const wtPath = worktreePath(realPath(repo), cardId)
+  if (!existsSync(wtPath)) return []
+  try { return git(wtPath, ['status', '--porcelain']).split(/\r?\n/).filter(Boolean) } catch { return [] }
 }
 
 export function isWorktreeOf(repo, cardId) {

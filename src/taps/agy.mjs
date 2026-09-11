@@ -29,8 +29,14 @@ export function scanLog(text) {
     const at = text.lastIndexOf(m[0])
     const detail = text.slice(Math.max(0, at - 80), at + 160).replace(/\s+/g, ' ').trim()
     let resets_at = null
-    const d = /resets in\s+(\d+)([smhd])/i.exec(text.slice(at))
-    if (d) resets_at = Math.floor(Date.now() / 1000) + parseInt(d[1], 10) * { s: 1, m: 60, h: 3600, d: 86400 }[d[2]]
+    // "Resets in 71h19m42s" has more than one unit: sum them all, not just the
+    // first, or the agent is restarted from the bundle before it is actually back
+    const dm = /resets in\s+((?:\d+\s*[smhd])+)/i.exec(text.slice(at))
+    if (dm) {
+      let secs = 0
+      for (const [, n, u] of dm[1].matchAll(/(\d+)\s*([smhd])/gi)) secs += parseInt(n, 10) * { s: 1, m: 60, h: 3600, d: 86400 }[u.toLowerCase()]
+      if (secs) resets_at = Math.floor(Date.now() / 1000) + secs
+    }
     return { signal: id, detail, resets_at }
   }
   return null

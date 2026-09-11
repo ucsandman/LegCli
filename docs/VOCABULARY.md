@@ -43,7 +43,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `turn_done` | the agent's reply for that turn, first 160 characters |
 | `warning` | a usage window crossed the warning threshold; names the window, the percentage and the next option |
 | `limit` | a usage limit was detected; carries the agent's own wording, `(simulated)` when `baton sessions simulate-limit` produced it |
-| `handoff_requested` | someone pressed Hand off now, ran `baton sessions handoff`, or (on a shared board) asked for, approved or dismissed a hand-off; `by` names the human |
+| `handoff_requested` | someone pressed Hand off now, ran `baton sessions handoff`, or (on a shared board) asked for or approved a hand-off; `by` names the human (a dismissed request logs as `status` instead) |
 | `handoff` | the switch happened: from, to, reason, bundle id |
 | `all_out` | every option is walled; the resets are printed and the terminal waits for the first one (`ended` with "quit while waiting" if Ctrl-C or End cuts the wait short, exit 3) |
 | `agent_exit` | the agent process exited, with its code |
@@ -211,7 +211,8 @@ file's own header comment).
 
 Card-level `bounce_reason` is stored as `"<reason>: <detail>"`
 (`src/orchestrator.mjs`); the board's status chip shows the text up to the
-first colon, truncated to 24 characters. The separate pipeline `test`
+first colon or opening parenthesis, truncated to 24 characters. The separate
+pipeline `test`
 station (kind `test`, distinct from a `land` station's own internal test
 step) bounces with its own free-text reason ("test red (…): …"), not one of
 the four words above, it is a different failure path through the same
@@ -236,5 +237,6 @@ and `README.md`.
   `HUMAN_ACTIONS`, spelled with hyphens instead of underscores on the CLI
   surface (`handoff-now` vs `handoff_now`), a deliberate, consistent
   per-surface convention, not a mismatch.
-- No mismatch requiring a board-file fix was found; nothing above needed
-  changing in `src/board/*`.
+- One mismatch found: the bounce chip splits on the first colon **or**
+  opening parenthesis (`src/board/board.js:325`), which the Bounce reasons
+  note above now states. Nothing else needed changing in `src/board/*`.

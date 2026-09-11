@@ -95,23 +95,25 @@ export function handleHook(sessionId, p) {
   const base = { agent_session_id: p.session_id ?? s.agent_session_id, transcript_path: p.transcript_path ?? s.transcript_path, last_activity: new Date().toISOString() }
   switch (p.hook_event_name) {
     case 'SessionStart':
-      updateSession(sessionId, { ...base, status: s.status === 'starting' ? 'running' : s.status }, { event: { type: 'agent_ready', summary: `claude session ${p.session_id ?? '?'} (${p.source ?? 'startup'})` } })
+      // reducer: one hook process per tool call, so read `cur` inside the lock
+      updateSession(sessionId, (cur) => ({ ...base, status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'agent_ready', summary: `claude session ${p.session_id ?? '?'} (${p.source ?? 'startup'})` } })
       return 'session start'
     case 'UserPromptSubmit': {
-      const task = s.task ?? (p.prompt ? String(p.prompt).slice(0, 500) : null)
-      updateSession(sessionId, { ...base, task, turns: (s.turns ?? 0) + 1 }, { event: { type: 'turn', summary: `prompt ${(s.turns ?? 0) + 1}: ${String(p.prompt ?? '').slice(0, 120)}` } })
+      updateSession(sessionId, (cur) => ({ ...base, task: cur.task ?? (p.prompt ? String(p.prompt).slice(0, 500) : null), turns: (cur.turns ?? 0) + 1 }), { event: { type: 'turn', summary: `prompt: ${String(p.prompt ?? '').slice(0, 120)}` } })
       return 'prompt'
     }
     case 'PostToolUse': {
       const file = p.tool_input?.file_path ?? p.tool_input?.notebook_path ?? null
       if (!file) return 'tool (no file)'
       const rel = relTo(workRoot(s), file)
-      const touched = s.files_touched.includes(rel) ? s.files_touched : [...s.files_touched, rel].slice(-200)
-      updateSession(sessionId, { ...base, files_touched: touched })
+      // reducer: concurrent Edit/Write hooks each add their own file without
+      // the last writer overwriting the others' additions
+      updateSession(sessionId, (cur) => ({ ...base, files_touched: cur.files_touched.includes(rel) ? cur.files_touched : [...cur.files_touched, rel].slice(-200) }))
       return `touched ${rel}`
     }
     case 'Stop':
-      updateSession(sessionId, { ...base, status: s.status === 'starting' ? 'running' : s.status }, { event: { type: 'turn_done', summary: String(p.last_assistant_message ?? '').slice(0, 160) || 'turn done' } })
+      // reducer: never turn a 'limit'/'handing_off' back to 'running' by racing
+      updateSession(sessionId, (cur) => ({ ...base, status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'turn_done', summary: String(p.last_assistant_message ?? '').slice(0, 160) || 'turn done' } })
       return 'stop'
     case 'StopFailure': {
       if (p.error === 'rate_limit') {
@@ -146,17 +148,21 @@ export function handleStatusline(sessionId, p) {
   if (!s) return { text: '', limits: null }
   const limits = limitsFrom(p.rate_limits)
   if (limits) recordUsage('claude', s.account, limits, 'claude statusline')
-  const patch = { last_activity: new Date().toISOString() }
-  if (limits) patch.limits = limits
-  if (p.session_id && !s.agent_session_id) patch.agent_session_id = p.session_id
-  if (p.transcript_path && !s.transcript_path) patch.transcript_path = p.transcript_path
   const hot = limits ? [['5h', limits.five_hour], ['7d', limits.seven_day]].filter(([, w]) => w).sort((a, b) => b[1].pct - a[1].pct)[0] : null
   const warn = hot && hot[1].pct >= WARN_PCT
-  if (warn && !s.warning) patch.warning = { window: hot[0], pct: hot[1].pct, resets_at: hot[1].resets_at, at: new Date().toISOString() }
-  if (!warn && s.warning) patch.warning = null
-  if (warn && s.status === 'running') patch.status = 'warning'
-  if (!warn && s.status === 'warning') patch.status = 'running'
-  updateSession(sessionId, patch, warn && !s.warning ? { event: { type: 'warning', summary: `claude ${hot[0]} window at ${Math.round(hot[1].pct)}%` } } : {})
+  // reducer: the status-line hook is its own process; only nudge running↔warning
+  // from `cur`, so it never overwrites a 'limit' a StopFailure set at the same time
+  updateSession(sessionId, (cur) => {
+    const patch = { last_activity: new Date().toISOString() }
+    if (limits) patch.limits = limits
+    if (p.session_id && !cur.agent_session_id) patch.agent_session_id = p.session_id
+    if (p.transcript_path && !cur.transcript_path) patch.transcript_path = p.transcript_path
+    if (warn && !cur.warning) patch.warning = { window: hot[0], pct: hot[1].pct, resets_at: hot[1].resets_at, at: new Date().toISOString() }
+    if (!warn && cur.warning) patch.warning = null
+    if (warn && cur.status === 'running') patch.status = 'warning'
+    if (!warn && cur.status === 'warning') patch.status = 'running'
+    return patch
+  }, warn && !s.warning ? { event: { type: 'warning', summary: `claude ${hot[0]} window at ${Math.round(hot[1].pct)}%` } } : {})
   const next = s.chain?.[0] ? `${s.chain[0].agent}${s.chain[0].account !== 'default' ? '/' + s.chain[0].account : ''}` : 'nothing'
   const pct = limits ? ` 5h ${limits.five_hour ? Math.round(limits.five_hour.pct) + '%' : '-'} · 7d ${limits.seven_day ? Math.round(limits.seven_day.pct) + '%' : '-'}` : ''
   const text = warn ? `⚠ baton: ${hot[0]} at ${Math.round(hot[1].pct)}% → next ${next}${pct}` : `baton ·${pct || ' limits pending'} · next ${next} · board ${s.board_url ?? ''}`

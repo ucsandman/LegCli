@@ -50,8 +50,10 @@ export function authorize({ token, req, url, share = null }) {
   if (shareIsOn(share ?? undefined)) {
     const person = identify(share, presented)
     if (person) return { ok: true, subject: person.name, person }
-    // the machine's own browser is the owner: a personal token is for other
-    // people. share.loopback_owner = false asks for a token even here.
+    // the machine's own browser is the owner over LOOPBACK only: with a
+    // non-loopback (Tailscale/LAN) bind the server also listens on 127.0.0.1
+    // (createBoardServer), so the owner opens the loopback URL tokenless while a
+    // real remote peer's address is never loopback and always needs a token.
     if (!presented && share.loopback_owner !== false && isLoopback(remoteAddress(req))) {
       const owner = personNamed(share, share.owner) ?? share.people.find((p) => p.role === 'owner') ?? null
       if (owner) return { ok: true, subject: owner.name, person: owner }

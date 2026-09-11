@@ -5,15 +5,15 @@ limit, Baton writes a context-handoff-bundle, and `fake-codex` resumes in the
 same worktree and finishes. The fake adapters replay real CLI shapes without
 spending any subscription usage; the real run is in [real-run.md](real-run.md).
 
-Screenshots from the run on 2026-09-10 (captured from the live board through
-`baton up`, Playwright, 1280×800): `docs/screenshots/demo-1-claude-running.png`
+Screenshots from the run on 2026-09-11 (02:36 UTC), of the live board at
+1280×800: `docs/screenshots/demo-1-claude-running.png`
 (leg 1 running), `demo-2-limit-hit.png` (limit detected, handoff written, card
 waiting for approval with the ↷ glyph on the claude leg), `demo-3-handoff-bundle.png`
 (detail drawer: timeline with `limit_detected` and `handoff_written`, bundle
 path), `demo-4-codex-running.png` (leg 2 running), `demo-5-done.png` (Done).
 The recorded ledger is `fixtures/demo/events.jsonl`.
 
-## Replay it (under 3 minutes)
+## Replay it (the recorded card ran in 49 s once it was queued)
 
 1. A throwaway repo and home:
 
@@ -23,7 +23,8 @@ The recorded ledger is `fixtures/demo/events.jsonl`.
    set FAKE_DELAY_MS=15000
    ```
 
-2. Start Baton (the browser opens on the board):
+2. Start Baton (it serves the board on http://127.0.0.1:4747; `BATON_NO_OPEN=1`
+   skips the browser):
 
    ```
    cd C:\Projects\baton && npm start

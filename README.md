@@ -11,7 +11,8 @@
 ![The Baton board: three live claude terminals on one repo, two of them in their own worktrees and flagged for changing README.md; one landed on main through the merge queue, the other bounced naming the conflicting file, and the landed-on-trunk list says which terminal landed the commit](docs/screenshots/terminals-1280.png)
 
 You keep using your coding agents exactly as you do today, in any terminal,
-with your own settings, hooks and skills. `baton claude --model opus` is
+from your own config directory: Baton adds its hooks in a separate per-session
+settings file and never edits yours. `baton claude --model opus` is
 `claude --model opus` with four things running alongside it:
 
 1. **A board.** Opened once in your browser, reused after that. Every Baton
@@ -69,8 +70,9 @@ baton claude
 That is the whole setup. The first `baton <agent>` starts the board on
 http://127.0.0.1:4747 and opens it; later sessions reuse it. Anything after the
 agent name passes straight through (`baton codex -m gpt-5.3-codex-spark`,
-`baton claude --resume`). The agent's own prompt, permissions, hooks and skills
-are untouched.
+`baton claude --resume`). The agent's own prompt and permission flags pass
+through unchanged, and your settings file is never edited: Baton's hooks ride
+in a separate per-session `--settings` file.
 
 From a clone instead of npm: `git clone https://github.com/ucsandman/baton.git && cd baton && npm install && npm link`.
 
@@ -83,18 +85,15 @@ which.
 
 | agent | usage percentages | the wall (limit hit) | how Baton attaches | status |
 |-------|-------------------|----------------------|--------------------|--------|
-| claude | `GET api.anthropic.com/api/oauth/usage` with the login Claude Code stored, the same data as `/usage` and the built-in status line (`five_hour`, `seven_day`, `utilization`, `resets_at`); polled every 60 s | `StopFailure` hook with `error: rate_limit` ([docs](https://code.claude.com/docs/en/hooks#stopfailure)) | one extra settings file per session via `--settings`: hooks merge with yours; `autoContinueAtUsageLimit` is set to `false` because Baton owns the handoff | observed live |
-| codex | `event_msg.token_count.rate_limits` in the session's rollout file (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, flushed per event): `primary` = 300 min window, `secondary` = 10080 min | `task_complete.error.codex_error_info: usage_limit_exceeded`, message "You've hit your usage limit … try again at …" (`codex-rs/protocol/src/error.rs`) | Baton tails the rollout whose `session_meta.cwd` is the session's directory; no hook is injected, so codex never asks you to review a new hook | observed live |
-| agy | none exposed (agy's own status line fetches a quota summary that is written nowhere) | `RESOURCE_EXHAUSTED`, "it resets in …", "out of quota" in the log (strings present in `agy.exe`) | `--log-file` per session; `~/.gemini/antigravity-cli/history.jsonl` gives the prompts and conversation id | log signals docs-only; prompts observed live |
+| claude | `GET api.anthropic.com/api/oauth/usage` with the login Claude Code stored, the same data as `/usage` and the built-in status line (`five_hour`, `seven_day`, `utilization`, `resets_at`); polled every 60 s | `StopFailure` hook with `error: rate_limit` ([docs](https://code.claude.com/docs/en/hooks#stopfailure)) | one extra settings file per session via `--settings`, carrying only Baton's own hooks; `autoContinueAtUsageLimit` is set to `false` because Baton owns the handoff | observed live |
+| codex | `event_msg.token_count.rate_limits` in the session's rollout file (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, flushed per event): `primary` = 300 min window, `secondary` = 10080 min | `task_complete.error.codex_error_info: usage_limit_exceeded`, message "You've hit your usage limit … try again at …" (`codex-rs/protocol/src/error.rs`) | Baton tails the rollout whose `session_meta.cwd` is the session's directory (test-only); no hook is injected, per the adapter's source, so codex never asks you to review a new hook | observed live |
+| agy | none exposed (agy's own status line fetches a quota summary that is written nowhere) | `RESOURCE_EXHAUSTED`, "it resets in …", "out of quota" in the log | `--log-file` per session; `~/.gemini/antigravity-cli/history.jsonl` gives the prompts and conversation id | observed live (a real `RESOURCE_EXHAUSTED` with its reset was read from the log on 2026-09-11) |
 
 Why not Claude Code's status line JSON (`rate_limits.five_hour.used_percentage`):
-on 2.1.268 a custom `statusLine` command passed through `--settings` or a
-project settings file is not run at all (an `echo` command at both levels left
-the built-in status line in place; the hooks in the same `--settings` file
-fire). Baton still writes a `statusLine` entry that records the same fields, so
-the moment a build honours it the endpoint poll becomes a fallback. For that
-session Baton's one-line status would replace a custom `statusLine` of yours;
-your settings file itself is never changed.
+on 2.1.268 the custom `statusLine` Baton passes through `--settings` did not
+run, so the endpoint poll is the source. Baton still writes a `statusLine`
+entry that records the same fields, so the moment a build honours it the poll
+becomes a fallback.
 
 ## How a handoff works
 
@@ -107,8 +106,9 @@ your settings file itself is never changed.
 3. **Bundle.** Baton writes structured notes (task, the last messages from the
    transcript, `git diff --stat`, dirty files, files edited this session, recent
    commits, why it stopped) and runs `context-handoff-bundle save --repo-local`
-   with one slug per session, updated in place. A checkpoint of the same bundle
-   is taken every two minutes while the session is active.
+   with one slug per leg; each save writes its own timestamped bundle next to
+   the last one. A checkpoint of the same bundle is taken every two minutes
+   while the session is active.
 4. **Switch.** The agent process is stopped, the terminal is restored, and the
    next option starts in the same terminal with a short pointer prompt:
    read `.baton/RESUME.md` (the `context-handoff-bundle load` output plus the
@@ -126,19 +126,22 @@ your settings file itself is never changed.
 
 You can force a handoff any time: the **Hand off now** button on the card, or
 `baton sessions handoff <id>`. Verified on this machine: `baton claude` opened
-the real Claude Code TUI with all user hooks firing, the usage poll recorded
-35 % / 92 %, the 92 % warning fired, a forced handoff saved the bundle, stopped
-claude and started codex in the same terminal with the pointer prompt. A real
-limit could not be forced live, so `baton sessions simulate-limit <id>` sends
-the same `StopFailure` `rate_limit` payload Claude Code would send through
-Baton's hook: verified end to end on a haiku session, the hook set the limit,
-the runner saved the bundle, stopped claude and started codex, which read
-`.baton/RESUME.md` on its first turn. The simulated wall clears after two
-minutes and is never kept as evidence. The first real `StopFailure`, codex
-`usage_limit_exceeded` or agy `RESOURCE_EXHAUSTED` that arrives is saved with
-secrets scrubbed under `fixtures/live/<agent>/` (a dev clone) or
-`~/.baton/live/`, and the docs rows for it flip from docs-only to
-observed-live (`node scripts/live-limits.mjs`).
+the real Claude Code TUI with Baton's hooks firing into the session log, the
+usage poll recorded 36 % of the 5h window and 74 % of the 7d window, the
+warning fired at 96 % of the 7d window and named codex as the next option, and
+a limit saved the bundle, stopped claude and started codex in the same
+terminal with the pointer prompt. A real `StopFailure` arrived on 2026-09-11
+and is kept at `fixtures/live/claude/limit-rate_limit.json`; to drive the path
+on demand, `baton sessions simulate-limit <id>` sends the same `StopFailure`
+`rate_limit` payload Claude Code would send through Baton's hook: verified end
+to end on a haiku session, the hook set the limit, the runner saved the
+bundle, stopped claude and started codex, which read `.baton/RESUME.md` on its
+first turn. The simulated wall clears after two minutes and is never kept as
+evidence. The first real `StopFailure` was saved that way, with secrets
+scrubbed, at `fixtures/live/claude/limit-rate_limit.json`, and the claude docs
+row flipped to observed-live (`node scripts/live-limits.mjs`). The same
+capture is wired for codex `usage_limit_exceeded` and agy `RESOURCE_EXHAUSTED`;
+no payload for either has been kept yet.
 
 ## Two sessions in one repo
 
@@ -192,9 +195,10 @@ Your own browser on this machine needs no token.
 
 What another human sees is the terminals lane, read-only. Each card says whose
 terminal it is. On a card that is not theirs there is no prompt, no file name,
-no path, no limit text, no bundle, no event log, and the only button is
-**Request handoff**; it lands on the owner's card as `sam asked for a hand-off`
-with Approve and Dismiss. The pipeline side of the board (cards, logs, the
+no path, no bundle and no event log; what stays is the agent, the status,
+repo@branch, the usage bars and the reset it is waiting for, and the only
+button is **Request handoff**; it lands on the owner's card as `sam asked for
+a hand-off` with Approve and Dismiss. The pipeline side of the board (cards, logs, the
 floor) stays the owner's alone. A terminal belongs to the human who started it:
 `BATON_PERSON=sam baton claude` on the same machine is sam's card, not yours.
 
@@ -204,8 +208,9 @@ waits a minute; one identity gets 600 requests a minute; a guest gets 403 on
 everything that is not theirs; and the tests send a bad and a missing token to
 every route. There is still no TLS, so keep this on Tailscale or a network you
 trust. Verified live on 2026-09-11: two terminals on one machine, one wes's and
-one sam's, sam's board redacted wes's card, and sam's request was approved on
-wes's board and handed the terminal off.
+one sam's; sam's board showed wes's card with the prompt hidden and only
+**Request handoff**, and sam's request reached wes's board (`~/.baton/board.log`:
+"hand-off requested … by sam").
 
 ## The board
 
@@ -217,7 +222,8 @@ wes's board and handed the terminal off.
   limit hit, handing off, ended, lost), the first prompt, repo@branch, turns,
   HEAD, usage bars, the files being touched (chips), and the warning, limit or
   handoff line. Two live sessions on one repo touching the same file get a red
-  border and a "⚠ codex is editing README.md too" line on both cards. A
+  border and a "⚠ claude (claude-ae85) is changing README.md in another
+  checkout; whoever lands second rebases" line on both cards. A
   session with its own worktree shows `own worktree · from <branch>` and, after
   a Land, `✓ landed on main · <sha>` or `✗ bounced (<reason>): <why>`.
 - **Landed on trunk**: the last commits on `main` (or `master`) of every repo
@@ -248,7 +254,7 @@ config-directory override, so it stays one account. Only the login lives in
 the account directory; `baton accounts rm` removes the junctions and the
 directory and never touches your real home.
 
-The terms, fetched 2026-09-11:
+The terms, as published (effective dates below):
 
 - Anthropic Consumer Terms (effective 2025-10-08): "You may not share your
   Account login information, Anthropic API key, or Account credentials with

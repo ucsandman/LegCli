@@ -95,7 +95,7 @@ Everything Baton writes goes under `BATON_HOME` (default `~/.baton`):
     agy.log                agy's --log-file, agy sessions only
   usage/<agent>--<account>.json
   accounts/<agent>/<name>/ extra logins (see configuration.md)
-  board.pid                the board server's pidfile
+  landings.jsonl           every Land, for the landed-on-trunk list
   board.log                the board server's output
 ```
 

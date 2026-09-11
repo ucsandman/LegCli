@@ -241,13 +241,15 @@ test('supervise: child env is sanitized of every forbidden key and the print cei
   assert.equal(runJson(root, id).outcome, 'no_progress')
 })
 
-test('sanitizeEnv deletes the seven forbidden keys and every CLAUDE_CODE_* key, sets the ceiling to 0', () => {
+test('sanitizeEnv deletes every provider key (Anthropic, OpenAI, Google/Gemini) and every CLAUDE_CODE_* key, sets the ceiling to 0', () => {
   const out = sanitizeEnv({
-    ANTHROPIC_API_KEY: 'a', ANTHROPIC_AUTH_TOKEN: 'b', ANTHROPIC_BASE_URL: 'c', OPENAI_API_KEY: 'd',
+    ANTHROPIC_API_KEY: 'a', ANTHROPIC_AUTH_TOKEN: 'b', ANTHROPIC_BASE_URL: 'c', ANTHROPIC_CUSTOM_HEADERS: 'x', OPENAI_API_KEY: 'd',
+    GEMINI_API_KEY: 'g1', GOOGLE_API_KEY: 'g2', GOOGLE_GEMINI_BASE_URL: 'g3', GOOGLE_GENAI_USE_VERTEXAI: 'g4', GOOGLE_CLOUD_PROJECT: 'g5',
     CLAUDECODE: '1', CLAUDE_EFFORT: 'e', CLAUDE_PLUGIN_DATA: 'f', CLAUDE_CODE_SESSION_ID: 'g',
     CLAUDE_CODE_ENTRYPOINT: 'h', PATH: 'keep', HOME: 'keep',
   })
-  for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'OPENAI_API_KEY',
+  for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_CUSTOM_HEADERS', 'OPENAI_API_KEY',
+    'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GEMINI_BASE_URL', 'GOOGLE_GENAI_USE_VERTEXAI', 'GOOGLE_CLOUD_PROJECT',
     'CLAUDECODE', 'CLAUDE_EFFORT', 'CLAUDE_PLUGIN_DATA', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_ENTRYPOINT']) {
     assert.equal(out[k], undefined, `${k} must be deleted`)
   }

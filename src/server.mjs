@@ -9,8 +9,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkBind, authorize, remoteAddress, presentedToken } from './auth.mjs'
-import { readShare, isOn as shareIsOn } from './share.mjs'
+import { checkBind, authorize, remoteAddress, presentedToken, isLoopback } from './auth.mjs'
+import { readShare, isOn as shareIsOn, sharePath, identify, personNamed } from './share.mjs'
 import { createLimiter } from './ratelimit.mjs'
 import { realPath, canonPath } from './fsx.mjs'
 import { listCards, readCard, readRuns, readEvents, cardDir, home } from './store.mjs'
@@ -21,7 +21,7 @@ import { held } from './leases.mjs'
 import { PRESETS } from './presets.mjs'
 import { names as adapterNames, get as getAdapter, isFake } from './adapters/index.mjs'
 import { createScheduler, schedulerStatus, MAX_CONCURRENT } from './scheduler.mjs'
-import { remove as removeWorktree } from './worktree.mjs'
+import { remove as removeWorktree, worktreeDirty } from './worktree.mjs'
 import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
 import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent } from './sessions.mjs'
@@ -325,33 +325,43 @@ function serveStatic(res, urlPath) {
 }
 
 // ---- SSE: watch $BATON_HOME/cards for fs events and push only what changed ----
-function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => sessionsView() } = {}) {
-  const clients = new Set() // { res, viewer }
-  const sig = new Map() // card_id → events already sent
+function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => sessionsView(), reauth = (c) => c.viewer } = {}) {
+  const clients = new Set() // { res, viewer, token, loopback, sig }
   let watcher = null
   let healthTimer = null
   const pending = new Set()
   let flushTimer = null
   // data may be a function of the client's viewer: each human gets their own
-  // payload, so a guest's stream never carries someone else's terminal.
+  // payload, so a guest's stream never carries someone else's terminal. The
+  // viewer is re-resolved from the live roster on every push, so a link that
+  // `share rm`/`rotate` invalidated loses its stream at once.
   const broadcast = (event, data) => {
-    for (const c of clients) {
-      const payload = typeof data === 'function' ? data(c.viewer) : data
+    for (const c of [...clients]) {
+      const viewer = reauth(c)
+      if (viewer === null) { try { c.res.end() } catch {} clients.delete(c); if (!clients.size) stopWatch(); continue }
+      c.viewer = viewer
+      const payload = typeof data === 'function' ? data(viewer) : data
       if (payload === null || payload === undefined) continue
       try { c.res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`) } catch {}
     }
   }
-  // Re-read and re-emit exactly one card's files — never the whole ledger.
+  // Re-read and re-emit exactly one card's files — never the whole ledger. Each
+  // client carries its own high-water mark, so a second client connecting never
+  // resets the count the first is reading from.
   const refreshCard = (id) => {
     const card = readCard(id)
     // pipeline cards and their events are the owner's: a guest never gets them
     const forOwner = (payload) => (viewer) => (viewer && viewer.role !== 'owner' ? null : payload)
-    if (!card) { if (sig.has(id)) { sig.delete(id); broadcast('removed', forOwner({ card_id: id })) } return }
+    if (!card) { for (const c of clients) c.sig.delete(id); broadcast('removed', forOwner({ card_id: id })); return }
     const events = readEvents(id)
-    const from = sig.get(id) ?? 0
-    sig.set(id, events.length)
+    // broadcast() refreshes each client's viewer (and drops revoked ones) first
     broadcast('card', forOwner(summarize(card)))
-    for (const e of events.slice(from)) broadcast('event', forOwner(e))
+    for (const c of [...clients]) {
+      if (!c.viewer || c.viewer.role !== 'owner') { c.sig.set(id, events.length); continue }
+      const from = c.sig.get(id) ?? 0
+      c.sig.set(id, events.length)
+      for (const e of events.slice(from)) { try { c.res.write(`event: event\ndata: ${JSON.stringify(e)}\n\n`) } catch {} }
+    }
   }
   const flushPending = () => {
     flushTimer = null
@@ -394,10 +404,10 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => 
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
     pending.clear()
   }
-  const add = (res, cards, viewer = null) => {
-    const client = { res, viewer }
+  const add = (res, cards, viewer = null, meta = {}) => {
+    const client = { res, viewer, token: meta.token ?? null, loopback: Boolean(meta.loopback), sig: new Map() }
     clients.add(client)
-    for (const c of cards) sig.set(c.card_id, readEvents(c.card_id).length)
+    for (const c of cards) client.sig.set(c.card_id, readEvents(c.card_id).length)
     startWatch()
     res.on('close', () => { clients.delete(client); if (!clients.size) stopWatch() })
   }
@@ -406,21 +416,59 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => 
 }
 
 // ---- the server ----
-export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN || '', scheduler = process.env.BATON_NO_SCHEDULER !== '1', share = readShare() } = {}) {
-  const shared = shareIsOn(share)
+export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN || '', scheduler = process.env.BATON_NO_SCHEDULER !== '1', share } = {}) {
+  // An explicit `share` (tests) is fixed; the real server passes none and reads
+  // share.json from disk, re-reading it per request (mtime-cached) so `baton
+  // share add|rotate|rm` takes effect on a live board — a new link works at
+  // once and a removed or rotated one stops at once — without a restart.
+  const explicitShare = share !== undefined
+  const initialShare = explicitShare ? share : readShare()
+  const shared0 = shareIsOn(initialShare)
   // with share on, the board's address and port come from share.json
-  bind = bind ?? (shared ? share.bind : (process.env.BATON_BIND || '127.0.0.1'))
-  port = port ?? (shared ? share.port : Number(process.env.BATON_PORT || 4747))
-  checkBind({ bind, token, share })
+  bind = bind ?? (shared0 ? initialShare.bind : (process.env.BATON_BIND || '127.0.0.1'))
+  port = port ?? (shared0 ? initialShare.port : Number(process.env.BATON_PORT || 4747))
+  checkBind({ bind, token, share: initialShare })
+  let shareSnapshot = initialShare
+  let shareMtime = -1
+  const currentShare = explicitShare ? () => initialShare : () => {
+    try {
+      const st = statSync(sharePath())
+      if (st.mtimeMs !== shareMtime) { shareMtime = st.mtimeMs; shareSnapshot = readShare() }
+    } catch { if (shareMtime !== -1) { shareMtime = -1; shareSnapshot = readShare() } }
+    return shareSnapshot
+  }
   const limiter = createLimiter()
-  const viewFor = (viewer) => sessionsView({ viewer, share })
-  const sse = createSse({ viewFor })
+  const viewFor = (viewer, sh) => sessionsView({ viewer, share: sh ?? currentShare() })
+  const forOwner = (payload) => (viewer) => (viewer && viewer.role !== 'owner' ? null : payload)
+  // SSE re-identifies each client from the live roster on every push
+  const reauthClient = (c) => {
+    const sh = currentShare()
+    if (!shareIsOn(sh)) return { name: 'local', role: 'owner' }
+    const person = identify(sh, c.token)
+    if (person) return { name: person.name, role: person.role }
+    if (!c.token && sh.loopback_owner !== false && c.loopback) {
+      const owner = personNamed(sh, sh.owner) ?? sh.people.find((p) => p.role === 'owner') ?? null
+      if (owner) return { name: owner.name, role: owner.role }
+    }
+    return null
+  }
+  const sse = createSse({ viewFor, reauth: reauthClient })
   let sched = null
 
   async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
     const path = url.pathname
     if (!path.startsWith('/api/')) return serveStatic(res, path)
+    // reject a state-changing request whose Origin is a different site: a page
+    // the operator has open in the same browser cannot drive the loopback board
+    if (req.method !== 'GET' && req.headers.origin) {
+      let ok = false
+      try { ok = new URL(req.headers.origin).host === req.headers.host } catch {}
+      if (!ok) return send(res, 403, { error: 'cross-origin request refused' })
+    }
+    // the roster, resolved fresh per request from share.json (mtime-cached)
+    const share = currentShare()
+    const shared = shareIsOn(share)
     const ip = remoteAddress(req) || 'unknown'
     // a token cannot be guessed at speed, and no one client can flood the board
     if (limiter.lockedOut(ip)) return send(res, 429, { error: 'too many bad tokens from here; wait a minute' }, { 'Retry-After': String(limiter.retryAfter(ip)) })
@@ -439,7 +487,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
     const guest = shared && viewer.role !== 'owner'
     const ownsSession = (s) => !shared || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
     const parts = path.split('/').filter(Boolean) // ['api', ...]
-    if (guest && ['cards', 'floor', 'presets', 'adapters', 'leases'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner of this machine' })
+    if (guest && ['cards', 'floor', 'presets', 'adapters', 'leases', 'trunk'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner of this machine' })
     try {
       if (req.method === 'GET' && path === '/api/health') {
         const you = { ...viewer, share: { on: shared, people: shared ? share.people.length : 0 } }
@@ -457,7 +505,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
         const body = await readBody(req)
         try {
           const card = await createCard(body, actor)
-          sse.broadcast('card', summarize(card))
+          sse.broadcast('card', forOwner(summarize(card)))
           return send(res, 201, { card: summarize(card) })
         } catch (err) {
           if (err instanceof CardInputError) return send(res, 400, { error: err.message })
@@ -468,7 +516,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
         const cards = guest ? [] : listCards()
         res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map(summarize), sessions: viewFor(viewer), ts: new Date().toISOString() })}\n\n`)
-        sse.add(res, cards, viewer)
+        sse.add(res, cards, viewer, { token: presentedToken(req, url), loopback: isLoopback(remoteAddress(req)) })
         return
       }
       if (req.method === 'GET' && path === '/api/sessions') return send(res, 200, viewFor(viewer))
@@ -499,14 +547,14 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
           const hit = list.find((r) => r.by === who && r.state === 'pending')
           if (!hit) return send(res, 404, { error: `no pending hand-off request from ${who}` })
           const approve = parts[5] === 'approve'
+          // check liveness before mutating the request, so a session that ended
+          // just before Approve does not leave the request stuck in 'approved'
+          if (approve && !isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
           hit.state = approve ? 'approved' : 'dismissed'
           hit.answered_at = new Date().toISOString()
           hit.answered_by = viewer.name
           writeRequests(id, list)
-          if (approve) {
-            if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
-            requestControl(id, { handoff: true, by: `${viewer.name} for ${who}` })
-          }
+          if (approve) requestControl(id, { handoff: true, by: `${viewer.name} for ${who}` })
           appendSessionEvent(id, { type: approve ? 'handoff_requested' : 'status', by: viewer.name, summary: `${viewer.name} ${approve ? 'approved' : 'dismissed'} ${who}'s hand-off request` })
           sse.broadcast('sessions', (v) => viewFor(v))
           return send(res, 200, { ok: true, request: hit })
@@ -530,8 +578,12 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
         if (req.method === 'DELETE' && parts.length === 3) {
           if (isActive(sess)) return send(res, 409, { error: 'end the session before removing it' })
           if (landingNow(id)) return send(res, 409, { error: 'wait for the landing to finish before removing it' })
+          const force = url.searchParams.get('force') === '1'
           let worktree = null
           if (sess.worktree) { try { worktree = pruneSessionWorktree(sess) } catch (err) { worktree = { removed: false, reason: scrub(err.message).slice(0, 200) } } }
+          // Remove must not orphan unlanded work: if the worktree could not be
+          // pruned (uncommitted or unmerged), keep the record unless forced
+          if (worktree && !worktree.removed && !force) return send(res, 409, { error: `not removing ${id}: ${worktree.reason}. Land it first, or retry with ?force=1 to drop the record and leave the worktree in place.`, worktree })
           removeSession(id)
           sse.broadcast('sessions', (v) => viewFor(v))
           return send(res, 200, { removed: id, worktree })
@@ -555,9 +607,14 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
         }
         if (req.method === 'DELETE' && parts.length === 3) {
           if (['running', 'handing_off'].includes(card.status)) return send(res, 409, { error: 'kill the card before removing it' })
-          try { removeWorktree(card.repo, id, { deleteBranch: url.searchParams.get('branch') === 'delete' }) } catch (err) { log(`worktree remove: ${err.message}`) }
+          // don't discard uncommitted agent work without an explicit force
+          if (url.searchParams.get('force') !== '1') {
+            const dirty = worktreeDirty(card.repo, id)
+            if (dirty.length) return send(res, 409, { error: `the card's worktree has ${dirty.length} uncommitted file(s): ${dirty.slice(0, 10).join(', ')}. Retry with ?force=1 to discard them.`, dirty })
+          }
+          try { removeWorktree(card.repo, id, { deleteBranch: url.searchParams.get('branch') === 'delete', force: true }) } catch (err) { log(`worktree remove: ${err.message}`) }
           rmSync(cardDir(id), { recursive: true, force: true })
-          sse.broadcast('removed', { card_id: id })
+          sse.broadcast('removed', forOwner({ card_id: id }))
           return send(res, 200, { removed: id })
         }
         if (req.method === 'POST' && parts[3]) {
@@ -567,7 +624,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
           const body = await readBody(req)
           try {
             const next = humanAction(id, action, body, actor)
-            sse.broadcast('card', summarize(next))
+            sse.broadcast('card', forOwner(summarize(next)))
             return send(res, 200, { card: summarize(next) })
           } catch (err) {
             if (err instanceof IllegalTransition) return send(res, 409, { error: err.message })
@@ -583,7 +640,12 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
     }
   }
 
-  const server = http.createServer((req, res) => { handle(req, res).catch((err) => { try { send(res, 500, { error: scrub(err.message) }) } catch {} }) })
+  const onReq = (req, res) => { handle(req, res).catch((err) => { try { send(res, 500, { error: scrub(err.message) }) } catch {} }) }
+  const server = http.createServer(onReq)
+  // When the board is bound to a non-loopback address (share on), also listen on
+  // 127.0.0.1 so the machine's own browser has a tokenless owner URL — a real
+  // remote peer's address is never loopback, so it still needs a token.
+  const loopbackCompanion = !isLoopback(bind) ? http.createServer(onReq) : null
 
   return {
     server,
@@ -598,6 +660,10 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
             sched = createScheduler()
             sched.run().catch((err) => log(`scheduler crashed: ${err.message}`))
           }
+          if (loopbackCompanion) {
+            loopbackCompanion.on('error', (err) => log(`loopback companion: ${err.message}`))
+            loopbackCompanion.listen(addr.port, '127.0.0.1', () => log(`also on http://127.0.0.1:${addr.port} (this machine, tokenless owner)`))
+          }
           resolvePromise({ port: addr.port, bind })
         })
       })
@@ -605,6 +671,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
     async stop() {
       sse.stop()
       if (sched) sched.stop()
+      if (loopbackCompanion) await new Promise((r) => { loopbackCompanion.closeAllConnections?.(); loopbackCompanion.close(() => r()) })
       await new Promise((r) => { server.closeAllConnections?.(); server.close(r) })
     },
   }

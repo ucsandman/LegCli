@@ -10,13 +10,29 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 import { spawnSync } from 'node:child_process'
-import { scrub } from './redact.mjs'
+import { redact } from './redact.mjs'
 import { home } from './store.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const FIXTURES_LIVE = join(ROOT, 'fixtures', 'live')
 const FLIP_SCRIPT = join(ROOT, 'scripts', 'live-limits.mjs')
+
+// A real limit payload (claude StopFailure, codex, agy) carries cwd,
+// transcript_path and scratchpad_dir. redact() strips secret shapes and the
+// values of the well-known key variables this process holds; this also folds
+// the home and repo roots to placeholders (in every slash form, including the
+// doubled backslashes JSON escaping produces) so nothing path-shaped is written
+// into a git-tracked fixtures/live/ file.
+function redactPaths(s) {
+  let out = redact(String(s))
+  for (const [root, tag] of [[homedir(), '[redacted-home]'], [ROOT, '[redacted-repo]']]) {
+    if (!root) continue
+    for (const variant of [root.replace(/\\/g, '\\\\'), root.replace(/\\/g, '/'), root]) out = out.split(variant).join(tag)
+  }
+  return out
+}
 
 export function liveDir() {
   if (process.env.BATON_LIVE_DIR) return process.env.BATON_LIVE_DIR
@@ -43,7 +59,7 @@ export function captureLive(agent, signal, payload, { sessionId = null, flipDocs
   const record = {
     agent, signal, captured_at: new Date().toISOString(), session_id: sessionId,
     source: 'observed-live',
-    payload: JSON.parse(scrub(JSON.stringify(payload))),
+    payload: JSON.parse(redactPaths(JSON.stringify(payload))),
   }
   writeFileSync(file, JSON.stringify(record, null, 2) + '\n')
   if (flipDocs && dir === FIXTURES_LIVE) {

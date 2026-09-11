@@ -6,23 +6,25 @@ or docs. Two contracts per CLI: the headless argv a pipeline leg spawns
 (§ per CLI below), and the interactive tap `baton <agent>` reads
 (§ [Interactive taps](#interactive-taps)). Evidence:
 `fixtures/help/<cli>.txt` (raw `--help`), `fixtures/live/<cli>/` (one real tiny
-task per CLI, run through `src/runner.mjs launch` on 2026-09-10; paths under
-the local home directory are replaced with `~`), and the interactive checks run
-on 2026-09-11.
+task per CLI, run through `src/runner.mjs launch` on 2026-09-11 UTC, the
+evening of 2026-09-10 locally; paths under the local home directory are
+replaced with `~`), and the interactive checks run on 2026-09-11.
 
 Every fact line ends with `(source: …)`. `observed-live` means the build machine
 did it; `docs-only` means the CLI's own `--help` or documentation says so and
 Baton has not seen it happen.
 
 Probe task (identical for every CLI, `scripts/probe.mjs`): "Create a file named
-hello-<name>.txt containing exactly the word hi, then write .baton/DONE
-containing the line: done. Do nothing else."
+hello-<name>.txt in the current directory containing exactly the word hi.
+Then create the directory .baton if it is missing and write the file
+.baton/DONE containing the single line: done. Do nothing else. Do not ask
+questions."
 
 | CLI | version | probe result | adapter |
 |-----|---------|--------------|---------|
 | claude | 2.1.268 | exit 0, file yes, DONE yes, 20 s | `src/adapters/claude.mjs` |
 | codex | codex-cli 0.153.4 | exit 0, file yes, DONE yes, 28 s | `src/adapters/codex.mjs` |
-| agy | 1.2.0 | attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (`--add-dir`) exit 0, file yes, DONE yes, 42 s | `src/adapters/agy.mjs` |
+| agy | 1.2.0 | attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (`--add-dir`) exit 0, file yes, DONE yes, 41 s | `src/adapters/agy.mjs` |
 | grok | 0.2.51 | exit 0, `stopReason: Cancelled`, no file: not logged in (device-code prompt) | `src/adapters/grok.mjs` exists, NOT registered |
 
 The auth-source check: the build shell carried `ANTHROPIC_API_KEY` and
@@ -43,7 +45,8 @@ stderr are 0 bytes, and codex's is the one stdin notice. observed-live.
   `--resume <session-id>`, `--model <alias|name>`, `--allowedTools a,b`
   (source: `claude --help` lines for each flag; observed-live for the base argv).
 - Output: ONE JSON object on stdout, printed only when the session ends
-  (LESSONS 07-10; observed-live: 20 s of silence then the object). Top-level
+  (test/lessons.test.mjs `json-only-at-end`; observed-live: 20 s of silence
+  then the object). Top-level
   keys observed: `type:"result"`, `subtype:"success"`, `is_error`,
   `stop_reason:"end_turn"`, `terminal_reason:"completed"`, `api_error_status`,
   `session_id`, `num_turns`, `result` (final text), `permission_denials` (array),
@@ -68,7 +71,8 @@ stderr are 0 bytes, and codex's is the one stdin notice. observed-live.
   `manual`, `dontAsk`; forbidden `bypassPermissions`,
   `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`.
   `acceptEdits` allowed the file write headless (observed-live). The Agent tool
-  is never disallowed (LESSONS 07-10). `--permission-prompts none` exists
+  is never disallowed (test/lessons.test.mjs `agent-tool-never-disallowed`).
+  `--permission-prompts none` exists
   ("anything that would prompt is denied automatically") and is not passed;
   headless `-p` has no host to answer prompts anyway (source: `claude --help`).
 - Resume: `--resume <session-id>` (docs-only until phase 5 exercises it);
@@ -108,7 +112,7 @@ stderr are 0 bytes, and codex's is the one stdin notice. observed-live.
   | exit | meaning | source |
   |------|---------|--------|
   | 0 | turn completed | observed-live, fixtures/live/codex/run.json |
-  | (none) | hangs forever with an open stdin pipe | observed-live at plan time (killed after 170 s) |
+  | (none) | hangs with an open stdin pipe until it is killed | observed at plan time; no artifact kept, the behaviour is pinned by test/lessons.test.mjs `codex-stdin-ignored` |
   | non-zero | launch/auth/fatal | docs-only |
 
 - Sandbox modes (`-s`): `read-only`, `workspace-write`, `danger-full-access`
@@ -219,19 +223,25 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
   `anthropic-beta: oauth-2025-04-20`; response fields `five_hour` and
   `seven_day`, each `{ utilization, resets_at }`; polled every
   `BATON_USAGE_POLL_MS` ms, default 60000 (source: src/taps/claude-usage.mjs).
-  observed-live 2026-09-11: 35 % five_hour, 92 % seven_day.
+  observed-live 2026-09-11: real windows came back and were written to
+  `<BATON_HOME>/usage/claude--default.json`; a seven_day window at 93 %
+  raised the amber warning.
 - The wall: `StopFailure` hook with `error: rate_limit` (source:
-  https://code.claude.com/docs/en/hooks#stopfailure). **observed-live 2026-09-11** <!-- live:claude/rate_limit -->: a real limit could not be forced on the
-  build machine. The path was run live with `baton sessions simulate-limit`
-  (the same payload through `src/hook.mjs`, marked `baton_simulated`, never
-  kept as evidence); the first real payload lands in
-  `fixtures/live/claude/limit-rate_limit.json` (src/live-capture.mjs).
+  https://code.claude.com/docs/en/hooks#stopfailure).
+  **observed-live 2026-09-11** <!-- live:claude/rate_limit -->: a real
+  `StopFailure` with `error: rate_limit` (a 429 `rate_limit_error`) arrived
+  at 07:46:37Z and is kept, scrubbed, as
+  `fixtures/live/claude/limit-rate_limit.json` (src/live-capture.mjs). The
+  path can also be run live with `baton sessions simulate-limit` (the same
+  payload through `src/hook.mjs`, marked `baton_simulated`, never kept as
+  evidence).
 - Status line, not usable on 2.1.268: a custom `statusLine` command passed
   through `--settings`, and again through a project
-  `.claude/settings.local.json`, was not run at all; an `echo` command at both
-  levels left the built-in status line in place while hooks from the same
-  `--settings` file fired (observed-live 2026-09-11, src/taps/claude-usage.mjs
-  header comment). Baton still writes the `statusLine` entry, which records the
+  `.claude/settings.local.json`, was not run at all when it was tried; an
+  `echo` command at both levels left the built-in status line in place while
+  hooks from the same `--settings` file fired (no artifact kept; note in the
+  src/taps/claude-usage.mjs header, 2026-09-11). Baton still writes the
+  `statusLine` entry, which records the
   same `rate_limits.five_hour` / `seven_day` fields
   (https://code.claude.com/docs/en/statusline), so the endpoint poll becomes a
   fallback if a later build honours it.
@@ -243,10 +253,12 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
   `spawnSpec`). Reason: injecting a hook makes codex show its hooks-review
   prompt on every Baton session.
 - Which file: `<CODEX_HOME>/sessions/YYYY/MM/DD/rollout-*.jsonl`, matched on
-  `session_meta.payload.cwd` equal to the session's cwd with an mtime at or
-  after the spawn time (source: src/taps/codex.mjs `findRollout`).
-  observed-live 2026-09-11: flushed per event, file mtime equals the last
-  line's timestamp.
+  `session_meta.payload.cwd` equal to the session's cwd with a birth time or
+  mtime at or after the spawn time, five seconds of slack (source:
+  src/taps/codex.mjs `findRollout`). observed-live 2026-09-11: the right
+  rollout was found for a real hand-off. The file's mtime is not a content
+  clock on Windows — six rollouts from that day had mtimes 7 s to 9 min
+  behind their last line — so nothing depends on the two matching.
 - Usage: `event_msg.token_count.rate_limits`, `primary`
   `window_minutes: 300` and `secondary` `window_minutes: 10080`, each
   `{ used_percent, resets_at }` (source: src/taps/codex.mjs header;
@@ -255,9 +267,12 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
   `codex_error_info: "usage_limit_exceeded"` and message "You've hit your usage
   limit … try again at \<date>" (source:
   github.com/openai/codex `codex-rs/protocol/src/error.rs`
-  `UsageLimitReachedError`). The event shape was read from 24 local rollouts;
-  the error itself is **docs-only** <!-- live:codex/usage_limit_exceeded -->
-  (first real one kept as `fixtures/live/codex/limit-usage_limit_exceeded.json`).
+  `UsageLimitReachedError`). The event shape was read from local rollouts;
+  the error itself is **docs-only** <!-- live:codex/usage_limit_exceeded -->.
+  A `task_complete.error` with `codex_error_info: usage_limit_exceeded` walled
+  a codex leg once, but no scrubbed payload was kept, so
+  `fixtures/live/codex/limit-usage_limit_exceeded.json` is still the slot for
+  the first one.
 - Transcript: `response_item.message` with `role: user` and
   `content[].type: input_text` for prompts; `output_text` and
   `task_complete.last_agent_message` for assistant text (source:
@@ -277,11 +292,18 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
 - The wall: `RESOURCE_EXHAUSTED`, "it resets in %s", "out of quota", and
   "quota exhausted/exceeded" in the log, plus a relative reset parsed out of
   "resets in \<n>\<s|m|h|d>" (source: strings present in `agy.exe`;
-  src/taps/agy.mjs `scanLog`). **docs-only** <!-- live:agy/agy-resource-exhausted -->:
-  never hit live (first real one kept as `fixtures/live/agy/limit-agy-resource-exhausted.json`).
+  src/taps/agy.mjs `scanLog`).
+  **docs-only** <!-- live:agy/agy-resource-exhausted -->:
+  `RESOURCE_EXHAUSTED (code 429): Individual quota reached … Resets in
+  71h19m42s.` appeared in a session's `agy.log` at 08:02:42Z, `scanLog` read
+  the relative reset, and the agent was walled. No payload was kept — the
+  capture call in `src/attach.mjs` was added while that session's runner was
+  already running — so `fixtures/live/agy/limit-agy-resource-exhausted.json`
+  is still the slot for the next one.
 - Prompts and conversation id: `~/.gemini/antigravity-cli/history.jsonl`, one
   `{ display, timestamp, workspace, conversationId }` per prompt (source:
-  src/taps/agy.mjs `historyFile`; observed-live 2026-09-11).
+  src/taps/agy.mjs `historyFile`; shape observed on disk, last written
+  2026-09-09 — the 2026-09-11 agy leg produced no history entry).
 - One account only: agy 1.2.0 has no config-directory override, so
   `LAYOUT.agy.env` is `null` and `accounts add agy` is refused (source:
   src/accounts.mjs).
@@ -305,8 +327,10 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
 ### Session store
 
 `<BATON_HOME>/sessions/<id>/` holds `session.json`, `events.jsonl`,
-`control.json`, `hook.log`, `claude-settings.json` and `agy.log` (source:
-src/sessions.mjs header, src/attach.mjs). Statuses and event types are listed
+`hook.log`, and, per agent, `claude-settings.json` or `agy.log`;
+`control.json` appears only once the board has asked for a hand-off or an
+end (source: src/sessions.mjs header, src/attach.mjs). Statuses and event
+types are listed
 in [VOCABULARY.md](VOCABULARY.md). Board routes: `GET /api/sessions`,
 `GET /api/sessions/:id`, `POST /api/sessions/:id/handoff`,
 `POST /api/sessions/:id/end`, `DELETE /api/sessions/:id`, with the list pushed
@@ -316,11 +340,14 @@ as the SSE `sessions` event (source: src/server.mjs, src/board/sessions.js).
 
 Recorded in `fixtures/limits/<group>/<id>.json` and classified by
 `src/limits.mjs` (`classify()`); the runner writes the outcome into
-`run.json.outcome` with the matched `signal`. A real usage limit could not be
-forced live on the build machine, so every `limit` row is **docs-only**: its
-text comes from the CLI's own documentation or source, cited in "produced by".
-The observed-live rows are the non-limit cases the probes actually hit and the
-detector must never mistake for a limit.
+`run.json.outcome` with the matched `signal`. Every `limit` row below is
+still **docs-only**: its text comes from the CLI's own documentation or
+source, cited in "produced by". Real limits from all three agents were seen
+on 2026-09-11, but only the claude payload was kept as evidence
+(`fixtures/live/claude/limit-rate_limit.json`); the codex and agy ones went
+to the session ledger, not to `fixtures/limits/`. The observed-live rows are
+the non-limit cases the probes actually hit and the detector must never
+mistake for a limit.
 
 Outcome precedence (`src/limits.mjs`): spawn error → `launch_failed`; stderr
 "another auth source is set" or an `auth` fixture → `auth_failed` (wins over
@@ -366,7 +393,7 @@ Generated by `node scripts/limits-table.mjs` from 21 fixtures (4 observed-live, 
 - Kill is `taskkill /PID <pid> /T /F` on Windows with one verify-retry
   (`BATON_TIMERS_MS=notify,kill,verify`, default 30 min / 90 min / 30 s).
 - No adapter ever sets `shell: true`; every spawn is `spawn(bin, argv)` with a
-  native exe or `node <entry.js>` (LESSONS 07-11).
+  native exe or `node <entry.js>` (test/lessons.test.mjs `no-shell-spawn`).
 - A chain entry naming a forbidden mode or flag makes `argv()` throw
   `forbidden flag: …`; the supervisor records the refusal and exits 13 without
   spawning (test/adapters.test.mjs, test/runner.test.mjs).

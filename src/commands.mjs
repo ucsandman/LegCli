@@ -53,7 +53,15 @@ export function runCommandAsync(cmd, cwd, { timeoutMs = 600000, tailLines = 40 }
     const keep = (d) => { out += d; if (out.length > 2e6) out = out.slice(-1e6) }
     child.stdout.on('data', keep)
     child.stderr.on('data', keep)
-    const timer = setTimeout(() => { timedOut = true; child.kill() }, timeoutMs)
+    // On timeout, kill the whole process TREE: child.kill() ends only the npm
+    // node process, and a grandchild (a watcher, a dev server) keeps the stdio
+    // pipes open so 'close' never fires and the landing hangs in 'landing'
+    // forever, wedging the repo's merge queue. taskkill /T /F takes the tree.
+    const timer = setTimeout(() => {
+      timedOut = true
+      if (process.platform === 'win32' && child.pid) { try { spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }) } catch {} }
+      else { try { child.kill('SIGKILL') } catch {} }
+    }, timeoutMs)
     const finish = (status, err) => {
       if (done) return
       done = true
@@ -62,6 +70,10 @@ export function runCommandAsync(cmd, cwd, { timeoutMs = 600000, tailLines = 40 }
       resolvePromise({ green: status === 0 && !timedOut, status, timedOut, tail, command: `${bin} ${args.join(' ')}` })
     }
     child.on('error', (err) => finish(null, err))
+    // resolve on 'exit' (fires when the process ends) as well as 'close' (waits
+    // for every inherited pipe to close, which a detached grandchild can hold
+    // open indefinitely); finish is idempotent via `done`
+    child.on('exit', (code) => finish(code))
     child.on('close', (code) => finish(code))
   })
 }

@@ -2,9 +2,9 @@
 
 Two things per agent: what Baton reads from an interactive session
 (`baton claude|codex|agy`), and the headless argv the v0.1 pipeline spawns.
-Every fact is verified against `src/taps/*.mjs`, `src/attach.mjs` and
-`src/adapters/*.mjs`; the full evidence trail is
-[cli-contracts.md](cli-contracts.md).
+Every fact here was written against `src/taps/*.mjs`, `src/attach.mjs` and
+`src/adapters/*.mjs`; the evidence trail, including which lines an artifact
+backs, is [cli-contracts.md](cli-contracts.md).
 
 An agent is never run through a shell. Interactive sessions are
 `spawn(bin, argv, { stdio: 'inherit' })` (`src/attach.mjs` `spawnSpec`);
@@ -16,8 +16,9 @@ markers from the child environment (`src/env.mjs` `sanitizeEnv`).
 
 Nothing is screen-scraped. Each tap was read from the CLI's own source or
 documentation, then checked on a real machine on 2026-09-11 (Claude Code
-2.1.268, codex-cli 0.153.4, agy 1.2.0). Each line says observed-live or
-docs-only.
+2.1.268, codex-cli 0.153.4, agy 1.2.0). Lines that a live run or a fixture
+backs say observed-live; lines read only from a CLI's source or
+documentation say docs-only.
 
 ### claude
 
@@ -37,23 +38,31 @@ docs-only.
   stored in `<CLAUDE_CONFIG_DIR>/.credentials.json` under `claudeAiOauth`, and
   the header `anthropic-beta: oauth-2025-04-20`. The response carries
   `five_hour` and `seven_day`, each `{ utilization, resets_at }`. Polled every
-  60 s (`BATON_USAGE_POLL_MS`). Observed live: 35 % and 92 %.
+  60 s (`BATON_USAGE_POLL_MS`). Observed live: real percentages come back
+  and land in `<BATON_HOME>/usage/claude--default.json` with
+  `source: claude usage endpoint`; a 7-day window at 93 % raised the amber
+  warning on 2026-09-11.
 - **The wall**: the `StopFailure` hook fires with `error: rate_limit`
   ([docs](https://code.claude.com/docs/en/hooks#stopfailure)). Status:
-  **observed-live 2026-09-11** <!-- live:claude/rate_limit -->. A real limit could not be
-  forced on the build machine; the path is covered by the hook contract test
-  and was driven end to end with `baton sessions simulate-limit <id>`, which
-  sends the same payload through `src/hook.mjs`. The first real `StopFailure`
-  is kept, secrets scrubbed, as `fixtures/live/claude/limit-rate_limit.json`
-  and this line flips to observed-live (`scripts/live-limits.mjs`).
+  **observed-live 2026-09-11** <!-- live:claude/rate_limit -->. A real
+  `StopFailure` arrived on 2026-09-11 at 07:46:37Z — a 429 `rate_limit_error`
+  from the API — and is kept, secrets scrubbed, as
+  `fixtures/live/claude/limit-rate_limit.json` (`src/live-capture.mjs`); a
+  payload `baton sessions simulate-limit <id>` produces is marked and never
+  kept (`src/live-capture.mjs` `isSimulated`). The path is also covered by
+  the hook contract test and can be driven end to end with
+  `baton sessions simulate-limit <id>`, which sends the same payload through
+  `src/hook.mjs`.
 - **Why not the status line.** Baton writes a `statusLine` entry into the same
   settings file that would record `rate_limits.five_hour.used_percentage` and
   `resets_at`, and chains your own `statusLine` command first. Claude Code
-  2.1.268 does not run it: an `echo` command passed through `--settings` and
-  again through a project `.claude/settings.local.json` left the built-in
-  status line in place, while hooks from the same file fired. The endpoint poll
-  is therefore the live source; the status-line route becomes a fallback the
-  moment a build honours it.
+  2.1.268 did not run it when it was tried on this machine: an `echo` command
+  passed through `--settings` and again through a project
+  `.claude/settings.local.json` left the built-in status line in place, while
+  hooks from the same `--settings` file fired. No artifact of that check was
+  kept; the note lives in the `src/taps/claude-usage.mjs` header. The endpoint
+  poll is therefore the live source; the status-line route becomes a fallback
+  the moment a build honours it.
 - **Token handling**: the stored token is read by the polling process only,
   sent only to `api.anthropic.com`, and written nowhere. The ledger scrubs
   bearer tokens from every line regardless (`src/redact.mjs`).
@@ -61,15 +70,19 @@ docs-only.
 ### codex
 
 - **How Baton attaches**: nothing is injected. `baton codex` runs `codex` with
-  your arguments, then finds and tails that session's rollout file. Injecting a
-  hook would make codex show its "review new hooks" prompt on every Baton
-  session, which is why this tap reads instead.
+  your arguments, then finds and tails that session's rollout file. A hook
+  would have to be trusted by codex on first use, which is why this tap
+  reads instead.
 - **Which file**: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
   (`CODEX_HOME` when an extra account is in use), picked by
-  `session_meta.payload.cwd` equal to the session's directory and an mtime at
-  or after the spawn (`src/taps/codex.mjs` `findRollout`). Observed live:
-  codex flushes the file per event, so the mtime matches the last line's
-  timestamp.
+  `session_meta.payload.cwd` equal to the session's directory and a birth
+  time or mtime at or after the spawn, with five seconds of slack
+  (`src/taps/codex.mjs` `findRollout`). Observed live: the tap found the
+  right rollout for a real hand-off. On Windows the file's mtime lags its
+  contents — across six rollouts from 2026-09-11 the mtime was 7 s to 9 min
+  behind the last line's timestamp — so `findRollout` matches on cwd and
+  accepts a birth time or mtime at or after the spawn rather than relying on
+  the two agreeing.
 - **Usage percentages**: `event_msg.token_count.rate_limits`, with `primary`
   the 300-minute window and `secondary` the 10080-minute window, each
   `{ used_percent, window_minutes, resets_at }`. Observed live.
@@ -77,8 +90,14 @@ docs-only.
   `codex_error_info: "usage_limit_exceeded"` and the message "You've hit your
   usage limit … try again at \<date>". The wording comes from
   `codex-rs/protocol/src/error.rs` (`UsageLimitReachedError`); the event shape
-  was observed in 24 local rollouts. The error itself: **docs-only** <!-- live:codex/usage_limit_exceeded -->. The first real one is kept as
-  `fixtures/live/codex/limit-usage_limit_exceeded.json`.
+  was read from local rollouts. The error itself:
+  **docs-only** <!-- live:codex/usage_limit_exceeded --> — a
+  real `task_complete.error` with `codex_error_info: usage_limit_exceeded`
+  walled a codex leg at 07:56:24Z and handed the session to agy. No payload
+  was kept: the capture call in `src/attach.mjs` was added while that
+  session's runner was already running, so
+  `fixtures/live/codex/limit-usage_limit_exceeded.json` is still the slot
+  for the next one.
 - **Transcript**: user prompts from `response_item.message` with `role: user`
   and `content[].type: input_text`; assistant text from `output_text` and from
   `task_complete.last_agent_message`. Observed live.
@@ -93,11 +112,19 @@ docs-only.
   hook surface.
 - **Usage percentages**: none. agy exposes no percentage anywhere on disk; its
   own status line fetches a quota summary from the backend and writes it
-  nowhere. The board shows "no % from agy" instead of empty bars.
+  nowhere. When agy is not walled the board shows a "no % from agy" chip
+  instead of empty bars (`src/board/sessions.js`); when it is walled the
+  chip shows the wall and its reset.
 - **The wall**: `RESOURCE_EXHAUSTED`, "it resets in %s" and "out of quota" in
   the log. Those strings are present in `agy.exe`, and `scanLog()` also reads a
-  relative reset out of "resets in \<n>\<s|m|h|d>". Status: **docs-only** <!-- live:agy/agy-resource-exhausted -->, never hit live; the first real one
-  is kept as `fixtures/live/agy/limit-agy-resource-exhausted.json`.
+  relative reset out of "resets in \<n>\<s|m|h|d>". Status:
+  **docs-only** <!-- live:agy/agy-resource-exhausted --> —
+  `RESOURCE_EXHAUSTED (code 429): Individual quota reached … Resets in
+  71h19m42s.` appeared in a session's `agy.log` at 08:02:42Z and walled the
+  agent. No payload was kept: the capture call in `src/attach.mjs` was added
+  while that session's runner was already running, so
+  `fixtures/live/agy/limit-agy-resource-exhausted.json` is still the slot
+  for the next one.
 - **Prompts and conversation id**: `~/.gemini/antigravity-cli/history.jsonl`,
   one `{ display, timestamp, workspace, conversationId }` per prompt. Observed
   live.
@@ -112,7 +139,7 @@ prompt as its first positional argument: `claude "<prompt>"`,
 
 ## Headless adapters (the v0.1 pipeline)
 
-These are what a pipeline card's chain spawns. Unchanged in 0.2.0.
+These are what a pipeline card's chain spawns. Unchanged since 0.2.0.
 
 ### claude (headless)
 
@@ -144,8 +171,9 @@ These are what a pipeline card's chain spawns. Unchanged in 0.2.0.
   positional argument.
 - **Stdin**: `ignore`, deliberately. `codex exec` reads stdin whenever it
   is not a TTY and hangs on an open pipe ("Reading additional input from
-  stdin..."); a plan-time probe with a pipe hung 170 s, the same task with
-  stdin closed finished in 20 s.
+  stdin..."); a plan-time probe with a pipe hung until it was killed at
+  170 s; the same task with stdin closed finished normally (the kept probe
+  run took 28 s).
 - **Modes**: default `workspace-write`; allowed `read-only`,
   `workspace-write`.
 - **Forbidden flags**: `danger-full-access`,

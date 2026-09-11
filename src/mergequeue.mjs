@@ -9,7 +9,7 @@
 // No force flags, no remote writes, no hard resets on the root, ever.
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { branchName } from './worktree.mjs'
 import { runCommandAsync } from './commands.mjs'
 
@@ -20,6 +20,17 @@ function git(cwd, args, { ok = true } = {}) {
   const r = spawnSync('git', args, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
   if (ok && r.status !== 0) throw new Error(`git ${args.join(' ')} failed (exit ${r.status}): ${(r.stderr || r.stdout).trim().slice(0, 500)}`)
   return r
+}
+
+// A rebase/merge/cherry-pick the agent or a human left mid-flight. Landing must
+// never commit that half-state and must never abort an operation it did not
+// start (aborting a rebase throws away the uncommitted work sitting on it).
+function operationInProgress(worktree) {
+  for (const p of ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD']) {
+    const rel = git(worktree, ['rev-parse', '--git-path', p], { ok: false }).stdout.trim()
+    if (rel && existsSync(resolve(worktree, rel))) return p
+  }
+  return null
 }
 
 export function trunkHead(repo) {
@@ -71,6 +82,9 @@ async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = 
   const repo = card.repo
   const trunk = card.trunk || 'main'
   const branch = branchName(card.card_id)
+
+  const busy = operationInProgress(worktree)
+  if (busy) return bounce('worktree-busy', `a ${busy.replace(/-/g, ' ')} is already in progress in ${worktree}; finish or abort it there before landing (Baton will not touch a rebase it did not start)`)
 
   const root = rootState(repo, trunk)
   if (!root.onTrunk) return bounce('dirty-trunk', `repo root is on ${root.branch}, not ${trunk}; check out ${trunk} and retry`)
@@ -135,7 +149,10 @@ export function land(card, worktree, opts) {
   const prev = queues.get(key) ?? Promise.resolve()
   const mine = prev.catch(() => {}).then(() => landNow(card, worktree, opts))
   queues.set(key, mine)
-  mine.finally(() => { if (queues.get(key) === mine) queues.delete(key) })
+  // the bookkeeping chain must never reject on its own: landNow's throw is the
+  // caller's to handle (it returns `mine`), and an unhandled rejection here
+  // would take the whole board server process down with it
+  mine.catch(() => {}).finally(() => { if (queues.get(key) === mine) queues.delete(key) })
   return mine
 }
 

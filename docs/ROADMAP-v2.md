@@ -17,8 +17,8 @@ runs the real interactive agent with a board, usage tracking and a hand-off
 alongside it. Against the list below, it delivers the hand-off-on-demand half
 of the "hand off now to \<adapter>" item (a button on every terminal card,
 which takes the next option in the chain; the picker is still open), and it
-puts every human's terminals on one shared board, which is the surface item 1's
-multi-human work has to be built on. Nothing else in this roadmap changed.
+puts the machine's terminals on one board, which is the surface item 1's
+multi-human work was built on.
 
 v1 ships one wedge: a card runs a fallback chain of coding-agent CLIs, and when
 a leg hits its usage limit the next agent resumes from a handoff bundle in the

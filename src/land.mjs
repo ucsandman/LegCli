@@ -89,7 +89,12 @@ export function pruneSessionWorktree(s) {
   const wt = s.worktree
   if (!wt || !existsSync(wt.path)) return { removed: false, reason: 'no worktree on disk' }
   if (git(wt.path, ['status', '--porcelain']).out) return { removed: false, reason: `uncommitted changes in ${wt.path}` }
-  if (!wt.base || !git(s.repo, ['merge-base', '--is-ancestor', wt.branch, wt.base]).ok) return { removed: false, reason: `${wt.branch} has commits that are not on ${wt.base ?? 'any branch'}` }
+  // "already landed" is true not just for a fast-forward ancestor but also for a
+  // squash- or rebase-merge and a cherry-pick: git cherry marks a commit whose
+  // patch is already upstream with '-', so no '+' line means the work is in base
+  const cherry = wt.base ? git(s.repo, ['cherry', wt.base, wt.branch]) : { ok: false, out: '' }
+  const merged = wt.base && (git(s.repo, ['merge-base', '--is-ancestor', wt.branch, wt.base]).ok || (cherry.ok && !cherry.out.split('\n').some((l) => l.startsWith('+'))))
+  if (!merged) return { removed: false, reason: `${wt.branch} has commits that are not on ${wt.base ?? 'any branch'}` }
   removeWorktree(s.repo, s.session_id, { deleteBranch: true })
   return { removed: true }
 }

@@ -4,7 +4,7 @@
 // fails with EPERM/EBUSY for a moment. Retry briefly, then fall back to a
 // direct write rather than lose the record (the supervisor's final run.json
 // once went missing this way and the orchestrator read a stale 'running').
-import { writeFileSync, renameSync, unlinkSync, existsSync, realpathSync } from 'node:fs'
+import { writeFileSync, renameSync, unlinkSync, existsSync, realpathSync, openSync, closeSync, statSync } from 'node:fs'
 import { resolve, dirname, basename, join } from 'node:path'
 
 // Canonical form for comparing paths: symlinks resolved and, on Windows, 8.3
@@ -33,6 +33,23 @@ export function realPath(p) {
 }
 
 const sleepSync = (ms) => { const t = Date.now() + ms; while (Date.now() < t) { /* spin */ } }
+
+// Cross-process advisory lock around a read-modify-write of a shared JSON file.
+// `openSync(..., 'wx')` is atomic-create, so only one process (a hook, a tap, a
+// poller) holds it at a time. A lock older than staleMs (a crashed holder) is
+// stolen. If it cannot be acquired within the budget, fn runs anyway rather
+// than hang the caller (a Claude Code hook must never block the user's turn).
+export function withFileLock(lockPath, fn, { retries = 60, waitMs = 20, staleMs = 5000 } = {}) {
+  let fd = null
+  for (let i = 0; i < retries; i++) {
+    try { fd = openSync(lockPath, 'wx'); break } catch (err) {
+      if (err.code !== 'EEXIST') break
+      try { if (Date.now() - statSync(lockPath).mtimeMs > staleMs) { unlinkSync(lockPath); continue } } catch {}
+      sleepSync(waitMs)
+    }
+  }
+  try { return fn() } finally { if (fd !== null) { try { closeSync(fd) } catch {} try { unlinkSync(lockPath) } catch {} } }
+}
 
 export function writeJsonAtomic(file, obj) {
   const text = JSON.stringify(obj, null, 2) + '\n'

@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { home } from './store.mjs'
-import { writeJsonAtomic } from './fsx.mjs'
+import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { AGENTS } from './sessions.mjs'
 
 export const WARN_PCT = Number(process.env.BATON_WARN_PCT || 85)
@@ -35,40 +35,53 @@ function write(u) {
   writeJsonAtomic(usageFile(u.agent, u.account), { ...u, updated_at: new Date().toISOString() })
 }
 
+// read → mutate → write under one cross-process lock, so a percentage write
+// from the poller/status-line never erases a wall a hook set in the same moment
+// (that race handed the baton straight back to a walled login).
+function mutate(agent, account, fn) {
+  mkdirSync(usageDir(), { recursive: true })
+  return withFileLock(usageFile(agent, account) + '.lock', () => {
+    const u = readUsage(agent, account)
+    const out = fn(u) ?? u
+    write(out)
+    return out
+  })
+}
+
 // windows: { five_hour: {pct, resets_at}|null, seven_day: ... }
 export function recordUsage(agent, account, windows, source) {
-  const u = readUsage(agent, account)
-  if (windows.five_hour !== undefined) u.five_hour = windows.five_hour
-  if (windows.seven_day !== undefined) u.seven_day = windows.seven_day
-  u.source = source
-  // A window that has reset clears an old wall.
-  const nowS = Math.floor(Date.now() / 1000)
-  if (u.limited_until && u.limited_until <= nowS) { u.limited_until = null; u.limited_reason = null }
-  write(u)
-  return u
+  return mutate(agent, account, (u) => {
+    if (windows.five_hour !== undefined) u.five_hour = windows.five_hour
+    if (windows.seven_day !== undefined) u.seven_day = windows.seven_day
+    u.source = source
+    // A window that has reset clears an old wall.
+    const nowS = Math.floor(Date.now() / 1000)
+    if (u.limited_until && u.limited_until <= nowS) { u.limited_until = null; u.limited_reason = null }
+    return u
+  })
 }
 
 export function markLimited(agent, account, { resets_at = null, reason = 'limit', source } = {}) {
-  const u = readUsage(agent, account)
-  const nowS = Math.floor(Date.now() / 1000)
-  let until = Number.isFinite(resets_at) && resets_at > nowS ? resets_at : null
-  if (!until) {
-    // Prefer the soonest known window reset, else the default wall.
-    const cands = [u.five_hour?.resets_at, u.seven_day?.resets_at].filter((x) => Number.isFinite(x) && x > nowS)
-    until = cands.length ? Math.min(...cands) : nowS + DEFAULT_LIMIT_S
-  }
-  u.limited_until = until
-  u.limited_reason = reason
-  if (source) u.source = source
-  write(u)
-  return u
+  return mutate(agent, account, (u) => {
+    const nowS = Math.floor(Date.now() / 1000)
+    let until = Number.isFinite(resets_at) && resets_at > nowS ? resets_at : null
+    if (!until) {
+      // Prefer the window that actually walled (highest used %) over the soonest
+      // reset: a weekly wall (100% / days away) must not be recorded as the
+      // 5-hour window's near reset, or the account is handed back and re-walls.
+      const windows = [u.five_hour, u.seven_day].filter((w) => w && Number.isFinite(w.resets_at) && w.resets_at > nowS)
+      windows.sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
+      until = windows.length ? windows[0].resets_at : nowS + DEFAULT_LIMIT_S
+    }
+    u.limited_until = until
+    u.limited_reason = reason
+    if (source) u.source = source
+    return u
+  })
 }
 
 export function clearLimited(agent, account) {
-  const u = readUsage(agent, account)
-  u.limited_until = null; u.limited_reason = null
-  write(u)
-  return u
+  return mutate(agent, account, (u) => { u.limited_until = null; u.limited_reason = null; return u })
 }
 
 export function isAvailable(u, nowS = Math.floor(Date.now() / 1000)) {

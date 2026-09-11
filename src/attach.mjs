@@ -16,11 +16,11 @@ import { sanitizeEnv } from './env.mjs'
 import { home } from './store.mjs'
 import { get as getAdapter } from './adapters/index.mjs'
 import { AGENTS, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
-import { ensure as ensureWorktree } from './worktree.mjs'
+import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.mjs'
 import { canonPath, realPath } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
-import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage } from './usage.mjs'
+import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable } from './usage.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail } from './taps/claude.mjs'
 import { findRollout, createTail, parseLines, transcriptTail as codexTail } from './taps/codex.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
@@ -70,9 +70,13 @@ export async function ensureBoard({ open = true } = {}) {
   const t0 = Date.now()
   while (Date.now() - t0 < 15000) {
     if (await health(port, host)) {
-      writeFileSync(pidfile(), JSON.stringify({ pid: child.pid, port, bind: host, children: [child.pid], detached: true, started_by: 'attach', started_at: new Date().toISOString() }, null, 2) + '\n')
+      // only claim the pidfile for a child we actually started: under a race,
+      // another `baton` won the port and ours died on EADDRINUSE — writing our
+      // dead pid would make `baton down` kill nothing and report "not running"
+      const ours = child.exitCode === null && Boolean(child.pid)
+      if (ours) writeFileSync(pidfile(), JSON.stringify({ pid: child.pid, port, bind: host, children: [child.pid], detached: true, started_by: 'attach', started_at: new Date().toISOString() }, null, 2) + '\n')
       if (open) openBoard(url)
-      return { url, started: true }
+      return { url, started: ours }
     }
     await new Promise((r) => setTimeout(r, 200))
   }
@@ -104,13 +108,35 @@ export function gitInfo(cwd) {
 // checkout has out, and it comes back through the merge queue (Land on its card).
 export function isolate({ g, cwd, sid, sessions = reapLost(listSessions()) }) {
   const here = canonPath(g.repo)
-  const live = sessions.filter((s) => isActive(s) && workRoot(s) && canonPath(workRoot(s)) === here)
+  // exclude this session itself: its record now exists before isolate runs, and
+  // a session must never be isolated from its own checkout
+  const live = sessions.filter((s) => s.session_id !== sid && isActive(s) && workRoot(s) && canonPath(workRoot(s)) === here)
   if (!live.length) return null
   const base = g.branch && g.branch !== 'HEAD' ? g.branch : null
   const wt = ensureWorktree(g.repo, sid, { trunk: base ?? 'HEAD' })
   const sub = relative(realPath(g.repo), realPath(cwd))
   const inTree = sub && !sub.startsWith('..') ? join(wt.path, sub) : wt.path
   return { path: wt.path, branch: wt.branch, base, cwd: existsSync(inTree) ? inTree : wt.path, live }
+}
+
+// Which agents are actually on this machine, so the chooser never hands off to
+// a binary that is not installed (that spawned ENOENT and killed the session
+// with exit 127 instead of waiting for a reset). Resolves each adapter the way
+// the runner would spawn it (native exe, npm entry, or BATON_<AGENT>_BIN).
+let installedCache = null
+async function installedAgents() {
+  if (installedCache) return installedCache
+  const out = {}
+  for (const name of AGENTS) {
+    try {
+      const { bin, viaNode, entry } = (await getAdapter(name)).resolve()
+      const target = viaNode ? (entry ?? bin) : bin
+      if (/[\\/]/.test(target)) out[name] = existsSync(target)
+      else { const r = spawnSync(target, ['--version'], { windowsHide: true, encoding: 'utf8', timeout: 8000 }); out[name] = !r.error && r.status === 0 }
+    } catch { out[name] = false }
+  }
+  installedCache = out
+  return out
 }
 
 // ---- process control ----
@@ -276,12 +302,16 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
       }
       const next = Object.keys(patch).length ? updateSession(sid, patch) : s
       const ctl = takeControl(sid)
+      // end wins over a merged handoff: control.json now merges writes, so a
+      // record can carry both; End (stop entirely) is the stronger, latest intent
+      if (ctl?.end) { if (ctl.by) appendEvent(sid, { type: 'status', by: ctl.by, summary: `end requested from the board by ${ctl.by}` }); clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'exit', code: null, ended: true }); return }
       if (ctl?.handoff) {
         updateSession(sid, { status: 'handing_off', handoff: { reason: `requested from the board${ctl.by ? ` by ${ctl.by}` : ''}`, at: new Date().toISOString(), by: ctl.by ?? null } }, { event: { type: 'handoff_requested', by: ctl.by ?? null, summary: `hand off requested from the board${ctl.by ? ` by ${ctl.by}` : ''}` } })
         clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'handoff', code: null }); return
       }
-      if (ctl?.end) { if (ctl.by) appendEvent(sid, { type: 'status', by: ctl.by, summary: `end requested from the board by ${ctl.by}` }); clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'exit', code: null, ended: true }); return }
-      if (next.status === 'limit' && process.env.BATON_NO_HANDOFF !== '1') {
+      // a stale warning patch can overwrite status:'limit' from the hook, but the
+      // limit OBJECT survives the clobber — hand off on either signal
+      if ((next.status === 'limit' || next.limit) && process.env.BATON_NO_HANDOFF !== '1') {
         clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'limit', code: null })
       }
     } catch (err) {
@@ -334,24 +364,29 @@ export async function attach(agent, args = [], { open = true } = {}) {
   const cwd = process.cwd()
   const board = await ensureBoard({ open })
   const accounts = readAccounts()
+  const installed = await installedAgents()
   let account = process.env.BATON_ACCOUNT || 'default'
   if (!accounts[agent].includes(account)) { say(`no ${agent} account "${account}"; using default`); account = 'default' }
   // Start on an account that is not at its wall, if we already know one is.
   const nowS = Math.floor(Date.now() / 1000)
   const u0 = readUsage(agent, account)
   if (u0.limited_until && u0.limited_until > nowS) {
-    const alt = chooseNext({ agent, account, accounts, nowS })
+    const alt = chooseNext({ agent, account, accounts, installed, nowS })
     if (alt.next) { say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting ${alt.next.agent} (${alt.next.account}) instead`); agent = alt.next.agent; account = alt.next.account }
     else say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting anyway (every option is out)`)
   }
   const g = gitInfo(cwd)
   const sid = newSessionId(agent)
   const chain = candidates({ agent, account, accounts })
+  // record the session BEFORE cutting a worktree, so a crash or Ctrl-C during
+  // `git worktree add` still leaves a card (with a Remove button), never a
+  // silent orphan under .baton-worktrees with no record and no button
+  createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain, worktree: null, owner: whoami() })
   let iso = null
   if (g.repo && !shareCheckout) {
-    try { iso = isolate({ g, cwd, sid }) } catch (err) { say(`could not make a worktree (${String(err.message).split('\n')[0].slice(0, 200)}); sharing the checkout`) }
+    try { iso = isolate({ g, cwd, sid }) } catch (err) { say(`could not make a worktree (${String(err.message).split('\n')[0].slice(0, 200)}); sharing the checkout`); try { removeWorktree(g.repo, sid) } catch {} }
   }
-  createSession({ id: sid, agent, account, cwd: iso?.cwd ?? cwd, repo: g.repo, branch: iso?.branch ?? g.branch, argv: args, chain, worktree: iso ? { path: iso.path, branch: iso.branch, base: iso.base } : null, owner: whoami() })
+  if (iso) updateSession(sid, { cwd: iso.cwd, branch: iso.branch, worktree: { path: iso.path, branch: iso.branch, base: iso.base } })
   updateSession(sid, { head_at_start: g.head, head: g.head, files_dirty: iso ? [] : g.dirty, board_url: board.url })
   say(`session ${sid} · ${agent}${account !== 'default' ? '/' + account : ''} · board ${board.url ?? 'off'}${board.started ? ' (started)' : ''} · next: ${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(' → ') || 'none'}`)
   if (iso) {
@@ -363,31 +398,42 @@ export async function attach(agent, args = [], { open = true } = {}) {
   let prompt = null
   let legArgs = args
   let exit = 0
-  for (let leg = 0; leg < 6; leg++) {
+  // unbounded: the 12-leg cap below stops a runaway chain, and the all-out wait
+  // bounds a wait; a normal session runs one leg and exits
+  for (let leg = 0; ; leg++) {
     const s = readSession(sid)
     const r = await runLeg({ agent, account, args: legArgs, session: s, prompt, boardUrl: board.url })
     if (r.reason === 'exit') { exit = r.code ?? 0; break }
     // limit or handoff: bundle, choose next, go again in this terminal
     const cur = readSession(sid)
     say(r.reason === 'limit' ? `${agent} hit its usage limit${cur.limit?.detail ? `: ${cur.limit.detail.slice(0, 140)}` : ''}` : 'handing off as requested')
+    const whyStopped = r.reason === 'limit' ? `${agent} usage limit` : 'handoff requested (the agent was stopped mid-turn; edits in the worktree may be half-applied)'
     let bundle = null
-    try { bundle = saveSessionBundle(cur, { messages: messagesFor(agent, cur), why: r.reason === 'limit' ? `${agent} usage limit` : 'handoff requested' }); say(`bundle saved: ${bundle.path}`) } catch (err) { say(`bundle save failed: ${err.message}`) }
-    let choice = chooseNext({ agent, account, accounts })
+    try { bundle = saveSessionBundle(cur, { messages: messagesFor(agent, cur), why: whyStopped }); say(`bundle saved: ${bundle.path}`) } catch (err) { say(`bundle save failed: ${err.message}`) }
+    // saveSessionBundle writes the notes file before it shells out to chb, so
+    // even when chb is missing and the save throws, the context is on disk
+    const notesFile = join(workRoot(cur) ?? cur.cwd, '.baton', `session-${sid}.md`)
+    let choice = chooseNext({ agent, account, accounts, installed })
     let cancelled = false
     while (!choice.next) {
-      // every option is out: keep the terminal, count down to the first
-      // reset, then start that option from the bundle. Ctrl-C (or End on the
-      // board) quits with exit 3 the way the old all-out did.
-      const lines = choice.out.map((o) => `  ${o.agent}${o.account !== 'default' ? '/' + o.account : ''}: resets ${fmtReset(o.resets_at)}`)
-      const first = choice.out[0]
+      // every option is out: keep the terminal, count down to the SOONEST reset
+      // (the current agent's own wall included — it may be the first back), then
+      // start that option from the bundle. Ctrl-C (or End) quits with exit 3.
+      const own = readUsage(agent, account)
+      const all = [...choice.out]
+      if (Number.isFinite(own.limited_until)) all.push({ agent, account, resets_at: own.limited_until, reason: own.limited_reason ?? 'limit' })
+      all.sort((a, b) => (a.resets_at ?? Infinity) - (b.resets_at ?? Infinity))
+      const first = all[0]
       const label = first ? `${first.agent}${first.account !== 'default' ? '/' + first.account : ''}` : 'unknown'
       say(`every option is out. First back: ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}`)
-      for (const l of lines) say(l)
+      for (const o of all) say(`  ${o.agent}${o.account !== 'default' ? '/' + o.account : ''}: resets ${fmtReset(o.resets_at)}`)
       say(`waiting for ${label}; Ctrl-C to quit`)
-      updateSession(sid, { status: 'waiting', all_out: choice.out, waiting: first ? { agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
+      updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
       const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
       if (r2 === 'cancelled') { cancelled = true; break }
-      choice = chooseNext({ agent, account, accounts })
+      // the current pair may be the one that came back; chooseNext excludes it
+      if (isAvailable(readUsage(agent, account))) { choice = { next: { agent, account }, out: [] }; break }
+      choice = chooseNext({ agent, account, accounts, installed })
     }
     if (cancelled) {
       updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), waiting: null }, { event: { type: 'ended', summary: 'quit while waiting for a reset (exit 3)' } })
@@ -396,8 +442,18 @@ export async function attach(agent, args = [], { open = true } = {}) {
     }
     const next = choice.next
     updateSession(sid, { waiting: null })
+    // bound the number of hand-offs in one terminal so a chain that limits
+    // instantly can never loop forever; stopping is explicit, not a silent exit 0
+    if (leg >= 11) {
+      say(`reached the 12-leg hand-off limit for one session; stopping. Run baton again in this directory to continue from the bundle.`)
+      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: 3 }, { event: { type: 'ended', summary: 'reached the 12-leg hand-off limit; stopped (exit 3)' } })
+      exit = 3
+      break
+    }
     updateSession(sid, { status: 'handing_off', handoff: { from: { agent, account }, to: next, bundle_id: bundle?.id ?? null, reason: r.reason === 'limit' ? 'usage limit' : 'requested', at: new Date().toISOString() } }, { event: { type: 'handoff', summary: `${agent}${account !== 'default' ? '/' + account : ''} → ${next.agent}${next.account !== 'default' ? '/' + next.account : ''}${bundle ? ` (bundle ${bundle.id})` : ''}` } })
-    prompt = bundle ? resumePrompt(cur, bundle, next) : `You are taking over an interactive coding session from ${agent}. Check git status and git diff in this directory and continue the work. The task: ${cur.task ?? 'see the recent changes'}`
+    prompt = bundle
+      ? resumePrompt(cur, bundle, next)
+      : `You are taking over an interactive coding session from ${agent}.${existsSync(notesFile) ? ` Read ${notesFile} in this directory first (the previous agent's notes: task, last messages, dirty files).` : ''} Check git status and git diff, then continue the work. The task: ${cur.task ?? 'see the recent changes'}`
     say(`starting ${next.agent}${next.account !== 'default' ? '/' + next.account : ''} in this terminal from the bundle`)
     agent = next.agent; account = next.account; legArgs = []
     updateSession(sid, { lineage: { from: cur.agent, to: next.agent } })

@@ -20,7 +20,7 @@ turns, so the first leg ends before the DONE marker.
 | time | event | detail |
 |------|-------|--------|
 | 02:32:50 | card_created | actor human:local, chain claude > codex |
-| 02:32:51 | leg_started | adapter `claude`, run 1, `--permission-mode acceptEdits --max-turns 2` |
+| 02:32:51 | leg_started | adapter `claude`, run 1, `mode=default`, `--max-turns 2` |
 | 02:33:23 | leg_exited | **outcome `failed`**, exit 1, signal `claude-max-turns` (32 s) |
 | 02:33:24 | handoff_written | bundle `20260911-023324-baton-card-20260911-0232-real-calc-build-leg0`, quality **strong (0.65)** |
 | 02:33:25 | leg_started | adapter `codex`, run 2, `-s workspace-write` |
@@ -48,8 +48,9 @@ still hands off.)
 
 `fixtures/real-run/bundle-show.txt`: Findings carry "Done so far", "Diff since
 leg start", the touched path; Open questions carry the outcome and exit code.
-Leg 2's prompt started with `context-handoff-bundle load` output followed by
-the contract (`.baton/CONTRACT.md`).
+Leg 2 picked the handoff up: its first message is "Proceeding from the last
+agent state" and its second tool call reads `.baton/CONTRACT.md` and the
+handoff file (`fixtures/real-run/leg2/out.excerpt.log`, items 1-3).
 
 ## Leg 2 (codex)
 
@@ -57,20 +58,23 @@ the contract (`.baton/CONTRACT.md`).
 wrote `src/calc.mjs` and `test/calc.test.mjs`, ran the tests itself (its
 sandbox allowed `node --test` here; LESSONS 07-13 recorded a policy block on a
 different machine setup), wrote `.baton/PROGRESS.md` and `.baton/DONE`, and
-printed a summary. Verified afterwards in the worktree:
+printed a summary. Verified inside leg 2
+(`fixtures/real-run/leg2/out.excerpt.log`, item 20), which ran the repo's
+`npm test` -> `node --test` in the worktree:
 
 ```
-$ ls src test .baton
-src: calc.mjs   test: calc.test.mjs   .baton: CONTRACT.md DONE PROGRESS.md handoff-build-leg0.md
-$ node --test
-ℹ tests 5  ℹ pass 5  ℹ fail 0
+tests 5  pass 5  fail 0
 ```
+
+The worktree holds `src/calc.mjs`, `test/calc.test.mjs` and
+`.baton/{CONTRACT.md, DONE, PROGRESS.md, handoff-build-leg0.md}`.
 
 ## What this proves
 
-- The subscription logins were used (ANTHROPIC_API_KEY and OPENAI_API_KEY were
-  set in the shell and stripped by the adapters; no "another auth source"
-  warning appeared in either stderr).
+- The subscription logins were used: neither leg's stderr carries an
+  "another auth source" warning (`leg1/err.log` is empty, `leg2/err.log` is
+  one stdin notice), and `sanitizeEnv` strips ANTHROPIC_API_KEY and
+  OPENAI_API_KEY before any adapter starts (test/redact.test.mjs).
 - The handoff is CLI-agnostic: the bundle written after a Claude leg was
   consumed by a Codex leg through the same `load` + contract prompt.
 - The DONE-marker contract classified both legs without parsing prose.

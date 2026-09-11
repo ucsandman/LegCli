@@ -68,8 +68,8 @@ One per session, active sessions first, then by start time:
   path and branch.
 - **Usage bars**: the 5h and 7d windows for this session's login. When the
   endpoint has no numbers for them the card says `usage unknown (<why>) · the
-  limit still hands off` instead: no login in that config directory, an expired
-  token, a 404, a body that is not JSON, or a shape Baton does not recognise.
+  limit still hands off` instead: no login in that config directory, a 404, a
+  429, a body that is not JSON, or a shape Baton does not recognise.
 - **Warning line** at `BATON_WARN_PCT`: `⚠ <window> window at <n>% · next:
   <agent>`, naming the option Baton would hand to.
 - **Limit line**: `limit: <reason> · resets <time>`, the raw limit text on
@@ -146,8 +146,9 @@ an owner chip: green when the terminal is yours, grey when it is not
 
 A card that belongs to someone else is drawn with a dashed border and says
 `read-only: <name> owns this terminal`. Its prompt reads `prompt hidden`, it
-has no file chips, no limit text, no bundle line and no log, and its only
-button is **Request handoff**. The owner sees `<name> asked for a hand-off
+has no file chips, no bundle line and no log, and the limit line keeps only
+the reason and the reset time (never the raw limit text); its only button is
+**Request handoff**. The owner sees `<name> asked for a hand-off
 <when>` on their own card with **Approve** and **Dismiss**.
 
 A guest's board has no Pipelines section, no New card button and no Floor link:
@@ -155,8 +156,8 @@ that side belongs to the owner of the machine, and the API answers 403.
 
 ## Pipelines: board layout
 
-Everything from here down is the v0.1 pipeline board, unchanged in 0.2.0. It
-sits below the Terminals lane.
+Everything from here down is the v0.1 pipeline board, unchanged since 0.2.0.
+It sits below the Terminals lane.
 
 The top bar (`src/board/index.html`) has, left to right: the Baton brand, an
 SSE connection dot and text (`connecting` / `live` / `reconnecting…`), a
@@ -167,8 +168,9 @@ the server is bound off loopback; see
 
 Below that: an empty-state message with its own **New card** button when
 there are no cards yet ("No pipeline cards. Terminals above are the main way
-in; a card runs an agent chain headless.",
-`docs/screenshots/board-empty.png`), or the column board.
+in; a card runs an agent chain headless.", the lower half of
+`docs/screenshots/terminals-1280.png`; `board-empty.png` still shows the
+older v0.1 wording), or the column board.
 
 ## Columns
 
@@ -237,8 +239,9 @@ set), a state glyph, and a lock glyph if that entry is gated with
 | · | (default) | this leg has not run yet |
 | 🔒 | (approve) | this leg is gated: it needs Approve before it starts |
 
-`docs/screenshots/board-handoff.png` shows the ↷ glyph on a claude leg next
-to a needs-approval card.
+`docs/screenshots/demo-2-limit-hit.png` shows the ↷ glyph on the fake-claude
+leg of a needs-approval card, with the 🔒 lock on the gated fake-codex leg
+next to it.
 
 ## Drawer
 

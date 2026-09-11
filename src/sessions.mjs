@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, appendFileSync, rmSyn
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { home } from './store.mjs'
-import { writeJsonAtomic } from './fsx.mjs'
+import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { scrub } from './redact.mjs'
 
 export const AGENTS = ['claude', 'codex', 'agy']
@@ -66,14 +66,21 @@ export function createSession({ id, agent, account = 'default', cwd, repo = null
 }
 
 // Patch the record; arrays replace, `merge` deep-merges one level (limits).
+// `patch` may be a function (cur) => delta: the read, the compute and the write
+// then happen inside one cross-process lock, so concurrent hook/tap/poller
+// processes cannot lose an accumulated field (files_touched, turns) to a
+// last-writer-wins race. Callers that only set fixed values pass a plain object.
 export function updateSession(id, patch, { event } = {}) {
-  const cur = readSession(id)
-  if (!cur) return null
-  const next = { ...cur, ...patch, updated_at: now() }
-  if (patch.limits && cur.limits) next.limits = { ...cur.limits, ...patch.limits }
-  writeJsonAtomic(join(sessionDir(id), 'session.json'), next)
-  if (event) appendEvent(id, event)
-  return next
+  return withFileLock(join(sessionDir(id), '.session.lock'), () => {
+    const cur = readSession(id)
+    if (!cur) return null
+    const delta = typeof patch === 'function' ? patch(cur) : patch
+    const next = { ...cur, ...delta, updated_at: now() }
+    if (delta.limits && cur.limits) next.limits = { ...cur.limits, ...delta.limits }
+    writeJsonAtomic(join(sessionDir(id), 'session.json'), next)
+    if (event) appendEvent(id, event)
+    return next
+  })
 }
 
 export function appendEvent(id, ev) {
@@ -91,8 +98,14 @@ export function readEvents(id) {
 }
 
 // Board → runner. The runner polls this file; a consumed request is deleted.
+// Merge, never replace: an `end` and a later `handoff` (or a second board
+// command in the same poll window) both survive to be seen by takeControl,
+// instead of the second write silently dropping the first.
 export function requestControl(id, req) {
-  writeJsonAtomic(join(sessionDir(id), 'control.json'), { ...req, requested_at: now() })
+  const f = join(sessionDir(id), 'control.json')
+  let existing = {}
+  if (existsSync(f)) { try { existing = JSON.parse(readFileSync(f, 'utf8')) } catch {} }
+  writeJsonAtomic(f, { ...existing, ...req, requested_at: now() })
 }
 export function takeControl(id) {
   const f = join(sessionDir(id), 'control.json')
@@ -141,7 +154,9 @@ export function readLandings() {
 
 function pidAlive(pid) {
   if (!pid) return false
-  try { process.kill(pid, 0); return true } catch { return false }
+  // EPERM means the process exists but is not ours to signal (e.g. an elevated
+  // terminal): it is alive. Only ESRCH ("no such process") means gone.
+  try { process.kill(pid, 0); return true } catch (e) { return e.code === 'EPERM' }
 }
 
 // A session whose runner process is gone (terminal closed, crash) is marked

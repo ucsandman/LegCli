@@ -1,6 +1,6 @@
 {
   "name": "baton-agents",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "baton claude|codex|agy: your interactive coding agent with a board alongside, usage-limit tracking, a live context handoff bundle, and a hand-off to the next agent in the same terminal when the limit hits.",
   "type": "module",
   "license": "MIT",

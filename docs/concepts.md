@@ -142,7 +142,7 @@ working; `baton share rotate <name>` replaces one.
 ## Cards, stations and pipelines
 
 Everything from here down is the v0.1 pipeline: headless agents in a git
-worktree, one per card. It is unchanged in 0.2.0 and is not the way in.
+worktree, one per card. It has not changed since 0.2.0 and is not the way in.
 
 A **card** is one task moving through a **pipeline**: an ordered list of
 **stations**. A station has a `kind`:

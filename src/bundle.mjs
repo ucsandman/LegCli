@@ -80,11 +80,16 @@ export function resumePrompt(session, bundle, next) {
     const r = chb(['load', bundle.id], { cwd })
     if (r.status === 0) loaded = r.stdout
   } catch {}
-  const resumeFile = join(cwd, '.baton', 'RESUME.md')
   const header = `# Baton handoff\n\nPrevious agent: ${session.agent} (${session.account}). Reason: ${session.limit?.reason ?? session.handoff?.reason ?? 'handoff requested'}${session.limit?.detail ? ` — ${session.limit.detail}` : ''}.\nNext agent: ${next.agent} (${next.account}).\nBundle: ${bundle.path}\n\n`
-  writeFileSync(resumeFile, header + (loaded || readFileSync(bundle.notes, 'utf8')))
+  const body = header + (loaded || readFileSync(bundle.notes, 'utf8'))
+  // per-session file so two sessions sharing one checkout (--no-worktree, or two
+  // started in the same instant) never overwrite each other's handoff; RESUME.md
+  // stays as a convenience copy for the common single-session case
+  const perSession = join(cwd, '.baton', `RESUME-${session.session_id}.md`)
+  writeFileSync(perSession, body)
+  try { writeFileSync(join(cwd, '.baton', 'RESUME.md'), body) } catch {}
   const task = session.task ? `\n\nThe task, as the human first stated it: ${session.task.slice(0, 700)}` : ''
-  return `You are taking over an interactive coding session from ${session.agent}, which hit its usage limit. Read .baton/RESUME.md in this directory (the context handoff bundle is at ${bundle.path}), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.${task}`
+  return `You are taking over an interactive coding session from ${session.agent}, which hit its usage limit. Read .baton/RESUME-${session.session_id}.md in this directory (the context handoff bundle is at ${bundle.path}), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.${task}`
 }
 
 export function resumeFileExists(cwd) { return existsSync(join(cwd, '.baton', 'RESUME.md')) }
