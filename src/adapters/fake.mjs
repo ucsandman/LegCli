@@ -9,7 +9,7 @@ import { sanitizeEnv } from '../env.mjs'
 const FAKE_AGENT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin', 'fake-agent.mjs')
 
 export function makeFake(name = 'fake', stdin = 'pipe') {
-  const m = /^fake-(claude|codex|gemini|agy)$/.exec(name)
+  const m = /^fake-(claude|codex|agy)$/.exec(name)
   return {
     name,
     stdin,

@@ -14,11 +14,32 @@ edit it; `.env` is gitignored. Running `node bin/baton.mjs` directly (not
 through `npm start`/`npm run dev`) does not read `.env`; export the
 variables yourself in that case.
 
+## Interactive sessions
+
+These apply to `baton claude|codex|agy`.
+
+| variable | default | meaning | read in |
+|----------|---------|---------|---------|
+| `BATON_ACCOUNT` | `default` | start the session on a named login instead of the CLI's own home | `src/attach.mjs` |
+| `BATON_WARN_PCT` | `85` | the percentage of either usage window that turns the card amber, records a `warning` event and rings the terminal bell once | `src/usage.mjs` |
+| `BATON_NO_HANDOFF` | (unset, hand-off on) | set to `1` to warn and record but never switch agents | `src/attach.mjs` |
+| `BATON_NO_OPEN` | (unset, opens once) | set to `1` to start the board without opening a browser | `bin/baton.mjs` |
+| `BATON_USAGE_POLL_MS` | `60000` | how often the claude usage endpoint is polled | `src/attach.mjs` |
+| `BATON_ATTACH_POLL_MS` | `2000` | how often the session loop re-reads the taps; git is re-read every third poll | `src/attach.mjs` |
+| `BATON_CLAUDE_USAGE_URL` | `https://api.anthropic.com/api/oauth/usage` | the usage endpoint, for a test double | `src/taps/claude-usage.mjs` |
+
+`BATON_SESSION` is not an input: Baton sets it in the agent's environment to
+the session id, so a hook or a script inside the session can find its own
+record under `$BATON_HOME/sessions/`.
+
+`CLAUDE_CONFIG_DIR` and `CODEX_HOME` are set for the child when the session
+runs on a named account; see [Accounts](#accounts) below.
+
 ## Core
 
 | variable | default | meaning | read in |
 |----------|---------|---------|---------|
-| `BATON_HOME` | `~/.baton` | where cards, runs, and the pidfiles live | `src/store.mjs`, `src/ledger.mjs`, `src/runner.mjs`, `src/worktree.mjs`, `src/cards.mjs` |
+| `BATON_HOME` | `~/.baton` | where sessions, usage, accounts, cards, runs and the pidfiles live | `src/store.mjs`, `src/ledger.mjs`, `src/runner.mjs`, `src/worktree.mjs`, `src/cards.mjs`, `src/sessions.mjs`, `src/usage.mjs`, `src/accounts.mjs` |
 | `BATON_PORT` | `4747` | board server port | `src/server.mjs`, `src/launcher.mjs`, `bin/baton.mjs` (`open`) |
 | `BATON_BIND` | `127.0.0.1` | board server bind address | `src/server.mjs`, `src/launcher.mjs` |
 | `BATON_TOKEN` | (none) | bearer token required for `/api/*` and the event stream once set | `src/server.mjs`, `src/auth.mjs` |
@@ -57,11 +78,52 @@ resolves to by default.
 |----------|---------|---------|
 | `BATON_CLAUDE_BIN` | claude | `src/adapters/claude.mjs` |
 | `BATON_CODEX_BIN` | codex | `src/adapters/codex.mjs` |
-| `BATON_GEMINI_BIN` | gemini | `src/adapters/gemini.mjs` |
 | `BATON_AGY_BIN` | agy | `src/adapters/agy.mjs` |
 | `BATON_GROK_BIN` | grok (not registered by default) | `src/adapters/grok.mjs` |
 | `BATON_GH_BIN` | the `pr` land-mode stub | `src/stations/pr.mjs`; unset, `land_mode: pr` returns an error rather than running a real `gh` |
 | `BATON_CHB_BIN` | `context-handoff-bundle` | `src/handoff.mjs`; unset, Baton tries `context-handoff-bundle` on PATH, then `python -m context_handoff_bundle` |
+
+## Accounts
+
+An extra login is a directory under `$BATON_HOME`, never a change to your real
+home. `src/accounts.mjs` `LAYOUT` is the whole definition.
+
+```
+~/.baton/
+  accounts.json                     the named accounts per agent
+  accounts/claude/<name>/
+    hooks/ skills/ agents/ commands/ plugins/ rules/ scripts/
+    output-styles/ tools/           junctions back to ~/.claude
+    settings.json settings.local.json CLAUDE.md keybindings.json
+    statusline.ps1 statusline-combined.ps1
+                                    copies, refreshed before every launch
+    .credentials.json               the login, written by claude itself
+  accounts/codex/<name>/
+    skills/ prompts/ rules/ plugins/ agents/ hooks/ memories/ superpowers/
+                                    junctions back to ~/.codex
+    config.toml AGENTS.md           copies, refreshed before every launch
+```
+
+| agent | config-dir variable | default home |
+|-------|---------------------|--------------|
+| claude | `CLAUDE_CONFIG_DIR` | `~/.claude` |
+| codex | `CODEX_HOME` | `~/.codex` |
+| agy | none in 1.2.0, so one account only | `~/.gemini/antigravity-cli` |
+
+Commands:
+
+```
+baton accounts ls                      logins and their 5h/7d usage
+baton accounts add <claude|codex> <name>
+baton accounts rm <claude|codex> <name>
+baton accounts terms                   what both vendors' terms say
+```
+
+`add` creates the directory, junctions the shared directories in, copies the
+settings files, and prints one line to paste to log in. `rm` removes the
+junctions as links, never following them, then deletes the directory. Nothing
+under your real home is written at any point. Start a session on a named
+account with `BATON_ACCOUNT=<name>`, or let a limit hand off to it.
 
 ## Test and development seams
 

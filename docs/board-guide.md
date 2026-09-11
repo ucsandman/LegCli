@@ -1,8 +1,11 @@
 # Board guide
 
 For anyone using the Baton board day to day: what every element means and
-when it shows up. Start the board first (`npm start`, see
-[getting-started.md](getting-started.md)), then use this as a reference.
+when it shows up. The board has two halves: the **Terminals** lane at the top
+(the sessions started with `baton claude|codex|agy`) and the v0.1 **Pipelines**
+columns below it. Start a session (`baton claude`) or the pipeline board
+(`npm start`), see [getting-started.md](getting-started.md), then use this as a
+reference.
 
 ## Screenshots
 
@@ -20,8 +23,93 @@ kanban-final-1280.png     kanban-final-400.png
 ```
 
 The `demo-*` sequence is walked through in [DEMO.md](DEMO.md).
+`terminals-1280.png` is the Terminals lane.
 
-## Board layout
+## Terminals lane
+
+`src/board/sessions.js` renders it from `GET /api/sessions`, refreshed by the
+server-sent `sessions` event and re-rendered every 15 s so the elapsed and
+reset times stay honest. With no sessions yet it says so and names the command
+to run.
+
+### Accounts strip
+
+One pill per login, `<agent>` for the default account and `<agent>/<name>` for
+a named one:
+
+- **5h and 7d usage bars**, green under 60 %, amber from 60 %, red from 85 %.
+  A window with no reading shows an em dash. Hover gives the exact percentage
+  and when the window resets.
+- **A live dot** next to the name when a session is running on that login;
+  hovering says how many.
+- **`limit · back <time>`** instead of the bars when that login is walled. The
+  time is when it comes back.
+- **`no % from agy`** for agy, which exposes no percentage at all.
+- Hovering the pill names the source of the reading and how long ago it
+  arrived.
+
+### Terminal card
+
+One per session, active sessions first, then by start time:
+
+- **Head row**: an agent pill (with the account name when it is not
+  `default`), the status chip, a `from <agent>` chip when this terminal started
+  on another agent and was handed off, and elapsed time since the session
+  started.
+- **Task**: the first prompt, truncated to 140 characters, or "no prompt yet".
+- **Meta**: `repo@branch` (the full path on hover), the turn count, and the
+  short HEAD sha.
+- **Usage bars**: the 5h and 7d windows for this session's login.
+- **Warning line** at `BATON_WARN_PCT`: `⚠ <window> window at <n>% · next:
+  <agent>`, naming the option Baton would hand to.
+- **Limit line**: `limit: <reason> · resets <time>`, the raw limit text on
+  hover.
+- **Handoff line**: `<from> → <to> (<reason>) · bundle <id>`.
+- **All-out line**: `every option is out · first back: <agent> <time>`.
+- **File chips**: up to 8 of the files this session is touching, then `+n`. A
+  chip turns red when another live session is touching the same file.
+- **Overlap flags**: one line per overlapping session, `⚠ <agent> (<id tail>)
+  is editing <files> too`. The whole card gets a red border. An overlap is two
+  live sessions in the same repo whose `files_touched` or `files_dirty` sets
+  intersect (`sessions.overlaps`), so it catches a file one agent has edited
+  and another has only made dirty.
+
+| status | chip label |
+|--------|------------|
+| `starting` | starting |
+| `running` | running |
+| `warning` | near limit |
+| `limit` | limit hit |
+| `handing_off` | handing off |
+| `handed_off` | handed off |
+| `ended` | ended |
+| `lost` | lost |
+
+`lost` means the runner process that owned that terminal is gone. It is never
+counted as live.
+
+### Terminal buttons
+
+| button | shown when | what it does |
+|--------|------------|--------------|
+| Hand off now | the session is active | `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal |
+| End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
+| Remove | the session is not active | `DELETE /api/sessions/:id`: forgets the session record |
+
+Each press shows a toast; **Hand off now** says the terminal switches agents in
+a few seconds, because the switch happens in the terminal, not the browser.
+
+### Landed on trunk
+
+Below the cards, one block per repo with a live session:
+`landed on <branch> · <repo>`, then the last 6 commits of the first of `main`,
+`master` or `trunk` that exists, with sha, subject, when and author. It answers
+"what actually got in" without leaving the board.
+
+## Pipelines: board layout
+
+Everything from here down is the v0.1 pipeline board, unchanged in 0.2.0. It
+sits below the Terminals lane.
 
 The top bar (`src/board/index.html`) has, left to right: the Baton brand, an
 SSE connection dot and text (`connecting` / `live` / `reconnecting…`), a
@@ -31,8 +119,9 @@ the server is bound off loopback; see
 [configuration.md](configuration.md#network-exposure)).
 
 Below that: an empty-state message with its own **New card** button when
-there are no cards yet (`docs/screenshots/board-empty.png`), or the column
-board.
+there are no cards yet ("No pipeline cards. Terminals above are the main way
+in; a card runs an agent chain headless.",
+`docs/screenshots/board-empty.png`), or the column board.
 
 ## Columns
 

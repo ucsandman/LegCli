@@ -95,6 +95,17 @@ It clones the repo into `<scratch-dir>`, runs `npm ci`, `npm test`,
   .githooks` (above) wires `.githooks/pre-commit`, which runs
   `node scripts/privacy-check.mjs --staged` and blocks the commit on any
   hit. Do not commit with `--no-verify` to skip it.
+- **The test suite never starts a real agent.** Every test drives `fake`,
+  `fake-claude`, `fake-codex`, `fake-agy` or `fake-nostdin` with `FAKE_MODE`,
+  and every tap test reads a recorded fixture. A test that needs a real
+  subscription login is a test that cannot run in CI or on a contributor's
+  machine.
+- **A real agent session started by hand to test tooling runs on the cheapest
+  model.** `baton claude --model haiku` (or `--model sonnet`); for another
+  agent, whatever its own cheapest-model flag is.
+  Verifying that a hook fires or that a tap reads the right file costs one
+  turn; there is no reason for that turn to come out of an expensive model's
+  usage window.
 
 ## Commit message style
 

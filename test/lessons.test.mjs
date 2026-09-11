@@ -114,7 +114,7 @@ test('no-cmd-shim: resolveNpmCliEntry never returns a .cmd/.ps1 path', () => {
   const entry = resolveNpmCliEntry('x', 'x', { pkgDir: dir })
   assert.ok(entry.endsWith('x.js'))
   assert.equal(resolveNpmCliEntry('x', 'x', { binOverride: 'x.cmd', pkgDir: join(dir, 'absent') }), null)
-  for (const name of ['codex', 'gemini']) {
+  for (const name of ['codex']) {
     // whatever this machine resolves to, it is never a shim
     assert.ok(!/\.(cmd|ps1)$/i.test(String(resolveNpmCliEntry(name))))
   }

@@ -8,12 +8,10 @@ const REGISTRY = {
   fake: { path: './fake.mjs' },
   'fake-claude': { path: './fake.mjs', fake: ['fake-claude', 'pipe'] },
   'fake-codex': { path: './fake.mjs', fake: ['fake-codex', 'ignore'] },
-  'fake-gemini': { path: './fake.mjs', fake: ['fake-gemini', 'ignore'] },
   'fake-agy': { path: './fake.mjs', fake: ['fake-agy', 'ignore'] },
   'fake-nostdin': { path: './fake.mjs', fake: ['fake-nostdin', 'ignore'] },
   claude: { path: './claude.mjs' },
   codex: { path: './codex.mjs' },
-  gemini: { path: './gemini.mjs' },
   agy: { path: './agy.mjs' },
 }
 

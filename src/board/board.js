@@ -21,7 +21,7 @@
     enqueue: 'run', pause: 'pause', resume: 'resume', kill: 'kill', reassign: 'reassign',
     handoff_now: 'handoff', approve: 'approve', rerun: 'rerun',
   }
-  const ADAPTER_ACCENTS = ['claude', 'codex', 'gemini', 'agy']
+  const ADAPTER_ACCENTS = ['claude', 'codex', 'agy']
 
   const state = {
     cards: new Map(),
@@ -138,7 +138,9 @@
       state.columns = data.columns
       state.cards = new Map(data.cards.map((c) => [c.card_id, c]))
       renderBoard()
+      if (data.sessions) window.dispatchEvent(new CustomEvent('baton:sessions', { detail: data.sessions }))
     })
+    es.addEventListener('sessions', (e) => window.dispatchEvent(new CustomEvent('baton:sessions', { detail: JSON.parse(e.data) })))
     es.addEventListener('card', (e) => upsertCard(JSON.parse(e.data)))
     es.addEventListener('removed', (e) => dropCard(JSON.parse(e.data).card_id))
     es.addEventListener('event', (e) => onLedgerEvent(JSON.parse(e.data)))

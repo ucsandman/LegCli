@@ -45,7 +45,6 @@ function version(bin, args = ['--version']) {
 const INSTALL_HINT = {
   claude: 'https://claude.com/claude-code (then `claude` to log in)',
   codex: 'npm i -g @openai/codex (then `codex login`)',
-  gemini: 'npm i -g @google/gemini-cli (then `gemini` to log in)',
   agy: 'Antigravity CLI (`agy`), log in once interactively',
 }
 
@@ -63,7 +62,7 @@ export async function preflight() {
     const v = viaNode ? version(process.execPath, [entry, '--version']) : version(bin)
     if (v) { present += 1; rows.push([name, 'ok', `${v} (${viaNode ? entry : bin})`]) } else rows.push([name, 'missing', INSTALL_HINT[name] ?? 'not on PATH'])
   }
-  rows.push(['fake adapters', 'ok', 'fake, fake-claude, fake-codex, fake-gemini, fake-agy (tests and demo)'])
+  rows.push(['fake adapters', 'ok', 'fake, fake-claude, fake-codex, fake-agy (tests and demo)'])
   return { rows, adapters_present: present }
 }
 

@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0 (2026-09-11)
+
+The way in is now `baton claude`, `baton codex` or `baton agy`: the normal
+interactive agent in your terminal, with Baton alongside it. The v0.1 form,
+pipelines, leases and merge queue stay as extras.
+
+- `baton <agent> [args…]` starts the real interactive CLI with your settings,
+  hooks and skills; extra args pass straight through. API-key variables are
+  stripped; nothing in `~/.claude`, `~/.codex` or agy's home is edited.
+- The board opens once and is reused; every session in every terminal is a
+  card: agent, account, repo@branch, task, turns, files being touched, 5h/7d
+  usage, warning/limit/handoff state. Two live sessions editing the same file
+  in one repo are flagged on both cards. A "landed on trunk" list per repo.
+  Buttons: Hand off now, End, Remove.
+- Usage tracking per agent and account. claude: Claude Code's usage endpoint
+  with the stored login (the status-line JSON route is written but Claude Code
+  2.1.268 does not run custom status lines; see docs/adapters.md) plus the
+  `StopFailure` `rate_limit` hook. codex: the session rollout file
+  (`token_count.rate_limits`, `usage_limit_exceeded`). agy: its log
+  (`RESOURCE_EXHAUSTED`, "it resets in"); no percentage is exposed.
+- A context-handoff-bundle per session, refreshed every two minutes and at
+  every warning/limit/handoff (`save --update <slug>`).
+- Hand-off on limit or on request: bundle, stop the agent, restore the
+  terminal, start the next option in the same terminal from `.baton/RESUME.md`.
+  Order: other logins of the same agent, then the next agents (claude → codex
+  → agy). When every option is out: each reset time, soonest first, exit 3.
+- Optional second logins: `baton accounts add <claude|codex> <name>` (config-dir
+  junctions for the shared harness, one login line to paste). The terms of
+  both vendors are printed at add time and documented in the README.
+- `baton uninstall [--yes]` removes only `~/.baton`.
+- gemini removed everywhere (Google retired Gemini CLI in favour of agy).
+- 0 runtime dependencies still. New modules: src/attach.mjs, src/sessions.mjs,
+  src/usage.mjs, src/accounts.mjs, src/bundle.mjs, src/hook.mjs, src/taps/*.
+
 ## 0.1.0 (2026-09-10)
 
 First public release (source on GitHub; not on npm yet).

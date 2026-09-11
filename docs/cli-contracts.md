@@ -2,9 +2,13 @@
 
 What Baton knows about each coding-agent CLI, where every fact came from, and
 which facts were observed live on the build machine versus read from `--help`
-or docs. Evidence: `fixtures/help/<cli>.txt` (raw `--help`), `fixtures/live/<cli>/`
-(one real tiny task per CLI, run through `src/runner.mjs launch` on 2026-09-10;
-paths under the local home directory are replaced with `~`).
+or docs. Two contracts per CLI: the headless argv a pipeline leg spawns
+(§ per CLI below), and the interactive tap `baton <agent>` reads
+(§ [Interactive taps](#interactive-taps)). Evidence:
+`fixtures/help/<cli>.txt` (raw `--help`), `fixtures/live/<cli>/` (one real tiny
+task per CLI, run through `src/runner.mjs launch` on 2026-09-10; paths under
+the local home directory are replaced with `~`), and the interactive checks run
+on 2026-09-11.
 
 Every fact line ends with `(source: …)`. `observed-live` means the build machine
 did it; `docs-only` means the CLI's own `--help` or documentation says so and
@@ -18,7 +22,6 @@ containing the line: done. Do nothing else."
 |-----|---------|--------------|---------|
 | claude | 2.1.268 | exit 0, file yes, DONE yes, 20 s | `src/adapters/claude.mjs` |
 | codex | codex-cli 0.153.4 | exit 0, file yes, DONE yes, 28 s | `src/adapters/codex.mjs` |
-| gemini | 0.55.1 | attempt 1 exit 55 (untrusted folder); attempt 2 exit 1 (account tier ineligible) | `src/adapters/gemini.mjs` (registered; not verified live on this machine) |
 | agy | 1.2.0 | attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (`--add-dir`) exit 0, file yes, DONE yes, 42 s | `src/adapters/agy.mjs` |
 | grok | 0.2.51 | exit 0, `stopReason: Cancelled`, no file: not logged in (device-code prompt) | `src/adapters/grok.mjs` exists, NOT registered |
 
@@ -122,43 +125,6 @@ stderr are 0 bytes, and codex's is the one stdin notice. observed-live.
   `exec … resume <thread_id> <prompt>`; docs-only until phase 5 exercises it.
 - Limit signals: see § Limit signals (phase 4).
 
-## gemini
-
-- Version 0.55.1 (source: `gemini --version`).
-- Binary: npm package `@google/gemini-cli`, `bundle/gemini.js`, run as
-  `node <entry>` via `resolveNpmCliEntry`; `BATON_GEMINI_BIN` overrides
-  (source: package.json `bin`; fixtures/live/gemini/cmd.txt).
-- Headless argv (exact): `node gemini.js -p "<prompt>" -o json --approval-mode auto_edit --skip-trust`;
-  stdin `ignore` (gemini appends stdin to the prompt if any: source `gemini --help -p`).
-  `--skip-trust` "Trust the current workspace for this session" (source:
-  `gemini --help`). Without it, headless gemini in an untrusted folder prints
-  "Approval mode overridden to \"default\" because the current folder is not
-  trusted" and exits **55** (observed-live, fixtures/live/gemini/attempt-1-untrusted.err.log).
-  Workspace trust is not a permission bypass; the approval mode still gates tools.
-- Output format: `-o json` (choices text|json|stream-json; source: `gemini --help`).
-  Shape not observed live on this machine; the adapter parses the first JSON
-  object on stdout and reads `session_id`, `response`, `error`, `stats` (docs-only).
-- Exit codes:
-
-  | exit | meaning | source |
-  |------|---------|--------|
-  | 55 | untrusted folder in headless mode | observed-live |
-  | 1 | `Error authenticating: IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals. To continue using Gemini, please migrate to the Antigravity suite of products` | observed-live, fixtures/live/gemini/err.log |
-  | 0 | success | docs-only |
-
-- Approval modes: `default`, `auto_edit`, `yolo`, `plan` (source: `gemini --help
-  --approval-mode`). Baton: default `auto_edit`; allowed `default`, `auto_edit`,
-  `plan`; forbidden `yolo`, `-y/--yolo`. Which mode allows the write is
-  unverified here (the account cannot run).
-- Resume: `-r/--resume latest|<index>`, `--session-id <uuid>` to start with a
-  chosen id, `--list-sessions` (source: `gemini --help`; docs-only).
-- Verdict: the CLI contract is complete from `--help`; the logged-in account on
-  the build machine is on a retired tier, so gemini cannot run here. Its
-  successor `agy` (Antigravity) is verified below. The adapter stays
-  registered for machines with an eligible login; a chain that includes gemini
-  on this machine gets an `auth_failed` leg and moves on.
-- Limit signals: see § Limit signals (phase 4).
-
 ## agy
 
 - Version 1.2.0 (source: `agy --version`).
@@ -219,6 +185,128 @@ stderr are 0 bytes, and codex's is the one stdin notice. observed-live.
   out of `src/adapters/index.mjs` until `grok login` has been completed on the
   machine and `node scripts/probe.mjs --adapter grok --repo <toy>` passes.
 
+## Interactive taps
+
+What `baton claude|codex|agy` reads while the real interactive CLI runs. Same
+tagging rule: `observed-live 2026-09-11` means the build machine did it;
+`docs-only` means the CLI's own source or documentation says so and Baton has
+not seen it happen. Machine: Claude Code 2.1.268, codex-cli 0.153.4, agy 1.2.0.
+
+Shared: the agent is spawned with stdio inherited and the user's arguments
+passed through (`src/attach.mjs` `spawnSpec`); the child environment is
+`sanitizeEnv(process.env, { interactive: true })` plus the account's config-dir
+variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
+
+### claude tap
+
+- Attach: `claude <args> --settings <BATON_HOME>/sessions/<id>/claude-settings.json`
+  (source: src/attach.mjs `spawnSpec`; src/taps/claude.mjs `writeSettings`).
+  Hooks in a `--settings` file merge with the user's rather than replacing
+  them; `statusLine` is the one key that replaces, so Baton runs the user's own
+  command first (source: code.claude.com/docs/en/settings;
+  src/taps/claude.mjs `userStatusLine`). observed-live 2026-09-11: a Baton
+  session ran with every user hook still firing.
+- Hooks written (source: src/taps/claude.mjs `settingsFor`): `SessionStart`,
+  `UserPromptSubmit`, `PostToolUse` with matcher `Edit|Write|MultiEdit|NotebookEdit`,
+  `Stop`, `StopFailure`, `SessionEnd`, each
+  `node <src>/hook.mjs claude-hook --session <id>` with a 20 s timeout.
+  observed-live 2026-09-11 (hook.log in the session directory).
+- `autoContinueAtUsageLimit: false` in the same file, because Baton owns the
+  hand-off (source: src/taps/claude.mjs `settingsFor`).
+- Usage: `GET https://api.anthropic.com/api/oauth/usage`
+  (`BATON_CLAUDE_USAGE_URL` overrides) with `Authorization: Bearer <accessToken>`
+  from `<CLAUDE_CONFIG_DIR>/.credentials.json` key `claudeAiOauth`, and header
+  `anthropic-beta: oauth-2025-04-20`; response fields `five_hour` and
+  `seven_day`, each `{ utilization, resets_at }`; polled every
+  `BATON_USAGE_POLL_MS` ms, default 60000 (source: src/taps/claude-usage.mjs).
+  observed-live 2026-09-11: 35 % five_hour, 92 % seven_day.
+- The wall: `StopFailure` hook with `error: rate_limit` (source:
+  https://code.claude.com/docs/en/hooks#stopfailure). docs-only: a real limit
+  could not be forced on the build machine.
+- Status line, not usable on 2.1.268: a custom `statusLine` command passed
+  through `--settings`, and again through a project
+  `.claude/settings.local.json`, was not run at all; an `echo` command at both
+  levels left the built-in status line in place while hooks from the same
+  `--settings` file fired (observed-live 2026-09-11, src/taps/claude-usage.mjs
+  header comment). Baton still writes the `statusLine` entry, which records the
+  same `rate_limits.five_hour` / `seven_day` fields
+  (https://code.claude.com/docs/en/statusline), so the endpoint poll becomes a
+  fallback if a later build honours it.
+
+### codex tap
+
+- Attach: nothing injected. `codex <args>` runs as it always does, and Baton
+  finds the session's rollout file afterwards (source: src/attach.mjs
+  `spawnSpec`). Reason: injecting a hook makes codex show its hooks-review
+  prompt on every Baton session.
+- Which file: `<CODEX_HOME>/sessions/YYYY/MM/DD/rollout-*.jsonl`, matched on
+  `session_meta.payload.cwd` equal to the session's cwd with an mtime at or
+  after the spawn time (source: src/taps/codex.mjs `findRollout`).
+  observed-live 2026-09-11: flushed per event, file mtime equals the last
+  line's timestamp.
+- Usage: `event_msg.token_count.rate_limits`, `primary`
+  `window_minutes: 300` and `secondary` `window_minutes: 10080`, each
+  `{ used_percent, resets_at }` (source: src/taps/codex.mjs header;
+  observed-live 2026-09-11).
+- The wall: `event_msg.task_complete.error` with
+  `codex_error_info: "usage_limit_exceeded"` and message "You've hit your usage
+  limit … try again at \<date>" (source:
+  github.com/openai/codex `codex-rs/protocol/src/error.rs`
+  `UsageLimitReachedError`). The event shape was read from 24 local rollouts;
+  the error itself is docs-only.
+- Transcript: `response_item.message` with `role: user` and
+  `content[].type: input_text` for prompts; `output_text` and
+  `task_complete.last_agent_message` for assistant text (source:
+  src/taps/codex.mjs; observed-live 2026-09-11).
+- Edited files: the `*** Add File:` / `*** Update File:` / `*** Delete File:`
+  lines of an `apply_patch` payload (source: src/taps/codex.mjs; observed-live
+  2026-09-11).
+
+### agy tap
+
+- Attach: `agy <args> --log-file <BATON_HOME>/sessions/<id>/agy.log` (source:
+  src/attach.mjs `spawnSpec`). agy 1.2.0 is a closed Go binary with no hook
+  surface.
+- Usage: none. No percentage is written to any file agy owns; its own status
+  line fetches a quota summary from the backend and stores nothing (source:
+  src/taps/agy.mjs header).
+- The wall: `RESOURCE_EXHAUSTED`, "it resets in %s", "out of quota", and
+  "quota exhausted/exceeded" in the log, plus a relative reset parsed out of
+  "resets in \<n>\<s|m|h|d>" (source: strings present in `agy.exe`;
+  src/taps/agy.mjs `scanLog`). docs-only: never hit live.
+- Prompts and conversation id: `~/.gemini/antigravity-cli/history.jsonl`, one
+  `{ display, timestamp, workspace, conversationId }` per prompt (source:
+  src/taps/agy.mjs `historyFile`; observed-live 2026-09-11).
+- One account only: agy 1.2.0 has no config-directory override, so
+  `LAYOUT.agy.env` is `null` and `accounts add agy` is refused (source:
+  src/accounts.mjs).
+
+### Usage store and the chooser
+
+- `<BATON_HOME>/usage/<agent>--<account>.json`:
+  `{ five_hour: {pct, resets_at}, seven_day: {…}, limited_until,
+  limited_reason, source, updated_at }` (source: src/usage.mjs).
+- Warning threshold `WARN_PCT`, default 85, from `BATON_WARN_PCT`; the warning
+  is an amber card, an event, and one terminal bell (source: src/usage.mjs,
+  src/attach.mjs).
+- `markLimited()` takes the reset the CLI reported; failing that the soonest
+  known window reset; failing that now + 5 h (source: src/usage.mjs
+  `DEFAULT_LIMIT_S`).
+- `candidates()` yields the other accounts of the same agent first, then the
+  remaining agents in the order claude, codex, agy, wrapping, so every option
+  is tried once. `chooseNext()` skips any option still walled and returns the
+  walled ones sorted by reset (source: src/usage.mjs).
+
+### Session store
+
+`<BATON_HOME>/sessions/<id>/` holds `session.json`, `events.jsonl`,
+`control.json`, `hook.log`, `claude-settings.json` and `agy.log` (source:
+src/sessions.mjs header, src/attach.mjs). Statuses and event types are listed
+in [VOCABULARY.md](VOCABULARY.md). Board routes: `GET /api/sessions`,
+`GET /api/sessions/:id`, `POST /api/sessions/:id/handoff`,
+`POST /api/sessions/:id/end`, `DELETE /api/sessions/:id`, with the list pushed
+as the SSE `sessions` event (source: src/server.mjs, src/board/sessions.js).
+
 ## Limit signals
 
 Recorded in `fixtures/limits/<group>/<id>.json` and classified by
@@ -239,7 +327,7 @@ non-zero exit → `failed`. Every outcome except `completed`, `auth_failed` and
 `killed` asks the chain to hand off.
 
 <!-- limits-table:start -->
-Generated by `node scripts/limits-table.mjs` from 25 fixtures (6 observed-live, 19 docs-only). Classification `limit` hands the card to the next agent as a usage limit; `auth` is a failed launch (never a limit); `launch` is a failed launch that the next agent may still try; `budget` is a turn or spend cap set by Baton itself; `info` must never classify as a limit.
+Generated by `node scripts/limits-table.mjs` from 21 fixtures (4 observed-live, 17 docs-only). Classification `limit` hands the card to the next agent as a usage limit; `auth` is a failed launch (never a limit); `launch` is a failed launch that the next agent may still try; `budget` is a turn or spend cap set by Baton itself; `info` must never classify as a limit.
 
 | id | adapter | class | where | source | text (excerpt) | produced by |
 |----|---------|-------|-------|--------|----------------|-------------|
@@ -254,10 +342,6 @@ Generated by `node scripts/limits-table.mjs` from 25 fixtures (6 observed-live, 
 | codex-skills-notice | codex | info | stdout | **observed-live** | Skill descriptions were shortened to fit the skills context budget. Codex can still see ev | fixtures/live/codex/out.log (item.completed, item.type=error) from scripts/probe.mjs --adapter codex, 2026-09-10 |
 | codex-usage-limit-reached | codex | limit | any | **docs-only** | Usage limit reached. You've reached your usage limit. Increase your limits to continue | github.com/openai/codex codex-rs/tui/src/chatwidget/turn_runtime.rs (WorkspaceOwnerUsageLimitReached) |
 | codex-usage-limit | codex | limit | any | **docs-only** | You’ve hit your usage limit for {limit_name}. Switch to another model now, | github.com/openai/codex codex-rs/protocol/src/error.rs (gh search code "usage limit" --repo openai/codex, 2026-09-10) |
-| gemini-ineligible-tier | gemini | auth | stderr | **observed-live** | Error authenticating: IneligibleTierError: This client is no longer supported for Gemini C | fixtures/live/gemini/err.log from scripts/probe.mjs --adapter gemini, 2026-09-10 |
-| gemini-quota-exceeded | gemini | limit | any | **docs-only** | You exceeded your current quota | github.com/google-gemini/gemini-cli packages/core/src/utils/googleErrors.test.ts |
-| gemini-resource-exhausted | gemini | limit | any | **docs-only** | got status: 429 Too Many Requests. {"error":{"code":429,"message":"Rate limit exceeded","s | github.com/google-gemini/gemini-cli packages/cli/src/nonInteractiveCliAgentSession.ts (status RESOURCE_EXHAUSTED => severity error on stderr) + packages/core/src/utils/errorParsing.test.ts |
-| gemini-untrusted-folder | gemini | launch | stderr | **observed-live** | Gemini CLI is not running in a trusted directory. To proceed, either use `--skip-trust`, s | fixtures/live/gemini/attempt-1-untrusted.err.log (exit 55) from scripts/probe.mjs --adapter gemini, 2026-09-10 |
 | generic-429 | * | limit | any | **docs-only** | 429 Too Many Requests | generic HTTP matcher (429 Too Many Requests); lowest priority |
 | generic-overloaded | * | limit | any | **docs-only** | overloaded_error | generic matcher (Anthropic API 529 overloaded_error); lowest priority |
 | generic-quota | * | limit | any | **docs-only** | quota | generic matcher; lowest priority |
@@ -267,7 +351,7 @@ Generated by `node scripts/limits-table.mjs` from 25 fixtures (6 observed-live, 
 | grok-not-logged-in | grok | auth | stderr | **observed-live** | To sign in, open this URL in your browser:    https://accounts.x.ai/oauth2/device?user_cod | fixtures/live/grok/err.log from scripts/probe.mjs --adapter grok, 2026-09-10 (stdout JSON stopReason: Cancelled, exit 0) |
 | auth-source-set | * | auth | stderr | **docs-only** | another auth source is set | project brief (Wes, 2026-09-10): stderr saying "another auth source is set" counts as a failed launch; wording not yet observed live |
 | compile-error | * | info | stderr | **docs-only** | SyntaxError: Unexpected token )     at compileSourceTextModule (node:internal/modules/esm/ | synthetic negative fixture (a crashed agent is not a limit) |
-| empty-stdout-exit-0 | * | info | stdout | **observed-live** |  | fixtures/live/gemini/out.log (0 bytes) and fixtures/live/grok (exit 0, no work): silence is not a limit |
+| empty-stdout-exit-0 | * | info | stdout | **observed-live** |  | fixtures/live/grok (exit 0, no work): silence is not a limit |
 <!-- limits-table:end -->
 
 ## Runner facts that apply to every CLI (observed-live in phase 2/3 tests)

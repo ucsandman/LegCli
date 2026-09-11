@@ -2,12 +2,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { get as getAdapter, names } from '../src/adapters/index.mjs'
 
-const REAL = ['claude', 'codex', 'gemini', 'agy']
+const REAL = ['claude', 'codex', 'agy']
 const FORBIDDEN_FLAGS = ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions',
   '--dangerously-bypass-approvals-and-sandbox', '--yolo', '--always-approve']
 
 test('registry lists fake plus every probed CLI; grok stays out until it is verified live', async () => {
-  assert.deepEqual(names(), ['fake', 'fake-claude', 'fake-codex', 'fake-gemini', 'fake-agy', 'fake-nostdin', ...REAL])
+  assert.deepEqual(names(), ['fake', 'fake-claude', 'fake-codex', 'fake-agy', 'fake-nostdin', ...REAL])
   await assert.rejects(getAdapter('grok'), /unknown adapter: grok/)
 })
 
@@ -40,7 +40,7 @@ for (const name of [...REAL, 'grok']) {
 
   test(`${name}: argv throws "forbidden flag" for a disallowed mode and for a smuggled flag`, async () => {
     const a = await load(name)
-    const badMode = { claude: 'bypassPermissions', codex: 'danger-full-access', gemini: 'yolo', agy: 'yolo', grok: 'bypassPermissions' }[name]
+    const badMode = { claude: 'bypassPermissions', codex: 'danger-full-access', agy: 'yolo', grok: 'bypassPermissions' }[name]
     assert.throws(() => a.argv({ prompt: 'hi', mode: badMode }), /forbidden flag/)
     for (const flag of a.forbiddenFlags.filter((f) => f.startsWith('--'))) {
       assert.throws(() => a.argv({ prompt: 'hi', extraArgs: [flag] }), /forbidden flag/, `${name} must refuse ${flag}`)
@@ -79,7 +79,7 @@ test('agy: print timeout follows the kill timer in Go duration syntax', async ()
   assert.equal(a.argv({ prompt: 'x', killMs: 90000 }).args.at(-1), '90s')
 })
 
-test('parseResult: claude json, codex jsonl, gemini json', async () => {
+test('parseResult: claude json, codex jsonl', async () => {
   const claude = await getAdapter('claude')
   const c = claude.parseResult(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, stop_reason: 'end_turn', session_id: 's1', result: 'Done.', num_turns: 2, permission_denials: [] }))
   assert.equal(c.session_id, 's1')
@@ -101,8 +101,4 @@ test('parseResult: claude json, codex jsonl, gemini json', async () => {
   assert.equal(x.stop_reason, 'turn.completed')
   assert.deepEqual(x.errors, ['notice'])
   assert.equal(codex.parseResult(''), null)
-  const gemini = await getAdapter('gemini')
-  const g = gemini.parseResult('Deprecation notice\n{"session_id":"g1","response":"ok","stats":{}}')
-  assert.equal(g.session_id, 'g1')
-  assert.equal(g.last_message, 'ok')
 })

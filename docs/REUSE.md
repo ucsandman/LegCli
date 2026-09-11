@@ -30,7 +30,7 @@ reason. **Why** = the judgment.
 - `pidAlive`, `parseArgs`, `need`, `die`, exit codes 0 / 2 / 3 / 11 / 12 / 13.
 - `resolveOpenclawEntry` → `src/adapters/resolve.mjs` `resolveNpmCliEntry(pkg, bin)`:
   resolves an npm package's real JS entry so the runner can `spawn(node, [entry])`
-  without a shell (the `.cmd` shim needs one). Codex, Gemini and the optional
+  without a shell (the `.cmd` shim needs one). Codex and the optional
   OpenClaw sync need exactly this.
 - Child environment sanitization before spawn (the "drill launched from inside
   a Claude Code session leaks a session key" lesson) → one exported
@@ -263,6 +263,12 @@ bounce); Evidence anchors = the changed files, so drift checks flag them.
 Bundles are saved `--repo-local` inside the worktree so the next agent finds
 them in its cwd. Storage: `.context-handoffs/index.json` in the worktree.
 `checkpoint` / `rescue` (hook-driven passive checkpoints) are not used.
+
+0.2.0's interactive sessions reuse the same seam rather than adding a second
+one: `src/bundle.mjs` imports `chb()` and `ensureExcluded()` from
+`src/handoff.mjs`, so the CLI stays the only writer of bundle files. The
+difference is one bundle per session, refreshed with `save --update <slug>`
+instead of one bundle per handoff.
 
 **Machine state (verified live 2026-09-10):** the CLI on PATH was 0.1.0 from
 the Store Python; PyPI and the source checkout are 0.4.0 (`--notes`,

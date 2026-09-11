@@ -1,7 +1,7 @@
 {
   "name": "agent-baton",
-  "version": "0.1.0",
-  "description": "Local-first kanban board and meta-harness for coding-agent CLIs: fallback chains, usage-limit handoff bundles, one worktree per card.",
+  "version": "0.2.0",
+  "description": "baton claude|codex|agy: your interactive coding agent with a board alongside, usage-limit tracking, a live context handoff bundle, and a hand-off to the next agent in the same terminal when the limit hits.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -17,8 +17,9 @@
     "coding-agents",
     "claude-code",
     "codex",
-    "gemini-cli",
     "agent-harness",
+    "usage-limits",
+    "antigravity",
     "handoff",
     "worktree",
     "local-first"

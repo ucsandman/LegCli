@@ -1,6 +1,6 @@
 # baton
 
-**A local kanban board that hands a coding agent's unfinished work to the next agent when the first one hits its usage limit.**
+**Type `baton claude`, `baton codex` or `baton agy` instead of the bare command. You get the same interactive agent; Baton opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.**
 
 [![CI](https://github.com/ucsandman/baton/actions/workflows/ci.yml/badge.svg)](https://github.com/ucsandman/baton/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -8,391 +8,291 @@
 [![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](package.json)
 [![Local first](https://img.shields.io/badge/runs-on%20your%20machine-informational.svg)](#network-exposure)
 
-![The Baton board: cards moving through stations, one running, one blocked by a lease, one bounced by red tests](docs/screenshots/kanban-final-1280.png)
+![The Baton board: two live terminals on one repo, both flagged because they edit README.md, the accounts strip with 5h/7d usage, and what landed on main](docs/screenshots/terminals-1280.png)
 
-You drop a task card on the board and give it a fallback chain: Claude Code,
-then Codex, then agy (Google's Antigravity CLI). Baton runs the first agent headless in
-its own git worktree. When that agent hits a session or weekly limit, stalls,
-or exits without finishing, Baton writes a handoff bundle (task, what got
-done, the diff, open findings) and starts the next agent in the same worktree
-from that bundle. Nothing is retyped and nothing is lost between "you've hit
-your limit" and the next login.
+You keep using your coding agents exactly as you do today, in any terminal,
+with your own settings, hooks and skills. `baton claude --model opus` is
+`claude --model opus` with four things running alongside it:
 
-The board is also the first slice of a factory floor: many cards, many agents
-and a few humans working one repo at once, stations handing work to each
-other, trunk moving in small landed pieces all day, every human judgment a
-button. Version 0.1 already has the shapes: stations instead of fixed
-columns, a scheduler with path leases, a merge queue, and a ledger where every
-event names its actor. The plan is in [docs/ROADMAP-v2.md](docs/ROADMAP-v2.md).
+1. **A board.** Opened once in your browser, reused after that. Every Baton
+   session in every terminal is a card on it: agent, account, repo and branch,
+   the task, the files it is touching, its 5h and 7d usage, what has landed on
+   trunk. Two sessions editing the same file in one repo are flagged on both
+   cards.
+2. **Usage tracking** per agent and account, from what each CLI already
+   exposes: Claude Code's usage endpoint and its `StopFailure` hook, Codex's
+   session rollout file, agy's log.
+3. **A context handoff bundle** ([context-handoff-bundle](https://pypi.org/project/context-handoff-bundle/))
+   refreshed as the session goes, so the work is always ready to hand off.
+4. **The handoff itself.** Near the limit you get a warning. At the limit Baton
+   saves the bundle, stops the agent, and starts the next option in the same
+   terminal from that bundle: another login of the same agent if you added
+   one, otherwise the next agent (claude → codex → agy). Nothing is retyped.
+   When every option is out, it tells you which resets first and when.
+
+Subscription logins only: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+`ANTHROPIC_BASE_URL` and `OPENAI_API_KEY` are stripped before any agent
+starts. Baton never edits `~/.claude/settings.json`, `~/.codex/config.toml`
+or any other file of yours; `baton uninstall` removes only `~/.baton`.
 
 ## Contents
 
-- [What it does](#what-it-does)
 - [60-second run](#60-second-run)
-- [How it works](#how-it-works)
-- [Screenshots](#screenshots)
-- [Pipelines and presets](#pipelines-and-presets)
-- [Chains and modes](#chains-and-modes)
-- [Board buttons](#board-buttons)
-- [Floor view](#floor-view)
-- [Land station](#land-station)
+- [What Baton reads from each agent](#what-baton-reads-from-each-agent)
 - [How a handoff works](#how-a-handoff-works)
-- [Limit signals](#limit-signals)
-- [Safety rules](#safety-rules)
-- [Network exposure](#network-exposure)
-- [Optional syncs](#optional-syncs)
+- [The board](#the-board)
+- [Second accounts, and what the terms say](#second-accounts-and-what-the-terms-say)
+- [What is and is not touched](#what-is-and-is-not-touched)
 - [CLI reference](#cli-reference)
+- [Pipelines: the v0.1 extras](#pipelines-the-v01-extras)
 - [Troubleshooting](#troubleshooting)
 - [Documentation](#documentation)
-- [Non-goals for v0.1](#non-goals-for-v01)
 - [Contributing](#contributing)
-- [Privacy and attribution](#privacy-and-attribution)
 - [License](#license)
-
-## What it does
-
-- Runs one card at a time per agent, each in `<repo>/.baton-worktrees/<card>`
-  on branch `baton/<card>`, so the repo root never holds an agent's half-work.
-- Detects limits, stalls, crashes and "exit 0 but not done" from the CLI's own
-  output and a DONE marker, then hands off with a
-  [context-handoff-bundle](https://pypi.org/project/context-handoff-bundle/).
-- Shows every card, leg, event and decision on a board served from a local
-  ledger. Every judgment (approve, pause, kill, reassign, hand off now, rerun)
-  is a button.
-- Optionally lands the work itself: rebase, test, fast-forward trunk, or bounce
-  the card back to build with the failure in the bundle.
-- Uses your logged-in subscription CLIs only. No API keys, no bypass flags,
-  no shell spawns, zero runtime dependencies.
 
 ## 60-second run
 
 Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one
-logged-in agent CLI (`claude`, `codex`, `gemini` or `agy`). The `fake`
-adapter needs none of them, so you can try the board on any machine.
+logged-in agent CLI (`claude`, `codex` or `agy`).
 
 ```
-git clone https://github.com/ucsandman/baton.git
-cd baton
-npm install
+npm install -g agent-baton
 pip install -U context-handoff-bundle
-npm start
+cd <any repo>
+baton claude
 ```
 
-`npm start` runs the preflight (Node, git, the bundle CLI, each agent CLI),
-boots the server on http://127.0.0.1:4747, opens the board in your browser,
-and streams prefixed, secret-redacted logs. Ctrl-C stops the server and any
-running agent. `node bin/baton.mjs up --dry` prints the preflight table and
-exits.
+That is the whole setup. The first `baton <agent>` starts the board on
+http://127.0.0.1:4747 and opens it; later sessions reuse it. Anything after the
+agent name passes straight through (`baton codex -m gpt-5.3-codex-spark`,
+`baton claude --resume`). The agent's own prompt, permissions, hooks and skills
+are untouched.
 
-Then click **New card**, pick the repo, type the task, order the chain, and
-press **Run**. The card moves across the columns on its own.
+From a clone instead of npm: `git clone https://github.com/ucsandman/baton.git && cd baton && npm install && npm link`.
 
-Want to see a handoff without spending any subscription usage?
+## What Baton reads from each agent
 
-```
-node bin/baton.mjs card add --repo <path-to-a-git-repo> --chain fake-claude,fake-codex \
-  --fake-mode fake-claude=limit --task "Add a greeting.txt file" --queue
-```
+Nothing is guessed from screen scraping. Each tap was read from the CLI's
+source or documentation and then checked on a real machine (2026-09-11,
+Claude Code 2.1.268, codex-cli 0.153.4, agy 1.2.0); the rightmost column says
+which.
 
-The first leg prints a recorded "You've hit your session limit" message, Baton
-writes the bundle, and the second leg finishes from it. The full walkthrough
-with screenshots is in [docs/DEMO.md](docs/DEMO.md); the real run with Claude
-Code and Codex is in [docs/real-run.md](docs/real-run.md).
+| agent | usage percentages | the wall (limit hit) | how Baton attaches | status |
+|-------|-------------------|----------------------|--------------------|--------|
+| claude | `GET api.anthropic.com/api/oauth/usage` with the login Claude Code stored, the same data as `/usage` and the built-in status line (`five_hour`, `seven_day`, `utilization`, `resets_at`); polled every 60 s | `StopFailure` hook with `error: rate_limit` ([docs](https://code.claude.com/docs/en/hooks#stopfailure)) | one extra settings file per session via `--settings`: hooks merge with yours; `autoContinueAtUsageLimit` is set to `false` because Baton owns the handoff | observed live |
+| codex | `event_msg.token_count.rate_limits` in the session's rollout file (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, flushed per event): `primary` = 300 min window, `secondary` = 10080 min | `task_complete.error.codex_error_info: usage_limit_exceeded`, message "You've hit your usage limit … try again at …" (`codex-rs/protocol/src/error.rs`) | Baton tails the rollout whose `session_meta.cwd` is the session's directory; no hook is injected, so codex never asks you to review a new hook | observed live |
+| agy | none exposed (agy's own status line fetches a quota summary that is written nowhere) | `RESOURCE_EXHAUSTED`, "it resets in …", "out of quota" in the log (strings present in `agy.exe`) | `--log-file` per session; `~/.gemini/antigravity-cli/history.jsonl` gives the prompts and conversation id | log signals docs-only; prompts observed live |
 
-## How it works
-
-```mermaid
-flowchart LR
-    A[Card on the board] --> B[Scheduler picks it<br/>leases free, slot free]
-    B --> C[Worktree<br/>repo/.baton-worktrees/card]
-    C --> D[Agent leg<br/>claude -p / codex exec / ...]
-    D --> E{Classify the exit}
-    E -->|DONE marker| F[Next station]
-    E -->|limit, stall, crash,<br/>exit 0 without DONE| G[Handoff bundle]
-    G --> H[Next agent in the chain,<br/>same worktree]
-    H --> D
-    F --> I{Station kind}
-    I -->|test| J[Run the repo tests]
-    I -->|land| K[Rebase, test,<br/>fast-forward trunk]
-    I -->|human| L[Wait for a button]
-    J -->|red| G
-    K -->|conflict or red| G
-```
-
-Every state change is an event in a local ledger (`~/.baton` by default). The
-board reads only the ledger, over server-sent events, so what you see is what
-happened. The words used on the board, in events and in these docs are listed
-in [docs/VOCABULARY.md](docs/VOCABULARY.md).
-
-## Screenshots
-
-| Detail drawer | Floor view |
-|---|---|
-| ![Detail drawer with the chain, events, runs and bundle](docs/screenshots/board-drawer.png) | ![Floor view with running cards, leases and the trunk lane](docs/screenshots/floor-landing.png) |
-
-Phone width works too: [kanban at 400 px](docs/screenshots/kanban-final-400.png),
-[floor at 400 px](docs/screenshots/floor-final-400.png).
-
-## Pipelines and presets
-
-A pipeline is a list of stations. Three presets ship:
-
-| preset | stations |
-|--------|----------|
-| `build` | build (agent) |
-| `build-land` | build (agent), test, land |
-| `factory` | plan (agent), build (agent), review (agent), test, land |
-
-Station kinds: `agent` (runs the chain with that station's prompt), `test`
-(runs the repo's test command, bounces on red), `land` (merge queue, see
-below), `human` (parks the card for a button press). A `land` station must be
-last. Custom pipelines are a JSON file passed as `--pipeline <file>`.
-
-## Chains and modes
-
-A chain is an ordered list of adapters. Each adapter is one CLI spawned as
-argv (no shell) with its own permission mode. Baton never passes a bypass
-flag, and the adapters throw before spawn if one is requested.
-
-| adapter | CLI command shape | default mode | allowed modes |
-|---------|-------------------|--------------|---------------|
-| `claude` | `claude -p --output-format json --permission-mode <m>` | `acceptEdits` | acceptEdits, auto, plan, manual, dontAsk |
-| `codex` | `codex exec --json -s <m> -C <worktree>` | `workspace-write` | read-only, workspace-write |
-| `gemini` (legacy) | `gemini -p -o json --approval-mode <m> --skip-trust` | `auto_edit` | default, auto_edit, plan |
-| `agy` | `agy -p --output-format json --mode <m> --add-dir <worktree>` | `accept-edits` | accept-edits, plan |
-| `fake`, `fake-claude`, `fake-codex`, `fake-gemini`, `fake-agy` | `node bin/fake-agent.mjs` (tests and demos, no login needed) | `acceptEdits` | acceptEdits, plan, workspace-write, read-only, accept-edits, auto_edit |
-
-Per-adapter options on a card: `--mode codex=read-only`, `--max-turns
-claude=2`, `--model gemini=<name>`. Forbidden everywhere:
-`--dangerously-skip-permissions`, `bypassPermissions`, `--full-auto`,
-`danger-full-access`, `--yolo`. Details per CLI, including the gotchas found
-on a real machine, are in [docs/adapters.md](docs/adapters.md).
-
-Google is retiring Gemini CLI in favour of Antigravity's `agy`. The `gemini`
-adapter stays for accounts that still have it, but the live probe on
-2026-09-10 already got `IneligibleTierError` pointing at Antigravity, so
-put `agy` in your chain and treat `gemini` as legacy.
-
-## Board buttons
-
-Every card shows the buttons its state allows:
-
-| button | what it does |
-|--------|--------------|
-| Run | queue the card; the scheduler starts it when a slot and its leases are free |
-| Approve | release a leg that was gated with "approve before this leg", or finish a human station |
-| Pause / Resume | stop after the current leg / pick up where it stopped |
-| Hand off now | end the current leg, write the bundle, start the next adapter |
-| Reassign | choose the next adapter and mode from a picker instead of the chain order |
-| Kill | stop the running agent; the card ends as `killed` |
-| Rerun | start the pipeline over in the same worktree |
-
-The drawer on each card shows the chain rail (✓ done, ↷ handed off, ✗ failed,
-● running, · pending, 🔒 waiting for approval), every run with its logs, the
-events, and the bundle the next leg will read. The full tour is in
-[docs/board-guide.md](docs/board-guide.md).
-
-## Floor view
-
-`/floor.html` is the factory view: every running card with its adapter and
-elapsed time, the path leases each card holds, cards blocked by a lease, cards
-waiting on a human, and the trunk lane with the last landed commits. It reads
-the same ledger as the board over server-sent events.
-
-## Land station
-
-A pipeline that ends in a `land` station lands continuously instead of
-collecting a pull request at the end. When a card reaches it, Baton:
-
-1. checks that the repo root is on the trunk branch and clean (otherwise the
-   card bounces with `dirty-trunk` and the root is not touched);
-2. commits whatever the agents left in the worktree, then rebases the card's
-   branch onto trunk; a conflict aborts the rebase and bounces the card with
-   `rebase-conflict` and the file list;
-3. runs the repo's test command (the card's `test_command`, else `npm test`
-   from `package.json`, else `pytest` when there is a `pyproject.toml`, else it
-   lands untested with a `land_warning`); red bounces with `tests-red` and the
-   last 40 lines;
-4. fast-forwards trunk from the repo root (`git merge --ff-only`); if trunk
-   moved while the tests ran it rebases once more and retries, then bounces
-   with `trunk-moved`;
-5. records a `landed` event with the sha, files and line counts.
-
-A bounce sends the card back to its `build` station with the failure written
-into the handoff bundle's Open findings, so the next agent starts from it.
-Three bounces (test or land, `BATON_MAX_LAND_ATTEMPTS`) fail the card. Size
-cards to land within about an hour. `land_mode: pr` opens a pull request
-instead (built as `gh pr create` argv; stub-only in this build) and parks the
-card for a human.
+Why not Claude Code's status line JSON (`rate_limits.five_hour.used_percentage`):
+on 2.1.268 a custom `statusLine` command passed through `--settings` or a
+project settings file is not run at all (an `echo` command at both levels left
+the built-in status line in place; the hooks in the same `--settings` file
+fire). Baton still writes a `statusLine` entry that records the same fields, so
+the moment a build honours it the endpoint poll becomes a fallback. For that
+session Baton's one-line status would replace a custom `statusLine` of yours;
+your settings file itself is never changed.
 
 ## How a handoff works
 
-1. The leg ends: a limit signal in the output, a non-zero exit, a kill timer
-   after the stall notify, or exit 0 without `.baton/DONE`.
-2. Baton records the diff since the leg started (git, or file mtimes outside
-   git) and the last lines of stdout and stderr.
-3. `context-handoff-bundle save --repo-local` writes a bundle into the
-   worktree with Scope (the task), Findings (done so far, the diff, touched
-   paths), Open questions (outcome, exit code, the failure if a station
-   bounced) and Evidence anchors (run directory, logs).
-4. The next adapter's prompt starts with `context-handoff-bundle load` output
-   followed by the contract in `.baton/CONTRACT.md`: write `.baton/PROGRESS.md`
-   as you go, write `.baton/DONE` when finished.
-5. The card shows `handoff_written` with the bundle's quality score; the
-   drawer links the bundle.
+1. **Warning.** At 85 % of any window (`BATON_WARN_PCT`) the session card turns
+   amber, the event log names the next option, and the terminal bell rings once.
+2. **Limit.** claude: the `StopFailure` hook fires with `rate_limit`. codex: the
+   rollout reports `usage_limit_exceeded`. agy: the log says
+   `RESOURCE_EXHAUSTED`. The account is marked walled until the reset the CLI
+   reported (or the soonest known window reset).
+3. **Bundle.** Baton writes structured notes (task, the last messages from the
+   transcript, `git diff --stat`, dirty files, files edited this session, recent
+   commits, why it stopped) and runs `context-handoff-bundle save --repo-local`
+   with one slug per session, updated in place. A checkpoint of the same bundle
+   is taken every two minutes while the session is active.
+4. **Switch.** The agent process is stopped, the terminal is restored, and the
+   next option starts in the same terminal with a short pointer prompt:
+   read `.baton/RESUME.md` (the `context-handoff-bundle load` output plus the
+   reason for the switch), check `git status` and `git diff`, continue, do not
+   ask the human to restate the task. `claude "<prompt>"`, `codex "<prompt>"`
+   and `agy -i "<prompt>"` all open the normal interactive session with that
+   first turn.
+5. **Order.** Other accounts of the same agent first, then the remaining agents
+   in order, each tried once: from claude, `claude/work → codex → agy`; from
+   codex, `agy → claude`. An option whose wall has not reset is skipped.
+6. **All out.** The terminal prints each option with its reset time, soonest
+   first, and exits 3. The card shows the same.
 
-The real run in [docs/real-run.md](docs/real-run.md): Claude Code hit
-`--max-turns 2` after 32 s, Codex finished from the bundle in 2 m 14 s, tests
-green in the worktree.
+You can force a handoff any time: the **Hand off now** button on the card, or
+`baton sessions handoff <id>`. Verified on this machine: `baton claude` opened
+the real Claude Code TUI with all user hooks firing, the usage poll recorded
+35 % / 92 %, the 92 % warning fired, a forced handoff saved the bundle, stopped
+claude and started codex in the same terminal with the pointer prompt. A real
+limit could not be forced live; the `rate_limit` path is covered by the hook
+contract test.
 
-## Limit signals
+## The board
 
-Generated from the fixtures by `node scripts/limits-table.mjs`; the full table
-with sources is in [docs/cli-contracts.md](docs/cli-contracts.md). Only rows
-marked observed-live were seen on a real machine; docs-only rows come from the
-CLIs' documentation or source and have never fired here.
+`baton <agent>` opens it; `baton open` reopens it; `baton down` stops it.
 
-| adapter | signal | class | source |
-|---------|--------|-------|--------|
-| claude | session limit / weekly limit / model limit | limit | docs-only |
-| claude | `error_max_turns` result | budget | observed-live |
-| claude | budget limit reached | budget | docs-only |
-| codex | usage limit / usage limit reached / quota exceeded / rate limit exceeded | limit | docs-only |
-| gemini | quota exceeded / RESOURCE_EXHAUSTED 429 | limit | docs-only |
-| gemini | untrusted folder (exit 55) | launch | observed-live |
-| gemini | IneligibleTierError | auth | observed-live |
-| agy | resource-exhausted | limit | docs-only |
-| grok | device-code sign-in prompt | auth | observed-live |
-| any | 429 / overloaded / quota / rate limit / RESOURCE_EXHAUSTED / usage limit | limit | docs-only (generic, lowest priority) |
-| any | "another auth source is set" | auth | docs-only |
+- **Accounts strip**: one pill per login with the 5h and 7d bars, a live dot
+  when a session is running on it, "limit · back <time>" when walled.
+- **Terminal cards**: agent and account, status (starting, running, near limit,
+  limit hit, handing off, ended, lost), the first prompt, repo@branch, turns,
+  HEAD, usage bars, the files being touched (chips), and the warning, limit or
+  handoff line. Two live sessions on one repo touching the same file get a red
+  border and a "⚠ codex is editing README.md too" line on both cards.
+- **Landed on trunk**: the last commits on `main` (or `master`) of every repo
+  with a live session.
+- **Buttons**: Hand off now, End (stops the agent), Remove (ended sessions).
+- Below it, the v0.1 **Pipelines** columns for headless cards (see below).
 
-`limit` hands the card to the next agent. `auth` is a failed launch and is
-never treated as a limit. `budget` is a cap Baton set itself; the card still
-hands off. Silence and compile errors are recorded as negative fixtures so
-they never classify as a limit. If you hit a real limit message that Baton
-missed, please open an issue with the exact text: that is how the table grows.
+The board reads `~/.baton/sessions/*/session.json` over server-sent events; a
+session whose runner process is gone is marked `lost`, never shown as live.
 
-## Safety rules
+## Second accounts, and what the terms say
 
-- Logged-in subscription CLIs only, never a per-token API. Every spawn deletes
-  `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and
-  `OPENAI_API_KEY` from the child environment, plus the `CLAUDECODE` and
-  `CLAUDE_CODE_*` variables that would make a nested Claude refuse to start.
-  Stderr saying "another auth source is set" is a failed launch, never a limit.
-- Agents keep their own permission and sandbox modes. No skip-permissions or
-  YOLO flag is ever passed, by default or otherwise; requesting one is an
-  error before spawn.
-- No shell spawns anywhere. Secrets are redacted from every log line the
-  launcher prints. A card's repo must be a git root and can never be Baton's
-  own home directory or a parent of it.
+Optional. `baton accounts add claude work` creates
+`~/.baton/accounts/claude/work`, junctions your `hooks`, `skills`, `agents`,
+`commands`, `plugins`, `rules`, `scripts`, `output-styles` and `tools` into it,
+copies `settings.json`, `CLAUDE.md` and the status-line scripts (refreshed from
+your real `~/.claude` before every launch), and prints one line to paste:
 
-## Network exposure
+```
+$env:CLAUDE_CONFIG_DIR='C:\Users\you\.baton\accounts\claude\work'; claude auth login
+```
 
-Baton binds `127.0.0.1` by default. To listen on another address set
-`BATON_BIND` and `BATON_TOKEN` together; without a token the server refuses to
-start (exit 3). Requests then need `Authorization: Bearer <token>`, and the
-event stream accepts `?token=`. There is no TLS and no per-user identity yet;
-see the roadmap before exposing it beyond one trusted network. All settings
-are listed in [docs/configuration.md](docs/configuration.md).
+Same for codex (`CODEX_HOME`; `config.toml`, `AGENTS.md`, `skills`, `prompts`,
+`rules`, `plugins`, `agents`, `hooks`, `memories` shared). agy 1.2.0 has no
+config-directory override, so it stays one account. Only the login lives in
+the account directory; `baton accounts rm` removes the junctions and the
+directory and never touches your real home.
 
-## Optional syncs
+The terms, fetched 2026-09-11:
 
-Baton ships its own board. Two mirrors exist, both off unless you set the
-flag in `.env` (copy `.env.example`):
+- Anthropic Consumer Terms (effective 2025-10-08): "You may not share your
+  Account login information, Anthropic API key, or Account credentials with
+  anyone else" and you "must not … bypass any of our systems or protective
+  measures."
+- Anthropic Usage Policy (effective 2025-09-15): do not "Coordinate malicious
+  activity across multiple accounts to avoid detection or circumvent product
+  guardrails" or "Utilize automation in account creation."
+- OpenAI Terms of Use (effective 2026-01-01): "You may not share your account
+  credentials or make your account available to anyone else" and you may not
+  "circumvent any rate limits or restrictions or bypass any protective
+  measures."
 
-- **OpenClaw Workboard** (`BATON_SYNC_WORKBOARD=1`): every card create,
-  status change and completion runs `openclaw workboard add|move|done ...` as
-  an argv child of the ledger (no shell). On the machine this was built on the
-  plugin is disabled and the CLI answers, verbatim:
+Owning two paid subscriptions is not named as prohibited by either. Rotating to
+a second account of the same vendor because the first one is rate-limited sits
+close to OpenAI's "circumvent any rate limits" wording and Anthropic's
+"circumvent product guardrails". Baton's default chain switches vendors
+(claude → codex → agy), which is plainly fine. Same-vendor rotation only
+happens after you run `baton accounts add`; that is your call.
 
-  > The `openclaw workboard` command is unavailable because `plugins.allow` excludes "workboard". Add "workboard" to `plugins.allow` if you want that bundled plugin CLI surface.
+## What is and is not touched
 
-  Baton records that once as a `status` event on the card and stays silent
-  afterwards (a marker file under `BATON_HOME`; delete it to retry). The verb
-  mapping in `src/sync/workboard.mjs` is written against a stub; check it
-  against `openclaw workboard --help` once the plugin is enabled.
-- **DashClaw** (`BATON_SYNC_DASHCLAW=1` plus `DASHCLAW_URL` and
-  `DASHCLAW_API_KEY`): every ledger event is recorded as a DashClaw action
-  (`POST /api/actions` with `agent_id`, `action_type: baton_<event>`,
-  `declared_goal`, `status`, `systems_touched`, `input_summary`) over native
-  https with a 5 s timeout. A failed record is buffered in the card's
-  `unsynced.jsonl` and replayed by `node src/ledger.mjs sync`. Verified live
-  on 2026-09-10: one card create produced one `baton_card_created` action.
-
-Neither sync can block or fail a card; a sync failure is one `status` event
-per minute at most.
+- **Never edited**: `~/.claude/settings.json`, `~/.claude.json`,
+  `~/.codex/config.toml`, agy's files, your repo's settings. Claude Code gets
+  hooks through a per-session `--settings` file under `~/.baton`; codex and
+  agy get nothing injected.
+- **Written in your repo**: `.baton/` (session notes, `RESUME.md`) and
+  `.context-handoffs/` (the bundles), both added to `.git/info/exclude`.
+- **Stripped from every agent's environment**: the four API-key variables above,
+  plus `CLAUDECODE` and `CLAUDE_CODE_*` markers a parent Claude session would
+  leak (they make a nested Claude refuse to start).
+- **Read but never written or printed**: Claude Code's stored login, sent only
+  to `api.anthropic.com` for the usage numbers. The ledger scrubs bearer tokens
+  and key shapes from every line regardless.
+- **`baton uninstall --yes`**: removes `~/.baton` (sessions, usage, extra
+  account directories with their junctions, v0.1 cards, the board pidfile) and
+  nothing else; then `npm rm -g agent-baton`.
 
 ## CLI reference
 
-The board is the human surface. The CLI is for scripts and tests.
-
 ```
-baton up [--dry] [--no-open] [--port N] [--bind ADDR]   boot board + scheduler + merge queue
-baton down | status | open
-baton card add --repo <path> --task "<text>" --chain claude,codex
-               [--pipeline build|build-land|factory|<file>] [--title T]
-               [--mode codex=read-only] [--max-turns claude=2] [--model a=m]
-               [--leases src/**;test/**] [--approve] [--land-mode ff|pr]
-               [--test-command "npm test"] [--queue]
-baton card ls [--json] | show <id> | run <id> | rm <id> [--delete-branch] | events <id>
-baton card pause|resume|kill|approve|handoff-now|rerun <id>
-baton card reassign <id> --adapter <a> [--mode <m>]
-baton scheduler start [--ticks N] [--interval-ms N] | status | stop
-node src/ledger.mjs sync                                 replay buffered sync records
+baton claude|codex|agy [agent args…]   the interactive agent, board alongside, handoff on limit
+baton sessions ls [--json]             every session and its usage
+baton sessions show|events <id>
+baton sessions handoff|end <id>        same as the board buttons
+baton sessions rm <id>                 forget an ended session
+baton accounts ls                      logins and their 5h/7d usage
+baton accounts add <claude|codex> <name> | rm <agent> <name> | terms
+baton open | down | status             the board
+baton uninstall [--yes]
 ```
 
-Environment (all optional, read from `.env` through `node --env-file-if-exists`):
-`BATON_HOME`, `BATON_PORT`, `BATON_BIND`, `BATON_TOKEN`, `BATON_MAX_CONCURRENT`
-(default 2), `BATON_MAX_LAND_ATTEMPTS` (default 3), `BATON_SYNC_WORKBOARD`,
-`BATON_SYNC_DASHCLAW`, `DASHCLAW_URL`, `DASHCLAW_API_KEY`.
+Environment, all optional: `BATON_HOME` (default `~/.baton`), `BATON_PORT`
+(4747), `BATON_ACCOUNT` (start on a named login), `BATON_WARN_PCT` (85),
+`BATON_NO_HANDOFF=1` (warn and record, never switch), `BATON_NO_OPEN=1` (do not
+open the browser), `BATON_USAGE_POLL_MS` (60000), `BATON_CLAUDE_BIN`,
+`BATON_CODEX_BIN`, `BATON_AGY_BIN`, `BATON_CHB_BIN`.
+
+## Pipelines: the v0.1 extras
+
+Version 0.1 was the other way round: you dropped a task card on the board and
+Baton ran the agents headless in a git worktree, one per card, with a fallback
+chain, path leases, a scheduler and a merge queue. All of that still works and
+lives below the terminals lane, but it is no longer the way in.
+
+- `baton up` boots the board with the scheduler and merge queue and streams
+  redacted logs; `baton card add --repo <path> --task "<t>" --chain claude,codex --queue`
+  creates a card; presets `build`, `build-land`, `factory`; station kinds
+  agent, test, land, human.
+- Adapters spawn the CLIs headless as argv, never through a shell, with their
+  own permission modes and never a bypass flag: `claude -p --output-format json
+  --permission-mode <m>`, `codex exec --json -s <m> -C <worktree>`,
+  `agy -p --output-format json --mode <m> --add-dir <worktree>`; `fake`,
+  `fake-claude`, `fake-codex`, `fake-agy` for tests and demos.
+- A leg that ends on a limit signal, a stall, a crash or exit 0 without
+  `.baton/DONE` hands off with a bundle to the next adapter in the same
+  worktree; a `land` station rebases, tests and fast-forwards trunk or bounces
+  the card with the failure in the bundle.
+- Optional mirrors, off unless set in `.env`: OpenClaw Workboard
+  (`BATON_SYNC_WORKBOARD=1`) and DashClaw (`BATON_SYNC_DASHCLAW=1`).
+
+The full v0.1 story, with the fake-limit demo and the real claude→codex run,
+is in [docs/concepts.md](docs/concepts.md), [docs/DEMO.md](docs/DEMO.md),
+[docs/real-run.md](docs/real-run.md) and [docs/board-guide.md](docs/board-guide.md).
+
+### Network exposure
+
+Baton binds `127.0.0.1`. To listen elsewhere set `BATON_BIND` and
+`BATON_TOKEN` together; without a token the server refuses to start (exit 3),
+and requests then need `Authorization: Bearer <token>`. No TLS, no per-user
+identity yet.
 
 ## Troubleshooting
 
-- **`npm install` dies with `edgesOut`**: the global npm is older than Node.
-  Run `npx --yes npm@latest install` once; the clean-clone script does this
-  for you.
-- **Codex leg sits at "Reading additional input from stdin"**: Baton spawns
-  codex with stdin closed for this reason. If you run `codex exec` by hand,
-  pass the prompt as an argument, never on a pipe.
-- **Agent denied its own edits**: the mode is too strict for the task. Set
-  `--mode claude=acceptEdits` (the default) or `--mode codex=workspace-write`;
-  `plan` and `read-only` modes are for plan and review stations.
-- **Preflight shows an adapter missing**: install and log in to that CLI
-  (`claude`, `codex login`, `gemini`, `agy`), or leave it out of the chain.
-  A chain only needs the adapters it names.
-- **Card bounced with `dirty-trunk`**: the repo root has uncommitted changes
-  or is not on the trunk branch. Commit or stash, then press Rerun.
-- **Card still `running` after `baton down`**: `down` kills the agents; each
-  run's supervisor writes its verdict, and the next `baton up` re-attaches to
-  that run and applies it (a `re-attached to run N` event). Nothing to do.
-- **`card run` from a second terminal while the board is up**: the running
-  leg is left to whoever started it (the CLI prints `driven by pid`), but a
-  card that is `queued` between legs can be picked up by the board's
-  scheduler. With the board up, press Run instead of `card run`.
+- **The board did not open**: `baton open`, or visit http://127.0.0.1:4747.
+  `~/.baton/board.log` has the server's output.
+- **claude's card shows "claude usage unavailable"**: Claude Code has no stored
+  claude.ai login in that config directory (run `claude auth login`), or the
+  stored token expired (start `claude` once, it refreshes). The wall is still
+  caught through the hook; only the percentages are missing.
+- **codex's card never shows usage**: the rollout for that directory was not
+  found. codex writes it only once a thread starts; a directory codex does not
+  trust yet shows its trust prompt first, answer it and the tap catches up.
+- **agy's card has no percentage**: expected, agy exposes none. Baton sees the
+  wall when agy hits it.
+- **A session shows `lost`**: the terminal that ran `baton <agent>` is gone
+  (closed, crashed, machine slept through a kill). Remove it from the board.
+- **Nested session**: `baton claude` typed inside a Claude Code shell works;
+  the parent's `CLAUDECODE` markers are stripped so the child starts.
+- **`npm install` dies with `edgesOut`** (clone only): the global npm is older
+  than Node; run `npx --yes npm@latest install` once.
 
-More answers in [docs/faq.md](docs/faq.md).
+More in [docs/faq.md](docs/faq.md).
 
 ## Documentation
 
 | guide | read it when |
 |-------|--------------|
-| [Getting started](docs/getting-started.md) | you want the first card running in ten minutes |
-| [Concepts](docs/concepts.md) | you want to know what cards, stations, chains, leases and bundles are |
-| [Board guide](docs/board-guide.md) | you want every chip, glyph and button explained |
-| [Configuration](docs/configuration.md) | you are setting environment variables or card options |
-| [Adapters](docs/adapters.md) | you are wiring a CLI, or adding one |
-| [FAQ](docs/faq.md) | you have a question the others did not answer |
-| [CLI contracts](docs/cli-contracts.md) | you want the exact argv per CLI and the limit-signal table with sources |
-| [Demo](docs/DEMO.md) and [real run](docs/real-run.md) | you want to see a handoff, fake and real |
-| [Vocabulary](docs/VOCABULARY.md) | you want the one list of statuses, outcomes and event types |
-| [Roadmap v2](docs/ROADMAP-v2.md) | you want to know where this is going |
-| [Reuse](docs/REUSE.md) and [deviations](docs/DEVIATIONS.md) | you want to know what was ported and every place the plan changed |
-
-## Non-goals for v0.1
-
-No live co-editing of the same files by several agents. No hosted service. No
-per-token API keys. No agent-side plugins or MCP configuration; each CLI keeps
-what it has. No pull-request review flow beyond the `pr` stub.
+| [Getting started](docs/getting-started.md) | you want `baton claude` running in five minutes |
+| [Concepts](docs/concepts.md) | sessions, accounts, bundles, and the v0.1 cards, stations, chains and leases |
+| [Board guide](docs/board-guide.md) | every chip, glyph and button explained |
+| [Configuration](docs/configuration.md) | environment variables and options |
+| [Adapters](docs/adapters.md) | what each CLI exposes and how Baton attaches to it |
+| [CLI contracts](docs/cli-contracts.md) | exact argv per CLI and the limit-signal table with sources |
+| [FAQ](docs/faq.md) | a question the others did not answer |
+| [Demo](docs/DEMO.md) and [real run](docs/real-run.md) | the v0.1 handoff, fake and real |
+| [Vocabulary](docs/VOCABULARY.md) | statuses, outcomes and event types |
+| [Roadmap v2](docs/ROADMAP-v2.md) | where this is going |
+| [Reuse](docs/REUSE.md) and [deviations](docs/DEVIATIONS.md) | what was ported and every place the plan changed |
 
 ## Contributing
 
@@ -405,8 +305,10 @@ bypass flags, a privacy check on every commit). Security reports go through
 npm install
 npm test          # node --test + privacy check
 npm run lint
-bash scripts/clean-clone-check.sh /tmp   # clone, install, test, lint, up --dry
 ```
+
+Any real agent session started only to test Baton runs on the cheapest model
+(`baton claude --model haiku`); the live checks in `test/` never start one.
 
 ## Privacy and attribution
 

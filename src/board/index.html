@@ -27,9 +27,24 @@
 
 <div class="banner" id="banner" hidden>Connecting to Baton…</div>
 
+<section class="sessions" id="sessions" aria-label="Terminals">
+  <div class="sessions-head">
+    <h2>Terminals</h2>
+    <span class="hint">start one in any repo: <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code></span>
+    <div class="spacer"></div>
+    <div class="accounts" id="accounts" aria-label="Accounts and usage"></div>
+  </div>
+  <div class="session-grid" id="session-grid"></div>
+  <div class="trunk" id="trunk" aria-label="Landed on trunk"></div>
+</section>
+
 <main id="board">
+  <div class="pipelines-head">
+    <h2>Pipelines</h2>
+    <span class="hint">optional extras: cards Baton runs headless in their own worktree</span>
+  </div>
   <div class="empty-state" id="empty-state" hidden>
-    <p>No cards yet. Add a task, choose the chain, and Baton runs it in its own worktree.</p>
+    <p>No pipeline cards. Terminals above are the main way in; a card runs an agent chain headless.</p>
     <button type="button" id="empty-new-card-btn">New card</button>
   </div>
   <div class="columns" id="columns"></div>
@@ -119,5 +134,6 @@
 <div class="toast" id="toast" aria-live="polite"></div>
 
 <script src="board.js" defer></script>
+<script src="sessions.js" defer></script>
 </body>
 </html>

@@ -1,17 +1,114 @@
 # Adapters
 
-Reference for each coding-agent CLI Baton drives, and how to add a new one.
-Every fact below is verified against `src/adapters/*.mjs`; the full evidence
-trail (raw `--help` output, live probe fixtures, exit codes actually seen)
-is [cli-contracts.md](cli-contracts.md).
+Two things per agent: what Baton reads from an interactive session
+(`baton claude|codex|agy`), and the headless argv the v0.1 pipeline spawns.
+Every fact is verified against `src/taps/*.mjs`, `src/attach.mjs` and
+`src/adapters/*.mjs`; the full evidence trail is
+[cli-contracts.md](cli-contracts.md).
 
-An adapter never runs through a shell: it is spawned as `argv` directly
-(`src/runner.mjs` `spawn(spec.bin, spec.args, ...)`). Every adapter's `env()`
-strips the four API-key/base-URL variables and the Claude-Code nested-session
-markers (`src/env.mjs`), so a subscription login is always what runs, never
-a leaked token.
+An agent is never run through a shell. Interactive sessions are
+`spawn(bin, argv, { stdio: 'inherit' })` (`src/attach.mjs` `spawnSpec`);
+headless legs are `spawn(spec.bin, spec.args, …)` (`src/runner.mjs`). Both
+strip the API-key and base-URL variables and the Claude Code nested-session
+markers from the child environment (`src/env.mjs` `sanitizeEnv`).
 
-## claude
+## What Baton reads from each agent
+
+Nothing is screen-scraped. Each tap was read from the CLI's own source or
+documentation, then checked on a real machine on 2026-09-11 (Claude Code
+2.1.268, codex-cli 0.153.4, agy 1.2.0). Each line says observed-live or
+docs-only.
+
+### claude
+
+- **How Baton attaches**: one extra settings file per session, passed as
+  `claude <your args> --settings <~/.baton/sessions/<id>/claude-settings.json>`
+  (`src/taps/claude.mjs` `settingsFor`). Hooks from `--settings` merge with
+  yours rather than replacing them. Observed live: a Baton session ran with
+  every user hook still firing.
+- **Hooks wired**: `SessionStart`, `UserPromptSubmit`,
+  `PostToolUse` (matcher `Edit|Write|MultiEdit|NotebookEdit`), `Stop`,
+  `StopFailure`, `SessionEnd`, each running
+  `node src/hook.mjs claude-hook --session <id>`. Observed live.
+- **`autoContinueAtUsageLimit` is set to `false`** in that settings file,
+  because Baton owns what happens at the limit.
+- **Usage percentages**: `GET https://api.anthropic.com/api/oauth/usage`
+  (`BATON_CLAUDE_USAGE_URL` overrides), with the `accessToken` Claude Code
+  stored in `<CLAUDE_CONFIG_DIR>/.credentials.json` under `claudeAiOauth`, and
+  the header `anthropic-beta: oauth-2025-04-20`. The response carries
+  `five_hour` and `seven_day`, each `{ utilization, resets_at }`. Polled every
+  60 s (`BATON_USAGE_POLL_MS`). Observed live: 35 % and 92 %.
+- **The wall**: the `StopFailure` hook fires with `error: rate_limit`
+  ([docs](https://code.claude.com/docs/en/hooks#stopfailure)). docs-only: a
+  real limit could not be forced on the build machine; the path is covered by
+  the hook contract test.
+- **Why not the status line.** Baton writes a `statusLine` entry into the same
+  settings file that would record `rate_limits.five_hour.used_percentage` and
+  `resets_at`, and chains your own `statusLine` command first. Claude Code
+  2.1.268 does not run it: an `echo` command passed through `--settings` and
+  again through a project `.claude/settings.local.json` left the built-in
+  status line in place, while hooks from the same file fired. The endpoint poll
+  is therefore the live source; the status-line route becomes a fallback the
+  moment a build honours it.
+- **Token handling**: the stored token is read by the polling process only,
+  sent only to `api.anthropic.com`, and written nowhere. The ledger scrubs
+  bearer tokens from every line regardless (`src/redact.mjs`).
+
+### codex
+
+- **How Baton attaches**: nothing is injected. `baton codex` runs `codex` with
+  your arguments, then finds and tails that session's rollout file. Injecting a
+  hook would make codex show its "review new hooks" prompt on every Baton
+  session, which is why this tap reads instead.
+- **Which file**: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
+  (`CODEX_HOME` when an extra account is in use), picked by
+  `session_meta.payload.cwd` equal to the session's directory and an mtime at
+  or after the spawn (`src/taps/codex.mjs` `findRollout`). Observed live:
+  codex flushes the file per event, so the mtime matches the last line's
+  timestamp.
+- **Usage percentages**: `event_msg.token_count.rate_limits`, with `primary`
+  the 300-minute window and `secondary` the 10080-minute window, each
+  `{ used_percent, window_minutes, resets_at }`. Observed live.
+- **The wall**: `event_msg.task_complete.error` with
+  `codex_error_info: "usage_limit_exceeded"` and the message "You've hit your
+  usage limit … try again at \<date>". The wording comes from
+  `codex-rs/protocol/src/error.rs` (`UsageLimitReachedError`); the event shape
+  was observed in 24 local rollouts. The error itself is docs-only.
+- **Transcript**: user prompts from `response_item.message` with `role: user`
+  and `content[].type: input_text`; assistant text from `output_text` and from
+  `task_complete.last_agent_message`. Observed live.
+- **Edited files**: parsed from `apply_patch` payloads, the
+  `*** Add File:` / `*** Update File:` / `*** Delete File:` lines. Observed
+  live.
+
+### agy
+
+- **How Baton attaches**: `agy <your args> --log-file
+  <~/.baton/sessions/<id>/agy.log>`. agy 1.2.0 is a closed Go binary with no
+  hook surface.
+- **Usage percentages**: none. agy exposes no percentage anywhere on disk; its
+  own status line fetches a quota summary from the backend and writes it
+  nowhere. The board shows "no % from agy" instead of empty bars.
+- **The wall**: `RESOURCE_EXHAUSTED`, "it resets in %s" and "out of quota" in
+  the log. Those strings are present in `agy.exe`, and `scanLog()` also reads a
+  relative reset out of "resets in \<n>\<s|m|h|d>". docs-only: never hit live.
+- **Prompts and conversation id**: `~/.gemini/antigravity-cli/history.jsonl`,
+  one `{ display, timestamp, workspace, conversationId }` per prompt. Observed
+  live.
+- **One account only**: agy 1.2.0 has no config-directory override, so
+  `baton accounts add agy …` is refused.
+
+### Resume prompt per agent
+
+After a hand-off the next agent starts in the same terminal with the pointer
+prompt as its first positional argument: `claude "<prompt>"`,
+`codex "<prompt>"`, `agy -i "<prompt>"` (`src/attach.mjs` `spawnSpec`).
+
+## Headless adapters (the v0.1 pipeline)
+
+These are what a pipeline card's chain spawns. Unchanged in 0.2.0.
+
+### claude (headless)
 
 - **Binary**: `BATON_CLAUDE_BIN`, else `~/.local/bin/claude.exe` (Windows)
   or `~/.local/bin/claude`, else `claude` on PATH.
@@ -27,9 +124,9 @@ a leaked token.
 - **Gotchas**: prints nothing on stdout until the session ends (poll
   `run.json`, never a stdout timeout). Stderr saying "another auth source is
   set" is an `auth_failed` leg, not a limit: it means an
-  `ANTHROPIC_API_KEY`/similar is shadowing the subscription login.
+  `ANTHROPIC_API_KEY` or similar is shadowing the subscription login.
 
-## codex
+### codex (headless)
 
 - **Binary**: `BATON_CODEX_BIN`, else the `@openai/codex` npm package's
   native platform exe (resolved under `%APPDATA%\npm\node_modules\@openai\codex\...`
@@ -41,8 +138,8 @@ a leaked token.
   positional argument.
 - **Stdin**: `ignore`, deliberately. `codex exec` reads stdin whenever it
   is not a TTY and hangs on an open pipe ("Reading additional input from
-  stdin..."); a plan-time probe with a pipe hung 170s, the same task with
-  stdin closed finished in 20s.
+  stdin..."); a plan-time probe with a pipe hung 170 s, the same task with
+  stdin closed finished in 20 s.
 - **Modes**: default `workspace-write`; allowed `read-only`,
   `workspace-write`.
 - **Forbidden flags**: `danger-full-access`,
@@ -52,38 +149,14 @@ a leaked token.
   `network: true`. If you run `codex exec` by hand outside Baton, always
   pass the prompt as an argument, never on a pipe.
 
-## gemini (legacy)
-
-Google is retiring Gemini CLI in favour of Antigravity's `agy` (next
-section). The adapter stays registered for accounts that still work, but the
-live probe on 2026-09-10 got `IneligibleTierError` with a message pointing at
-Antigravity. Prefer `agy` in new chains.
-
-- **Binary**: `BATON_GEMINI_BIN` (a `.mjs`/`.cjs`/`.js` path runs via
-  `node <entry>`, anything else runs directly), else the
-  `@google/gemini-cli` npm package's entry via `resolveNpmCliEntry`, else
-  `gemini` on PATH.
-- **Argv**: `gemini -p "<prompt>" -o json --approval-mode <mode>
-  --skip-trust`, plus `-m <model>`, `-r <session-id>`.
-- **Stdin**: `ignore`: gemini appends any stdin to the prompt, so an open
-  pipe would corrupt it.
-- **Modes**: default `auto_edit`; allowed `default`, `auto_edit`, `plan`.
-- **Forbidden flags**: `--yolo`, `-y`, `yolo`, `--approval-mode=yolo`.
-- **Gotchas**: `--skip-trust` is required headlessly. Without it, gemini in
-  an untrusted folder overrides the approval mode to `default` and exits
-  **55**; the worktree is Baton's own checkout, so this is not a permission
-  bypass, the approval mode still gates every tool. An `IneligibleTierError`
-  on stderr means the logged-in account's tier was retired (the CLI's own
-  message points at Antigravity/`agy`).
-
-## agy
+### agy (headless)
 
 - **Binary**: `BATON_AGY_BIN`, else `%LOCALAPPDATA%\agy\bin\agy.exe`, else
   `agy` on PATH.
 - **Argv**: `agy -p "<working-directory preamble>\n\n<prompt>"
   --output-format json --mode <mode> --add-dir <cwd> --print-timeout
   <duration>`, plus `--model <model>`, `--conversation <session-id>`. The
-  duration is the card's kill timer converted to Go syntax (e.g. `90m`).
+  duration is the card's kill timer converted to Go syntax, for example `90m`.
 - **Stdin**: `ignore`.
 - **Modes**: default `accept-edits`; allowed `accept-edits`, `plan`.
 - **Forbidden flags**: `--dangerously-skip-permissions`.
@@ -96,7 +169,7 @@ Antigravity. Prefer `agy` in new chains.
   from the leg's kill timer so the supervisor, not agy, decides what a
   runaway is.
 
-## fake (and fake-claude / fake-codex / fake-gemini / fake-agy / fake-nostdin)
+### fake (and fake-claude / fake-codex / fake-agy / fake-nostdin)
 
 - **Binary**: always `node bin/fake-agent.mjs` (`process.execPath` +
   the script path); nothing to install.
@@ -111,13 +184,12 @@ Antigravity. Prefer `agy` in new chains.
 - **Forbidden flags**: `--dangerously-skip-permissions`, `--yolo`.
 - **What it does**: driven entirely by the `FAKE_MODE` environment
   variable, set per chain entry with `--fake-mode <adapter>=<mode>` (see
-  [getting-started.md](getting-started.md#7-try-it-with-no-real-agent) for
-  the full list of modes). `fake-claude` / `fake-codex` / `fake-gemini` /
-  `fake-agy` set `emulates` to that CLI's name, so the limit classifier
-  applies that CLI's own fixtures to it, so a demo chain reads like a real
-  fallback.
+  [getting-started.md](getting-started.md#try-a-pipeline-with-no-real-agent)
+  for the full list of modes). `fake-claude` / `fake-codex` / `fake-agy` set
+  `emulates` to that CLI's name, so the limit classifier applies that CLI's own
+  fixtures to it and a demo chain reads like a real fallback.
 
-## grok (built, not registered)
+### grok (built, not registered)
 
 - **Binary**: `BATON_GROK_BIN`, else `~/.grok/bin/grok.exe`, else `grok` on
   PATH.
@@ -176,11 +248,17 @@ helpers, `src/adapters/fake.mjs` for the simplest full example):
    [cli-contracts.md](cli-contracts.md), the way every existing adapter's
    section does.
 
+An interactive tap is a separate, larger job: a new agent needs a
+`src/taps/<name>.mjs` that answers three questions (what are the usage
+percentages, what does the wall look like, what are the prompts and edited
+files) and a branch in `src/attach.mjs` `spawnSpec`.
+
 ## See also
 
 - [cli-contracts.md](cli-contracts.md): the full evidence trail, exit
-  codes, and every limit-signal fixture, tagged observed-live or docs-only.
+  codes, the interactive tap sources, and every limit-signal fixture, tagged
+  observed-live or docs-only.
 - [configuration.md](configuration.md): the `BATON_<ADAPTER>_BIN`
-  overrides.
-- [concepts.md](concepts.md): how a leg's outcome is classified from an
-  adapter's exit code, output, and the DONE marker.
+  overrides and the accounts layout.
+- [concepts.md](concepts.md): sessions, usage windows, the interactive
+  hand-off, and how a headless leg's outcome is classified.

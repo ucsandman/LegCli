@@ -22,6 +22,9 @@ import { createScheduler, schedulerStatus, MAX_CONCURRENT } from './scheduler.mj
 import { remove as removeWorktree } from './worktree.mjs'
 import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
+import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost } from './sessions.mjs'
+import { readUsage } from './usage.mjs'
+import { readAccounts } from './accounts.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const BOARD_DIR = join(dirname(SELF), 'board')
@@ -175,7 +178,7 @@ function detectTools() {
   }
   let chb = false
   try { resolveChb(); chb = true } catch {}
-  toolsCache = { claude: probe('claude'), codex: probe('codex'), gemini: probe('gemini'), agy: probe('agy'), grok: probe('grok'), chb, git: probe('git') }
+  toolsCache = { claude: probe('claude'), codex: probe('codex'), agy: probe('agy'), grok: probe('grok'), chb, git: probe('git') }
   return toolsCache
 }
 
@@ -186,6 +189,44 @@ async function adaptersInfo() {
     out.push({ name: n, modes: a.modes, fake: isFake(n), stdin: a.stdin })
   }
   return out
+}
+
+// ---- sessions (baton claude|codex|agy) ----
+const trunkCache = new Map()
+function trunkFor(repo) {
+  const hit = trunkCache.get(repo)
+  if (hit && Date.now() - hit.at < 15000) return hit.data
+  const g = (args) => { const r = spawnSync('git', args, { cwd: repo, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } }); return r.status === 0 ? r.stdout.trim() : null }
+  let branch = null
+  for (const b of ['main', 'master', 'trunk']) if (g(['rev-parse', '--verify', '--quiet', b]) !== null) { branch = b; break }
+  const log = branch ? g(['log', '--format=%h%x1f%s%x1f%cr%x1f%an', '-6', branch]) : null
+  const data = {
+    repo, repo_name: repo.split(/[\\/]/).filter(Boolean).pop(), branch,
+    commits: (log ?? '').split('\n').filter(Boolean).map((l) => { const [sha, subject, when, author] = l.split('\x1f'); return { sha, subject, when, author } }),
+  }
+  trunkCache.set(repo, { at: Date.now(), data })
+  return data
+}
+
+export function sessionsView() {
+  const list = reapLost(listSessions())
+  const ov = overlaps(list)
+  const sessions = list.map((s) => ({
+    ...s,
+    active: isActive(s),
+    overlap: ov.get(s.session_id) ?? [],
+    elapsed_ms: Date.now() - Date.parse(s.started_at),
+    files: [...new Set([...(s.files_touched ?? []), ...(s.files_dirty ?? [])])],
+  }))
+  const acc = readAccounts()
+  const accounts = []
+  for (const agent of Object.keys(acc)) for (const account of acc[agent]) {
+    const u = readUsage(agent, account)
+    accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, updated_at: u.updated_at, live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length })
+  }
+  const repos = [...new Set(sessions.filter((s) => s.active && s.repo).map((s) => s.repo))]
+  const trunk = repos.map((r) => { try { return trunkFor(r) } catch { return { repo: r, commits: [] } } })
+  return { sessions, accounts, trunk, ts: new Date().toISOString() }
 }
 
 // ---- http helpers ----
@@ -248,8 +289,16 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30 } = {}) {
     pending.add(id)
     if (!flushTimer) flushTimer = setTimeout(flushPending, debounceMs)
   }
+  let sessionsWatcher = null
+  let sessionsTimer = null
+  const pushSessions = () => { sessionsTimer = null; try { broadcast('sessions', sessionsView()) } catch (err) { log(`sessions view: ${err.message}`) } }
   const startWatch = () => {
     if (watcher) return
+    try {
+      const sdir = sessionsRoot()
+      mkdirSync(sdir, { recursive: true })
+      sessionsWatcher = fsWatch(realPath(sdir), { recursive: true }, () => { if (!sessionsTimer) sessionsTimer = setTimeout(pushSessions, 300) })
+    } catch (err) { log(`sessions watch: ${err.message}`); sessionsWatcher = null }
     // watch the real long path: libuv's recursive watcher asserts when the
     // watched dir is an 8.3 short path (fs-event.c, seen on a GitHub runner)
     const dir = join(home(), 'cards')
@@ -261,10 +310,12 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30 } = {}) {
         if (id.startsWith('card-')) scheduleRefresh(id)
       })
     } catch (err) { log(`sse watch: ${err.message}`); watcher = null }
-    healthTimer = setInterval(() => broadcast('health', { ok: true, scheduler: { ...schedulerStatus(), max_concurrent: MAX_CONCURRENT }, ts: new Date().toISOString() }), healthIntervalMs)
+    healthTimer = setInterval(() => { broadcast('health', { ok: true, scheduler: { ...schedulerStatus(), max_concurrent: MAX_CONCURRENT }, ts: new Date().toISOString() }); pushSessions() }, healthIntervalMs)
   }
   const stopWatch = () => {
     if (watcher) { watcher.close(); watcher = null }
+    if (sessionsWatcher) { sessionsWatcher.close(); sessionsWatcher = null }
+    if (sessionsTimer) { clearTimeout(sessionsTimer); sessionsTimer = null }
     if (healthTimer) { clearInterval(healthTimer); healthTimer = null }
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
     pending.clear()
@@ -318,9 +369,28 @@ export function createBoardServer({ bind = process.env.BATON_BIND || '127.0.0.1'
       if (req.method === 'GET' && path === '/api/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
         const cards = listCards()
-        res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map(summarize), ts: new Date().toISOString() })}\n\n`)
+        res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map(summarize), sessions: sessionsView(), ts: new Date().toISOString() })}\n\n`)
         sse.add(res, cards)
         return
+      }
+      if (req.method === 'GET' && path === '/api/sessions') return send(res, 200, sessionsView())
+      if (parts[1] === 'sessions' && parts[2]) {
+        const id = parts[2]
+        const sess = readSession(id)
+        if (!sess) return send(res, 404, { error: `session not found: ${id}` })
+        if (req.method === 'GET' && parts.length === 3) return send(res, 200, { session: sess, events: readSessionEvents(id) })
+        if (req.method === 'POST' && (parts[3] === 'handoff' || parts[3] === 'end')) {
+          if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
+          requestControl(id, parts[3] === 'handoff' ? { handoff: true, by: actor.id } : { end: true, by: actor.id })
+          log(`${parts[3]} requested for ${id} by ${actor.id}`)
+          return send(res, 200, { ok: true, requested: parts[3] })
+        }
+        if (req.method === 'DELETE' && parts.length === 3) {
+          if (isActive(sess)) return send(res, 409, { error: 'end the session before removing it' })
+          removeSession(id)
+          sse.broadcast('sessions', sessionsView())
+          return send(res, 200, { removed: id })
+        }
       }
       if (req.method === 'GET' && path === '/api/floor') return send(res, 200, floor(listCards()))
       if (req.method === 'GET' && path === '/api/trunk') return send(res, 200, trunk(listCards(), parseSince(url.searchParams.get('since'))))

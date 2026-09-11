@@ -18,12 +18,15 @@ export const PATTERNS = [
 
 const SELF = fileURLToPath(import.meta.url)
 const ROOT = resolve(dirname(SELF), '..')
-const SKIP_DIRS = new Set(['node_modules', '.git', '.supergoal', '.baton', '.baton-worktrees'])
+const SKIP_DIRS = new Set(['node_modules', '.git', '.supergoal', '.baton', '.baton-worktrees', '.context-handoffs'])
+// plain entries in .gitignore (no globs) are never shipped, so they are not scanned
+let GITIGNORED = new Set()
+try { GITIGNORED = new Set(readFileSync(resolve(ROOT, '.gitignore'), 'utf8').split(/\r?\n/).map((l) => l.trim().replace(/\/$/, '')).filter((l) => l && !l.startsWith('#') && !/[*?[]/.test(l))) } catch {}
 const BINARY_EXT = /\.(png|jpg|jpeg|gif|webp|ico|woff2?|ttf|pdf|zip|gz|tgz|mp4)$/i
 
 function walk(dir, out) {
   for (const name of readdirSync(dir)) {
-    if (SKIP_DIRS.has(name)) continue
+    if (SKIP_DIRS.has(name) || GITIGNORED.has(name)) continue
     const full = join(dir, name)
     const st = statSync(full)
     if (st.isDirectory()) walk(full, out)

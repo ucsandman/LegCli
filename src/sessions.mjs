@@ -1,0 +1,139 @@
+// sessions — the store behind `baton claude|codex|agy`. One directory per
+// interactive terminal session under $BATON_HOME/sessions/<id>/:
+//   session.json   the live record the board renders (atomic writes)
+//   events.jsonl   timeline (started, turn, warning, limit, handoff, ended)
+//   control.json   board → runner requests ({ handoff: true })
+// The runner (src/attach.mjs) is the only writer of session.json; hooks and
+// taps go through recordFromTap() so every write is one atomic replace.
+import { existsSync, mkdirSync, readdirSync, readFileSync, appendFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import { home } from './store.mjs'
+import { writeJsonAtomic } from './fsx.mjs'
+import { scrub } from './redact.mjs'
+
+export const AGENTS = ['claude', 'codex', 'agy']
+export const SESSION_STATUSES = ['starting', 'running', 'warning', 'limit', 'handing_off', 'handed_off', 'ended', 'lost']
+const ACTIVE = ['starting', 'running', 'warning', 'limit', 'handing_off']
+
+const now = () => new Date().toISOString()
+
+export function sessionsRoot() { return join(home(), 'sessions') }
+export function sessionDir(id) { return join(sessionsRoot(), id) }
+
+export function newSessionId(agent) {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `s-${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}-${agent}-${randomBytes(2).toString('hex')}`
+}
+
+export function readSession(id) {
+  const f = join(sessionDir(id), 'session.json')
+  if (!existsSync(f)) return null
+  try { return JSON.parse(readFileSync(f, 'utf8')) } catch { return null }
+}
+
+export function listSessions() {
+  const root = sessionsRoot()
+  if (!existsSync(root)) return []
+  return readdirSync(root).filter((n) => n.startsWith('s-')).sort().map(readSession).filter(Boolean)
+}
+
+export function isActive(s) { return ACTIVE.includes(s?.status) }
+
+export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [] }) {
+  const session = {
+    session_id: id, agent, account, cwd, repo, branch, argv,
+    repo_name: repo ? repo.split(/[\\/]/).filter(Boolean).pop() : null,
+    status: 'starting', runner_pid, pid: null,
+    started_at: now(), updated_at: now(), ended_at: null, last_activity: now(),
+    agent_session_id: null, transcript_path: null,
+    task: null, turns: 0,
+    files_touched: [], files_dirty: [], head: null, head_at_start: null,
+    limits: null, limit: null, warning: null,
+    bundle: null, handoff: null, chain,
+    lineage: { from: null, to: null },
+    exit_code: null,
+  }
+  mkdirSync(sessionDir(id), { recursive: true })
+  writeJsonAtomic(join(sessionDir(id), 'session.json'), session)
+  appendEvent(id, { type: 'started', summary: `${agent} (${account}) started in ${cwd}` })
+  return session
+}
+
+// Patch the record; arrays replace, `merge` deep-merges one level (limits).
+export function updateSession(id, patch, { event } = {}) {
+  const cur = readSession(id)
+  if (!cur) return null
+  const next = { ...cur, ...patch, updated_at: now() }
+  if (patch.limits && cur.limits) next.limits = { ...cur.limits, ...patch.limits }
+  writeJsonAtomic(join(sessionDir(id), 'session.json'), next)
+  if (event) appendEvent(id, event)
+  return next
+}
+
+export function appendEvent(id, ev) {
+  const dir = sessionDir(id)
+  if (!existsSync(dir)) return
+  const line = { ts: now(), session_id: id, ...ev, summary: scrub(String(ev.summary ?? '')) }
+  if (line.body) line.body = scrub(String(line.body)).slice(0, 4000)
+  appendFileSync(join(dir, 'events.jsonl'), JSON.stringify(line) + '\n')
+}
+
+export function readEvents(id) {
+  const f = join(sessionDir(id), 'events.jsonl')
+  if (!existsSync(f)) return []
+  return readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
+}
+
+// Board → runner. The runner polls this file; a consumed request is deleted.
+export function requestControl(id, req) {
+  writeJsonAtomic(join(sessionDir(id), 'control.json'), { ...req, requested_at: now() })
+}
+export function takeControl(id) {
+  const f = join(sessionDir(id), 'control.json')
+  if (!existsSync(f)) return null
+  let req = null
+  try { req = JSON.parse(readFileSync(f, 'utf8')) } catch {}
+  rmSync(f, { force: true })
+  return req
+}
+
+export function removeSession(id) { rmSync(sessionDir(id), { recursive: true, force: true }) }
+
+function pidAlive(pid) {
+  if (!pid) return false
+  try { process.kill(pid, 0); return true } catch { return false }
+}
+
+// A session whose runner process is gone (terminal closed, crash) is marked
+// lost so the board never shows a dead terminal as live.
+export function reapLost(sessions = listSessions()) {
+  const out = []
+  for (const s of sessions) {
+    if (isActive(s) && !pidAlive(s.runner_pid)) {
+      out.push(updateSession(s.session_id, { status: 'lost', ended_at: now() }, { event: { type: 'lost', summary: `runner pid ${s.runner_pid} is gone; session marked lost` } }) ?? s)
+    } else out.push(s)
+  }
+  return out
+}
+
+// Two live sessions on one repo touching the same file: both get flagged.
+export function overlaps(sessions) {
+  const live = sessions.filter(isActive).filter((s) => s.repo)
+  const out = new Map()
+  for (let i = 0; i < live.length; i++) {
+    for (let j = i + 1; j < live.length; j++) {
+      const a = live[i]; const b = live[j]
+      if (a.repo.toLowerCase() !== b.repo.toLowerCase()) continue
+      const setB = new Set([...(b.files_touched ?? []), ...(b.files_dirty ?? [])])
+      const shared = [...new Set([...(a.files_touched ?? []), ...(a.files_dirty ?? [])])].filter((f) => setB.has(f))
+      if (!shared.length) continue
+      for (const [x, y] of [[a, b], [b, a]]) {
+        if (!out.has(x.session_id)) out.set(x.session_id, [])
+        out.get(x.session_id).push({ session_id: y.session_id, agent: y.agent, files: shared })
+      }
+    }
+  }
+  return out
+}

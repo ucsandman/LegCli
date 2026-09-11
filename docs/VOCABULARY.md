@@ -7,6 +7,50 @@ now" for `handoff_now`) but must not use a different word for the same thing.
 Regenerate this by re-running the greps in each section header if the source
 changes.
 
+## Session statuses
+
+One interactive terminal under `baton claude|codex|agy`. Source:
+`src/sessions.mjs` `SESSION_STATUSES`; board labels from `STATUS` in
+`src/board/sessions.js`.
+
+| status | board label | active? | meaning |
+|--------|-------------|---------|---------|
+| `starting` | starting | yes | the runner registered the session; the agent has not reported in yet |
+| `running` | running | yes | the agent is up and taking turns |
+| `warning` | near limit | yes | a usage window crossed `BATON_WARN_PCT` (default 85) |
+| `limit` | limit hit | yes | the agent reported its usage limit; the account is walled |
+| `handing_off` | handing off | yes | the bundle is being saved and the next option chosen |
+| `handed_off` | handed off | no | this leg is done; the next agent owns the terminal |
+| `ended` | ended | no | the agent exited, or End was pressed |
+| `lost` | lost | no | the runner process that owned the terminal is gone; never shown as live |
+
+The five active statuses are what the board counts as a live session for
+overlap flags and for the accounts strip's live dot.
+
+## Session event types
+
+Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
+`src/sessions.mjs`, `src/taps/claude.mjs` and `src/server.mjs`; written to
+`$BATON_HOME/sessions/<id>/events.jsonl`.
+
+| type | meaning |
+|------|---------|
+| `started` | the session was created: agent, account and directory |
+| `leg` | one agent is starting in this terminal, noting whether it starts from a handoff bundle |
+| `agent_ready` | the agent reported its own session id (claude's `SessionStart` hook, codex's rollout `session_meta`) |
+| `turn` | a human prompt was submitted; carries the turn number and the first 120 characters |
+| `turn_done` | the agent's reply for that turn, first 160 characters |
+| `warning` | a usage window crossed the warning threshold; names the window, the percentage and the next option |
+| `limit` | a usage limit was detected; carries the agent's own wording |
+| `handoff_requested` | someone pressed Hand off now, or ran `baton sessions handoff` |
+| `handoff` | the switch happened: from, to, reason, bundle id |
+| `all_out` | every option is walled; the resets are printed and the process exits 3 |
+| `agent_exit` | the agent process exited, with its code |
+| `ended` | the session ended |
+| `lost` | the runner pid is gone; the session was marked `lost` |
+| `error` | a spawn error, a tap error, a failed bundle checkpoint, or an error the agent reported |
+| `status` | a note that does not fit another type |
+
 ## Card statuses
 
 Source: `src/chain.mjs` `TERMINAL` + `NON_TERMINAL`.

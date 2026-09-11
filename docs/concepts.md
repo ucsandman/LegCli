@@ -1,11 +1,121 @@
 # Concepts
 
-For anyone who wants to understand how Baton moves a card from a task to
-landed code, before changing configuration or adding an adapter. Read
-[getting-started.md](getting-started.md) first if you have not run a card
+Two halves. The first four sections are the 0.2 way in: `baton claude` runs an
+interactive agent and Baton watches it. The rest is the v0.1 pipeline, which
+still works and now sits below the Terminals lane on the board. Read
+[getting-started.md](getting-started.md) first if you have not run anything
 yet.
 
+## Sessions
+
+A **session** is one terminal running one agent under Baton. `baton claude`,
+`baton codex` and `baton agy` each create one. Baton spawns the real CLI with
+stdio inherited, so the agent's own TUI, prompts, permissions, hooks and skills
+are what you see; every argument after the agent name is passed through
+unchanged.
+
+Each session gets a directory under `$BATON_HOME/sessions/<id>/`
+(`src/sessions.mjs`):
+
+| file | what it holds |
+|------|---------------|
+| `session.json` | the live record the board renders; the runner is its only writer, and every write is one atomic replace |
+| `events.jsonl` | the timeline (see [VOCABULARY.md](VOCABULARY.md#session-event-types)) |
+| `control.json` | requests from the board to the runner, for example `{ handoff: true }` |
+| `hook.log` | what Claude Code's hooks sent, claude sessions only |
+| `claude-settings.json` | the per-session `--settings` file, claude sessions only |
+| `agy.log` | agy's `--log-file`, agy sessions only |
+
+A session's status is one of `starting`, `running`, `warning`, `limit`,
+`handing_off`, `handed_off`, `ended`, `lost`. `lost` means the runner process
+that owned the terminal is gone (closed window, crash); the board never shows
+it as live.
+
+The board is started detached on `127.0.0.1:4747` by the first session that
+finds it down, and opened once. Later sessions reuse it.
+
+## Accounts
+
+An **account** is one login for one agent. `default` is the CLI's own home
+(`~/.claude`, `~/.codex`). An extra account is a directory under
+`$BATON_HOME/accounts/<agent>/<name>/` that the CLI is pointed at with its
+config-directory variable: `CLAUDE_CONFIG_DIR` for claude, `CODEX_HOME` for
+codex (`src/accounts.mjs` `LAYOUT`). agy 1.2.0 has no config-directory
+override, so agy stays one account.
+
+Your harness is shared into an extra account, never copied into a fork that
+drifts: the directories are junctions back to the real home (claude: `hooks`,
+`skills`, `agents`, `commands`, `plugins`, `rules`, `scripts`,
+`output-styles`, `tools`; codex: `skills`, `prompts`, `rules`, `plugins`,
+`agents`, `hooks`, `memories`, `superpowers`), and the settings files are
+copied fresh before every launch (claude: `settings.json`,
+`settings.local.json`, `CLAUDE.md`, `keybindings.json`, `statusline.ps1`,
+`statusline-combined.ps1`; codex: `config.toml`, `AGENTS.md`). Only the login
+itself lives in the account directory.
+
+`baton accounts add <claude|codex> <name>` creates one and prints the single
+line to paste to log in. `baton accounts rm` removes the junctions as links,
+never following them, and deletes the directory. `baton accounts terms` prints
+what both vendors' terms say about a second account; the quotes are in the
+README.
+
+## Usage windows
+
+Every agent exposes two rolling windows: a 5-hour one and a 7-day one. Baton
+keeps the latest reading per (agent, account) in
+`$BATON_HOME/usage/<agent>--<account>.json` (`src/usage.mjs`):
+
+```
+{ five_hour: {pct, resets_at}, seven_day: {pct, resets_at},
+  limited_until, limited_reason, source, updated_at }
+```
+
+Where each number comes from is per agent, and is in
+[adapters.md](adapters.md). The rules on top of them are shared:
+
+- **Warning** at `WARN_PCT`, default 85, settable with `BATON_WARN_PCT`. The
+  highest percentage across the known windows is the pressure; the hottest
+  window names the warning.
+- **Wall.** `markLimited()` records `limited_until` from the reset time the CLI
+  itself reported. With no reset time it uses the soonest known window reset,
+  and with neither it assumes five hours.
+- **Clearing.** A usage reading that arrives after `limited_until` has passed
+  clears the wall.
+
+## Handoff (interactive)
+
+When a session hits its limit, or you press **Hand off now**, Baton does four
+things in order (`src/attach.mjs`, `src/bundle.mjs`):
+
+1. **Bundle.** `sessionNotes()` writes the six sections
+   `context-handoff-bundle` parses (Scope, Projects mentioned, Findings,
+   Opportunities, Open questions, Evidence anchors) from the task, the last
+   messages in the transcript, `git diff --stat`, the dirty files, the files
+   edited this session, recent commits and why it stopped. The CLI is called as
+   `context-handoff-bundle save --repo-local --slug baton-<session id>`, with
+   `--update <slug>` after the first time, so one bundle per session is updated
+   in place. A checkpoint runs about every two minutes while the session has
+   turns, and at every warning, limit and hand-off.
+2. **Choose.** `candidates()` lists the other accounts of the same agent first,
+   then the remaining agents in order claude, codex, agy, wrapping, so every
+   option is tried once. From codex the order is agy, then claude.
+   `chooseNext()` skips any option whose wall has not reset.
+3. **Switch.** The agent process is stopped and the terminal restored. The
+   bundle's `context-handoff-bundle load <id>` output is written to
+   `.baton/RESUME.md`, and the next agent starts in the same terminal with a
+   short pointer prompt as its first positional argument: `claude "<prompt>"`,
+   `codex "<prompt>"`, `agy -i "<prompt>"`. The prompt says to read
+   `.baton/RESUME.md`, check `git status` and `git diff`, continue, and not ask
+   the human to restate the task.
+4. **All out.** If every option is walled, Baton prints each one with its reset
+   time, soonest first, and exits 3. The card records `session.all_out`.
+
+`BATON_NO_HANDOFF=1` keeps the warning and the record but never switches.
+
 ## Cards, stations and pipelines
+
+Everything from here down is the v0.1 pipeline: headless agents in a git
+worktree, one per card. It is unchanged in 0.2.0 and is not the way in.
 
 A **card** is one task moving through a **pipeline**: an ordered list of
 **stations**. A station has a `kind`:
@@ -47,9 +157,8 @@ anything spawns.
 |---------|---------------|----------------|
 | `claude` | `acceptEdits` | acceptEdits, auto, plan, manual, dontAsk |
 | `codex` | `workspace-write` | read-only, workspace-write |
-| `gemini` (legacy; Google is retiring Gemini CLI for `agy`) | `auto_edit` | default, auto_edit, plan |
 | `agy` | `accept-edits` | accept-edits, plan |
-| `fake` (and `fake-claude`/`fake-codex`/`fake-gemini`/`fake-agy`) | `acceptEdits` | acceptEdits, plan, workspace-write, read-only, accept-edits, auto_edit |
+| `fake` (and `fake-claude`/`fake-codex`/`fake-agy`/`fake-nostdin`) | `acceptEdits` | acceptEdits, plan, workspace-write, read-only, accept-edits, auto_edit |
 | `grok` (built, not registered) | `acceptEdits` | default, acceptEdits, auto, dontAsk, plan |
 
 See [adapters.md](adapters.md) for each adapter's exact argv, forbidden

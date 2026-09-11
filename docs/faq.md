@@ -4,20 +4,71 @@ Real questions, short answers, sourced from the code and the other docs in
 this directory.
 
 **Why subscription CLIs only, never a per-token API?**
-Baton spawns each CLI's own logged-in session (`claude`, `codex`, `gemini`,
-`agy`). Every child process has `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+Baton spawns each CLI's own logged-in session (`claude`, `codex`, `agy`).
+Every child process has `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
 `ANTHROPIC_BASE_URL` and `OPENAI_API_KEY` stripped out (`src/env.mjs`), so a
 stray API key in your shell cannot silently take over billing or shadow the
 subscription login. If stderr ever says "another auth source is set", that
 leg is classified `auth_failed`, a failed launch, and does not count as a
 usage limit.
 
-**Is Gemini CLI still supported?**
-Google is retiring Gemini CLI in favour of Antigravity's `agy`. The `gemini`
-adapter stays registered for accounts that still work, but the live probe on
-2026-09-10 already got `IneligibleTierError` pointing at Antigravity. Put
-`agy` in new chains and treat `gemini` as legacy (see
-[adapters.md](adapters.md#gemini-legacy)).
+**Why does Baton poll an endpoint for claude's usage instead of reading the
+status line?**
+Because Claude Code 2.1.268 does not run a custom status line from a settings
+file Baton controls. An `echo` command was passed as `statusLine` through
+`--settings` and again through a project `.claude/settings.local.json`, and
+neither ran: the built-in status line stayed on screen, while hooks from the
+same `--settings` file fired. So the numbers come from
+`GET api.anthropic.com/api/oauth/usage` with the login Claude Code already
+stored, which is the same data `/usage` shows. Baton still writes the
+`statusLine` entry, so the endpoint poll becomes a fallback the moment a build
+honours it, and your own status-line command is chained first either way. See
+[adapters.md](adapters.md#claude) and `src/taps/claude-usage.mjs`.
+
+**Why does codex get no hook when claude does?**
+Because injecting one would put a prompt in your way. codex asks you to review
+new hooks before it runs them, so a hook per Baton session would mean a
+review prompt per Baton session. It is not needed: an interactive codex writes
+the whole thread to a rollout file under `~/.codex/sessions/YYYY/MM/DD/`, and
+flushes it per event. Baton finds the rollout whose `session_meta` cwd is the
+session's directory and tails it for the rate limits, the prompts and the
+edited files.
+
+**Why does agy show no percentage?**
+Because agy exposes none. agy 1.2.0 is a closed Go binary; its own status line
+fetches a quota summary from the backend and writes it nowhere on disk. The
+board shows "no % from agy" rather than an empty bar. The wall itself is still
+caught: Baton passes `--log-file` per session and watches for
+`RESOURCE_EXHAUSTED`, "it resets in …" and "out of quota". Those strings are
+present in `agy.exe` but have not been hit live, so they are tagged docs-only
+in [cli-contracts.md](cli-contracts.md#agy-tap).
+
+**Am I allowed to add a second account?**
+That is your call, and the terms are quoted in full in the README under
+"Second accounts, and what the terms say" (`baton accounts terms` prints the
+same summary). The short version: owning two paid subscriptions is not named
+as prohibited by Anthropic or OpenAI, but rotating to a second account of the
+same vendor because the first is rate-limited sits close to OpenAI's
+"circumvent any rate limits" wording and Anthropic's "circumvent product
+guardrails". Baton's default chain switches vendors (claude, codex, agy),
+which is plainly fine. Same-vendor rotation only happens after you run
+`baton accounts add`.
+
+**What does `baton uninstall` remove?**
+`~/.baton` and nothing else: sessions, usage files, the extra account
+directories with their junctions, the v0.1 cards and runs, and the board
+pidfile. It removes the junctions as links, never following them into your
+real `~/.claude` or `~/.codex`. It does not touch any file of yours, any repo,
+or the agent CLIs themselves. Run `baton uninstall` with no flag to print what
+would go, `--yes` to do it; then `npm rm -g agent-baton` if you want the
+package gone too.
+
+**Can I run `baton claude` inside a Claude Code shell?**
+Yes. A parent Claude Code session exports `CLAUDECODE` and `CLAUDE_CODE_*`
+markers that make a nested Claude refuse to start; `sanitizeEnv`
+(`src/env.mjs`) strips them along with the API-key variables, so the child
+starts normally. It becomes its own session with its own card on the board,
+unrelated to the parent's.
 
 **Why are `--dangerously-skip-permissions` and similar flags never
 available?**
@@ -28,7 +79,8 @@ before anything spawns. Requesting `bypassPermissions`, `--yolo`,
 `--full-auto`, `danger-full-access`, or similar throws immediately; nothing
 ever runs with permission checks off.
 
-**What actually happens when a leg hits a usage limit?**
+**What actually happens when a pipeline leg hits a usage limit?**
+(For an interactive session, see [concepts.md](concepts.md#handoff-interactive).)
 `src/limits.mjs` classifies the leg's exit code, output and diff evidence as
 `limit`. Baton writes a handoff bundle in the same worktree (task, done so
 far, the diff, open findings) via `context-handoff-bundle`, then starts the

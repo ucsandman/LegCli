@@ -123,7 +123,7 @@ function tailFile(path, lines = 15) {
   return readFileSync(path, 'utf8').trim().split('\n').slice(-lines).join(' | ')
 }
 
-function ensureExcluded(repo, pattern) {
+export function ensureExcluded(repo, pattern) {
   const f = join(repo, '.git', 'info', 'exclude')
   try {
     const cur = existsSync(f) ? readFileSync(f, 'utf8') : ''

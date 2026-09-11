@@ -15,6 +15,11 @@ import { remove as removeWorktree } from '../src/worktree.mjs'
 import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../src/scheduler.mjs'
 import { availableActions } from '../src/chain.mjs'
 import { up, down, status, openBoard } from '../src/launcher.mjs'
+import { attach } from '../src/attach.mjs'
+import { AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive } from '../src/sessions.mjs'
+import { addAccount, removeAccount, listAccountRows, LAYOUT } from '../src/accounts.mjs'
+import { listUsage, fmtReset } from '../src/usage.mjs'
+import { home } from '../src/store.mjs'
 
 const out = (s) => process.stdout.write(s + '\n')
 const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code) }
@@ -54,9 +59,83 @@ function fmtCard(c) {
   return `${c.card_id}  [${c.status}]  ${c.station}${leg}  leases=${(c.leases?.length ? c.leases : ['**']).join(',')}  ${String(c.title ?? c.task).slice(0, 60)}`
 }
 
+const TERMS = `Terms check (fetched 2026-09-11): Anthropic Consumer Terms forbid sharing account credentials and "bypassing any of our systems or protective measures"; the Anthropic Usage Policy forbids coordinating across multiple accounts to circumvent product guardrails; OpenAI's Terms of Use forbid sharing credentials and "circumvent any rate limits or restrictions". Two paid logins you own are not banned by name, but rotating to a second account of the same vendor because the first is rate-limited is close to that wording. Baton's default chain switches vendors (claude -> codex -> agy); a second account of one vendor is your call.`
+
 async function main() {
   const [group, cmd, ...rest] = process.argv.slice(2)
   const args = parseArgs(rest)
+  if (AGENTS.includes(group)) {
+    // baton claude|codex|agy [agent args...]: everything after the agent name
+    // goes straight through.
+    const code = await attach(group, [cmd, ...rest].filter((x) => x !== undefined), { open: process.env.BATON_NO_OPEN !== '1' })
+    process.exit(code)
+  }
+  if (group === 'sessions') {
+    const list = listSessions()
+    if (cmd === 'ls' || !cmd) {
+      if (args.json) return out(JSON.stringify(list, null, 2))
+      if (!list.length) return out('(no sessions)')
+      for (const s of list) out(`${s.session_id}  [${s.status}]  ${s.agent}${s.account !== 'default' ? '/' + s.account : ''}  ${s.repo_name ?? s.cwd}${s.branch ? '@' + s.branch : ''}  turns=${s.turns}  ${s.limits ? `5h ${s.limits.five_hour?.pct ?? '-'}% 7d ${s.limits.seven_day?.pct ?? '-'}%` : ''}  ${String(s.task ?? '').slice(0, 50)}`)
+      return
+    }
+    const id = args._[0] || die(2, `usage: baton sessions ${cmd} <session-id>`)
+    const s = readSession(id) || die(3, `session not found: ${id}`)
+    if (cmd === 'show') return out(JSON.stringify({ session: s, events: readSessionEvents(id) }, null, 2))
+    if (cmd === 'events') { for (const e of readSessionEvents(id)) out(`${e.ts}  ${String(e.type).padEnd(18)}  ${e.summary}`); return }
+    if (cmd === 'handoff') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { handoff: true }); return out(`handoff requested for ${id}`) }
+    if (cmd === 'end') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { end: true }); return out(`end requested for ${id}`) }
+    if (cmd === 'rm') { if (isActive(s)) die(3, `session ${id} is still active; end it first`); removeSession(id); return out(`removed ${id}`) }
+    die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm)`)
+  }
+  if (group === 'accounts') {
+    if (cmd === 'add') {
+      const [agent, name] = args._
+      if (!agent || !name) die(2, 'usage: baton accounts add <claude|codex> <name>')
+      try {
+        const r = addAccount(agent, name)
+        out(`${agent} account "${name}" at ${r.dir}`)
+        out(`shared from your real home (junctions): ${r.shared.join(', ') || '(nothing yet)'}; settings copied fresh before every launch`)
+        out('')
+        out(TERMS)
+        out('')
+        out('Log in once (paste in PowerShell):')
+        out(`  ${r.login}`)
+        out(`Then: $env:BATON_ACCOUNT='${name}'; baton ${agent}   (or let a limit hand off to it)`)
+      } catch (err) { die(2, err.message) }
+      return
+    }
+    if (cmd === 'rm') {
+      const [agent, name] = args._
+      if (!agent || !name || name === 'default') die(2, 'usage: baton accounts rm <claude|codex> <name>')
+      removeAccount(agent, name)
+      return out(`removed ${agent} account "${name}" (your real ${LAYOUT[agent]?.home() ?? 'home'} was not touched)`)
+    }
+    if (cmd === 'ls' || !cmd) {
+      const usage = Object.fromEntries(listUsage().map((u) => [`${u.agent}--${u.account}`, u]))
+      for (const r of listAccountRows()) {
+        const u = usage[`${r.agent}--${r.name}`]
+        const lim = u?.limited_until && u.limited_until * 1000 > Date.now() ? `LIMITED until ${fmtReset(u.limited_until)}` : u ? `5h ${u.five_hour?.pct ?? '-'}%  7d ${u.seven_day?.pct ?? '-'}%` : 'no usage seen yet'
+        out(`${r.agent.padEnd(7)} ${r.name.padEnd(12)} ${lim.padEnd(40)} ${r.dir}${r.env ? `  (${r.env})` : ''}`)
+      }
+      return
+    }
+    if (cmd === 'terms') return out(TERMS)
+    die(2, `unknown accounts command "${cmd}" (ls|add|rm|terms)`)
+  }
+  if (group === 'uninstall') {
+    // Baton never edits ~/.claude or ~/.codex; everything it added lives under
+    // $BATON_HOME (sessions, usage, extra-account dirs, cards).
+    const dir = home()
+    if (!args.yes) {
+      out(`baton uninstall removes ${dir} (sessions, usage, extra-account dirs, cards, board pidfile) and nothing else.`)
+      out('Your real ~/.claude, ~/.codex and agy homes are never touched. Re-run with --yes to do it.')
+      return
+    }
+    for (const r of listAccountRows()) if (r.name !== 'default') removeAccount(r.agent, r.name)
+    down()
+    rmSync(dir, { recursive: true, force: true })
+    return out(`removed ${dir}; now: npm rm -g agent-baton`)
+  }
   if (group === 'card') {
     if (cmd === 'add') return cardAdd(args)
     if (cmd === 'ls') {
@@ -137,13 +216,15 @@ async function main() {
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (up|down|status|open|card|scheduler)`)
-  out(`baton 0.1.0 — local-first kanban + meta-harness for coding-agent CLIs
-  up [--dry] [--no-open] [--port N] [--bind ADDR]   boot the board, scheduler and merge queue; Ctrl-C stops
-  down | status | open
-  card add|ls|show|run|rm|events|queue|pause|resume|kill|approve|handoff-now|rerun|reassign
-  scheduler start|status|stop
-  presets: ${PRESET_NAMES.join(', ')}`)
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|accounts|up|down|status|open|card|scheduler|uninstall)`)
+  out(`baton 0.2.0 — your coding agents, with a board alongside and a handoff when one hits its limit
+  claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
+                               the board opens once, the session shows as a card, usage is tracked, a limit hands off
+  sessions ls|show|events|handoff|end|rm <id>
+  accounts ls|add <agent> <name>|rm|terms        optional second login for claude or codex
+  down | status | open          the board
+  uninstall [--yes]             removes only what Baton added (~/.baton)
+  extras (v0.1 pipelines): up, card ..., scheduler ...   presets: ${PRESET_NAMES.join(', ')}`)
 }
 
 await main()

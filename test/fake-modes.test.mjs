@@ -19,7 +19,6 @@ const EXPECT = [
   ['limit', 'fake', {}, 'limit', true, 13, 'limit_detected'],
   ['limit', 'fake-claude', { FAKE_LIMIT_FIXTURE: 'claude-weekly-limit' }, 'limit', true, 13, 'limit_detected'],
   ['limit', 'fake-codex', { FAKE_LIMIT_FIXTURE: 'codex-usage-limit' }, 'limit', true, 13, 'limit_detected'],
-  ['limit', 'fake-gemini', { FAKE_LIMIT_FIXTURE: 'gemini-resource-exhausted' }, 'limit', true, 13, 'limit_detected'],
   ['stall', 'fake', { BATON_TIMERS_MS: '100,400' }, 'stalled', true, 12, 'killed'],
   ['auth', 'fake', {}, 'auth_failed', false, 13, 'error'],
   ['crash', 'fake', {}, 'failed', true, 13, 'leg_exited'],
