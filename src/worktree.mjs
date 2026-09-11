@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
-import { canonPath } from './fsx.mjs'
+import { canonPath, realPath } from './fsx.mjs'
 
 function git(cwd, argv) {
   return execFileSync('git', argv, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
@@ -29,7 +29,9 @@ function isNestedWorktreePath(resolved) {
 }
 
 export function worktreePath(repo, cardId) {
-  return join(resolve(repo), '.baton-worktrees', cardId)
+  // long real path: git reports worktrees that way, and the short 8.3 form a
+  // caller may pass must never become the stored worktree path
+  return join(realPath(repo), '.baton-worktrees', cardId)
 }
 
 export function branchName(cardId) {
@@ -37,7 +39,7 @@ export function branchName(cardId) {
 }
 
 export function validateRepo(repo) {
-  const resolved = resolve(repo)
+  const resolved = realPath(repo)
   const batonHome = resolve(process.env.BATON_HOME || join(homedir(), '.baton'))
   if (samePath(resolved, batonHome)) {
     throw new Error(`refusing to use BATON_HOME as a repo: ${resolved}`)

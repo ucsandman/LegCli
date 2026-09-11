@@ -10,6 +10,7 @@ import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkBind, authorize } from './auth.mjs'
+import { realPath } from './fsx.mjs'
 import { listCards, readCard, readRuns, readEvents, cardDir, home } from './store.mjs'
 import { humanAction } from './orchestrator.mjs'
 import { createCard, CardInputError } from './cards.mjs'
@@ -249,10 +250,12 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30 } = {}) {
   }
   const startWatch = () => {
     if (watcher) return
+    // watch the real long path: libuv's recursive watcher asserts when the
+    // watched dir is an 8.3 short path (fs-event.c, seen on a GitHub runner)
     const dir = join(home(), 'cards')
     try {
       mkdirSync(dir, { recursive: true })
-      watcher = fsWatch(dir, { recursive: true }, (_event, filename) => {
+      watcher = fsWatch(realPath(dir), { recursive: true }, (_event, filename) => {
         if (!filename) return
         const id = String(filename).split(/[\\/]/)[0]
         if (id.startsWith('card-')) scheduleRefresh(id)

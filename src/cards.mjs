@@ -4,7 +4,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import { resolve, sep, join } from 'node:path'
-import { canonPath } from './fsx.mjs'
+import { canonPath, realPath } from './fsx.mjs'
 import { homedir } from 'node:os'
 import { buildPipeline, validatePipeline, loadAdapterModes, parseChain } from './pipeline.mjs'
 import { PRESET_NAMES } from './presets.mjs'
@@ -40,7 +40,8 @@ function kv(raw) {
 
 export async function createCard(input, actor = { type: 'human', id: 'local' }) {
   if (!input.repo) throw new CardInputError('missing repo')
-  const repo = resolve(String(input.repo))
+  // stored in its real long form (an 8.3 short path or symlink never lands in card.json)
+  const repo = existsSync(String(input.repo)) ? realPath(String(input.repo)) : resolve(String(input.repo))
   if (!existsSync(repo)) throw new CardInputError(`repo not found: ${repo}`)
   if (!statSync(repo).isDirectory()) throw new CardInputError(`repo is not a directory: ${repo}`)
   let top

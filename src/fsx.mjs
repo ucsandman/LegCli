@@ -12,6 +12,13 @@ import { resolve, dirname, basename, join } from 'node:path'
 // while git reports C:\Users\runneradmin\...). A path that does not exist
 // yet is canonicalised through its deepest existing ancestor.
 export function canonPath(p) {
+  const out = realPath(p)
+  return process.platform === 'win32' ? out.toLowerCase() : out
+}
+
+// The real, long-form path (case preserved): what Baton stores and hands to
+// git, so a short or symlinked input never leaks into card.json or worktrees.
+export function realPath(p) {
   let base = resolve(p)
   const rest = []
   while (!existsSync(base)) {
@@ -22,8 +29,7 @@ export function canonPath(p) {
   }
   let out = base
   try { out = realpathSync.native(base) } catch {}
-  if (rest.length) out = join(out, ...rest)
-  return process.platform === 'win32' ? out.toLowerCase() : out
+  return rest.length ? join(out, ...rest) : out
 }
 
 const sleepSync = (ms) => { const t = Date.now() + ms; while (Date.now() < t) { /* spin */ } }
