@@ -1,7 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-09-11)
 
+Baton is a paid product from this release: a 14-day trial, then a Personal
+license ($79 once, 12 months of releases) or Team ($12 per seat per month,
+adds `baton share`). The license is the Baton License Agreement (commercial, source readable);
+0.2.0 and 0.3.0 (MIT, no downloads) were withdrawn from npm.
+
+- **License gate.** `src/license.mjs`: Ed25519-signed keys checked offline
+  against the embedded public key; a Personal key is a window over release
+  dates (`RELEASE_DATE`), a Team key expires and `baton license refresh`
+  renews it; the trial is recorded under `$BATON_HOME`. `baton <agent>` exits
+  4 once nothing is left; `baton share on` needs Team (the trial counts).
+  `baton license status|activate|deactivate|refresh`. `scripts/license-sign.mjs`
+  signs a key by hand. Ten tests.
+- **Checkout.** Stripe payment links, a `site/api/key` function that turns a
+  paid checkout into a key (deterministic per purchase), a webhook that emails
+  it through Resend, and `site/thanks` that shows it. `scripts/stripe-setup.mjs`
+  creates the plans, links and webhook idempotently; `scripts/vercel-env.mjs`
+  pushes the secrets.
 - **A marketing site.** `site/` holds a static page for the product (hero, the handoff played in a recreated terminal, the board and the two-session cards recreated in HTML, the changeover, what is never touched, install), with the SEO floor (title from measured search volume, description, canonical, OG image, robots.txt, sitemap.xml, llms.txt) and Vercel headers. PRODUCT.md and DESIGN.md at the root carry the brief and the design tokens; docs/DECISIONS.md records why cobalt. Not part of the npm package.
 
 ## 0.3.2 (2026-09-11)

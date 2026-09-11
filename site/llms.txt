@@ -1,9 +1,8 @@
 # Baton
 
-> A local wrapper for coding-agent CLIs. Type `baton claude`, `baton codex` or `baton agy` instead of the bare command and you get the same interactive agent with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits. Zero runtime dependencies, Node 22+, MIT, binds 127.0.0.1, never edits your own config files.
+> A local wrapper for coding-agent CLIs. Type `baton claude`, `baton codex` or `baton agy` instead of the bare command and you get the same interactive agent with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits. Zero runtime dependencies, Node 22+, binds 127.0.0.1, never edits your own config files. Commercial license, source readable in the package. 14-day trial, then Personal $79 once or Team $12 per seat per month.
 
 Site: https://baton-agents.vercel.app
-Source: https://github.com/ucsandman/baton
 npm: https://www.npmjs.com/package/baton-agents
 
 ## Install
@@ -42,7 +41,5 @@ Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0.
 
 ## Docs
 
-- README: https://github.com/ucsandman/baton#readme
-- Getting started: https://github.com/ucsandman/baton/blob/main/docs/getting-started.md
-- FAQ: https://github.com/ucsandman/baton/blob/main/docs/faq.md
-- Changelog: https://github.com/ucsandman/baton/blob/main/CHANGELOG.md
+- README, docs and changelog ship in the npm package: https://www.npmjs.com/package/baton-agents
+- License: https://baton-agents.vercel.app/license

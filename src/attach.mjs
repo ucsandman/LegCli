@@ -21,6 +21,7 @@ import { canonPath, realPath } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
 import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable } from './usage.mjs'
+import { entitlement, allows, describe as describeLicense } from './license.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail } from './taps/claude.mjs'
 import { findRollout, createTail, parseLines, transcriptTail as codexTail } from './taps/codex.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
@@ -362,6 +363,11 @@ function messagesFor(agent, s) {
 // ---- the command ----
 export async function attach(agent, args = [], { open = true } = {}) {
   if (!AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy)`)
+  // the paid gate: a valid key, or the 14-day trial, or no session (exit 4).
+  // The bare agent is never affected; only what Baton adds is licensed.
+  const ent = entitlement()
+  if (!allows(ent, 'run')) { say(describeLicense(ent)); return 4 }
+  if (ent.plan === 'trial' && process.env.BATON_QUIET !== '1') say(describeLicense(ent))
   // --no-worktree is Baton's flag, not the agent's: it never passes through
   const shareCheckout = args.includes('--no-worktree')
   args = args.filter((a) => a !== '--no-worktree')

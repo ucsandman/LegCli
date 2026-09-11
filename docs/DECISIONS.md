@@ -16,3 +16,11 @@ Durable product and design decisions that the code does not explain on its own. 
 - Bing Webmaster Tools: site added manually and verified by the `msvalidate.01` meta tag (account-wide code); `sitemap.xml` submitted.
 - Vercel Web Analytics: enabled on project `baton-agents` (plan-included tier); the tag is `<script defer src="/_vercel/insights/script.js">` and it is the only script besides `site.js`.
 - Not done: a custom domain (none owned for Baton); the GitHub repository is still private, so the site's GitHub, README, FAQ and changelog links 404 for strangers until it is made public.
+
+## 2026-09-11: Baton is a commercial product; the site stays on the free Vercel address
+
+- **License.** Wes: "if we're trying to sell this thing it shouldn't be open source and MIT." The repo stays private and the package ships under the Baton License Agreement (LICENSE): commercial, source readable in the package for inspection and own-use modification, no redistribution, no working around the license check. The FSL option from the pricing research was dropped for the same reason. 0.2.0 and 0.3.0 (MIT, zero downloads) are withdrawn from npm.
+- **Pricing.** Personal $79 once with 12 months of releases (Sublime shape); Team $12 per seat per month (adds `baton share`); 14-day trial started on first use, no card. Keys are Ed25519 tokens signed with a private key that lives only in the seller's `.env` and the site's Vercel env; the public key is in `src/license.mjs`. A Personal key is a window over `RELEASE_DATE`, so every release bumps that constant.
+- **Checkout.** Stripe payment links (live) with automatic tax, `site/api/key` and `site/api/webhook` on Vercel functions, Resend from `baton@practicalsystems.io`. `scripts/stripe-setup.mjs` is idempotent per site origin; a test-mode purchase was run end to end on 2026-09-11 (checkout, thanks page, key activated in the CLI, webhook 200 twice).
+- **Domain.** A `batonagents.com` purchase ($11.25) was started and cancelled at Wes's "just deploy it to a free vercel site"; nothing was bought. The site is https://baton-agents.vercel.app.
+- **Not a lawyer.** The license text was drafted in-session; a review before the first sale outside the US is Wes's call.

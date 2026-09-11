@@ -427,3 +427,20 @@ footer a { color: var(--on-blue); }
 @media (max-width: 560px) {
   .tag, .chip, .card .meta, .card .age, .pill, .landed, .board-top, .card .bars, .card .flag { font-size: 13px; }
 }
+
+/* Pricing */
+.plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.plan { padding: 28px 28px 26px; display: flex; flex-direction: column; gap: 14px; }
+.plan .buy { margin-top: auto; }
+.plan h3 { font-size: 1.4rem; }
+.plan .price { font-size: 1.05rem; color: var(--muted); }
+.plan .price b { font-size: 2.4rem; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; margin-right: 6px; }
+.plan ul { display: grid; gap: 8px; margin-top: 4px; }
+.plan li { padding-left: 18px; position: relative; font-size: 15.5px; }
+.plan li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 8px; height: 2px; background: var(--blue); }
+.buy {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 10px 18px; margin-top: 10px;
+  background: var(--blue); color: var(--on-blue); text-decoration: none; font-weight: 700; border-radius: 2px;
+  transition: background 220ms var(--ease);
+}
+.buy:hover { background: var(--blue-hover); }

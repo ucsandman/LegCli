@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Code usage limit handoff and usage monitor | Baton</title>
-<meta name="description" content="A usage monitor and board beside Claude Code, Codex or agy, a worktree per second session, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, MIT.">
+<meta name="description" content="A usage monitor and board beside Claude Code, Codex or agy, a worktree per second session, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, 14-day trial.">
 <link rel="canonical" href="https://baton-agents.vercel.app/">
 <meta name="theme-color" content="#1b4fbf">
 <meta name="google-site-verification" content="Eok1iYyy78qZjURJX8m1WEFQJk3H3vKkpwPaFhl5znc">
@@ -33,13 +33,15 @@
   "name": "Baton",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Windows, macOS, Linux",
-  "softwareVersion": "0.3.0",
-  "license": "https://opensource.org/license/mit",
+  "softwareVersion": "0.4.0",
+  "license": "https://baton-agents.vercel.app/license",
   "url": "https://baton-agents.vercel.app/",
   "downloadUrl": "https://www.npmjs.com/package/baton-agents",
-  "codeRepository": "https://github.com/ucsandman/baton",
   "author": { "@type": "Person", "name": "Wes Sander" },
-  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "offers": [
+    { "@type": "Offer", "name": "Personal", "price": "79", "priceCurrency": "USD", "url": "https://baton-agents.vercel.app/#pricing" },
+    { "@type": "Offer", "name": "Team", "price": "12", "priceCurrency": "USD", "url": "https://baton-agents.vercel.app/#pricing", "description": "per seat per month" }
+  ],
   "description": "A local wrapper for Claude Code, Codex and agy: a board and usage monitor beside the agent, a worktree per second session, and a handoff to the next agent in the same terminal when the usage limit hits."
 }
 </script>
@@ -58,8 +60,9 @@
       <a href="#board" class="hide-sm">The board</a>
       <a href="#two-sessions" class="hide-sm">Two sessions</a>
       <a href="#touched" class="hide-sm">What is touched</a>
+      <a href="#pricing">Pricing</a>
       <a href="#install">Install</a>
-      <a class="repo" href="https://github.com/ucsandman/baton">GitHub</a>
+      <a class="repo" href="https://www.npmjs.com/package/baton-agents">npm</a>
     </nav>
   </div>
 </header>
@@ -75,7 +78,7 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
     </div>
     <p>Then type <code>baton claude</code> where you would have typed <code>claude</code>. Same session, same flags.</p>
-    <p class="facts">Node 22 or newer. Zero runtime dependencies. MIT. Binds 127.0.0.1 and edits none of your config files.</p>
+    <p class="facts">Node 22 or newer. Zero runtime dependencies. 14-day trial, no card; then $79 once. Binds 127.0.0.1 and edits none of your config files.</p>
   </div>
 </section>
 
@@ -313,6 +316,40 @@
   </div>
 </section>
 
+<section id="pricing" class="band light" aria-labelledby="pricing-h">
+  <div class="wrap">
+    <div class="stack" style="margin-bottom: 44px">
+      <h2 id="pricing-h">Fourteen days on trial, then one price for one human.</h2>
+      <p>The trial starts the first time you type <code>baton claude</code>. No card, nothing to sign up for, every feature on. When it ends, Baton stops adding itself and the bare agent keeps working as before.</p>
+    </div>
+    <div class="plans">
+      <div class="plan plate">
+        <h3>Personal</h3>
+        <p class="price"><b>$79</b> once</p>
+        <ul>
+          <li>One human, any number of machines</li>
+          <li>The board, usage tracking, the handoff bundle and the handoff itself</li>
+          <li>A worktree per second session, and Land</li>
+          <li>Every release for 12 months; the version you have keeps working after that</li>
+        </ul>
+        <a class="buy" href="https://buy.stripe.com/dRmcN5727dxG0mS3mzew80j" data-plan="personal">Buy Personal, $79</a>
+      </div>
+      <div class="plan plate">
+        <h3>Team</h3>
+        <p class="price"><b>$12</b> per seat, per month</p>
+        <ul>
+          <li>Everything in Personal, for each person on the board</li>
+          <li><code>baton share on</code>: the board on Tailscale or your LAN, a token per human</li>
+          <li>Guests see redacted cards and can request a handoff; you approve it</li>
+          <li>The key renews with the subscription; <code>baton license refresh</code> fetches it</li>
+        </ul>
+        <a class="buy" href="https://buy.stripe.com/3cIaEX0DJ3X61qW1erew80k" data-plan="team">Buy Team, $12 a seat</a>
+      </div>
+    </div>
+    <p class="small muted" style="margin-top: 28px">A key is a signed token checked on your machine with the public key that ships in Baton; the CLI talks to this site only to renew a Team key. After paying you land on a page with the key and it is emailed to you: <code>baton license activate &lt;key&gt;</code>. Prices are before tax; Stripe adds what your country charges. Fourteen-day refund, reply to the receipt.</p>
+  </div>
+</section>
+
 <section id="install" class="band blue install" aria-labelledby="install-h">
   <div class="wrap">
     <h2 id="install-h">Install</h2>
@@ -322,13 +359,10 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
       <div class="cmd"><code>cd &lt;any repo&gt; &amp;&amp; baton claude</code><button class="copy" type="button" data-copy="baton claude">Copy</button></div>
     </div>
-    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 340 tests. MIT.</p>
+    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 350 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
     <div class="links">
-      <a href="https://github.com/ucsandman/baton#readme">README</a>
-      <a href="https://github.com/ucsandman/baton/blob/main/docs/getting-started.md">Getting started</a>
-      <a href="https://github.com/ucsandman/baton/blob/main/docs/faq.md">FAQ</a>
-      <a href="https://github.com/ucsandman/baton/blob/main/CHANGELOG.md">Changelog</a>
-      <a href="https://www.npmjs.com/package/baton-agents">npm</a>
+      <a href="https://www.npmjs.com/package/baton-agents">README and changelog on npm</a>
+      <a href="license">License agreement</a>
       <a href="https://pypi.org/project/context-handoff-bundle/">context-handoff-bundle on PyPI</a>
     </div>
   </div>
@@ -338,8 +372,8 @@
 
 <footer>
   <div class="wrap">
-    <span>Baton is by <a href="https://github.com/ucsandman">Wes Sander</a>. MIT license.</span>
-    <span><a href="https://github.com/ucsandman/baton">Source on GitHub</a> · <a href="https://github.com/ucsandman/baton/blob/main/SECURITY.md">Security</a> · <a href="llms.txt">llms.txt</a></span>
+    <span>Baton is by <a href="https://github.com/ucsandman">Wes Sander</a>. <a href="license">License agreement</a>.</span>
+    <span><a href="mailto:wes@practicalsystems.io">wes@practicalsystems.io</a> · <a href="llms.txt">llms.txt</a></span>
   </div>
 </footer>
 

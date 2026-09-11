@@ -1,17 +1,10 @@
 {
   "name": "baton-agents",
-  "version": "0.3.2",
-  "description": "baton claude|codex|agy: your interactive coding agent with a board alongside, usage-limit tracking, a live context handoff bundle, and a hand-off to the next agent in the same terminal when the limit hits.",
+  "version": "0.4.0",
+  "description": "baton claude|codex|agy: your interactive coding agent with a board alongside, usage-limit tracking, a live context handoff bundle, and a hand-off to the next agent in the same terminal when the limit hits. 14-day trial, then a license.",
   "type": "module",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ucsandman/baton.git"
-  },
-  "homepage": "https://github.com/ucsandman/baton#readme",
-  "bugs": {
-    "url": "https://github.com/ucsandman/baton/issues"
-  },
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://baton-agents.vercel.app",
   "keywords": [
     "kanban",
     "coding-agents",
@@ -35,7 +28,8 @@
     "README.md",
     "LICENSE",
     "NOTICE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs"
   ],
   "engines": {
     "node": ">=22"

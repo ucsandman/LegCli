@@ -24,6 +24,7 @@ import { AGENTS, listSessions, readSession, readEvents as readSessionEvents, req
 import { addAccount, removeAccount, listAccountRows, LAYOUT } from '../src/accounts.mjs'
 import { listUsage, fmtReset } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
+import { entitlement, allows, describe as describeLicense, activate as activateLicense, deactivate as deactivateLicense, refresh as refreshLicense, licensePath, BUY_URL } from '../src/license.mjs'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 // one source of truth for the version, so the help text cannot drift from the package
@@ -161,6 +162,9 @@ async function main() {
     }
     if (cmd === 'on') {
       const a = parseArgs(rest)
+      // more than one human is the Team plan; the trial has it too
+      const ent = entitlement()
+      if (!allows(ent, 'share')) die(2, ent.ok ? `baton share is part of the Team plan (per seat); this machine has a ${ent.plan} license. ${BUY_URL}` : describeLicense(ent))
       try {
         const r = await turnOn({ bind: a.bind ?? 'tailscale', port: a.port ? parseInt(a.port, 10) : undefined, owner: a.owner })
         await restartBoard()
@@ -239,6 +243,32 @@ async function main() {
     }
     if (cmd === 'terms') return out(TERMS)
     die(2, `unknown accounts command "${cmd}" (ls|add|rm|terms)`)
+  }
+  if (group === 'license') {
+    // The paid gate. Keys verify offline against the public key in
+    // src/license.mjs; nothing here talks to the network except refresh.
+    if (!cmd || cmd === 'status') {
+      const ent = entitlement()
+      out(describeLicense(ent))
+      if (ent.source === 'license') out(`stored at ${licensePath()}`)
+      if (ent.plan === 'trial') out(`Buy: ${BUY_URL}   then: baton license activate <key>`)
+      return
+    }
+    if (cmd === 'activate') {
+      const key = args._[0] || die(2, 'usage: baton license activate <key>')
+      try {
+        const p = activateLicense(key)
+        out(describeLicense(entitlement()))
+        out(`activated ${p.plan} license ${p.id}; stored at ${licensePath()}`)
+      } catch (err) { die(2, err.message) }
+      return
+    }
+    if (cmd === 'deactivate') return out(deactivateLicense() ? `removed ${licensePath()}; the trial clock is unchanged` : 'no license was stored')
+    if (cmd === 'refresh') {
+      try { const p = await refreshLicense(); out(`renewed ${p.plan} license ${p.id}, valid through ${p.expires}`) } catch (err) { die(2, err.message) }
+      return
+    }
+    die(2, `unknown license command "${cmd}" (status|activate <key>|deactivate|refresh)`)
   }
   if (group === 'uninstall') {
     // Baton never edits ~/.claude or ~/.codex; everything it added lives under

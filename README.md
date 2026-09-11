@@ -3,7 +3,7 @@
 **Type `baton claude`, `baton codex` or `baton agy` instead of the bare command. You get the same interactive agent; Baton opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.**
 
 [![CI](https://github.com/ucsandman/baton/actions/workflows/ci.yml/badge.svg)](https://github.com/ucsandman/baton/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: commercial](https://img.shields.io/badge/license-commercial-blue.svg)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 [![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](package.json)
 [![Local first](https://img.shields.io/badge/runs-on%20your%20machine-informational.svg)](#network-exposure)
@@ -308,7 +308,9 @@ baton sessions rm <id>                 forget an ended session
 baton sessions simulate-limit <id>     the real limit path without a real wall (claude, agy)
 baton accounts ls                      logins and their 5h/7d usage
 baton accounts add <claude|codex> <name> | rm <agent> <name> | terms
-baton share                            who is on the board (off by default)
+baton license                          trial days left, or the license on this machine
+baton license activate <key> | deactivate | refresh   (refresh renews a Team key)
+baton share                            who is on the board (off by default; Team plan)
 baton share on [--bind tailscale|lan|<addr>] [--port N] | off
 baton share add|rotate|rm <name>       one link per human, printed once
 baton open | down | status             the board
@@ -420,11 +422,25 @@ Any real agent session started only to test Baton runs on the cheapest model
 ## Privacy and attribution
 
 Parts of the runner, ledger and git snapshot were ported from a private
-repository under the same MIT license (see [NOTICE](NOTICE) and
+repository that was MIT licensed (see [NOTICE](NOTICE) and
 [docs/REUSE.md](docs/REUSE.md)), with chat identifiers, machine paths and
 personal names removed. The test suite runs a privacy check on every commit,
 and the fixtures store home paths as `~`.
 
-## License
+## License and pricing
 
-MIT, see [LICENSE](LICENSE).
+Baton is commercial software under the [Baton License Agreement](LICENSE).
+It ships as readable JavaScript so you can see what it does on your machine,
+and you may modify it for your own use, but not redistribute it or work
+around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
+with no downloads and were withdrawn from npm when 0.4.0 shipped.
+
+Using it: a 14-day trial starts the first time you type `baton <agent>`,
+every feature on, no card. After that a license: **Personal, $79 once**, one
+human on any number of machines, every release for 12 months and the version
+you have keeps working after that; **Team, $12 per seat per month**,
+Personal plus `baton share` for more than one human on the board. Buy at
+the site, then `baton license activate <key>`. A key is a signed token
+checked offline with the public key in `src/license.mjs`; only a Team key
+renewal talks to the site. The bare agent CLIs are never affected by any of
+this; only what Baton adds is licensed.
