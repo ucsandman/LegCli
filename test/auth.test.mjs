@@ -76,6 +76,18 @@ test('with a token: 401 without the header, 401 with a wrong token, 200 with the
   }
 })
 
+test('share off while the shared address is still bound: only this machine is the local owner', () => {
+  // `baton share off` writes on:false before the listener stops, and a
+  // truncated share.json reads as off too: the bind invariant checkBind can
+  // only apply at startup has to hold per request as well.
+  const url = new URL('http://x/api/health')
+  const req = (remote) => ({ headers: {}, socket: { remoteAddress: remote } })
+  const off = { on: false, bind: '100.64.0.1', port: 4747, owner: 'wes', people: [] }
+  assert.equal(authorize({ token: '', req: req('100.64.0.9'), url, share: off, bind: '100.64.0.1' }).ok, false, 'a stranger is not the local owner')
+  assert.equal(authorize({ token: '', req: req('127.0.0.1'), url, share: off, bind: '100.64.0.1' }).subject, 'local', 'the machine\'s own browser still owns the board')
+  assert.equal(authorize({ token: '', req: req('192.168.1.7'), url, share: off, bind: '127.0.0.1' }).subject, 'local', 'a loopback board is open as before')
+})
+
 test('loopback without a token is open', async () => {
   const srv = createBoardServer({ bind: '127.0.0.1', port: 0, token: '', scheduler: false })
   const { port } = await srv.start()

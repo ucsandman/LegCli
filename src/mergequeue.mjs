@@ -1,20 +1,33 @@
-// mergequeue — the land station. One land at a time per repo root, FIFO.
+// mergequeue — the land station. One land at a time per repo root, FIFO: the
+// queue key is the canonical root (two spellings of one path are one queue) and
+// the turn itself is a file lock under BATON_HOME, so a `baton card run` CLI
+// and the board server cannot land into one checkout at the same time.
 // land(card, worktree):
 //   1. root must be on <trunk> and clean, else bounce `dirty-trunk` (root untouched)
 //   1b. commit whatever the agents left uncommitted in the worktree
-//   2. rebase the card branch onto trunk in the worktree; conflict → abort + bounce `rebase-conflict` with the file list
+//   2. rebase the card branch onto trunk in the worktree; abort + bounce `rebase-conflict` with the file list, or `rebase-failed` when git failed for another reason
 //   3. run the test command (card.test_command → package.json test → pytest → none + land_warning); red → bounce `tests-red` with the tail
 //   4. from the root: git merge --ff-only baton/<id>; trunk moved meanwhile → one retry, then bounce `trunk-moved`
 //   5. success → { landed, sha, files, insertions, deletions, duration_ms }
 // No force flags, no remote writes, no hard resets on the root, ever.
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { createHash } from 'node:crypto'
 import { branchName } from './worktree.mjs'
 import { runCommandAsync } from './commands.mjs'
+import { canonPath, withFileLock, writeJsonAtomic } from './fsx.mjs'
+import { home } from './store.mjs'
 
 const TEST_TIMEOUT_MS = Number(process.env.BATON_LAND_TEST_TIMEOUT_MS || 600000)
-const queues = new Map() // repo → tail promise
+const queues = new Map() // canonical repo root → tail promise
+// A turn covers the commit, the rebase and the repo's whole test run, so a
+// claim is only stale once its holder died: the test budget plus the git work
+// around it. The guard lock around the claim file protects two file writes and
+// keeps a short staleness of its own.
+const LOCK_STALE_MS = TEST_TIMEOUT_MS + 120000
+const LOCK_GUARD_STALE_MS = 5000
+const LOCK_POLL_MS = 250
 
 function git(cwd, args, { ok = true } = {}) {
   const r = spawnSync('git', args, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
@@ -77,6 +90,53 @@ function bounce(reason, detail, extra = {}) {
   return { landed: false, bounced: true, reason, detail, ...extra }
 }
 
+// A non-zero `git rebase` is a conflict only when git names unmerged files.
+// Anything else (a hook that refuses, an upstream git cannot use) is a
+// different failure, and the bounce reason is the next agent's brief: it must
+// never read as a conflict in files git never mentioned.
+function rebaseBounce(worktree, trunk, result, preSha, when) {
+  const files = git(worktree, ['diff', '--name-only', '--diff-filter=U'], { ok: false }).stdout.split(/\r?\n/).filter(Boolean)
+  git(worktree, ['rebase', '--abort'], { ok: false })
+  const detail = (result.stderr || result.stdout).trim().slice(0, 300)
+  if (files.length) return bounce('rebase-conflict', `rebase onto ${trunk}${when} conflicted in: ${files.join(', ')}`, { files, pre_sha: preSha })
+  return bounce('rebase-failed', `rebase onto ${trunk}${when} failed: ${detail || '(no git output)'}`, { files, pre_sha: preSha })
+}
+
+function claimFile(key) {
+  const dir = join(home(), 'locks')
+  mkdirSync(dir, { recursive: true })
+  return join(dir, `land-${createHash('sha1').update(key).digest('hex').slice(0, 16)}.json`)
+}
+
+function claimHolder(file) {
+  try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return null }
+}
+
+// withFileLock guards the read-modify-write of the claim; the claim it leaves
+// behind outlives that guard, which is what makes the turn last a whole land.
+function takeTurn(file, token) {
+  return withFileLock(`${file}.lock`, () => {
+    const held = claimHolder(file)
+    if (held && held.token !== token && Date.now() - held.ts < LOCK_STALE_MS) return false
+    writeJsonAtomic(file, { token, pid: process.pid, ts: Date.now() })
+    return true
+  }, { staleMs: LOCK_GUARD_STALE_MS })
+}
+
+function dropTurn(file, token) {
+  withFileLock(`${file}.lock`, () => {
+    const held = claimHolder(file)
+    if (!held || held.token === token) { try { unlinkSync(file) } catch {} }
+  }, { staleMs: LOCK_GUARD_STALE_MS })
+}
+
+async function withRepoTurn(repo, fn) {
+  const file = claimFile(canonPath(repo))
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  while (!takeTurn(file, token)) await new Promise((r) => setTimeout(r, LOCK_POLL_MS))
+  try { return await fn() } finally { dropTurn(file, token) }
+}
+
 async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = false } = {}) {
   const t0 = Date.now()
   const repo = card.repo
@@ -97,11 +157,7 @@ async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = 
   const trunkBefore = trunkHead(repo)
 
   const rebase = git(worktree, ['rebase', trunk], { ok: false })
-  if (rebase.status !== 0) {
-    const files = git(worktree, ['diff', '--name-only', '--diff-filter=U'], { ok: false }).stdout.split(/\r?\n/).filter(Boolean)
-    git(worktree, ['rebase', '--abort'], { ok: false })
-    return bounce('rebase-conflict', `rebase onto ${trunk} conflicted in: ${files.join(', ') || '(unknown files)'}`, { files, pre_sha: preSha })
-  }
+  if (rebase.status !== 0) return rebaseBounce(worktree, trunk, rebase, preSha, '')
 
   const tc = resolveTestCommand(card, worktree)
   let tests = null
@@ -120,8 +176,8 @@ async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = 
     // trunk moved while we tested: rebase once more and retry the ff
     retried = true
     const again = git(worktree, ['rebase', trunk], { ok: false })
-    if (again.status === 0) merge = git(repo, ['merge', '--ff-only', branch], { ok: false })
-    else git(worktree, ['rebase', '--abort'], { ok: false })
+    if (again.status !== 0) return rebaseBounce(worktree, trunk, again, preSha, ` after ${trunk} moved`)
+    merge = git(repo, ['merge', '--ff-only', branch], { ok: false })
   }
   if (merge.status !== 0 && /would be overwritten by merge/.test(merge.stderr || merge.stdout)) {
     const files = (merge.stderr || merge.stdout).split(/\r?\n/).filter((l) => /^\s+\S/.test(l)).map((l) => l.trim())
@@ -143,11 +199,12 @@ async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = 
   }
 }
 
-// FIFO per repo: the caller awaits its turn.
+// FIFO per repo root: the caller awaits its turn, here and in every other
+// process landing into the same root.
 export function land(card, worktree, opts) {
-  const key = card.repo
+  const key = canonPath(card.repo)
   const prev = queues.get(key) ?? Promise.resolve()
-  const mine = prev.catch(() => {}).then(() => landNow(card, worktree, opts))
+  const mine = prev.catch(() => {}).then(() => withRepoTurn(card.repo, () => landNow(card, worktree, opts)))
   queues.set(key, mine)
   // the bookkeeping chain must never reject on its own: landNow's throw is the
   // caller's to handle (it returns `mine`), and an unhandled rejection here
@@ -156,4 +213,4 @@ export function land(card, worktree, opts) {
   return mine
 }
 
-export function isLanding(repo) { return queues.has(repo) }
+export function isLanding(repo) { return queues.has(canonPath(repo)) }

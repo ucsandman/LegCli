@@ -20,14 +20,20 @@ function sameDir(a, b) {
   return n(a) === n(b)
 }
 
+const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
 // Newest rollout created at or after `sinceMs` whose session_meta cwd is `cwd`.
 export function findRollout({ codexHome, cwd, sinceMs, allowOlderMs = 5000 }) {
   const root = sessionsRootFor(codexHome)
   if (!existsSync(root)) return null
-  const d = new Date(sinceMs - allowOlderMs)
+  // codex names the day directory from LOCAL time while the rollout's own
+  // session_meta timestamp is UTC (observed live: a 20:33 EDT rollout under
+  // sessions/2026/09/10 stamped 2026-09-11T00:33:44Z). Compare local days, and
+  // keep the one before as slack around midnight.
+  const from = localDay(new Date(sinceMs - allowOlderMs - 86400000))
   const days = []
   for (const y of readdirSync(root)) for (const m of safeList(join(root, y))) for (const day of safeList(join(root, y, m))) {
-    if (`${y}-${m}-${day}` >= d.toISOString().slice(0, 10)) days.push(join(root, y, m, day))
+    if (`${y}-${m}-${day}` >= from) days.push(join(root, y, m, day))
   }
   const cands = []
   for (const dir of days) for (const f of safeList(dir)) {
@@ -61,15 +67,18 @@ export function readMeta(path) {
   } catch { return null }
 }
 
-// Incremental reader: keeps a byte offset and a partial line.
-export function createTail(path) {
-  let offset = 0
+// Incremental reader: keeps a byte offset and a partial line. `from` skips
+// what is already in the file (agy's log is per session, not per leg).
+export function createTail(path, { from = 0 } = {}) {
+  let offset = from
   let rest = ''
   return {
     path,
     read() {
       let st
       try { st = statSync(path) } catch { return [] }
+      // truncated or replaced under us: read it again rather than go blind
+      if (st.size < offset) { offset = 0; rest = '' }
       if (st.size <= offset) return []
       const fd = openSync(path, 'r')
       const buf = Buffer.alloc(st.size - offset)

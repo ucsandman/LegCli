@@ -43,7 +43,10 @@ export function withFileLock(lockPath, fn, { retries = 60, waitMs = 20, staleMs 
   let fd = null
   for (let i = 0; i < retries; i++) {
     try { fd = openSync(lockPath, 'wx'); break } catch (err) {
-      if (err.code !== 'EEXIST') break
+      // EEXIST: held. EPERM/EACCES/EBUSY: Windows, the holder's unlink is
+      // still pending and the path is briefly untouchable; that is "held" too,
+      // not a reason to run unlocked.
+      if (!['EEXIST', 'EPERM', 'EACCES', 'EBUSY'].includes(err.code)) break
       try { if (Date.now() - statSync(lockPath).mtimeMs > staleMs) { unlinkSync(lockPath); continue } } catch {}
       sleepSync(waitMs)
     }

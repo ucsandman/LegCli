@@ -88,7 +88,10 @@ export async function landSession(session, { by = 'local' } = {}) {
 export function pruneSessionWorktree(s) {
   const wt = s.worktree
   if (!wt || !existsSync(wt.path)) return { removed: false, reason: 'no worktree on disk' }
-  if (git(wt.path, ['status', '--porcelain']).out) return { removed: false, reason: `uncommitted changes in ${wt.path}` }
+  const status = git(wt.path, ['status', '--porcelain'])
+  // a status check that fails must not read as clean
+  if (!status.ok) return { removed: false, reason: `cannot verify ${wt.path}: git status failed` }
+  if (status.out) return { removed: false, reason: `uncommitted changes in ${wt.path}` }
   // "already landed" is true not just for a fast-forward ancestor but also for a
   // squash- or rebase-merge and a cherry-pick: git cherry marks a commit whose
   // patch is already upstream with '-', so no '+' line means the work is in base

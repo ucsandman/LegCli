@@ -4,20 +4,20 @@
 // ledger with an actor; the chain machine (src/chain.mjs) decides, this file
 // only executes.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { transition } from './chain.mjs'
 import { stationIndex } from './pipeline.mjs'
 import { ensure as ensureWorktree } from './worktree.mjs'
 import { renderContract, writeContract, legPrompt } from './contract.mjs'
 import { writeHandoff, loadResume } from './handoff.mjs'
-import { runCommand } from './commands.mjs'
+import { runCommandAsync } from './commands.mjs'
 import { landCard } from './land.mjs'
 import { resolveTestCommand } from './mergequeue.mjs'
 import {
   RUNNER, BATON_ACTOR, readCard, ledgerAppend, ledgerUpdate, cardDir, sleep,
 } from './store.mjs'
-import { scrub } from './runner.mjs'
+import { scrub, updateRun } from './runner.mjs'
 import * as agentStation from './stations/agent.mjs'
 import * as testStation from './stations/test.mjs'
 import * as humanStation from './stations/human.mjs'
@@ -73,7 +73,7 @@ function latestRun(id) {
 // settled_at. Happens after `baton down` (agents killed, the supervisor wrote
 // its verdict, the server that would apply it was already gone) or a crashed
 // server. runCard re-attaches to it instead of launching a fresh leg.
-function unsettledRun(id) {
+export function unsettledRun(id) {
   const r = latestRun(id)
   return r && !r.settled_at ? r : null
 }
@@ -86,12 +86,52 @@ export function orphanedRun(id) {
   return r && !(r.driver_pid && pidAlive(r.driver_pid)) ? r : null
 }
 
+// The claim on a card: one file per card, created atomically ('wx') at the top
+// of runCard and removed when it returns. run.json's driver_pid only exists
+// once a leg has launched; before that (worktree add, the start step, the
+// contract) a card had no owner, and a `card run` beside a scheduler tick, or
+// two schedulers, could both launch a leg into one worktree.
+function driverLockPath(id) { return join(cardDir(id), 'driver.lock') }
+
+function readDriver(id) {
+  try { return JSON.parse(readFileSync(driverLockPath(id), 'utf8')) } catch { return null }
+}
+
+// The pid of another live process driving this card, else null.
+export function driverAlive(id) {
+  const d = readDriver(id)
+  return d?.pid && d.pid !== process.pid && pidAlive(d.pid) ? d.pid : null
+}
+
+function claimDriver(id) {
+  const f = driverLockPath(id)
+  for (let i = 0; i < 3; i++) {
+    try {
+      writeFileSync(f, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }) + '\n', { flag: 'wx' })
+      return { ok: true }
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err
+    }
+    const d = readDriver(id)
+    if (d?.pid === process.pid) return { ok: true }
+    if (d?.pid && pidAlive(d.pid)) return { ok: false, pid: d.pid }
+    // the holder died, or the file is not readable yet: a claim being written
+    // right now is younger than a second, a torn one from a crash is not
+    let stale = Boolean(d?.pid)
+    if (!stale) { try { stale = Date.now() - statSync(f).mtimeMs > 1000 } catch { stale = true } }
+    if (!stale) { const t = Date.now() + 50; while (Date.now() < t) { /* spin */ } continue }
+    try { unlinkSync(f) } catch {}
+  }
+  return { ok: false, pid: readDriver(id)?.pid ?? null }
+}
+
+function releaseDriver(id) {
+  if (readDriver(id)?.pid === process.pid) { try { unlinkSync(driverLockPath(id)) } catch {} }
+}
+
 function patchRun(id, n, fields) {
   if (!n) return
-  try {
-    const cur = JSON.parse(readFileSync(runJsonPath(id, n), 'utf8'))
-    writeFileSync(runJsonPath(id, n), JSON.stringify({ ...cur, ...fields }, null, 2) + '\n')
-  } catch {}
+  try { updateRun(id, n, (cur) => (cur ? { ...cur, ...fields } : null)) } catch {}
 }
 
 function settleRun(id, run) { patchRun(id, run?.run, { settled_at: new Date().toISOString() }) }
@@ -101,22 +141,31 @@ function pidAlive(pid) {
   try { process.kill(pid, 0); return true } catch { return false }
 }
 
+const FINAL_RUN = ['exited', 'killed', 'failed', 'orphaned']
+
 async function waitForRun(id, n, { pollMs = POLL_MS } = {}) {
   let deadSince = null
+  let interrupted = null
   for (;;) {
     let run = null
     try { run = JSON.parse(readFileSync(runJsonPath(id, n), 'utf8')) } catch {}
-    if (run && ['exited', 'killed', 'failed', 'orphaned'].includes(run.status)) {
+    if (run && FINAL_RUN.includes(run.status)) {
       if (run.status === 'orphaned' && !run.outcome) return { ...run, outcome: 'failed', handoff: true, signal: 'none', reason: 'supervisor died before the leg finished' }
       return run
     }
+    const supervisorAlive = Boolean(run?.supervisor_pid) && pidAlive(run.supervisor_pid)
+    // A human acted on the card (kill, pause, hand off now, reassign): the leg
+    // is over for us. Wait for the supervisor to finish writing (it is
+    // classifying the kill) so the next leg's launch never finds this run
+    // still active, then report the interruption.
     const card = readCard(id)
-    if (card && ['killed', 'paused'].includes(card.status)) return { ...(run ?? {}), status: 'interrupted', outcome: 'killed', handoff: false }
+    if (card && card.status !== 'running') interrupted ??= { ...(run ?? {}), status: 'interrupted', outcome: 'killed', handoff: false }
+    if (interrupted && (!run || !supervisorAlive)) return interrupted
     // A dead supervisor never writes `exited`; do not wait on it forever.
-    if (run && ['launching', 'running'].includes(run.status) && run.supervisor_pid && !pidAlive(run.supervisor_pid)) {
+    if (run && ['launching', 'running'].includes(run.status) && run.supervisor_pid && !supervisorAlive) {
       deadSince ??= Date.now()
       if (Date.now() - deadSince > 5000) {
-        try { writeFileSync(runJsonPath(id, n), JSON.stringify({ ...run, status: 'orphaned' }, null, 2) + '\n') } catch {}
+        patchRun(id, n, { status: 'orphaned' })
         return { ...run, status: 'orphaned', outcome: 'failed', handoff: true, signal: 'none', reason: `supervisor pid ${run.supervisor_pid} died before the leg finished` }
       }
     } else deadSince = null
@@ -148,9 +197,11 @@ async function runLeg(card, station, worktree) {
   const prompt = legPrompt({ contractText, resumeText })
   const promptFile = join(cardDir(card.card_id), `prompt-${station.name}-leg${card.leg}.txt`)
   writeFileSync(promptFile, prompt)
-  const args = ['launch', '--card', card.card_id, '--adapter', entry.adapter, '--prompt-file', promptFile, '--cwd', worktree]
+  const args = ['launch', '--card', card.card_id, '--adapter', entry.adapter, '--prompt-file', promptFile, '--cwd', worktree, '--driver-pid', String(process.pid)]
   if (entry.mode) args.push('--mode', entry.mode)
   if (entry.maxTurns) args.push('--max-turns', String(entry.maxTurns))
+  if (entry.model) args.push('--model', String(entry.model))
+  if (entry.network) args.push('--network', '1')
   const extraEnv = {}
   if (entry.fakeMode) {
     // "a;b;c" = one mode per landing attempt (demo: break-test on the first run, fix-test after the bounce)
@@ -170,13 +221,14 @@ async function runLeg(card, station, worktree) {
     return { status: 'failed', outcome: 'launch_failed', handoff: true, signal: 'none', reason: scrub(text).slice(0, 300), run: null, exit_code: null }
   }
   if (card.resume_from_bundle) ledgerUpdate(card.card_id, { patch: { resume_from_bundle: false } })
-  patchRun(card.card_id, launch.run, { driver_pid: process.pid })
   const run = await waitForRun(card.card_id, launch.run)
   return run
 }
 
 export { resolveCommand } from './commands.mjs'
-const runTestCommand = (cmd, cwd) => runCommand(cmd, cwd, { tailLines: 20 })
+// async: the test station runs inside the board server's scheduler, and a
+// long suite must not freeze the board (src/commands.mjs)
+const runTestCommand = (cmd, cwd) => runCommandAsync(cmd, cwd, { tailLines: 20 })
 
 function handoffOn(card, station, run, worktree, extra = []) {
   const entry = station.chain[card.leg]
@@ -200,6 +252,17 @@ function handoffOn(card, station, run, worktree, extra = []) {
 export async function runCard(id, { actor = BATON_ACTOR } = {}) {
   let card = readCard(id)
   if (!card) throw new Error(`card not found: ${id}`)
+  const claim = claimDriver(id)
+  if (!claim.ok) {
+    log(`card ${id} is driven by pid ${claim.pid}; not attaching`)
+    return card
+  }
+  try {
+    return await driveCard(id, card, actor)
+  } finally { releaseDriver(id) }
+}
+
+async function driveCard(id, card, actor) {
   if (card.status === 'backlog') card = step(id, 'enqueue', {}, actor)
   const wt = ensureWorktree(card.repo, card.card_id, { trunk: card.trunk || 'main' })
   if (card.worktree !== wt.path) {
@@ -232,6 +295,13 @@ export async function runCard(id, { actor = BATON_ACTOR } = {}) {
     }
     if (st.kind === 'land') {
       const r = await landCard(card, wt.path)
+      const fresh = readCard(id)
+      if (fresh.status !== 'running') {
+        // a human acted while the land ran; trunk may have moved anyway, and
+        // the ledger must say so even though the card no longer advances
+        if (r.landed) ledgerAppend(id, { type: 'landed', station: st.name, leg: 0, summary: `landed on trunk after the card was ${fresh.status}` })
+        return fresh
+      }
       if (r.bounced) {
         // the failure travels with the card: Open findings of the bounce bundle
         handoffOn(card, { name: st.name, chain: [] }, { outcome: `land-${r.reason}`, reason: r.detail ?? r.reason, exit_code: null, adapter: 'land' }, wt.path,
@@ -261,7 +331,10 @@ export function humanAction(id, action, payload = {}, actor = { type: 'human', i
 
 // Kill the agent process of the active run. The run record gets
 // kill_requested so the supervisor classifies the exit as `killed` (a human
-// decision), not `stalled` or `failed`.
+// decision), not `stalled` or `failed`. A run still `launching` has no
+// agent_pid yet: its supervisor is killed with its whole tree instead, so an
+// agent it spawns a moment later dies with it rather than running a full leg
+// under a card the board already shows as killed.
 export function killActiveRun(id) {
   const runsDir = join(cardDir(id), 'runs')
   if (!existsSync(runsDir)) return false
@@ -271,10 +344,14 @@ export function killActiveRun(id) {
     let run
     try { run = JSON.parse(readFileSync(join(runsDir, String(n), 'run.json'), 'utf8')) } catch { continue }
     if (!['launching', 'running'].includes(run.status)) continue
-    try { writeFileSync(join(runsDir, String(n), 'run.json'), JSON.stringify({ ...run, kill_requested: true }, null, 2) + '\n') } catch {}
+    patchRun(id, n, { kill_requested: true })
     if (run.agent_pid) {
       if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(run.agent_pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' })
       else { try { process.kill(run.agent_pid, 'SIGKILL') } catch {} }
+      killed = true
+    } else if (run.supervisor_pid && pidAlive(run.supervisor_pid)) {
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(run.supervisor_pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' })
+      else { try { process.kill(-run.supervisor_pid, 'SIGKILL') } catch { try { process.kill(run.supervisor_pid, 'SIGKILL') } catch {} } }
       killed = true
     }
   }

@@ -3,16 +3,19 @@
 // The source tooling kept two copies on purpose; Baton keeps one here.
 // Values the launcher's own process holds for the well-known key variables
 // are read once at startup and never printed.
+// Every prefix shape starts at a token boundary: the `sk-` inside
+// "task-management-system" is a word, not a key, and the ledger refuses a card
+// whose task matches.
 const PATTERNS = [
-  ['api key (sk-)', /sk-[A-Za-z0-9_-]{8,}/g],
-  ['Anthropic key (sk-ant-)', /sk-ant-[A-Za-z0-9_-]{8,}/g],
-  ['DashClaw key (oc_live_)', /oc_live_[a-f0-9]\w*/g],
+  ['api key (sk-)', /(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{8,}/g],
+  ['Anthropic key (sk-ant-)', /(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{8,}/g],
+  ['DashClaw key (oc_live_)', /(?<![A-Za-z0-9_-])oc_live_[a-f0-9]\w*/g],
   ['bearer token', /Bearer\s+[A-Za-z0-9._-]{16,}/g],
-  ['GitHub token (ghp_)', /ghp_[A-Za-z0-9]{20,}/g],
-  ['GitHub server token (ghs_)', /ghs_[A-Za-z0-9]{20,}/g],
-  ['GitHub fine-grained token (github_pat_)', /github_pat_[A-Za-z0-9_]{20,}/g],
-  ['AWS key (AKIA)', /AKIA[0-9A-Z]{12,}/g],
-  ['Slack token (xox)', /xox[bp]-\S*/g],
+  ['GitHub token (ghp_)', /(?<![A-Za-z0-9_-])ghp_[A-Za-z0-9]{20,}/g],
+  ['GitHub server token (ghs_)', /(?<![A-Za-z0-9_-])ghs_[A-Za-z0-9]{20,}/g],
+  ['GitHub fine-grained token (github_pat_)', /(?<![A-Za-z0-9_-])github_pat_[A-Za-z0-9_]{20,}/g],
+  ['AWS key (AKIA)', /(?<![A-Za-z0-9_-])AKIA[0-9A-Z]{12,}/g],
+  ['Slack token (xox)', /(?<![A-Za-z0-9_-])xox[bp]-\S*/g],
   ['key=value secret', /api[_-]?key\s*[=:]\s*\S+/gi],
 ]
 

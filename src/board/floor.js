@@ -5,7 +5,7 @@
 
   const WAIT_LABELS = { approve: 'Approve', resume: 'Resume', kill: 'Kill' }
 
-  const state = { es: null, retryMs: 1000 }
+  const state = { es: null, retryMs: 1000, timers: [], stopped: false }
 
   function getToken() { return localStorage.getItem('batonToken') || '' }
 
@@ -21,7 +21,11 @@
     const text = await res.text()
     let data = null
     if (text) { try { data = JSON.parse(text) } catch { data = null } }
-    if (!res.ok) throw new Error((data && data.error) || `${res.status} ${res.statusText}`)
+    if (!res.ok) {
+      const err = new Error((data && data.error) || `${res.status} ${res.statusText}`)
+      err.status = res.status
+      throw err
+    }
     return data
   }
 
@@ -176,6 +180,36 @@
     }
   }
 
+  // the floor is owner-only: a guest (or anyone whose token has rotated) would
+  // otherwise get two toasts every two seconds for as long as the tab is open
+  function boardHref(href) {
+    try {
+      const token = new URL(href).searchParams.get('token')
+      return token ? `/?token=${encodeURIComponent(token)}` : '/'
+    } catch { return '/' }
+  }
+
+  function lockOut(message) {
+    if (state.stopped) return
+    state.stopped = true
+    for (const t of state.timers) clearInterval(t)
+    state.timers = []
+    if (state.es) { try { state.es.close() } catch { /* ignore */ } }
+    document.getElementById('banner').hidden = true
+    document.getElementById('sse-dot').className = 'dot'
+    document.getElementById('sse-text').textContent = 'stopped'
+    const main = document.querySelector('.floor-sections')
+    main.textContent = ''
+    main.appendChild(el('section', { class: 'floor-locked' }, [
+      el('h2', {}, ['Floor unavailable']),
+      el('p', {}, [message]),
+      el('p', {}, [
+        el('a', { href: boardHref(location.href) }, ['Open the board']),
+        ' to set a token, or ask the owner of this machine for a share link.',
+      ]),
+    ]))
+  }
+
   async function refreshFloor() {
     try {
       const data = await api('/api/floor')
@@ -185,6 +219,7 @@
       renderQueued(data.queued)
       renderLeases(data)
     } catch (err) {
+      if (err.status === 401 || err.status === 403) return lockOut(err.message)
       toast(err.message)
     }
   }
@@ -194,6 +229,7 @@
       const data = await api('/api/trunk?since=1h')
       renderTrunkTable(data)
     } catch (err) {
+      if (err.status === 401 || err.status === 403) return lockOut(err.message)
       toast(err.message)
     }
   }
@@ -210,6 +246,7 @@
   }
 
   function connectSse() {
+    if (state.stopped) return
     if (state.es) { try { state.es.close() } catch { /* ignore */ } }
     setSseState('connecting')
     const token = getToken()
@@ -241,9 +278,12 @@
     connectSse()
     refreshFloor()
     refreshTrunk()
-    setInterval(refreshFloor, 2000)
-    setInterval(refreshTrunk, 2000)
+    state.timers.push(setInterval(refreshFloor, 2000), setInterval(refreshTrunk, 2000))
   }
 
   document.addEventListener('DOMContentLoaded', init)
+
+  // test seam: node:test runs this file with a stub document; in a browser
+  // there is no `module`
+  if (typeof module !== 'undefined') module.exports = { boardHref }
 })()

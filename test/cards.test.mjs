@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { existsSync, writeFileSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { makeHome, testEnv, initRepo, baton, batonFail, readCard } from './helpers.mjs'
+import { makeHome, testEnv, initRepo, baton, batonFail, readCard, git } from './helpers.mjs'
 
 test('card add refuses a forbidden mode, an unknown adapter, and a land station that is not last', () => {
   const home = makeHome()
@@ -25,6 +25,18 @@ test('card add refuses a forbidden mode, an unknown adapter, and a land station 
   assert.equal(land.status, 2)
   assert.match(land.stderr, /land station must be last/)
   assert.ok(!existsSync(join(home, 'cards')) || baton(['card', 'ls'], env).includes('(no cards)'))
+})
+
+test('card add refuses a trunk the repo does not have and names the real default branch', () => {
+  const home = makeHome()
+  const env = testEnv(home)
+  const repo = initRepo('master-')
+  git(repo, ['branch', '-m', 'main', 'master'])
+  const bad = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'fake'], env)
+  assert.equal(bad.status, 2)
+  assert.match(bad.stderr, /trunk main does not exist .*default branch is master \(add the card with --trunk master\)/)
+  const ok = baton(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'fake', '--trunk', 'master'], env).trim()
+  assert.equal(readCard(home, ok).trunk, 'master')
 })
 
 test('card add writes the full card shape; ls/show/events read it back; rm removes card and worktree', () => {

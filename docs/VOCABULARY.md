@@ -206,6 +206,7 @@ file's own header comment).
 |--------|---------|
 | `dirty-trunk` | the repo root isn't on the trunk branch, or has uncommitted changes; root is left untouched. A terminal's Land allows local changes in the checkout and bounces this way only when the fast-forward would overwrite one, naming the files |
 | `rebase-conflict` | rebasing the card's branch onto trunk conflicted |
+| `rebase-failed` | git refused the rebase for a reason other than a conflict (a hook, an unusable upstream); the detail carries git's own words |
 | `tests-red` | the land station's own test run (no test command found → falls back per `land_warning`, otherwise `test_command`/`npm test`/`pytest`) failed |
 | `trunk-moved` | trunk moved while tests ran; one fast-forward retry also failed |
 

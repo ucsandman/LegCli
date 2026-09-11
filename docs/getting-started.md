@@ -189,12 +189,15 @@ screenshots.
   cards/<card-id>/
     card.json                    the card's current state
     events-<actor-key>.jsonl     one append-only file per writer
+    driver.lock                  the process driving the card, only while it runs
+    unsynced.jsonl               DashClaw records to retry (`ledger sync`), if any
     runs/<n>/
       run.json                   this run's status, outcome, exit code
       prompt.txt                 the exact prompt sent to the adapter
       out.log                    the adapter's stdout
       err.log                    the adapter's stderr
       supervisor.log             the runner's own log for this run
+  locks/land-<hash>.json         the merge queue's turn, one per repo root, while a land runs
   ACTIVE.md                      generated summary of open cards
   baton.pid                      written by `baton up`, removed on stop
   scheduler.pid                  written by `baton scheduler start`

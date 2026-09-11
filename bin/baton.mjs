@@ -17,10 +17,10 @@ import { remove as removeWorktree } from '../src/worktree.mjs'
 import { pruneSessionWorktree } from '../src/land.mjs'
 import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../src/scheduler.mjs'
 import { availableActions } from '../src/chain.mjs'
-import { up, down, status, openBoard } from '../src/launcher.mjs'
+import { up, down, stopBoard, status, openBoard } from '../src/launcher.mjs'
 import { attach, ensureBoard } from '../src/attach.mjs'
 import { readShare, addPerson, removePerson, rotate as rotateToken, turnOn, turnOff, linkFor, personNamed } from '../src/share.mjs'
-import { AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, sessionDir, appendEvent } from '../src/sessions.mjs'
+import { AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, readLand, sessionDir, appendEvent } from '../src/sessions.mjs'
 import { addAccount, removeAccount, listAccountRows, LAYOUT } from '../src/accounts.mjs'
 import { listUsage, fmtReset } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
@@ -48,7 +48,7 @@ async function cardAdd(args) {
   try {
     const card = await createCard({
       repo: args.repo, task: args.task, chain: args.chain, pipeline: args.pipeline,
-      mode: args.mode, maxTurns: args['max-turns'], fakeMode: args['fake-mode'], fakeFixture: args['fake-fixture'],
+      mode: args.mode, maxTurns: args['max-turns'], model: args.model, fakeMode: args['fake-mode'], fakeFixture: args['fake-fixture'],
       fakeTarget: args['fake-target'], fakeContent: args['fake-content'],
       approve: args.approve, leases: args.leases, trunk: args.trunk, landMode: args['land-mode'],
       testCommand: args['test-command'], title: args.title, slug: args.slug, queue: Boolean(args.queue),
@@ -122,6 +122,9 @@ async function main() {
     if (cmd === 'end') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { end: true }); return out(`end requested for ${id}`) }
     if (cmd === 'rm') {
       if (isActive(s)) die(3, `session ${id} is still active; end it first`)
+      // a land runs in the board's process: land.json is the only place this
+      // terminal can see it, and removing the record drops the result
+      if (readLand(id)?.state === 'landing') die(3, `session ${id} is landing right now; wait for it to finish`)
       // prune the worktree and branch too, the way the board's Remove does, so
       // the CLI twin never orphans a worktree the board can no longer reach
       if (s.worktree) {
@@ -136,7 +139,9 @@ async function main() {
     // Multiplayer, off by default: the board binds a shared address only once
     // at least one person has a token, and every human has their own.
     const share = readShare()
-    const restartBoard = async () => { down(); const b = await ensureBoard({ open: false }); return b }
+    // only the listener moves: the agents running under it are not part of who
+    // may look at the board
+    const restartBoard = async () => { await stopBoard(); const b = await ensureBoard({ open: false }); return b }
     const showLink = (person, token, s) => {
       out(`${person.name} is on the board (${person.role}). Their link, shown once:`)
       out(`  ${linkFor(s, token)}`)
@@ -187,12 +192,15 @@ async function main() {
     if (cmd === 'rm') {
       const name = args._[0] || die(2, 'usage: baton share rm <name>')
       if (!personNamed(share, name)) die(3, `no one called "${name}" on this board`)
-      removePerson(name, share)
+      try { removePerson(name, share) } catch (err) { die(2, err.message) }
       return out(`${name} is off the board; their link stopped working.`)
     }
     if (cmd === 'off') {
+      // the shared listener goes first: while it is up and share.json reads off
+      // there is nobody for it to check a stranger against
+      await stopBoard()
       turnOff()
-      await restartBoard()
+      await ensureBoard({ open: false })
       return out('share is off: the board is back on 127.0.0.1 and the links stopped working.')
     }
     die(2, `unknown share command "${cmd}" (status|on|add|rotate|rm|off)`)
@@ -242,7 +250,7 @@ async function main() {
       return
     }
     for (const r of listAccountRows()) if (r.name !== 'default') removeAccount(r.agent, r.name)
-    down()
+    await down()
     rmSync(dir, { recursive: true, force: true })
     return out(`removed ${dir}; now: npm rm -g baton-agents`)
   }
@@ -296,10 +304,12 @@ async function main() {
   if (group === 'scheduler') {
     if (cmd === 'start') {
       const ticks = args.ticks ? parseInt(args.ticks, 10) : Infinity
+      const running = schedulerStatus()
+      if (running.running) die(3, `scheduler already running (pid ${running.pid}); two schedulers would drive the same cards. baton scheduler stop first`)
       const s = createScheduler({ intervalMs: args['interval-ms'] ? parseInt(args['interval-ms'], 10) : 1000 })
       process.on('SIGINT', () => { s.stop() })
       out(`scheduler: max ${MAX_CONCURRENT} concurrent, pidfile ${pidfile()}${Number.isFinite(ticks) ? `, ${ticks} tick(s)` : ''}`)
-      await s.run({ ticks })
+      try { await s.run({ ticks }) } catch (err) { die(3, err.message) }
       return out('scheduler: stopped')
     }
     if (cmd === 'status') {
@@ -321,8 +331,8 @@ async function main() {
     const code = await up({ dry: Boolean(a.dry), open: !a['no-open'], port: a.port !== undefined ? parseInt(a.port, 10) : undefined, bind: a.bind })
     process.exit(code)
   }
-  if (group === 'down') process.exit(down())
-  if (group === 'status') process.exit(status())
+  if (group === 'down') process.exit(await down())
+  if (group === 'status') process.exit(await status())
   if (group === 'open') {
     const port = process.env.BATON_PORT || 4747
     const url = `http://127.0.0.1:${port}`

@@ -30,10 +30,15 @@
     cardNodes: new Map(),
     logState: new Map(),
     drawerId: null,
+    drawerTimer: null,
     adapters: null,
     es: null,
     retryMs: 1000,
   }
+  // a card push while an agent writes its log only moves these two
+  const VOLATILE_CARD_FIELDS = ['last_event', 'elapsed_ms']
+  const DRAWER_REFRESH_MS = 1000
+  const LOG_REFRESH_MS = 5000
 
   // ---- helpers ----
   // a shared link carries the person's token: keep it, then take it out of the
@@ -149,6 +154,9 @@
       state.columns = data.columns
       state.cards = new Map(data.cards.map((c) => [c.card_id, c]))
       renderBoard()
+      // nothing between the drop and this hello was replayed: an open drawer
+      // is as old as the gap
+      scheduleDrawerRefresh()
       if (data.sessions) window.dispatchEvent(new CustomEvent('baton:sessions', { detail: data.sessions }))
     })
     es.addEventListener('sessions', (e) => window.dispatchEvent(new CustomEvent('baton:sessions', { detail: JSON.parse(e.data) })))
@@ -190,6 +198,7 @@
       state.columns = data.columns
       state.cards = new Map(data.cards.map((c) => [c.card_id, c]))
       renderBoard()
+      scheduleDrawerRefresh()
     } catch (err) {
       if (ownerOnly(err)) return guestMode()
       toast(err.message)
@@ -244,14 +253,41 @@
     toggleEmptyState()
   }
 
+  // the board is pushed a card for every write under its directory, log bytes
+  // included, so a push is only worth two API calls when the drawer's own
+  // content moved with it
+  function cardSignature(card) {
+    const stable = {}
+    for (const [k, v] of Object.entries(card)) if (!VOLATILE_CARD_FIELDS.includes(k)) stable[k] = v
+    return JSON.stringify(stable)
+  }
+
+  function drawerRefreshNeeded(prev, next) {
+    return !prev || cardSignature(prev) !== cardSignature(next)
+  }
+
+  // the cached tail belongs to one run: a new run replaces it, and a running
+  // one is re-read at most every LOG_REFRESH_MS so it does not freeze
+  function staleLogTail(cache, card, now) {
+    if (!cache) return 0
+    const run = card.active_run ? card.active_run.run : null
+    const otherRun = cache.runs_count !== card.runs_count || cache.run !== run
+    const growing = Boolean(card.active_run) && now - cache.at >= LOG_REFRESH_MS
+    if (!otherRun && !growing) return 0
+    return cache.expanded ? 200 : 8
+  }
+
   function upsertCard(card) {
     if (!state.columnEls.has(card.column)) {
       fetchCards()
       return
     }
+    const prev = state.cards.get(card.card_id)
+    const tail = staleLogTail(state.logState.get(card.card_id), card, Date.now())
     renderCard(card)
     toggleEmptyState()
-    if (state.drawerId === card.card_id) refreshDrawerAfterUpdate()
+    if (tail) ensureLogLoaded(card.card_id, tail)
+    if (state.drawerId === card.card_id && drawerRefreshNeeded(prev, card)) scheduleDrawerRefresh()
   }
 
   function dropCard(id) {
@@ -343,10 +379,18 @@
   }
 
   async function ensureLogLoaded(id, tail) {
+    const pending = state.logState.get(id)
+    if (pending) pending.at = Date.now()
     try {
       const data = await api(`/api/cards/${encodeURIComponent(id)}/log?tail=${tail}`)
-      state.logState.set(id, { lines: data.lines || [], expanded: tail > 8 })
       const card = state.cards.get(id)
+      state.logState.set(id, {
+        lines: data.lines || [],
+        expanded: tail > 8,
+        at: Date.now(),
+        runs_count: card ? card.runs_count : 0,
+        run: card && card.active_run ? card.active_run.run : null,
+      })
       if (card) renderCard(card)
     } catch (err) {
       toast(err.message)
@@ -587,6 +631,16 @@
     if (state.drawerId) openDrawer(state.drawerId)
   }
 
+  // openDrawer costs two requests, one of them a 64 KB log read: a burst of
+  // pushes (or a reconnect, which refetches by two paths) gets one refresh
+  function scheduleDrawerRefresh() {
+    if (!state.drawerId || state.drawerTimer) return
+    state.drawerTimer = setTimeout(() => {
+      state.drawerTimer = null
+      refreshDrawerAfterUpdate()
+    }, DRAWER_REFRESH_MS)
+  }
+
   async function openDrawer(id) {
     state.drawerId = id
     const drawer = document.getElementById('drawer')
@@ -752,4 +806,8 @@
   }
 
   document.addEventListener('DOMContentLoaded', init)
+
+  // test seam: node:test runs this file with a stub document and reads the
+  // pure update decisions back out; in a browser there is no `module`
+  if (typeof module !== 'undefined') module.exports = { drawerRefreshNeeded, staleLogTail }
 })()

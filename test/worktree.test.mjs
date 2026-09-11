@@ -1,12 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import {
-  worktreePath, branchName, validateRepo, ensure, remove, list, isWorktreeOf,
+  worktreePath, branchName, validateRepo, ensure, remove, list, isWorktreeOf, worktreeDirty,
 } from '../src/worktree.mjs'
 
 function git(repo, args) {
@@ -109,12 +109,36 @@ test('validateRepo refuses a non-directory, a non-repo dir, an empty repo, and B
   }
 })
 
-test('ensure falls back to HEAD when trunk does not exist', () => {
+test('ensure refuses a trunk that does not exist and names the repo\'s own default branch', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'baton-wt-'))
+  git(repo, ['init', '-q', '-b', 'master'])
+  git(repo, ['config', 'user.email', 'test@example.com'])
+  git(repo, ['config', 'user.name', 'Test User'])
+  writeFileSync(join(repo, 'README.md'), 'hello\n')
+  git(repo, ['add', 'README.md'])
+  git(repo, ['commit', '-q', '-m', 'initial commit'])
+  assert.throws(() => ensure(repo, 'card-6', { trunk: 'main' }), (err) => /trunk main does not exist/.test(err.message) && /master/.test(err.message))
+  assert.equal(existsSync(worktreePath(repo, 'card-6')), false, 'no branch cut from HEAD behind the card\'s back')
+})
+
+test('the exclude list hides .env but keeps .env.example visible to a landing', () => {
   const repo = initRepo()
-  const result = ensure(repo, 'card-6', { trunk: 'does-not-exist-trunk' })
-  assert.equal(result.created, true)
-  assert.equal(result.trunk_fallback, true)
-  assert.ok(existsSync(result.path))
+  const result = ensure(repo, 'card-8')
+  writeFileSync(join(result.path, '.env'), 'SECRET=1\n')
+  writeFileSync(join(result.path, '.env.example'), 'SECRET=\n')
+  const status = git(result.path, ['status', '--porcelain'])
+  assert.match(status, /^\?\? \.env\.example$/m)
+  assert.doesNotMatch(status, /^\?\? \.env$/m)
+})
+
+test('worktreeDirty throws when git cannot report status: a failed check must not read as clean', () => {
+  const repo = initRepo()
+  const result = ensure(repo, 'card-9')
+  assert.deepEqual(worktreeDirty(repo, 'card-9'), [])
+  // what a half-killed agent leaves behind: the worktree is there, git cannot read it
+  rmSync(join(repo, '.git', 'worktrees', 'card-9'), { recursive: true, force: true })
+  assert.ok(existsSync(result.path), 'the worktree is still on disk with the agent\'s work in it')
+  assert.throws(() => worktreeDirty(repo, 'card-9'), /status/i)
 })
 
 test('a file written inside the worktree does not appear in the main checkout\'s git status', () => {

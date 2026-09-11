@@ -298,7 +298,9 @@ runs one land at a time per repo root, FIFO, and does, in order:
    `dirty-trunk` without touching the root;
 2. commits whatever the agents left uncommitted in the worktree, then
    rebases the card's branch onto trunk; a conflict aborts the rebase and
-   bounces `rebase-conflict` with the conflicting file list;
+   bounces `rebase-conflict` with the conflicting file list (a rebase git
+   refuses for any other reason, a hook say, bounces `rebase-failed` with
+   git's own words);
 3. runs the test command (the card's `test_command`, else `npm test` from
    `package.json`, else `pytest` when there is a `pyproject.toml`, else it
    lands untested with a `land_warning`); red bounces `tests-red` with the

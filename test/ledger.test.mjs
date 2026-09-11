@@ -275,3 +275,13 @@ test('a corrupt card.json is skipped with a warning and does not brick ACTIVE.md
   assert.match(active, new RegExp(idB))
   assert.doesNotMatch(active, new RegExp(idA))
 })
+
+test('ordinary hyphenated words are not refused as secrets; a real key still is', () => {
+  const root = mkdtempSync(join(tmpdir(), 'baton-'))
+  const id = run(['create', '--slug', 'hyphens', '--task', 'refactor the task-management-system so the disk-space_monitor is risk-free',
+    '--repo', root, '--chain', CHAIN, '--title', 'ask-me-anything-bot'], root).trim()
+  assert.ok(existsSync(join(root, 'cards', id, 'card.json')), `card not created: ${id}`)
+  const fail = runFail(['create', '--slug', 'leaky', '--task', 'the key is sk-abcdefgh12345678', '--repo', root, '--chain', CHAIN], root)
+  assert.equal(fail.status, 2)
+  assert.match(fail.stderr, /refusing to log/)
+})

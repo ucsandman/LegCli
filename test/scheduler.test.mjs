@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pickRunnable } from '../src/scheduler.mjs'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pickRunnable, landingRepos } from '../src/scheduler.mjs'
 
 // default leases are distinct per card so only the cap or an explicit lease decides
 const c = (id, over = {}) => ({ card_id: id, repo: 'R', status: 'queued', leases: [`lanes/${id}/**`], created_at: `2026-09-10T00:00:0${id.slice(-1)}Z`, station: 'build', leg: 0, ...over })
@@ -39,4 +42,15 @@ test('pickRunnable: leases only conflict within the same repo; a landing repo bl
   assert.deepEqual(landing.start.map((x) => x.card_id), ['c3'], 'a build station keeps running while the repo lands')
   assert.equal(landing.blocked[0].card.card_id, 'c2')
   assert.equal(landing.blocked[0].reason, 'repo is landing')
+})
+
+test('the landing set comes from the station KIND and compares repos canonically', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'sched-repo-'))
+  const spelledTwice = join(tmp, 'r', '..', 'r')
+  const pipe = [{ name: 'build', kind: 'agent', chain: [{ adapter: 'fake' }] }, { name: 'ship', kind: 'land' }]
+  const landing = landingRepos([c('c1', { status: 'running', station: 'ship', pipeline: pipe, repo: join(tmp, 'r') })])
+  assert.equal(landing.size, 1, 'a land station named anything but "land" still counts')
+  const { start, blocked } = pickRunnable([c('c2', { station: 'ship', pipeline: pipe, repo: spelledTwice })], { max: 5, landing })
+  assert.deepEqual(start, [])
+  assert.equal(blocked[0]?.reason, 'repo is landing')
 })

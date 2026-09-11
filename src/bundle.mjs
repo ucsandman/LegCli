@@ -89,7 +89,9 @@ export function resumePrompt(session, bundle, next) {
   writeFileSync(perSession, body)
   try { writeFileSync(join(cwd, '.baton', 'RESUME.md'), body) } catch {}
   const task = session.task ? `\n\nThe task, as the human first stated it: ${session.task.slice(0, 700)}` : ''
-  return `You are taking over an interactive coding session from ${session.agent}, which hit its usage limit. Read .baton/RESUME-${session.session_id}.md in this directory (the context handoff bundle is at ${bundle.path}), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.${task}`
+  // the absolute path: the next agent is spawned in the session's cwd, which is
+  // a subdirectory of the work root whenever Baton was started in one
+  return `You are taking over an interactive coding session from ${session.agent}, which hit its usage limit. Read ${perSession} (the context handoff bundle is at ${bundle.path}), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.${task}`
 }
 
 export function resumeFileExists(cwd) { return existsSync(join(cwd, '.baton', 'RESUME.md')) }

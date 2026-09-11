@@ -7,7 +7,7 @@
 import {
   mkdirSync, readFileSync, existsSync, openSync, copyFileSync, readdirSync, rmSync, statSync,
 } from 'node:fs'
-import { writeJsonAtomic } from './fsx.mjs'
+import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { join, dirname, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -76,6 +76,26 @@ function readRun(id, n) {
 function writeRun(id, n, r) {
   // atomic: the orchestrator and the board poll this file (src/fsx.mjs)
   writeJsonAtomic(join(runDir(id, n), 'run.json'), { ...r, updated_at: now() })
+}
+
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+// Read-modify-write of run.json under its lock. The supervisor (status,
+// agent_pid, the verdict), the driving orchestrator (driver_pid, settled_at)
+// and a human Kill (kill_requested) all patch this file from different
+// processes; without the lock the last writer silently dropped the others'
+// fields. A read that finds the file torn (the atomic write's direct-write
+// fallback on Windows) is retried before fn sees a null.
+export function updateRun(id, n, fn) {
+  // a longer budget than the hook default: nobody's turn is waiting on this,
+  // and a patch that runs unlocked is a patch that can be lost
+  return withFileLock(join(runDir(id, n), 'run.json.lock'), () => {
+    let cur = readRun(id, n)
+    for (let i = 0; cur === null && i < 5 && existsSync(join(runDir(id, n), 'run.json')); i++) { pause(20); cur = readRun(id, n) }
+    const next = fn(cur)
+    if (next) writeRun(id, n, next)
+    return next
+  }, { retries: 250, waitMs: 20, staleMs: 10000 })
 }
 
 // Ledger writes must never crash the supervisor; failures go to its log.
@@ -178,6 +198,8 @@ function legOpts(args) {
     if (!Number.isInteger(opts.maxTurns) || opts.maxTurns < 1) die(2, `invalid --max-turns "${args['max-turns']}"`)
   }
   if (args.resume) opts.resume = args.resume
+  if (args.model) opts.model = args.model
+  if (args.network === '1' || args.network === 'true') opts.network = true
   return opts
 }
 
@@ -186,6 +208,8 @@ function legArgv(opts) {
   if (opts.mode) out.push('--mode', opts.mode)
   if (opts.maxTurns) out.push('--max-turns', String(opts.maxTurns))
   if (opts.resume) out.push('--resume', opts.resume)
+  if (opts.model) out.push('--model', opts.model)
+  if (opts.network) out.push('--network', '1')
   if (opts.extraEnv) out.push('--env-json', JSON.stringify(opts.extraEnv))
   return out
 }
@@ -222,17 +246,23 @@ async function main() {
     mkdirSync(dir, { recursive: true })
     copyFileSync(promptFile, join(dir, 'prompt.txt'))
     const logFd = openSync(join(dir, 'supervisor.log'), 'a')
+    // run.json exists, naming its driver, before the supervisor is spawned: a
+    // second driver or a scheduler tick landing here sees a claimed run, never
+    // an empty directory it could launch into.
+    const driverPid = args['driver-pid'] ? parseInt(args['driver-pid'], 10) : null
+    writeRun(id, n, {
+      card_id: id, run: n, adapter: adapterName, mode: opts.mode ?? null,
+      max_turns: opts.maxTurns ?? null, model: opts.model ?? null, resume: opts.resume ?? null, cwd,
+      status: 'launching', supervisor_pid: null, agent_pid: null,
+      driver_pid: Number.isInteger(driverPid) ? driverPid : null,
+      started_at: now(), outcome: null,
+    })
     const child = spawn(process.execPath,
       [SELF, 'supervise', '--card', id, '--adapter', adapterName, '--run', String(n),
        '--cwd', cwd, ...legArgv(opts)],
       { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd], env: process.env })
     child.unref()
-    writeRun(id, n, {
-      card_id: id, run: n, adapter: adapterName, mode: opts.mode ?? null,
-      max_turns: opts.maxTurns ?? null, resume: opts.resume ?? null, cwd,
-      status: 'launching', supervisor_pid: child.pid, agent_pid: null,
-      started_at: now(), outcome: null,
-    })
+    updateRun(id, n, (cur) => ({ ...cur, supervisor_pid: child.pid }))
     process.stdout.write(JSON.stringify({
       ok: true, run: n, supervisor_pid: child.pid, run_dir: dir,
     }) + '\n')
@@ -248,6 +278,8 @@ async function main() {
       die(2, `bad BATON_TIMERS_MS "${process.env.BATON_TIMERS_MS}"`)
     }
     const dir = runDir(id, n)
+    // what a run.json patch falls back to if the file cannot be read (torn)
+    const base = { card_id: id, run: n, adapter: adapterName, cwd, supervisor_pid: process.pid, started_at: now() }
     // stdout IS supervisor.log when launched detached; timestamps make it a log.
     const log = (msg) => process.stdout.write(`${now()} ${msg}\n`)
     const prompt = readFileSync(join(dir, 'prompt.txt'), 'utf8')
@@ -264,7 +296,7 @@ async function main() {
       // A forbidden mode/flag never spawns: record it and fail the leg.
       log(`refusing to launch: ${err.message}`)
       ledgerAppend(id, 'error', `[supervisor] refused to launch: ${scrub(err.message).slice(0, 200)}`, null, log)
-      writeRun(id, n, { ...readRun(id, n), status: 'failed', exit_code: null, ended_at: now(), refusal: err.message })
+      updateRun(id, n, (cur) => ({ ...(cur ?? base), status: 'failed', exit_code: null, ended_at: now(), refusal: err.message }))
       process.exit(13)
     }
     const childEnv = adapter.env({ ...process.env, ...(opts.extraEnv ?? {}) })
@@ -292,14 +324,14 @@ async function main() {
         adapter: adapter.emulates ?? adapterName, exitCode: null, stdout: '', stderr: '', result: null,
         doneMarker: false, diff: null, killedByTimer: false, killedByHuman: false, spawnError: err.message,
       })
-      writeRun(id, n, {
-        ...readRun(id, n), status: 'failed', exit_code: null, ended_at: now(),
+      updateRun(id, n, (cur) => ({
+        ...(cur ?? base), status: 'failed', exit_code: null, ended_at: now(),
         outcome: verdict.outcome, signal: verdict.signal, handoff: verdict.handoff, reason: verdict.reason,
-      })
+      }))
       process.exit(13)
     })
 
-    writeRun(id, n, { ...readRun(id, n), status: 'running', agent_pid: child.pid })
+    updateRun(id, n, (cur) => ({ ...(cur ?? base), status: 'running', agent_pid: child.pid }))
     let killedByTimer = false
     const notifyTimer = setTimeout(() => {
       ledgerAppend(id, 'status',
@@ -321,7 +353,7 @@ async function main() {
           if (child.exitCode !== null || !pidAlive(child.pid)) return
           ledgerAppend(id, 'error',
             `[supervisor] agent UNKILLABLE (pid ${child.pid}); manual kill required`, null, log)
-          writeRun(id, n, { ...readRun(id, n), status: 'killed', exit_code: null, ended_at: now() })
+          updateRun(id, n, (cur) => ({ ...(cur ?? base), status: 'killed', exit_code: null, ended_at: now() }))
           process.exit(12)
         }, KILL_VERIFY_MS)
       }, KILL_VERIFY_MS)
@@ -349,15 +381,15 @@ async function main() {
         adapter: adapter.emulates ?? adapterName, exitCode: code, stdout, stderr, result: parsed?.raw ?? null,
         doneMarker, diff, killedByTimer, killedByHuman: current?.kill_requested === true, spawnError: null,
       })
-      const base = {
-        ...current, exit_code: code, session_id: sessionId, ended_at: now(),
+      const final = {
+        exit_code: code, session_id: sessionId, ended_at: now(),
         outcome: verdict.outcome, signal: verdict.signal, handoff: verdict.handoff, reason: verdict.reason,
         done_marker: doneMarker, diff,
       }
       const summary = `[supervisor] leg ${verdict.outcome} (exit ${code}${sessionId ? `, session ${sessionId}` : ''}${verdict.signal !== 'none' ? `, signal ${verdict.signal}` : ''})`
       if (killedByTimer || verdict.outcome === 'killed') {
         ledgerAppend(id, 'killed', summary, verdict.reason, log)
-        writeRun(id, n, { ...base, status: 'killed' })
+        updateRun(id, n, (cur) => ({ ...(cur ?? current ?? base), ...final, status: 'killed' }))
         process.exit(12)
       }
       const eventType = verdict.outcome === 'limit' ? 'limit_detected'
@@ -365,7 +397,7 @@ async function main() {
           : 'leg_exited'
       ledgerAppend(id, eventType, summary,
         verdict.outcome === 'completed' ? null : `${verdict.reason}${code === 0 ? '' : ` | stderr: ${errTail(errPath)}`}`, log)
-      writeRun(id, n, { ...base, status: 'exited' })
+      updateRun(id, n, (cur) => ({ ...(cur ?? current ?? base), ...final, status: 'exited' }))
       log(`leg exited code ${code}: ${verdict.outcome} (${verdict.reason})`)
       process.exit(verdict.outcome === 'completed' ? 0 : 13)
     })

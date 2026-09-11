@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.3.2 (2026-09-11)
+
+A second adversarial review over 0.3.1, this time of the whole tree: 49
+confirmed bugs fixed, each with a regression test seen red first (340 tests).
+
+- **Cards no longer wedge or double-launch.** Hand off now and Reassign on a
+  running leg used to throw out of the orchestrator and leave the card in
+  `handing_off` holding a concurrency slot with no bundle; both now stop the
+  leg, write the bundle, and continue in the same driver. A card is claimed by
+  a `driver.lock` for the whole of `runCard`, so a `card run` beside the board's
+  scheduler (or two schedulers: `scheduler start` now refuses when one runs and
+  the pidfile is created atomically) can never launch two legs into one
+  worktree; `runner launch` writes `run.json` with its driver before spawning
+  the supervisor. Kill during the launching window kills the supervisor tree
+  instead of nothing. A card left running at a test or land station by a crash
+  is recovered by the scheduler. Kill or Pause during a test or land station is
+  no longer undone by the late result. A land bounce with no agent station, and
+  a red test whose only agent station comes later, fail the card instead of
+  throwing or skipping ahead. Hand off now is offered only when a next leg
+  exists. `--model <adapter>=<name>` (and a chain entry's `network`) now reach
+  the agent argv; they were dropped on the way to the runner.
+- **The board stays up.** The test station ran the repo's suite with
+  `spawnSync` inside the board server, freezing HTTP, SSE, the scheduler and
+  the merge queue for its whole duration; it is async now. The drawer no
+  longer refetches on every log byte, the log tail refreshes when the run
+  changes, an open drawer is refetched after an SSE reconnect, and the floor
+  stops polling on a 401 and shows a way back.
+- **No lost writes.** `run.json` and `card.json` are read-modify-written under
+  a cross-process lock (a human Kill was silently reverted by a driver's status
+  write). `withFileLock` itself treated Windows' EPERM during a sibling's
+  unlink as "give up and run unlocked": it now retries, which also closes the
+  hole in the 0.3.1 session and usage locks. `ledger sync` renames the buffer
+  before flushing so a record buffered mid-flush survives, and refuses clearly
+  when sync is off. The merge queue's turn is a file lock keyed on the
+  canonical repo root, so two spellings of one checkout, or two processes,
+  never land into it at once.
+- **`baton share` and the launcher.** `share add sam` before `share on` no
+  longer makes the guest the owner. A non-loopback board no longer falls open
+  to everyone the moment share.json reads as off (`share off` stops the
+  listener first, and the bind is re-checked per request). Share off no longer
+  promotes a guest's live SSE stream; a stale tab repeating one rotated token
+  no longer locks the machine out; `share on|off` no longer kill every running
+  agent; `share rm` refuses to take the last owner; the SSE health frame is
+  filtered for guests; a redacted session names its branch. The pidfile is
+  confirmed by a probe, so `status` cannot report a dead board as running and
+  `down` cannot kill whatever reused the PID. Card removal with `?branch=delete`
+  no longer escalates to `git branch -D` without `?force=1`, a status check
+  that fails no longer reads as clean, and `sessions rm` refuses mid-land.
+- **The limit path.** codex's rollout is found for a session started in the
+  local evening (the day directory is local, the filter compared UTC). agy's
+  wall is seen behind non-ASCII log lines (a byte count was used as a string
+  index) and an old wall is not re-fired by a second agy leg. After a hand-off
+  the previous agent's usage bars are cleared, the near-limit warning fires
+  again, the chain shown as "next" is recomputed, `all_out` clears after the
+  wait, an agy leg adds to the turn count, and a board Hand off with the other
+  agents walled restarts the current agent instead of waiting. The resume
+  prompt names the absolute RESUME file.
+- Smaller: an agent-created `.env.example` is no longer dropped from a land;
+  a card whose trunk does not exist is refused at `card add` naming the repo's
+  default branch (it used to burn every land attempt); a rebase git refuses for
+  a non-conflict reason bounces `rebase-failed` with git's words, and a
+  conflicting retry is no longer reported as `trunk-moved`; `sk-` no longer
+  matches ordinary hyphenated words (a task saying "risk-free" was refused as a
+  secret); `OPENAI_BASE_URL` is stripped from agent legs; with share off and a
+  token, the rate limit is per address, not one shared bucket.
+
 ## 0.3.1 (2026-09-11)
 
 A security and correctness pass over 0.3.0, after an adversarial review. No new

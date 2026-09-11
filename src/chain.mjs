@@ -74,12 +74,16 @@ function advance(card, i, events) {
   return { ...card, station: next.name, leg: 0, status: 'queued' }
 }
 
+// The agent station a red test or a bounced land goes back to: the nearest
+// earlier `build`, else the first agent station BEFORE the failing one. An
+// agent station after it is never a target: the card would skip the station
+// it just failed and finish `done` with red tests.
 function bounceTarget(card, i) {
   for (let k = i - 1; k >= 0; k--) {
     const s = card.pipeline[k]
     if (s.kind === 'agent' && s.name === 'build') return s
   }
-  return card.pipeline.find((s) => s.kind === 'agent') ?? null
+  return card.pipeline.slice(0, i).find((s) => s.kind === 'agent') ?? null
 }
 
 function assertStatus(card, action, allowed) {
@@ -178,12 +182,12 @@ export function transition(card, action, payload = {}) {
       }
       const attempts = (card.land_attempts ?? 0) + 1
       const maxAttempts = Math.max(1, parseInt(process.env.BATON_MAX_LAND_ATTEMPTS || '3', 10) || 3)
-      if (payload.bounced && attempts < maxAttempts) {
-        const target = bounceTarget(card, i)
-        events.push(ev('bounced', `land bounced (attempt ${attempts}) → ${target?.name}`, payload.reason))
+      const target = payload.bounced ? bounceTarget(card, i) : null
+      if (target && attempts < maxAttempts) {
+        events.push(ev('bounced', `land bounced (attempt ${attempts}) → ${target.name}`, payload.reason))
         return { card: { ...card, station: target.name, leg: 0, status: 'queued', land_attempts: attempts, bounce_reason: payload.reason ?? 'land bounced', resume_from_bundle: true }, events }
       }
-      events.push(ev('failed', `land failed after ${attempts} attempt(s)`, payload.reason))
+      events.push(ev('failed', payload.bounced && !target ? 'land bounced and no agent station to bounce to' : `land failed after ${attempts} attempt(s)`, payload.reason))
       return { card: { ...card, status: 'failed', land_attempts: attempts, failure: 'land' }, events }
     }
     // ---- human actions ----
@@ -248,7 +252,9 @@ export function availableActions(card) {
   const out = []
   const st = card.status
   const { s } = station(card)
-  if (st === 'running') out.push('pause', 'handoff_now')
+  if (st === 'running') out.push('pause')
+  // the transition refuses handoff_now without a next chain entry, so the board must not offer it
+  if (st === 'running' && s?.kind === 'agent' && s.chain?.[card.leg + 1]) out.push('handoff_now')
   if (st === 'paused') out.push('resume')
   if (st === 'needs_approval' || st === 'waiting_human') out.push('approve')
   if (NON_TERMINAL.includes(st)) { out.push('kill'); if (s?.kind === 'agent') out.push('reassign') }

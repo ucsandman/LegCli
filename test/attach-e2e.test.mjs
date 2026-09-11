@@ -79,6 +79,7 @@ test('limit → every option out → waits for the first reset → starts codex 
   const allOut = readEvents(s.session_id).find((e) => e.type === 'all_out')
   assert.match(allOut.summary, /waiting for codex at/)
   assert.equal(s.status, 'ended'); assert.equal(s.waiting, null)
+  assert.equal(s.all_out, null, 'the "every option is out" note goes away once the wait is over')
   assert.match(err, /waiting for codex; Ctrl-C to quit/)
   assert.match(err, /codex is back; starting it from the bundle/)
   // the stub claude never saw the API key; codex got BATON_CODEX_ARGS and the resume prompt, in the repo
@@ -93,9 +94,10 @@ test('limit → every option out → waits for the first reset → starts codex 
   assert.ok(existsSync(join(repo, '.baton', 'RESUME.md')), 'RESUME.md written for the next agent')
   assert.ok(existsSync(join(stubDir, 'live', 'claude', 'limit-rate_limit.json')), 'the (non-simulated) StopFailure was kept as live evidence')
   assert.equal(readUsage('claude', 'default').limited_reason, 'rate_limit')
-  // no usage numbers (the config dir has no login) but the wall still landed
-  assert.match(s.usage_error, /no claude\.ai login found/)
-  assert.ok(readEvents(s.session_id).some((e) => e.type === 'status' && /usage unavailable/.test(e.summary)))
+  // no usage numbers (the config dir has no login) but the wall still landed;
+  // the card is codex's by now, so claude's "usage unknown" is in the timeline
+  assert.equal(s.usage_error, null, 'claude’s usage error does not follow codex onto the card')
+  assert.ok(readEvents(s.session_id).some((e) => e.type === 'status' && /usage unavailable: no claude\.ai login found/.test(e.summary)))
 })
 
 test('End from the board while waiting quits with exit 3 and the session is ended, not lost', async (t) => {

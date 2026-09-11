@@ -67,9 +67,13 @@ export function addPerson(name, { role = 'guest', share = readShare() } = {}) {
 }
 
 export function removePerson(name, share = readShare()) {
-  const before = share.people.length
+  const person = personNamed(share, name)
+  if (!person) throw new Error(`no one called "${name}" on this board`)
+  // a shared board with no owner locks this machine's own browser out of it
+  if (isOwner(person) && isOn(share) && !share.people.some((p) => isOwner(p) && p !== person)) {
+    throw new Error(`"${name}" is the only owner of this board: baton share add <someone> --role owner first, or baton share off`)
+  }
   share.people = share.people.filter((p) => p.name.toLowerCase() !== String(name).toLowerCase())
-  if (share.people.length === before) throw new Error(`no one called "${name}" on this board`)
   if (share.owner && share.owner.toLowerCase() === String(name).toLowerCase()) share.owner = share.people.find((p) => p.role === 'owner')?.name ?? null
   writeShare(share)
   return share
@@ -134,18 +138,21 @@ export async function turnOn({ bind = 'tailscale', port = Number(process.env.BAT
   share.bind = address
   share.bind_kind = ['tailscale', 'lan'].includes(String(bind).toLowerCase()) ? String(bind).toLowerCase() : 'address'
   share.port = port
-  let token = null
-  if (!share.people.length) {
+  // being first in the roster is not being the owner: a board with nobody in
+  // the owner role gets one of its own, so the machine that shares it keeps it
+  const named = personNamed(share, share.owner)
+  const existing = isOwner(named) ? named : share.people.find((p) => isOwner(p)) ?? null
+  if (!existing) {
     const name = validName(owner) ? owner : (validName(userInfo().username) ? userInfo().username.toLowerCase() : 'owner')
+    if (personNamed(share, name)) throw new Error(`no one on this board is an owner: baton share add <you> --role owner`)
     share.owner = name
     writeShare(share)
     const added = addPerson(name, { role: 'owner', share })
-    token = added.token
-    return { share: added.share, owner: added.person, token }
+    return { share: added.share, owner: added.person, token: added.token }
   }
-  if (!share.owner) share.owner = share.people.find((p) => p.role === 'owner')?.name ?? share.people[0].name
+  share.owner = existing.name
   writeShare(share)
-  return { share, owner: personNamed(share, share.owner), token }
+  return { share, owner: existing, token: null }
 }
 
 export function turnOff() {

@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkBind, authorize, remoteAddress, presentedToken, isLoopback } from './auth.mjs'
+import { checkBind, authorize, remoteAddress, presentedToken, isLoopback, tokenMatches } from './auth.mjs'
 import { readShare, isOn as shareIsOn, sharePath, identify, personNamed } from './share.mjs'
 import { createLimiter } from './ratelimit.mjs'
 import { realPath, canonPath } from './fsx.mjs'
@@ -247,7 +247,9 @@ function redactSession(s) {
     limit: s.limit ? { reason: s.limit.reason, resets_at: s.limit.resets_at ?? null } : null,
     waiting: s.waiting ?? null,
     worktree: s.worktree ? { branch: s.worktree.branch, base: s.worktree.base } : null,
-    land: s.land ? { state: s.land.state, base: s.land.base ?? null, sha: s.land.sha ?? null, reason: s.land.reason ?? null } : null,
+    // the branch is already on the worktree chip: naming it again costs nothing
+    // and is what the board's land line reads
+    land: s.land ? { state: s.land.state, branch: s.land.branch ?? null, base: s.land.base ?? null, sha: s.land.sha ?? null, reason: s.land.reason ?? null } : null,
     task: null, cwd: null, files: [], overlap: [], requests: [], hidden: true,
     land_blocker: `read-only: this terminal belongs to ${s.owner ?? 'someone else'}`,
   }
@@ -394,7 +396,13 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => 
         if (id.startsWith('card-')) scheduleRefresh(id)
       })
     } catch (err) { log(`sse watch: ${err.message}`); watcher = null }
-    healthTimer = setInterval(() => { broadcast('health', { ok: true, scheduler: { ...schedulerStatus(), max_concurrent: MAX_CONCURRENT }, ts: new Date().toISOString() }); pushSessions() }, healthIntervalMs)
+    // the scheduler is the pipeline's, like /api/health: a guest's topbar
+    // gets the tick without it
+    healthTimer = setInterval(() => {
+      const ts = new Date().toISOString()
+      broadcast('health', (viewer) => (viewer && viewer.role !== 'owner' ? { ok: true, ts } : { ok: true, scheduler: { ...schedulerStatus(), max_concurrent: MAX_CONCURRENT }, ts }))
+      pushSessions()
+    }, healthIntervalMs)
   }
   const stopWatch = () => {
     if (watcher) { watcher.close(); watcher = null }
@@ -443,7 +451,13 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
   // SSE re-identifies each client from the live roster on every push
   const reauthClient = (c) => {
     const sh = currentShare()
-    if (!shareIsOn(sh)) return { name: 'local', role: 'owner' }
+    // share stopping is a revocation, never a promotion: a guest holding this
+    // stream through their own token loses it, and only the machine's own
+    // tokenless page (or this board's BATON_TOKEN) is the single-player owner
+    if (!shareIsOn(sh)) {
+      if (c.token) return tokenMatches(token, c.token) ? { name: 'token', role: 'owner' } : null
+      return c.loopback ? { name: 'local', role: 'owner' } : null
+    }
     const person = identify(sh, c.token)
     if (person) return { name: person.name, role: person.role }
     if (!c.token && sh.loopback_owner !== false && c.loopback) {
@@ -472,15 +486,19 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
     const ip = remoteAddress(req) || 'unknown'
     // a token cannot be guessed at speed, and no one client can flood the board
     if (limiter.lockedOut(ip)) return send(res, 429, { error: 'too many bad tokens from here; wait a minute' }, { 'Retry-After': String(limiter.retryAfter(ip)) })
-    const auth = authorize({ token, req, url, share })
+    const auth = authorize({ token, req, url, share, bind })
     if (!auth.ok) {
       // only a token that was presented and did not match counts as a guess;
-      // a board page that has not been given a token yet is not an attacker
-      if (presentedToken(req, url)) limiter.failure(ip)
+      // a board page that has not been given a token yet is not an attacker,
+      // and neither is a stale tab polling the one token it was given
+      const presented = presentedToken(req, url)
+      if (presented) limiter.failure(ip, presented)
       return send(res, 401, { error: shared ? 'unauthorized: open the board with your own link (baton share)' : 'unauthorized: set Authorization: Bearer <BATON_TOKEN>' })
     }
     const viewer = auth.person ? { name: auth.person.name, role: auth.person.role } : { name: auth.subject ?? 'local', role: 'owner' }
-    const rl = limiter.request(viewer.name === 'local' ? ip : viewer.name)
+    // a name is a bucket only when it names a human: 'local' and 'token' are
+    // every client at once, so those are counted per address
+    const rl = limiter.request(auth.person ? viewer.name : ip)
     if (!rl.ok) return send(res, 429, { error: `rate limit: more than ${limiter.max} requests a minute` }, { 'Retry-After': String(rl.retry_after) })
     const actor = { type: 'human', id: viewer.name }
     // a guest sees the terminals lane, read-only; the pipeline side is the owner's
@@ -609,10 +627,18 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
           if (['running', 'handing_off'].includes(card.status)) return send(res, 409, { error: 'kill the card before removing it' })
           // don't discard uncommitted agent work without an explicit force
           if (url.searchParams.get('force') !== '1') {
-            const dirty = worktreeDirty(card.repo, id)
+            let dirty
+            try { dirty = worktreeDirty(card.repo, id) } catch (err) {
+              // a status check that fails must not read as clean
+              return send(res, 409, { error: `cannot verify the card's worktree (git status failed: ${scrub(err.message).slice(0, 200)}). Retry with ?force=1 to discard it.` })
+            }
             if (dirty.length) return send(res, 409, { error: `the card's worktree has ${dirty.length} uncommitted file(s): ${dirty.slice(0, 10).join(', ')}. Retry with ?force=1 to discard them.`, dirty })
           }
-          try { removeWorktree(card.repo, id, { deleteBranch: url.searchParams.get('branch') === 'delete', force: true }) } catch (err) { log(`worktree remove: ${err.message}`) }
+          // `branch=delete` on its own is `git branch -d`: commits the branch is
+          // the only copy of are lost only when the caller says force
+          let wt = null
+          try { wt = removeWorktree(card.repo, id, { deleteBranch: url.searchParams.get('branch') === 'delete', force: url.searchParams.get('force') === '1' }) } catch (err) { log(`worktree remove: ${err.message}`) }
+          if (wt && wt.branchUnmerged && !wt.branchDeleted) return send(res, 409, { error: `not removing ${id}: its branch has commits that are not on its base. Land it first, or retry with ?force=1 to delete the branch and discard them.`, worktree: wt })
           rmSync(cardDir(id), { recursive: true, force: true })
           sse.broadcast('removed', forOwner({ card_id: id }))
           return send(res, 200, { removed: id })

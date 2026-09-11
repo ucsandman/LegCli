@@ -45,7 +45,7 @@ export function presentedToken(req, url) {
 }
 
 // → { ok, subject, person } where person is { name, role } when share is on.
-export function authorize({ token, req, url, share = null }) {
+export function authorize({ token, req, url, share = null, bind = null }) {
   const presented = presentedToken(req, url)
   if (shareIsOn(share ?? undefined)) {
     const person = identify(share, presented)
@@ -60,6 +60,10 @@ export function authorize({ token, req, url, share = null }) {
     }
     return { ok: false, subject: null, person: null }
   }
+  // checkBind's invariant, re-applied per request: share.json stops reading as
+  // on (`baton share off`, a truncated file) while the shared address is still
+  // bound, and nobody but this machine may be the local owner in that window
+  if (!token && bind && !isLoopback(bind) && !isLoopback(remoteAddress(req))) return { ok: false, subject: null, person: null }
   if (!token) return { ok: true, subject: 'local', person: null }
   if (tokenMatches(token, presented)) return { ok: true, subject: 'token', person: null }
   return { ok: false, subject: null, person: null }

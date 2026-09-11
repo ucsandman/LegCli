@@ -9,7 +9,7 @@
 // stripped from the child environment (src/env.mjs).
 import http from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join, dirname, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sanitizeEnv } from './env.mjs'
@@ -184,6 +184,11 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
   const spec = await spawnSpec(agent, { account, args, sessionId: sid, prompt, cwd: session.cwd })
   appendEvent(sid, { type: 'leg', summary: `${agent} (${account}) starting${prompt ? ' from the handoff bundle' : ''}` })
   const startedMs = Date.now()
+  const turnsAtLegStart = session.turns ?? 0
+  // agy appends to one log for the whole session: a second agy leg reads from
+  // the end of what the first one wrote, or it walls itself on that leg's line
+  const agyLog = agent === 'agy' ? join(sessionDir(sid), 'agy.log') : null
+  const agyTail = agyLog ? createTail(agyLog, { from: logSize(agyLog) }) : null
   let child
   try {
     child = spawn(spec.bin, spec.args, { cwd: spec.cwd, env: spec.env, stdio: 'inherit', windowsHide: false })
@@ -191,11 +196,13 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
     updateSession(sid, { status: 'ended', ended_at: new Date().toISOString() }, { event: { type: 'error', summary: `${agent} failed to start: ${err.message}` } })
     return { reason: 'exit', code: 127 }
   }
-  updateSession(sid, { pid: child.pid, agent, account, status: agent === 'claude' ? 'starting' : 'running', limit: null, warning: null })
+  // every leg starts on its own card: the agent that just left takes its
+  // percentages, its warning and its usage source with it
+  updateSession(sid, { pid: child.pid, agent, account, status: agent === 'claude' ? 'starting' : 'running', limit: null, warning: null, limits: null, usage_source: null, usage_error: null })
 
   // taps
-  let rollout = null; let tail = null; let agyLogSeen = 0
-  let polls = 0; let warned = Boolean(session.warning)
+  let rollout = null; let tail = null
+  let polls = 0; let warned = false
   let stop = null
   const done = new Promise((res) => { stop = res })
   child.on('error', (err) => { appendEvent(sid, { type: 'error', summary: `${agent} spawn error: ${err.message}` }); stop({ reason: 'exit', code: 127 }) })
@@ -263,22 +270,19 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
       }
       // agy: log text + history prompts
       if (agent === 'agy') {
-        const log = join(sessionDir(sid), 'agy.log')
-        const size = logSize(log)
-        if (size > agyLogSeen) {
-          const text = readFileSync(log, 'utf8').slice(agyLogSeen)
-          agyLogSeen = size
-          const hit = scanLog(text)
-          if (hit && s.status !== 'limit') {
-            const u = markLimited('agy', account, { resets_at: hit.resets_at, reason: hit.signal, source: 'agy log' })
-            patch.status = 'limit'; patch.limit = { reason: hit.signal, detail: hit.detail, resets_at: hit.resets_at ?? u.limited_until, at: new Date().toISOString() }
-            appendEvent(sid, { type: 'limit', summary: `agy limit (${hit.signal}): ${hit.detail.slice(0, 160)}` })
-            try { captureLive('agy', hit.signal, { log_excerpt: hit.detail, resets_at: hit.resets_at }, { sessionId: sid }) } catch {}
-          }
+        const text = agyTail.read().join('\n')
+        const hit = text ? scanLog(text) : null
+        if (hit && s.status !== 'limit') {
+          const u = markLimited('agy', account, { resets_at: hit.resets_at, reason: hit.signal, source: 'agy log' })
+          patch.status = 'limit'; patch.limit = { reason: hit.signal, detail: hit.detail, resets_at: hit.resets_at ?? u.limited_until, at: new Date().toISOString() }
+          appendEvent(sid, { type: 'limit', summary: `agy limit (${hit.signal}): ${hit.detail.slice(0, 160)}` })
+          try { captureLive('agy', hit.signal, { log_excerpt: hit.detail, resets_at: hit.resets_at }, { sessionId: sid }) } catch {}
         }
         const prompts = promptsSince({ cwd: s.cwd, sinceMs: startedMs })
-        if (prompts.length && prompts.length !== (s.turns ?? 0)) {
-          patch.turns = prompts.length; patch.last_activity = new Date().toISOString()
+        // the prompts are this leg's; the count on the card is the session's
+        const turns = turnsAtLegStart + prompts.length
+        if (prompts.length && turns !== (s.turns ?? 0)) {
+          patch.turns = turns; patch.last_activity = new Date().toISOString()
           if (!s.task) patch.task = prompts[0].text.slice(0, 500)
           if (!s.agent_session_id && prompts[0].conversationId) patch.agent_session_id = prompts[0].conversationId
           if (s.status === 'starting') patch.status = 'running'
@@ -414,6 +418,10 @@ export async function attach(agent, args = [], { open = true } = {}) {
     // even when chb is missing and the save throws, the context is on disk
     const notesFile = join(workRoot(cur) ?? cur.cwd, '.baton', `session-${sid}.md`)
     let choice = chooseNext({ agent, account, accounts, installed })
+    // every OTHER option is walled but this one is not (a Hand off from the
+    // board on a live agent): start it again here, rather than count down to
+    // someone else's reset with the terminal already empty
+    if (!choice.next && isAvailable(readUsage(agent, account))) choice = { next: { agent, account }, out: [] }
     let cancelled = false
     while (!choice.next) {
       // every option is out: keep the terminal, count down to the SOONEST reset
@@ -441,7 +449,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
       break
     }
     const next = choice.next
-    updateSession(sid, { waiting: null })
+    updateSession(sid, { waiting: null, all_out: null })
     // bound the number of hand-offs in one terminal so a chain that limits
     // instantly can never loop forever; stopping is explicit, not a silent exit 0
     if (leg >= 11) {
@@ -456,7 +464,9 @@ export async function attach(agent, args = [], { open = true } = {}) {
       : `You are taking over an interactive coding session from ${agent}.${existsSync(notesFile) ? ` Read ${notesFile} in this directory first (the previous agent's notes: task, last messages, dirty files).` : ''} Check git status and git diff, then continue the work. The task: ${cur.task ?? 'see the recent changes'}`
     say(`starting ${next.agent}${next.account !== 'default' ? '/' + next.account : ''} in this terminal from the bundle`)
     agent = next.agent; account = next.account; legArgs = []
-    updateSession(sid, { lineage: { from: cur.agent, to: next.agent } })
+    // the chain is what comes after the agent now taking over, not after the
+    // one that started the session: the card's "next" names a live option
+    updateSession(sid, { lineage: { from: cur.agent, to: next.agent }, chain: candidates({ agent: next.agent, account: next.account, accounts }) })
   }
   const fin = readSession(sid)
   if (fin && fin.status !== 'ended') updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: exit }, { event: { type: 'ended', summary: `session ended (exit ${exit})` } })

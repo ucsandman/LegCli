@@ -107,6 +107,23 @@ function health(port, bind) {
   })
 }
 
+// A pid is not a board: nothing clears the pidfile when the board dies with it,
+// and after a reboot that pid usually belongs to something else. Something has
+// to answer on the port — a 401 from a guarded board counts, so does a slow one.
+function listening(port, bind) {
+  return new Promise((resolvePromise) => {
+    const req = http.get({ host: bind === '0.0.0.0' ? '127.0.0.1' : bind, port, path: '/api/health', timeout: 2000 }, (res) => { res.resume(); resolvePromise(true) })
+    req.on('socket', (s) => s.on('connect', () => resolvePromise(true)))
+    req.on('error', () => resolvePromise(false))
+    req.on('timeout', () => { req.destroy(); resolvePromise(false) })
+  })
+}
+
+async function boardAlive(pf) {
+  if (!pf || !pidAlive(pf.pid)) return false
+  return await listening(pf.port, pf.bind ?? '127.0.0.1')
+}
+
 function pipeLines(stream, prefix, onLine) {
   let buf = ''
   stream.setEncoding('utf8')
@@ -155,10 +172,11 @@ export async function up({ dry = false, open = true, port = Number(process.env.B
     return 0
   }
   const existing = readPidfile()
-  if (existing && pidAlive(existing.pid) && existing.pid !== process.pid) {
+  if (existing && existing.pid !== process.pid && await boardAlive(existing)) {
     out('baton', `already running (pid ${existing.pid}, port ${existing.port}); use \`baton down\` first`, process.stderr)
     return 1
   }
+  if (existing) { try { rmSync(pidfile(), { force: true }) } catch {} }
   mkdirSync(home(), { recursive: true })
   const [p] = plan.procs
   const child = spawn(p.bin, p.argv, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...p.env, BATON_QUIET: '0' } })
@@ -209,26 +227,37 @@ export async function up({ dry = false, open = true, port = Number(process.env.B
   })
 }
 
-export function down() {
+// Stop the board process and nothing else. Sharing the board with someone is a
+// configuration change: it restarts the listener, it does not end the runs.
+export async function stopBoard() {
+  const pf = readPidfile()
+  if (!pf) return { stopped: false, stale: false }
+  const alive = await boardAlive(pf)
+  if (alive) for (const pid of [...(pf.children ?? []), pf.pid]) killTree(pid)
+  try { rmSync(pidfile(), { force: true }) } catch {}
+  return { stopped: alive, stale: !alive, pid: pf.pid, port: pf.port }
+}
+
+export async function down() {
   const pf = readPidfile()
   if (!pf) { out('baton', 'not running'); return 0 }
   const agents = killActiveAgents()
-  for (const pid of [...(pf.children ?? []), pf.pid]) killTree(pid)
-  try { rmSync(pidfile(), { force: true }) } catch {}
-  out('baton', `stopped (pid ${pf.pid}, port ${pf.port}${agents ? `, ${agents} agent process(es) killed` : ''})`)
+  const board = await stopBoard()
+  out('baton', `stopped (pid ${pf.pid}, port ${pf.port}${agents ? `, ${agents} agent process(es) killed` : ''}${board.stale ? ', stale pidfile' : ''})`)
   return 0
 }
 
-export function status() {
+export async function status() {
   const pf = readPidfile()
-  const running = Boolean(pf && pidAlive(pf.pid))
+  const running = await boardAlive(pf)
+  if (pf && !running) { try { rmSync(pidfile(), { force: true }) } catch {} }
   const cards = listCards()
   const by = (key) => Object.entries(cards.reduce((m, c) => { m[c[key]] = (m[c[key]] ?? 0) + 1; return m }, {})).map(([k, v]) => `${k}=${v}`).join(' ') || '(none)'
   if (running) {
     const up = Math.round((Date.now() - Date.parse(pf.started_at)) / 1000)
     out('baton', `running  pid ${pf.pid}  port ${pf.port}  up ${Math.floor(up / 60)}m${up % 60}s  http://127.0.0.1:${pf.port}`)
   } else {
-    out('baton', pf ? `stopped (stale pidfile pid ${pf.pid})` : 'stopped')
+    out('baton', pf ? `stopped (pid ${pf.pid} is not answering on port ${pf.port}; cleared the stale pidfile)` : 'stopped')
   }
   const s = schedulerStatus()
   out('baton', `scheduler ${s.running ? `running (pid ${s.pid})` : 'stopped'}  max concurrent ${MAX_CONCURRENT}`)

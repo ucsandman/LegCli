@@ -2,7 +2,7 @@
 // state + the handoff chooser, the three taps, and the claude hook handler.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,6 +17,8 @@ const agyTap = await import('../src/taps/agy.mjs')
 const accounts = await import('../src/accounts.mjs')
 
 const cwd = mkdtempSync(join(tmpdir(), 'baton-cwd-'))
+// codex names its day directory from local time, so the fixtures do too
+const dayParts = (d) => [String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')]
 
 test('sessions: create, update, events, control, overlap', () => {
   const a = sessions.createSession({ id: 's-a-claude', agent: 'claude', cwd, repo: cwd, branch: 'main', chain: [{ agent: 'codex', account: 'default' }] })
@@ -118,9 +120,9 @@ test('codex tap: rollout parsing (observed-live shapes) and discovery by cwd', (
   assert.equal(new Date(r.limit.resets_at * 1000).getUTCFullYear(), 2026)
   // discovery: newest rollout since spawn whose meta.cwd matches
   const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'))
-  const day = join(codexHome, 'sessions', '2026', '09', '11')
-  mkdirSync(day, { recursive: true })
   const now = new Date()
+  const day = join(codexHome, 'sessions', ...dayParts(now))
+  mkdirSync(day, { recursive: true })
   writeFileSync(join(day, 'rollout-a.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'other', cwd: 'C:/elsewhere', timestamp: now.toISOString() } }) + '\n')
   writeFileSync(join(day, 'rollout-b.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'mine', cwd: cwd.toUpperCase(), timestamp: now.toISOString(), git: { pad: 'x'.repeat(20000) } } }) + '\n') // a real session_meta line runs past 15 KB
   const found = codexTap.findRollout({ codexHome, cwd, sinceMs: now.getTime() - 1000 })
@@ -130,6 +132,42 @@ test('codex tap: rollout parsing (observed-live shapes) and discovery by cwd', (
   assert.equal(tail.read().length, 0)
   writeFileSync(found.path, lines.find((l) => l.includes('task_started')) + '\n', { flag: 'a' })
   assert.equal(codexTap.parseLines(tail.read()).taskStarted, 1)
+})
+
+test('codex tap: a session started in the local evening is found, though codex names the day directory in local time and stamps the rollout in UTC', () => {
+  // observed live 2026-09-10: sessions/2026/09/10/rollout-2026-09-10T20-33-44-…
+  // carries session_meta timestamp 2026-09-11T00:33:44.035Z. Pinned to a zone
+  // behind UTC in a child process, so the check does not depend on this
+  // machine's own clock offset.
+  const zone = 'America/New_York'
+  const stamp = '2026-09-11T00:33:44.035Z'
+  const sinceMs = Date.parse(stamp)
+  const codexHome = mkdtempSync(join(tmpdir(), 'codex-evening-'))
+  const day = join(codexHome, 'sessions', ...new Date(sinceMs).toLocaleDateString('en-CA', { timeZone: zone }).split('-'))
+  mkdirSync(day, { recursive: true })
+  writeFileSync(join(day, 'rollout-evening.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'evening', cwd, timestamp: stamp } }) + '\n')
+  const probe = join(codexHome, 'probe.mjs')
+  writeFileSync(probe, `const { findRollout } = await import(${JSON.stringify(new URL('../src/taps/codex.mjs', import.meta.url).href)})\n`
+    + 'const r = findRollout({ codexHome: process.env.PROBE_HOME, cwd: process.env.PROBE_CWD, sinceMs: Number(process.env.PROBE_SINCE) })\n'
+    + "process.stdout.write(r ? r.meta.id : 'null')\n")
+  const out = execFileSync(process.execPath, [probe], { encoding: 'utf8', env: { ...process.env, TZ: zone, PROBE_HOME: codexHome, PROBE_CWD: cwd, PROBE_SINCE: String(sinceMs) } })
+  assert.equal(out, 'evening', `the rollout under ${day.split(/[\\/]/).slice(-3).join('/')} is found in ${zone}`)
+})
+
+test('bundle: the resume prompt names the absolute RESUME file, not a path relative to a cwd the next agent may not share', async () => {
+  const { resumePrompt } = await import('../src/bundle.mjs')
+  // started in a subdirectory (`cd repo/src && baton claude`): the bundle and
+  // the notes go to the repo root, the next agent is spawned in the subdirectory
+  const repo = mkdtempSync(join(tmpdir(), 'baton-resume-'))
+  mkdirSync(join(repo, '.baton'), { recursive: true })
+  mkdirSync(join(repo, 'src'), { recursive: true })
+  const notes = join(repo, '.baton', 'session-s-resume.md')
+  writeFileSync(notes, '## Scope\n\nTask: keep going\n')
+  const session = { session_id: 's-resume', agent: 'claude', account: 'default', cwd: join(repo, 'src'), repo, task: 'keep going' }
+  const prompt = resumePrompt(session, { id: 'b-1', path: join(repo, '.context-handoffs', 'b-1'), notes }, { agent: 'codex', account: 'default' })
+  const perSession = join(repo, '.baton', 'RESUME-s-resume.md')
+  assert.equal(existsSync(perSession), true, 'the per-session resume file is written at the work root')
+  assert.ok(prompt.includes(perSession), `the prompt points at ${perSession}; got: ${prompt.slice(0, 220)}`)
 })
 
 test('agy tap: log signals and history prompts', () => {

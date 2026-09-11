@@ -95,14 +95,26 @@ export function ensureExcludeEntries(repo) {
   const infoDir = isAbsolute(gitDir) ? join(gitDir, 'info') : join(repo, gitDir, 'info')
   mkdirSync(infoDir, { recursive: true })
   const excludePath = join(infoDir, 'exclude')
-  // .env / .env.* so a Land never commits a secret the agent left in the worktree
-  const needed = ['.baton-worktrees/', '.baton/', '.context-handoffs/', '.dashclaw-local/', '.env', '.env.*']
+  // .env / .env.* so a Land never commits a secret the agent left in the
+  // worktree; the placeholder files are re-included, since `.env.*` otherwise
+  // swallows the .env.example an agent was asked to update (an exclude entry
+  // has no effect on a file the repo already tracks)
+  const needed = ['.baton-worktrees/', '.baton/', '.context-handoffs/', '.dashclaw-local/', '.env', '.env.*', '!.env.example', '!.env.sample']
   const content = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : ''
   const lines = content.split(/\r?\n/)
   const missing = needed.filter((n) => !lines.includes(n))
   if (missing.length === 0) return
   const joiner = content.length && !content.endsWith('\n') ? '\n' : ''
   writeFileSync(excludePath, content + joiner + missing.join('\n') + '\n')
+}
+
+// The branch this repo actually calls its trunk: origin's default if there is
+// one, else whatever the root checkout is on.
+function defaultBranch(repo) {
+  for (const argv of [['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], ['symbolic-ref', '--short', 'HEAD']]) {
+    try { return git(repo, argv).trim().replace(/^origin\//, '') } catch {}
+  }
+  return null
 }
 
 export function ensure(repo, cardId, { trunk = 'main' } = {}) {
@@ -130,14 +142,16 @@ export function ensure(repo, cardId, { trunk = 'main' } = {}) {
   if (branchExists) {
     git(resolvedRepo, ['worktree', 'add', wtPath, branch])
   } else {
-    let effectiveTrunk = trunk
+    // A card cut from HEAD because its trunk does not exist runs its whole
+    // agent chain and then bounces every land attempt until it fails: refuse
+    // here, while it has cost nothing, and name the branch this repo uses.
     try {
       git(resolvedRepo, ['rev-parse', '--verify', '--quiet', trunk])
     } catch {
-      effectiveTrunk = 'HEAD'
-      result.trunk_fallback = true
+      const actual = defaultBranch(resolvedRepo)
+      throw new Error(`trunk ${trunk} does not exist in ${resolvedRepo}${actual ? `; this repo's default branch is ${actual} (add the card with --trunk ${actual})` : ''}`)
     }
-    git(resolvedRepo, ['worktree', 'add', '-b', branch, wtPath, effectiveTrunk])
+    git(resolvedRepo, ['worktree', 'add', '-b', branch, wtPath, trunk])
   }
 
   ensureExcludeEntries(resolvedRepo)
@@ -181,10 +195,12 @@ export function remove(repo, cardId, { deleteBranch = false, force = false } = {
 
 // Uncommitted files in a card's worktree (empty when the worktree is clean or
 // absent). Used by the board's Remove to refuse discarding agent work silently.
+// A git that cannot answer throws: "status failed" must never reach that guard
+// as "clean", which is the reading that force-deletes the directory.
 export function worktreeDirty(repo, cardId) {
   const wtPath = worktreePath(realPath(repo), cardId)
   if (!existsSync(wtPath)) return []
-  try { return git(wtPath, ['status', '--porcelain']).split(/\r?\n/).filter(Boolean) } catch { return [] }
+  return git(wtPath, ['status', '--porcelain']).split(/\r?\n/).filter(Boolean)
 }
 
 export function isWorktreeOf(repo, cardId) {

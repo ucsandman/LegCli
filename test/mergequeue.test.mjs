@@ -1,10 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { initRepo, git } from './helpers.mjs'
+import { makeHome, initRepo, git } from './helpers.mjs'
 import { ensure } from '../src/worktree.mjs'
 import { land, rootState, resolveTestCommand, commitWorktree, trunkHead } from '../src/mergequeue.mjs'
+
+process.env.BATON_HOME = makeHome()
 
 const PKG = JSON.stringify({ name: 'toy', type: 'module', scripts: { test: 'node --test' } })
 const GREEN = "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\ntest('base', () => { assert.equal(1, 1) })\n"
@@ -130,6 +133,60 @@ test('source hygiene: no --force, push, or reset --hard in the merge queue; ever
   const mq = readFileSync(new URL('../src/mergequeue.mjs', import.meta.url), 'utf8')
   assert.ok(mq.includes("MSYS_NO_PATHCONV: '1'"))
   assert.equal((mq.match(/spawnSync\('git'/g) || []).length, 1, 'one git helper')
+})
+
+test('an agent-created .env.example lands; a real .env never leaves the worktree', async () => {
+  const repo = toy()
+  const wt = ensure(repo, 'c-env').path
+  writeFileSync(join(wt, '.env.example'), 'DATABASE_URL=\n')
+  writeFileSync(join(wt, '.env'), 'DATABASE_URL=postgres://user:pw@host/db\n')
+  const r = await land(card(repo, 'c-env'), wt)
+  assert.equal(r.landed, true, JSON.stringify(r))
+  assert.deepEqual(r.files, ['.env.example'])
+  assert.equal(readFileSync(join(repo, '.env.example'), 'utf8').trim(), 'DATABASE_URL=')
+  assert.equal(existsSync(join(repo, '.env')), false, 'the secret file stays excluded')
+})
+
+test('a rebase that fails without a conflict bounces rebase-failed carrying git\'s reason', async () => {
+  const repo = toy()
+  const hooks = mkdtempSync(join(tmpdir(), 'land-hooks-'))
+  writeFileSync(join(hooks, 'pre-rebase'), '#!/bin/sh\necho "refused by policy" >&2\nexit 1\n')
+  git(repo, ['config', 'core.hooksPath', hooks.replace(/\\/g, '/')])
+  const wt = ensure(repo, 'c-hook').path
+  // trunk moves so the rebase is a real one for the hook to refuse
+  writeFileSync(join(repo, 'trunk.txt'), 'moved\n')
+  git(repo, ['add', '-A'])
+  git(repo, ['commit', '-q', '--no-verify', '-m', 'trunk edit'])
+  const trunkSha = trunkHead(repo)
+  writeFileSync(join(wt, 'h.mjs'), 'export const h = 1\n')
+  const r = await land(card(repo, 'c-hook'), wt)
+  assert.equal(r.bounced, true)
+  assert.equal(r.reason, 'rebase-failed', JSON.stringify(r))
+  assert.match(r.detail, /refused by policy|pre-rebase hook/)
+  assert.doesNotMatch(r.detail, /conflicted in/)
+  assert.equal(trunkHead(repo), trunkSha, 'trunk untouched')
+})
+
+test('the retry rebase after trunk moved reports its own conflict, not a fast-forward race', async () => {
+  const repo = toy()
+  const wt = ensure(repo, 'c-retry').path
+  const mover = join(mkdtempSync(join(tmpdir(), 'land-move-')), 'move-trunk.mjs')
+  writeFileSync(mover, [
+    "import { execFileSync } from 'node:child_process'",
+    "import { writeFileSync } from 'node:fs'",
+    "import { join } from 'node:path'",
+    'const repo = process.argv[2]',
+    "writeFileSync(join(repo, 'shared.txt'), 'line one (trunk)\\nline two\\n')",
+    "execFileSync('git', ['commit', '-q', '--no-verify', '-am', 'trunk moved during tests'], { cwd: repo, env: { ...process.env, MSYS_NO_PATHCONV: '1' } })",
+    '',
+  ].join('\n'))
+  writeFileSync(join(wt, 'shared.txt'), 'line one (card)\nline two\n')
+  const r = await land(card(repo, 'c-retry', { test_command: `node ${mover} ${repo}` }), wt)
+  assert.equal(r.bounced, true)
+  assert.equal(r.reason, 'rebase-conflict', JSON.stringify(r))
+  assert.deepEqual(r.files, ['shared.txt'])
+  assert.match(r.detail, /after main moved/)
+  assert.equal(git(wt, ['status', '--porcelain']).trim(), '', 'worktree left clean after abort')
 })
 
 test('allowDirtyRoot (a terminal\'s Land): an unrelated root change does not stop the landing; a root change the landing would overwrite bounces dirty-trunk naming the file', async () => {

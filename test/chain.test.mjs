@@ -156,3 +156,26 @@ test('availableActions offers only sensible buttons per status', () => {
   assert.deepEqual(availableActions(mk({ status: 'done' })), ['rerun'])
   assert.deepEqual(availableActions(mk({ status: 'backlog' })), ['kill', 'reassign', 'enqueue'])
 })
+
+test('Hand off now is offered only when the chain has a next leg (the transition refuses it otherwise)', () => {
+  assert.ok(availableActions(mk({ leg: 1 })).includes('handoff_now'))
+  assert.ok(!availableActions(mk({ leg: 2 })).includes('handoff_now'), 'last leg of the chain')
+  const single = { ...mk(), pipeline: pipe('build').map((s) => ({ ...s, chain: [{ adapter: 'fake-claude' }] })) }
+  assert.ok(!availableActions(single).includes('handoff_now'), 'a one-entry chain never has a next leg')
+  assert.ok(!availableActions(mk({ station: 'test' })).includes('handoff_now'), 'a test station has no chain')
+})
+
+test('land bounced with no agent station to bounce to fails the card instead of throwing', () => {
+  const card = { ...mk({ station: 'land' }), pipeline: [{ name: 'test', kind: 'test' }, { name: 'land', kind: 'land' }] }
+  const r = transition(card, 'land_result', { bounced: true, reason: 'rebase-conflict' })
+  assert.equal(r.card.status, 'failed')
+  assert.equal(r.card.failure, 'land')
+  assert.deepEqual(types(r), ['failed'])
+})
+
+test('a red test never bounces forward: an agent station after the test is not a target', () => {
+  const card = { ...mk({ station: 'test' }), pipeline: [{ name: 'test', kind: 'test' }, { name: 'fix', kind: 'agent', chain }] }
+  const r = transition(card, 'test_result', { green: false, reason: '1 failing' })
+  assert.equal(r.card.status, 'failed')
+  assert.match(r.events[0].summary, /no agent station to bounce to/)
+})

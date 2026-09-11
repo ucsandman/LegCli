@@ -4,8 +4,8 @@
 // Subcommands: create | append | update | sync. Every event carries a validated
 // actor, the card id, the station and the leg, and lands in that actor's own
 // events-<actor-key>.jsonl. Importable: readEvents, parseActor, actorKey.
-import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs'
-import { writeJsonAtomic } from './fsx.mjs'
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, existsSync, unlinkSync, renameSync } from 'node:fs'
+import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -90,10 +90,15 @@ function cardDir(id) {
 
 function readCard(dir) {
   const file = join(dir, 'card.json')
-  try {
-    return JSON.parse(readFileSync(file, 'utf8'))
-  } catch {
-    die(2, `corrupt card.json: ${file}`)
+  // the atomic write's direct-write fallback (src/fsx.mjs) can be seen torn
+  // for a moment; retry before calling the file corrupt
+  for (let i = 0; ; i++) {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'))
+    } catch {
+      if (i >= 5) die(2, `corrupt card.json: ${file}`)
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+    }
   }
 }
 
@@ -161,30 +166,42 @@ function unsyncedFiles(onlyCardId) {
   const ids = onlyCardId ? [onlyCardId] : readdirSync(cardsRoot).sort()
   return ids
     .map((id) => join(cardsRoot, id, 'unsynced.jsonl'))
-    .filter((f) => existsSync(f))
+    .filter((f) => existsSync(f) || existsSync(`${f}.flushing`))
 }
 
-// `ledger sync [--card id]`: replay buffered DashClaw records; exit 1 while any remain.
+const readLines = (f) => (existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter(Boolean) : [])
+
+// `ledger sync [--card id]`: replay buffered DashClaw records; exit 1 while
+// any remain, 2 when sync is off. The buffer is renamed out from under live
+// appenders first (a rename is atomic; a ledger write that fails meanwhile
+// starts a fresh unsynced.jsonl, which is never rewritten here), and the
+// records that still fail go back by append, behind those. A flush that died
+// mid-way leaves the .flushing file, picked up first next time.
 async function flushUnsynced(onlyCardId) {
   const cfg = dashclawConfig()
+  if (!cfg) {
+    process.stderr.write('ledger sync: DashClaw sync is off (needs BATON_SYNC_DASHCLAW=1, DASHCLAW_URL and DASHCLAW_API_KEY); nothing flushed\n')
+    return 'off'
+  }
   let anyRemaining = false
   for (const file of unsyncedFiles(onlyCardId)) {
-    const lines = readFileSync(file, 'utf8').trim().split('\n').filter(Boolean)
+    const work = `${file}.flushing`
+    const lines = readLines(work)
+    if (existsSync(file)) { renameSync(file, work); lines.push(...readLines(work)) } else if (!lines.length) continue
     const survivors = []
     for (const line of lines) {
       let ok = false
       try {
         const op = JSON.parse(line)
-        ok = Boolean(cfg) && (await record(cfg, op.ev, op.card)).ok
+        ok = (await record(cfg, op.ev, op.card)).ok
       } catch { ok = false }
       if (!ok) survivors.push(line)
     }
     if (survivors.length) {
-      writeFileSync(file, survivors.join('\n') + '\n')
+      appendFileSync(file, survivors.join('\n') + '\n')
       anyRemaining = true
-    } else {
-      unlinkSync(file)
     }
+    unlinkSync(work)
   }
   return anyRemaining
 }
@@ -296,24 +313,14 @@ async function main() {
   } else if (cmd === 'update') {
     const id = need(args, 'card')
     const dir = cardDir(id)
-    const card = readCard(dir)
+    // validate every argument first: a die() inside the lock would leave it behind
     const patch = {}
-    if (args.status) {
-      card.status = need(args, 'status', STATUSES)
-      patch.status = card.status
-    }
-    if (args['session-id']) {
-      card.session_id = args['session-id']
-      patch.session_id = card.session_id
-    }
-    if (args.station) {
-      card.station = args.station
-      patch.station = card.station
-    }
+    if (args.status) patch.status = need(args, 'status', STATUSES)
+    if (args['session-id']) patch.session_id = args['session-id']
+    if (args.station) patch.station = args.station
     if (args.leg !== undefined) {
       const leg = parseInt(args.leg, 10)
       if (!Number.isInteger(leg) || leg < 0) die(2, `invalid --leg "${args.leg}"`)
-      card.leg = leg
       patch.leg = leg
     }
     if (args.patch) {
@@ -323,12 +330,19 @@ async function main() {
       if (!p || typeof p !== 'object' || Array.isArray(p)) die(2, 'invalid --patch (expected a JSON object)')
       for (const k of Object.keys(p)) {
         if (!PATCHABLE.includes(k)) die(2, `--patch key "${k}" not allowed (allowed: ${PATCHABLE.join(', ')})`)
-        card[k] = p[k]
         patch[k] = p[k]
       }
     }
-    card.updated_at = now()
-    writeJsonAtomic(join(dir, 'card.json'), card)
+    // "the ONLY writer" is this program, not one process: the orchestrator,
+    // the board, the CLI and every supervisor run their own `ledger update`
+    // child, so the read-modify-write happens under the card's lock or a
+    // human Kill is silently overwritten by a driver's status write.
+    const card = withFileLock(join(dir, '.card.lock'), () => {
+      const cur = readCard(dir)
+      Object.assign(cur, patch, { updated_at: now() })
+      writeJsonAtomic(join(dir, 'card.json'), cur)
+      return cur
+    })
     writeActive()
     if (patch.status) await syncNotify('status', null, card)
   } else if (cmd === 'log') {
@@ -342,7 +356,7 @@ async function main() {
     appendFileSync(join(ROOT, `events-${actorKey(actor)}.jsonl`), JSON.stringify(ev) + '\n')
   } else if (cmd === 'sync') {
     const anyRemaining = await flushUnsynced(args.card)
-    process.exit(anyRemaining ? 1 : 0)
+    process.exit(anyRemaining === 'off' ? 2 : anyRemaining ? 1 : 0)
   } else {
     die(2, `unknown command "${cmd ?? ''}" (expected create|append|update|log|sync)`)
   }

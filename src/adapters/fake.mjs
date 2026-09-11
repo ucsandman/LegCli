@@ -18,11 +18,13 @@ export function makeFake(name = 'fake', stdin = 'pipe') {
     modes: { default: 'acceptEdits', allowed: ['acceptEdits', 'plan', 'workspace-write', 'read-only', 'accept-edits', 'auto_edit'] },
     forbiddenFlags: ['--dangerously-skip-permissions', '--yolo'],
     resolve() { return { bin: process.execPath, viaNode: true, entry: FAKE_AGENT } },
-    argv({ mode, maxTurns, resume } = {}) {
+    argv({ mode, maxTurns, resume, model, network } = {}) {
       const args = [FAKE_AGENT]
       if (mode) args.push('--mode', mode)
       if (maxTurns) args.push('--max-turns', String(maxTurns))
       if (resume) args.push('--resume', resume)
+      if (model) args.push('--model', model)
+      if (network) args.push('--network')
       return { bin: process.execPath, args }
     },
     env(base) { return sanitizeEnv(base) },

@@ -6,24 +6,38 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { conflicts } from './leases.mjs'
-import { runCard, orphanedRun } from './orchestrator.mjs'
+import { canonPath } from './fsx.mjs'
+import { runCard, orphanedRun, unsettledRun, driverAlive } from './orchestrator.mjs'
 import { listCards, ledgerAppend, ledgerLog, home, sleep } from './store.mjs'
 
 export const MAX_CONCURRENT = Math.max(1, parseInt(process.env.BATON_MAX_CONCURRENT || '2', 10) || 2)
 const ACTIVE = ['running', 'handing_off']
 
+// Two cards on one repo compare by the canonical path, so two spellings of a
+// checkout (short name, symlink, case) never look like two repos.
+const repoKey = (c) => { try { return canonPath(c.repo) } catch { return String(c.repo) } }
+const stationKind = (c) => (c.pipeline ?? []).find((s) => s.name === c.station)?.kind
+
+// Repos with a land station running right now (by station KIND: a land
+// station can be named anything).
+export function landingRepos(cards) {
+  return new Set(cards.filter((c) => c.status === 'running' && stationKind(c) === 'land').map(repoKey))
+}
+
 // Pure: which queued cards may start now, and why the others cannot.
 export function pickRunnable(cards, { max = MAX_CONCURRENT, landing = new Set() } = {}) {
   const running = cards.filter((c) => ACTIVE.includes(c.status))
   const queued = cards.filter((c) => c.status === 'queued').sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
+  const keys = new Map(cards.map((c) => [c.card_id, repoKey(c)]))
+  const landingKeys = new Set([...landing].map((repo) => repoKey({ repo })))
   const start = []
   const blocked = []
   for (const c of queued) {
     if (running.length + start.length >= max) { blocked.push({ card: c, conflicts: [], reason: `concurrency cap ${max}` }); continue }
     // a landing repo only holds back other cards that want to land; build stations keep running
-    const wantsLand = (c.pipeline ?? []).find((s) => s.name === c.station)?.kind === 'land'
-    if (wantsLand && landing.has(c.repo)) { blocked.push({ card: c, conflicts: [], reason: 'repo is landing' }); continue }
-    const cf = conflicts({ card_id: c.card_id, leases: c.leases }, [...running, ...start].filter((r) => r.repo === c.repo))
+    const wantsLand = stationKind(c) === 'land'
+    if (wantsLand && landingKeys.has(keys.get(c.card_id))) { blocked.push({ card: c, conflicts: [], reason: 'repo is landing' }); continue }
+    const cf = conflicts({ card_id: c.card_id, leases: c.leases }, [...running, ...start].filter((r) => keys.get(r.card_id) === keys.get(c.card_id)))
     if (cf.length) { blocked.push({ card: c, conflicts: cf, reason: 'lease overlap' }); continue }
     start.push(c)
   }
@@ -38,7 +52,7 @@ export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor
   async function tick() {
     state.ticks += 1
     const cards = listCards()
-    const landing = new Set(cards.filter((c) => c.status === 'running' && c.station === 'land').map((c) => c.repo))
+    const landing = landingRepos(cards)
     const { start, blocked } = pickRunnable(cards, { max, landing })
     for (const b of blocked) {
       const key = b.conflicts.length ? b.conflicts.map((x) => `${x.holder}:${x.lease}`).join(',') : b.reason
@@ -50,9 +64,12 @@ export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor
       ledgerAppend(b.card.card_id, { actor, type: 'blocked_by', summary, station: b.card.station, leg: b.card.leg })
     }
     // Running cards nobody alive is driving (their orchestrator died with the
-    // last server) get re-attached so a finished run's verdict is applied. A
-    // card a live `card run` is driving is left to that process.
-    const reattach = cards.filter((c) => c.status === 'running' && !state.inflight.has(c.card_id) && orphanedRun(c.card_id))
+    // last server) get re-attached so a finished run's verdict is applied, a
+    // test or land station left mid-way runs again, and a card that crashed
+    // between `start` and its launch gets its leg. A card a live `card run`
+    // is driving (its driver.lock names a live pid) is left to that process.
+    const reattach = cards.filter((c) => c.status === 'running' && !state.inflight.has(c.card_id) && !driverAlive(c.card_id)
+      && (stationKind(c) !== 'agent' || !unsettledRun(c.card_id) || orphanedRun(c.card_id)))
     for (const c of [...start, ...reattach]) {
       if (state.inflight.has(c.card_id)) continue
       state.blockedKeys.delete(c.card_id)
@@ -65,7 +82,14 @@ export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor
   }
 
   async function run({ ticks = Infinity } = {}) {
-    writeFileSync(pidfile(), String(process.pid))
+    // one scheduler per home: the pidfile is created atomically, and a live
+    // holder (the board's in-process scheduler, or a CLI one) wins
+    try { writeFileSync(pidfile(), String(process.pid), { flag: 'wx' }) } catch (err) {
+      if (err.code !== 'EEXIST') throw err
+      const st = schedulerStatus()
+      if (st.running && st.pid !== process.pid) throw new Error(`scheduler already running (pid ${st.pid})`)
+      writeFileSync(pidfile(), String(process.pid))
+    }
     ledgerLog({ actor, type: 'scheduler_started', summary: `scheduler started (max ${max}, pid ${process.pid})` })
     try {
       for (let i = 0; i < ticks && !state.stopped; i++) {

@@ -53,6 +53,14 @@ export async function createCard(input, actor = { type: 'human', id: 'local' }) 
   }
   const resolvedTop = resolve(top)
   if (!samePath(resolvedTop, repo)) throw new CardInputError(`repo is not the repository root: ${repo} (root is ${resolvedTop})`)
+  // the trunk must exist now: a card whose trunk is missing would otherwise be
+  // refused by the worktree step on every scheduler tick, an error event each time
+  const trunk = String(input.trunk || 'main')
+  const gitq = (args) => { try { return execFileSync('git', ['-C', repo, ...args], { windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' }, stdio: ['ignore', 'pipe', 'ignore'] }).trim() } catch { return null } }
+  if (gitq(['rev-parse', '--verify', '--quiet', `refs/heads/${trunk}`]) === null) {
+    const actual = gitq(['symbolic-ref', '--short', 'HEAD'])
+    throw new CardInputError(`trunk ${trunk} does not exist in ${repo}${actual ? `; this repo's default branch is ${actual} (add the card with --trunk ${actual})` : ''}`)
+  }
   const batonHome = resolve(process.env.BATON_HOME || join(homedir(), '.baton'))
   if (samePath(repo, batonHome) || isParentOf(repo, batonHome)) throw new CardInputError('repo cannot contain BATON_HOME')
   const task = String(input.task ?? '').trim()
@@ -66,11 +74,13 @@ export async function createCard(input, actor = { type: 'human', id: 'local' }) 
   const fakeFixtures = kv(input.fakeFixture ?? input.fake_fixture)
   const fakeTargets = kv(input.fakeTarget ?? input.fake_target)
   const fakeContents = kv(input.fakeContent ?? input.fake_content)
+  const models = kv(input.model)
   const approve = list(input.approve)
   chain = chain.map((e) => ({
     ...e,
     ...(modes[e.adapter] ? { mode: modes[e.adapter] } : {}),
     ...(turns[e.adapter] ? { maxTurns: parseInt(turns[e.adapter], 10) } : {}),
+    ...(models[e.adapter] ? { model: models[e.adapter] } : {}),
     ...(fakeModes[e.adapter] ? { fakeMode: fakeModes[e.adapter] } : {}),
     ...(fakeFixtures[e.adapter] ? { fakeFixture: fakeFixtures[e.adapter] } : {}),
     ...(fakeTargets[e.adapter] ? { fakeTarget: fakeTargets[e.adapter] } : {}),
@@ -94,7 +104,7 @@ export async function createCard(input, actor = { type: 'human', id: 'local' }) 
   const slug = (input.slug || task.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30)) || 'card'
   const id = ledgerCreate({
     slug, task, repo,
-    chain: chain.map((e) => ({ adapter: e.adapter, mode: e.mode ?? null, max_turns: e.maxTurns ?? null })),
+    chain: chain.map((e) => ({ adapter: e.adapter, mode: e.mode ?? null, max_turns: e.maxTurns ?? null, ...(e.model ? { model: e.model } : {}) })),
     pipeline, leases, trunk: input.trunk || 'main', 'land-mode': landMode,
     'test-command': input.testCommand ?? input.test_command ?? null, title: input.title || null,
     actor: JSON.stringify(actor),

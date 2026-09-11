@@ -95,6 +95,35 @@ srv.listen(Number(process.env.BATON_PORT), '127.0.0.1', () => process.stdout.wri
   assert.ok(!outText.includes('planted'), 'held env value must not appear')
 })
 
+test('a pidfile whose pid is alive but is not the board: status says stopped and up starts anyway', async () => {
+  const home = makeHome()
+  const env = testEnv(home, { BATON_HEALTH_TIMEOUT_MS: '30000' })
+  // alive, and never listened: what a recycled pid looks like after a reboot
+  const squatter = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore' })
+  const pf = join(home, 'baton.pid')
+  const stale = () => writeFileSync(pf, JSON.stringify({ pid: squatter.pid, port: 1, bind: '127.0.0.1', children: [], started_at: new Date().toISOString() }) + '\n')
+  stale()
+  try {
+    const st = batonFail(['status'], env)
+    assert.equal(st.status, 3, `status on a board that is not listening; stdout: ${st.stdout}`)
+    assert.match(st.stdout, /\[baton\] stopped/)
+    assert.ok(!existsSync(pf), 'the stale pidfile is cleared, so `baton up` is not a dead end')
+
+    stale()
+    const child = spawn(process.execPath, [BATON, 'up', '--no-open', '--port', '0'], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+    let outText = ''
+    child.stdout.on('data', (d) => { outText += d })
+    child.stderr.on('data', (d) => { outText += d })
+    const t0 = Date.now()
+    while (!/\[baton\] (ready http|already running)/.test(outText) && Date.now() - t0 < 30000) await sleep(200)
+    child.kill()
+    await new Promise((r) => child.on('exit', r))
+    assert.match(outText, /\[baton\] ready http/, `up refused over a stale pidfile:\n${outText}`)
+  } finally {
+    squatter.kill()
+  }
+})
+
 test('no shell in src/ or bin/: no shell: true, exec(, execSync(; every child is spawn/execFile with argv', () => {
   const files = []
   const walk = (d) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) walk(p); else if (/\.mjs$/.test(n)) files.push(p) } }
