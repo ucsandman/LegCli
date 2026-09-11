@@ -1,0 +1,1 @@
+~\.grok\bin\grok.exe -p "Create a file named hello-grok.txt in the current directory containing exactly the word hi. Then create the directory .baton if it is missing and write the file .baton/DONE containing the single line: done. Do nothing else. Do not ask questions.\n" --output-format json --permission-mode acceptEdits

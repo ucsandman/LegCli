@@ -1,0 +1,18 @@
+{
+  "card_id": "card-20260911-0035-probe-gemini",
+  "run": 1,
+  "adapter": "gemini",
+  "mode": "auto_edit",
+  "max_turns": null,
+  "resume": null,
+  "cwd": "~\\AppData\\Local\\Temp\\claude\\C--Projects\\49952fac-5ff4-486c-8395-9973cebdfdcb\\scratchpad\\toy-probe",
+  "status": "exited",
+  "supervisor_pid": 45916,
+  "agent_pid": 4324,
+  "started_at": "2026-09-11T00:35:31.940Z",
+  "outcome": null,
+  "updated_at": "2026-09-11T00:35:59.579Z",
+  "exit_code": 1,
+  "session_id": null,
+  "ended_at": "2026-09-11T00:35:59.072Z"
+}

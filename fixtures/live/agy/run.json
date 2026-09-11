@@ -1,0 +1,18 @@
+{
+  "card_id": "card-20260911-0039-probe-agy",
+  "run": 1,
+  "adapter": "agy",
+  "mode": "accept-edits",
+  "max_turns": null,
+  "resume": null,
+  "cwd": "~\\AppData\\Local\\Temp\\claude\\C--Projects\\49952fac-5ff4-486c-8395-9973cebdfdcb\\scratchpad\\toy-probe",
+  "status": "exited",
+  "supervisor_pid": 62288,
+  "agent_pid": 62724,
+  "started_at": "2026-09-11T00:39:34.516Z",
+  "outcome": null,
+  "updated_at": "2026-09-11T00:40:15.642Z",
+  "exit_code": 0,
+  "session_id": "e36f7b41-8a0f-4666-a690-b49062d53de0",
+  "ended_at": "2026-09-11T00:40:15.123Z"
+}

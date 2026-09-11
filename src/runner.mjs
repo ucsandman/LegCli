@@ -214,7 +214,16 @@ async function main() {
     const errFd = openSync(errPath, 'w')
     let adapter
     try { adapter = await getAdapter(adapterName) } catch (err) { die(2, err.message) }
-    const spec = adapter.argv({ ...opts, cwd, prompt, promptFile: join(dir, 'prompt.txt') })
+    let spec
+    try {
+      spec = adapter.argv({ ...opts, cwd, prompt, promptFile: join(dir, 'prompt.txt'), runDir: dir, killMs: KILL_MS })
+    } catch (err) {
+      // A forbidden mode/flag never spawns: record it and fail the leg.
+      log(`refusing to launch: ${err.message}`)
+      ledgerAppend(id, 'error', `[supervisor] refused to launch: ${scrub(err.message).slice(0, 200)}`, null, log)
+      writeRun(id, n, { ...readRun(id, n), status: 'failed', exit_code: null, ended_at: now(), refusal: err.message })
+      process.exit(13)
+    }
     const childEnv = adapter.env(process.env)
     log(`spawning leg: adapter=${adapterName} run=${n} mode=${opts.mode ?? 'default'} cwd=${cwd}`)
     ledgerAppend(id, 'leg_started', `leg started: adapter=${adapterName} run=${n} mode=${opts.mode ?? 'default'}`, null, log)

@@ -1,0 +1,18 @@
+{
+  "card_id": "card-20260911-0033-probe-codex",
+  "run": 1,
+  "adapter": "codex",
+  "mode": "workspace-write",
+  "max_turns": null,
+  "resume": null,
+  "cwd": "~\\AppData\\Local\\Temp\\claude\\C--Projects\\49952fac-5ff4-486c-8395-9973cebdfdcb\\scratchpad\\toy-probe",
+  "status": "exited",
+  "supervisor_pid": 64760,
+  "agent_pid": 51856,
+  "started_at": "2026-09-11T00:33:42.751Z",
+  "outcome": null,
+  "updated_at": "2026-09-11T00:34:10.756Z",
+  "exit_code": 0,
+  "session_id": "01a08de2-7611-7ff1-b0da-1e6e2cb7ca90",
+  "ended_at": "2026-09-11T00:34:10.269Z"
+}

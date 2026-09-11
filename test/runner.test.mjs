@@ -112,9 +112,9 @@ test('launch refuses an unknown adapter with exit 2 before spawning anything', (
   const root = mkdtempSync(join(tmpdir(), 'baton-'))
   const env = makeEnv(root)
   const id = makeCard(root, env)
-  const r = runFail(['launch', '--card', id, '--adapter', 'claude', '--prompt-file', makePrompt(root)], env)
+  const r = runFail(['launch', '--card', id, '--adapter', 'nope', '--prompt-file', makePrompt(root)], env)
   assert.equal(r.status, 2)
-  assert.match(r.stderr, /unknown adapter: claude/)
+  assert.match(r.stderr, /unknown adapter: nope/)
   assert.ok(!existsSync(join(root, 'cards', id, 'runs', '1')))
 })
 
@@ -246,13 +246,13 @@ test('sanitizeEnv deletes the seven forbidden keys and every CLAUDE_CODE_* key, 
   assert.equal(out.HOME, 'keep')
 })
 
-test('adapter registry: fake resolves; claude is unknown until phase 3', async () => {
-  assert.deepEqual(adapterNames(), ['fake'])
+test('adapter registry: fake resolves; an unregistered name is refused by name', async () => {
+  assert.ok(adapterNames().includes('fake'))
   const fake = await getAdapter('fake')
   assert.equal(fake.name, 'fake')
   assert.equal(fake.stdin, 'pipe')
   assert.equal(fake.argv({ mode: 'x' }).bin, process.execPath)
-  await assert.rejects(getAdapter('claude'), /unknown adapter: claude/)
+  await assert.rejects(getAdapter('nope'), /unknown adapter: nope/)
 })
 
 test('sweep: dead supervisor -> orphaned + ORPHANED report line + ledger error', () => {

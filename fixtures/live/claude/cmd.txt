@@ -1,0 +1,1 @@
+~\.local\bin\claude.exe -p --output-format json --permission-mode acceptEdits

@@ -1,0 +1,167 @@
+Grok Build TUI
+
+Usage: grok [OPTIONS] [PROMPT] [COMMAND]
+
+Arguments:
+  [PROMPT]
+          Initial prompt for the interactive session, e.g. `grok "fix the bug"` or `grok --worktree=feat "create this feature"`
+
+Options:
+      --agent <NAME>
+          Agent name or definition file path
+
+      --agents <JSON>
+          Inline subagent definitions as JSON
+
+      --allow <RULE>
+          Permission allow rule (Claude Code: --allowedTools)
+
+      --always-approve
+          Auto-approve all tool executions
+
+      --best-of-n <N>
+          Run the task N ways in parallel and pick the best (headless only)
+
+  -c, --continue
+          Continue the most recent session for the current working directory
+
+      --check
+          Append a self-verification loop to the prompt (headless only)
+
+      --compaction-detail <DETAIL>
+          Segments verbatim detail [none|minimal|balanced|verbose] (default `verbose`). Only affects `--compaction-mode segments`. Sets `GROK_COMPACTION_DETAIL`
+
+      --compaction-mode <MODE>
+          Compaction mode [summary|transcript|segments]: `summary` (default) adds no pointer; `transcript` points at the raw transcript; `segments` persists per-segment markdown to grep. Sets `GROK_COMPACTION_MODE`
+
+      --cwd <CWD>
+          Working directory
+
+      --debug
+          Enable debug logging
+
+      --debug-file <FILE>
+          Write debug logs to FILE
+
+      --deny <RULE>
+          Permission deny rule (Claude Code: --disallowedTools)
+
+      --disable-web-search
+          Disable web search and web fetch tools
+
+      --disallowed-tools <TOOLS>
+          Built-in tools to remove (comma-separated)
+
+      --effort <LEVEL>
+          Effort level
+          
+          [possible values: low, medium, high, xhigh, max]
+
+      --experimental-memory
+          Enable cross-session memory
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+      --leader-socket <PATH>
+          Use a custom leader socket path instead of the default `~/.grok/leader.sock`
+
+  -m, --model <MODEL>
+          Model ID to use
+
+      --max-turns <N>
+          Maximum number of agent turns
+
+      --no-alt-screen
+          Run inline instead of using the terminal alternate screen
+
+      --no-memory
+          Disable cross-session memory for this session
+
+      --no-plan
+          Disable plan mode
+
+      --no-subagents
+          Disable subagent spawning
+
+      --oauth
+          Use OAuth when the welcome screen starts authentication
+
+      --output-format <OUTPUT_FORMAT>
+          Output format for headless mode
+          
+          [default: plain]
+          [possible values: plain, json, streaming-json]
+
+  -p, --single <PROMPT>
+          Single-turn prompt. Prints the response to stdout and exits
+
+      --permission-mode <MODE>
+          Permission mode
+          
+          [possible values: default, acceptEdits, auto, dontAsk, bypassPermissions, plan]
+
+      --prompt-file <PATH>
+          Single-turn prompt from a file
+
+      --prompt-json <JSON>
+          Single-turn prompt as JSON content blocks
+
+  -r, --resume [<SESSION_ID>]
+          Resume a session by ID, or the most recent if omitted
+
+      --reasoning-effort <EFFORT>
+          Reasoning effort for reasoning models
+
+      --restore-code
+          Check out the original session's commit when resuming
+
+      --rules <RULES>
+          Extra rules to append to the system prompt
+
+      --sandbox <PROFILE>
+          Sandbox profile for filesystem and network access
+          
+          [env: GROK_SANDBOX=]
+
+      --system-prompt-override <PROMPT>
+          Override the agent's system prompt (Claude Code: --system-prompt)
+
+      --todo-gate
+          Enable the runtime turn-end TodoGate for this session.
+          
+          Session-scoped (not persisted). Highest precedence — overrides remote `todo_gate_enabled` and the built-in default (which is `false`).
+
+      --tools <TOOLS>
+          Built-in tools to allow (comma-separated)
+
+  -v, --version
+          Print version
+
+      --verbatim
+          Send the prompt exactly as given
+
+  -w, --worktree [<WORKTREE>]
+          Start the session in a new git worktree, optionally named
+
+Commands:
+  agent        Run Grok without the interactive UI
+  completions  Generate shell completion scripts (bash, zsh, fish, powershell, ...)
+  dashboard    Open the Agent Dashboard view at startup
+  export       Export a session transcript as Markdown
+  help         Print this message or the help of the given subcommand(s)
+  import       Import sessions into Grok
+  inspect      Show the configuration Grok discovers for this directory
+  leader       Manage running leader processes
+  login        Sign in to Grok
+  logout       Sign out and clear cached credentials
+  mcp          Manage MCP server configurations
+  memory       Manage cross-session memory
+  models       List available models and exit
+  plugin       Manage plugins and marketplace sources
+  sessions     List, search, or restore sessions
+  setup        Fetch and install managed deployment configuration
+  trace        Export or upload session trace data
+  update       Check for updates or install a specific version
+  version      Print version information [aliases: v]
+  worktree     Manage git worktrees

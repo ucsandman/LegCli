@@ -1,0 +1,15 @@
+{
+  "session_id": "01a08de2-7611-7ff1-b0da-1e6e2cb7ca90",
+  "last_message": "Done.  \n`hello-codex.txt` now contains exactly `hi`, and `.baton/DONE` contains exactly `done`.",
+  "stop_reason": "turn.completed",
+  "usage": {
+    "input_tokens": 58585,
+    "cached_input_tokens": 10880,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 853,
+    "reasoning_output_tokens": 650
+  },
+  "errors": [
+    "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "card_id": "card-20260911-0036-probe-grok",
+  "run": 1,
+  "adapter": "grok",
+  "mode": "acceptEdits",
+  "max_turns": null,
+  "resume": null,
+  "cwd": "~\\AppData\\Local\\Temp\\claude\\C--Projects\\49952fac-5ff4-486c-8395-9973cebdfdcb\\scratchpad\\toy-probe",
+  "status": "exited",
+  "supervisor_pid": 70732,
+  "agent_pid": 12580,
+  "started_at": "2026-09-11T00:36:48.183Z",
+  "outcome": null,
+  "updated_at": "2026-09-11T00:37:45.845Z",
+  "exit_code": 0,
+  "session_id": "01a08de5-c64c-7a31-ac58-1c11c2dd7332",
+  "ended_at": "2026-09-11T00:37:45.380Z"
+}

@@ -1,0 +1,11 @@
+{
+  "session_id": "d9e19d78-1502-4f88-8ded-81c5bbbda8c2",
+  "last_message": "Done. Both files exist:\n\n- `hello-claude.txt` contains `hi`\n- `.baton/DONE` contains `done`",
+  "stop_reason": "end_turn",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 3,
+  "terminal_reason": "completed",
+  "api_error_status": null,
+  "permission_denials": 0
+}
