@@ -2,8 +2,9 @@
 // parse the chain, build and validate the pipeline, then hand the ledger the
 // exact shape. Shared by bin/baton.mjs and src/server.mjs.
 import { execFileSync } from 'node:child_process'
-import { existsSync, statSync, realpathSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { resolve, sep, join } from 'node:path'
+import { canonPath } from './fsx.mjs'
 import { homedir } from 'node:os'
 import { buildPipeline, validatePipeline, loadAdapterModes, parseChain } from './pipeline.mjs'
 import { PRESET_NAMES } from './presets.mjs'
@@ -12,21 +13,12 @@ import { humanAction } from './orchestrator.mjs'
 
 export class CardInputError extends Error {}
 
-// Canonical form for comparing paths: symlinks resolved and, on Windows, 8.3
-// short names expanded (a GitHub runner's temp dir is C:\Users\RUNNER~1\...
-// while git reports C:\Users\runneradmin\...). Missing paths stay as resolved.
-function canon(p) {
-  let out = resolve(p)
-  try { out = realpathSync.native(out) } catch {}
-  return process.platform === 'win32' ? out.toLowerCase() : out
-}
-
 function samePath(a, b) {
-  return canon(a) === canon(b)
+  return canonPath(a) === canonPath(b)
 }
 
 function isParentOf(parent, child) {
-  return canon(child).startsWith(canon(parent) + sep)
+  return canonPath(child).startsWith(canonPath(parent) + sep)
 }
 
 function list(v) {

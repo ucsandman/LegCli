@@ -6,18 +6,20 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
+import { canonPath } from './fsx.mjs'
 
 function git(cwd, argv) {
   return execFileSync('git', argv, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
 }
 
+// git reports long, real paths; callers may hand us short or symlinked ones
 function samePath(a, b) {
-  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+  return canonPath(a) === canonPath(b)
 }
 
 function isUnder(child, parent) {
-  const c = process.platform === 'win32' ? child.toLowerCase() : child
-  const p = process.platform === 'win32' ? parent.toLowerCase() : parent
+  const c = canonPath(child)
+  const p = canonPath(parent)
   return c === p || c.startsWith(p + sep)
 }
 

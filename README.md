@@ -11,7 +11,7 @@
 ![The Baton board: cards moving through stations, one running, one blocked by a lease, one bounced by red tests](docs/screenshots/kanban-final-1280.png)
 
 You drop a task card on the board and give it a fallback chain: Claude Code,
-then Codex, then Gemini CLI, then agy. Baton runs the first agent headless in
+then Codex, then agy (Google's Antigravity CLI). Baton runs the first agent headless in
 its own git worktree. When that agent hits a session or weekly limit, stalls,
 or exits without finishing, Baton writes a handoff bundle (task, what got
 done, the diff, open findings) and starts the next agent in the same worktree
@@ -158,7 +158,7 @@ flag, and the adapters throw before spawn if one is requested.
 |---------|-------------------|--------------|---------------|
 | `claude` | `claude -p --output-format json --permission-mode <m>` | `acceptEdits` | acceptEdits, auto, plan, manual, dontAsk |
 | `codex` | `codex exec --json -s <m> -C <worktree>` | `workspace-write` | read-only, workspace-write |
-| `gemini` | `gemini -p -o json --approval-mode <m> --skip-trust` | `auto_edit` | default, auto_edit, plan |
+| `gemini` (legacy) | `gemini -p -o json --approval-mode <m> --skip-trust` | `auto_edit` | default, auto_edit, plan |
 | `agy` | `agy -p --output-format json --mode <m> --add-dir <worktree>` | `accept-edits` | accept-edits, plan |
 | `fake`, `fake-claude`, `fake-codex`, `fake-gemini`, `fake-agy` | `node bin/fake-agent.mjs` (tests and demos, no login needed) | `acceptEdits` | acceptEdits, plan, workspace-write, read-only, accept-edits, auto_edit |
 
@@ -167,6 +167,11 @@ claude=2`, `--model gemini=<name>`. Forbidden everywhere:
 `--dangerously-skip-permissions`, `bypassPermissions`, `--full-auto`,
 `danger-full-access`, `--yolo`. Details per CLI, including the gotchas found
 on a real machine, are in [docs/adapters.md](docs/adapters.md).
+
+Google is retiring Gemini CLI in favour of Antigravity's `agy`. The `gemini`
+adapter stays for accounts that still have it, but the live probe on
+2026-09-10 already got `IneligibleTierError` pointing at Antigravity, so
+put `agy` in your chain and treat `gemini` as legacy.
 
 ## Board buttons
 

@@ -10,8 +10,10 @@ terminal.
 - git.
 - Python 3 with pip, for the `context-handoff-bundle` CLI (this is what
   writes and reads the handoff bundles between agent legs).
-- At least one coding-agent CLI, logged in: `claude`, `codex`, `gemini`, or
-  `agy`. You do not need all four; a chain only needs the adapters it names.
+- At least one coding-agent CLI, logged in: `claude`, `codex` or `agy`
+  (`gemini` still works for accounts that have it, but Google is retiring
+  Gemini CLI in favour of `agy`). You do not need all of them; a chain only
+  needs the adapters it names.
 - No real agent CLI installed yet? Skip straight to
   [Try it with no real agent](#7-try-it-with-no-real-agent) below; the `fake`
   adapter needs nothing installed.

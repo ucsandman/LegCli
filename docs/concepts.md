@@ -47,7 +47,7 @@ anything spawns.
 |---------|---------------|----------------|
 | `claude` | `acceptEdits` | acceptEdits, auto, plan, manual, dontAsk |
 | `codex` | `workspace-write` | read-only, workspace-write |
-| `gemini` | `auto_edit` | default, auto_edit, plan |
+| `gemini` (legacy; Google is retiring Gemini CLI for `agy`) | `auto_edit` | default, auto_edit, plan |
 | `agy` | `accept-edits` | accept-edits, plan |
 | `fake` (and `fake-claude`/`fake-codex`/`fake-gemini`/`fake-agy`) | `acceptEdits` | acceptEdits, plan, workspace-write, read-only, accept-edits, auto_edit |
 | `grok` (built, not registered) | `acceptEdits` | default, acceptEdits, auto, dontAsk, plan |

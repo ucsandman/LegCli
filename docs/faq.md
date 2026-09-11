@@ -12,6 +12,13 @@ subscription login. If stderr ever says "another auth source is set", that
 leg is classified `auth_failed`, a failed launch, and does not count as a
 usage limit.
 
+**Is Gemini CLI still supported?**
+Google is retiring Gemini CLI in favour of Antigravity's `agy`. The `gemini`
+adapter stays registered for accounts that still work, but the live probe on
+2026-09-10 already got `IneligibleTierError` pointing at Antigravity. Put
+`agy` in new chains and treat `gemini` as legacy (see
+[adapters.md](adapters.md#gemini-legacy)).
+
 **Why are `--dangerously-skip-permissions` and similar flags never
 available?**
 Each adapter's `argv()` calls `assertAllowed()`

@@ -52,7 +52,12 @@ a leaked token.
   `network: true`. If you run `codex exec` by hand outside Baton, always
   pass the prompt as an argument, never on a pipe.
 
-## gemini
+## gemini (legacy)
+
+Google is retiring Gemini CLI in favour of Antigravity's `agy` (next
+section). The adapter stays registered for accounts that still work, but the
+live probe on 2026-09-10 got `IneligibleTierError` with a message pointing at
+Antigravity. Prefer `agy` in new chains.
 
 - **Binary**: `BATON_GEMINI_BIN` (a `.mjs`/`.cjs`/`.js` path runs via
   `node <entry>`, anything else runs directly), else the
