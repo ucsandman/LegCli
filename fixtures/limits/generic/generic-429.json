@@ -1,0 +1,11 @@
+{
+  "id": "generic-429",
+  "adapter": "*",
+  "source": "docs-only",
+  "produced_by": "generic HTTP matcher (429 Too Many Requests); lowest priority",
+  "where": "any",
+  "text": "429 Too Many Requests",
+  "pattern": "\\b429\\b|Too Many Requests",
+  "exit_code": null,
+  "classification": "limit"
+}

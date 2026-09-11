@@ -1,0 +1,11 @@
+{
+  "id": "codex-rate-limit-exceeded",
+  "adapter": "codex",
+  "source": "docs-only",
+  "produced_by": "github.com/openai/codex codex-rs/codex-api/src/error.rs (#[error(\"rate limit exceeded: {message}\")])",
+  "where": "any",
+  "text": "rate limit exceeded: ",
+  "pattern": "rate limit exceeded",
+  "exit_code": null,
+  "classification": "limit"
+}

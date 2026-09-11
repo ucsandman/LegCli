@@ -1,0 +1,11 @@
+{
+  "id": "claude-model-limit",
+  "adapter": "claude",
+  "source": "docs-only",
+  "produced_by": "https://code.claude.com/docs/en/costs (\"You’ve hit your Opus limit\" / \"You’ve hit your Sonnet limit\")",
+  "where": "any",
+  "text": "You’ve hit your Opus limit",
+  "pattern": "You.ve hit your (?!session |weekly |usage )[A-Za-z0-9.-]+ limit",
+  "exit_code": null,
+  "classification": "limit"
+}

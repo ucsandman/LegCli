@@ -1,0 +1,11 @@
+{
+  "id": "grok-not-logged-in",
+  "adapter": "grok",
+  "source": "observed-live",
+  "produced_by": "fixtures/live/grok/err.log from scripts/probe.mjs --adapter grok, 2026-09-10 (stdout JSON stopReason: Cancelled, exit 0)",
+  "where": "stderr",
+  "text": "To sign in, open this URL in your browser:\n\n  https://accounts.x.ai/oauth2/device?user_code=XXXX-XXXX\n\nConfirm this code in your browser:\n\nWaiting for authorization...",
+  "pattern": "To sign in, open this URL|Waiting for authorization",
+  "exit_code": 0,
+  "classification": "auth"
+}

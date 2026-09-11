@@ -5,17 +5,25 @@
 // (the probe printed a device-code prompt and exited "Cancelled"). Register it
 // after `grok` is logged in and scripts/probe.mjs --adapter grok passes.
 const REGISTRY = {
-  fake: './fake.mjs',
-  claude: './claude.mjs',
-  codex: './codex.mjs',
-  gemini: './gemini.mjs',
-  agy: './agy.mjs',
+  fake: { path: './fake.mjs' },
+  'fake-claude': { path: './fake.mjs', fake: ['fake-claude', 'pipe'] },
+  'fake-codex': { path: './fake.mjs', fake: ['fake-codex', 'ignore'] },
+  'fake-gemini': { path: './fake.mjs', fake: ['fake-gemini', 'ignore'] },
+  'fake-agy': { path: './fake.mjs', fake: ['fake-agy', 'ignore'] },
+  'fake-nostdin': { path: './fake.mjs', fake: ['fake-nostdin', 'ignore'] },
+  claude: { path: './claude.mjs' },
+  codex: { path: './codex.mjs' },
+  gemini: { path: './gemini.mjs' },
+  agy: { path: './agy.mjs' },
 }
 
 export function names() { return Object.keys(REGISTRY) }
 
+export function isFake(name) { return Boolean(REGISTRY[name]?.fake) || name === 'fake' }
+
 export async function get(name) {
-  const path = REGISTRY[name]
-  if (!path) throw new Error(`unknown adapter: ${name}`)
-  return (await import(path)).default
+  const entry = REGISTRY[name]
+  if (!entry) throw new Error(`unknown adapter: ${name}`)
+  const mod = await import(entry.path)
+  return entry.fake ? mod.makeFake(...entry.fake) : mod.default
 }

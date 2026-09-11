@@ -1,0 +1,11 @@
+{
+  "id": "generic-usage-limit",
+  "adapter": "*",
+  "source": "docs-only",
+  "produced_by": "generic matcher; lowest priority",
+  "where": "any",
+  "text": "usage limit",
+  "pattern": "usage limit",
+  "exit_code": null,
+  "classification": "limit"
+}

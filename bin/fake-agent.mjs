@@ -1,11 +1,29 @@
 #!/usr/bin/env node
-// fake-agent — stands in for a coding-agent CLI. FAKE_MODE selects behaviour:
-//   success  read the prompt from stdin, print a result JSON with a session id, exit 0
-//   sleep    never finish (10 s), so the supervisor's timers fire
-//   fail     print stderr (including a fake secret that must be scrubbed), exit 1
-//   envcheck report which forbidden variables leaked into this process
-// Phase 4 adds limit / stall / auth-failure modes.
+// fake-agent — stands in for a coding-agent CLI in tests and the demo. It acts
+// in the process cwd (the card's worktree). FAKE_MODE selects behaviour:
+//   success      write the target file and .baton/DONE, print a result JSON, exit 0
+//   incomplete   write the target file but no DONE marker, exit 0
+//   limit        print the recorded limit text (FAKE_LIMIT_FIXTURE, default
+//                claude-session-limit) to the fixture's stream, exit with its code
+//   stall        never finish (10 min), so the supervisor's timers fire
+//   auth         print "another auth source is set" to stderr, exit 1
+//   crash        print a stack trace to stderr, exit 2
+//   no_progress  exit 0 touching nothing
+//   fail         (phase 2 alias of crash with a fake secret in stderr) exit 1
+//   sleep        (phase 2 alias of stall)
+//   envcheck     report which forbidden variables leaked into this process
+// FAKE_TARGET names the file success/incomplete write (default hello-fake.txt).
+// FAKE_DELAY_MS waits before acting. Output goes through process.stdout/stderr
+// on purpose: this IS a CLI.
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs'
+import { join, dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 const mode = process.env.FAKE_MODE || 'success'
+const target = process.env.FAKE_TARGET || 'hello-fake.txt'
+const delay = parseInt(process.env.FAKE_DELAY_MS || '0', 10)
+const cwd = process.cwd()
+const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'limits')
 
 function readStdin() {
   return new Promise((resolvePromise) => {
@@ -19,19 +37,64 @@ function readStdin() {
 }
 
 const out = (obj) => process.stdout.write(JSON.stringify(obj) + '\n')
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+function loadFixture(id) {
+  for (const d of readdirSync(FIXTURES)) {
+    const f = join(FIXTURES, d, `${id}.json`)
+    if (existsSync(f)) return JSON.parse(readFileSync(f, 'utf8'))
+  }
+  throw new Error(`unknown FAKE_LIMIT_FIXTURE ${id}`)
+}
+
+function writeTarget() {
+  writeFileSync(join(cwd, target), 'hi\n')
+}
+
+function writeDone(line) {
+  mkdirSync(join(cwd, '.baton'), { recursive: true })
+  writeFileSync(join(cwd, '.baton', 'DONE'), line + '\n')
+}
+
+const prompt = process.stdin.isTTY ? '' : await readStdin()
+if (delay > 0) await sleep(delay)
 
 if (mode === 'success') {
-  const prompt = await readStdin()
-  out({ session_id: 'sess-fake', result: 'ok', prompt_chars: prompt.length, argv: process.argv.slice(2) })
+  writeTarget()
+  writeDone(`wrote ${target}`)
+  out({ session_id: 'sess-fake', result: `wrote ${target} and .baton/DONE`, prompt_chars: prompt.length, argv: process.argv.slice(2) })
   process.exit(0)
-} else if (mode === 'sleep') {
-  setTimeout(() => process.exit(0), 10000)
+} else if (mode === 'incomplete') {
+  writeTarget()
+  out({ session_id: 'sess-fake', result: `wrote ${target}, ran out of turns before DONE`, prompt_chars: prompt.length })
+  process.exit(0)
+} else if (mode === 'limit') {
+  const fx = loadFixture(process.env.FAKE_LIMIT_FIXTURE || 'claude-session-limit')
+  const text = fx.text
+  if (fx.where === 'stderr') {
+    process.stderr.write(text + '\n')
+  } else {
+    // claude-shaped error result so the real adapter's parseResult reads it too
+    out({ type: 'result', subtype: 'error', is_error: true, result: text, session_id: 'sess-fake' })
+  }
+  process.exit(fx.exit_code ?? 1)
+} else if (mode === 'stall' || mode === 'sleep') {
+  await sleep(600000)
+  process.exit(0)
+} else if (mode === 'auth') {
+  process.stderr.write('Error: another auth source is set (ANTHROPIC_API_KEY); using it instead of your login\n')
+  process.exit(1)
+} else if (mode === 'crash') {
+  process.stderr.write('TypeError: Cannot read properties of undefined (reading \'plan\')\n    at run (file:///fake-agent.mjs:1:1)\n')
+  process.exit(2)
 } else if (mode === 'fail') {
   process.stderr.write('boom line one\n')
   process.stderr.write('api_key=sk-abcdefgh12345678 leaked\n')
   process.exit(1)
+} else if (mode === 'no_progress') {
+  out({ session_id: 'sess-fake', result: 'I could not find anything to do.', prompt_chars: prompt.length })
+  process.exit(0)
 } else if (mode === 'envcheck') {
-  await readStdin()
   const forbidden = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL',
     'OPENAI_API_KEY', 'CLAUDECODE', 'CLAUDE_EFFORT', 'CLAUDE_PLUGIN_DATA']
   const leaked = forbidden.filter((k) => process.env[k] !== undefined)

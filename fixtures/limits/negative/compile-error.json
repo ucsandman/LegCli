@@ -1,0 +1,11 @@
+{
+  "id": "compile-error",
+  "adapter": "*",
+  "source": "docs-only",
+  "produced_by": "synthetic negative fixture (a crashed agent is not a limit)",
+  "where": "stderr",
+  "text": "SyntaxError: Unexpected token )\n    at compileSourceTextModule (node:internal/modules/esm/utils:318:16)",
+  "pattern": "SyntaxError",
+  "exit_code": 1,
+  "classification": "info"
+}

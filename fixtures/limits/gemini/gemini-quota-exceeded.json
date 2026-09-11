@@ -1,0 +1,11 @@
+{
+  "id": "gemini-quota-exceeded",
+  "adapter": "gemini",
+  "source": "docs-only",
+  "produced_by": "github.com/google-gemini/gemini-cli packages/core/src/utils/googleErrors.test.ts",
+  "where": "any",
+  "text": "You exceeded your current quota",
+  "pattern": "exceeded your current quota",
+  "exit_code": null,
+  "classification": "limit"
+}

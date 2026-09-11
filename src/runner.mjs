@@ -5,13 +5,14 @@
 // State: $BATON_HOME/cards/<id>/runs/<n>/ (run.json, prompt.txt, out.log, err.log,
 // supervisor.log). Ledger writes go through src/ledger.mjs. Exports sanitizeEnv.
 import {
-  mkdirSync, readFileSync, writeFileSync, existsSync, openSync, copyFileSync, readdirSync,
+  mkdirSync, readFileSync, writeFileSync, existsSync, openSync, copyFileSync, readdirSync, rmSync, statSync,
 } from 'node:fs'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { join, dirname, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { get as getAdapter } from './adapters/index.mjs'
+import { classify } from './limits.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const LEDGER = join(dirname(SELF), 'ledger.mjs')
@@ -128,6 +129,50 @@ function killTree(pid, log) {
   }
 }
 
+// Work evidence for the classifier: did the leg change anything in its cwd?
+// Cheap and worktree-agnostic: porcelain status plus HEAD movement. Not a git
+// repo → null (the classifier then trusts only the DONE marker).
+function gitHead(cwd) {
+  const r = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  return r.status === 0 ? r.stdout.trim() : null
+}
+
+function gitDiff(cwd, headAtStart) {
+  const r = spawnSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  if (r.status !== 0) return null
+  const files = r.stdout.split(/\r?\n/).filter(Boolean).filter((l) => !/\.baton[\\/]/.test(l)).length
+  const head = gitHead(cwd)
+  return { changed: files > 0 || (headAtStart !== null && head !== headAtStart), files, head_at_start: headAtStart, head }
+}
+
+// Fallback when the cwd is not a git repo (tests, ad-hoc dirs): a shallow
+// mtime snapshot, so "wrote a file but no DONE" still reads as incomplete.
+const SNAP_SKIP = new Set(['.git', 'node_modules', '.baton', '.baton-worktrees'])
+function fsSnapshot(cwd, depth = 3) {
+  const out = new Map()
+  const walk = (dir, rel, d) => {
+    let names
+    try { names = readdirSync(dir) } catch { return }
+    for (const name of names) {
+      if (SNAP_SKIP.has(name) || out.size > 5000) continue
+      const full = join(dir, name)
+      let st
+      try { st = statSync(full) } catch { continue }
+      if (st.isDirectory()) { if (d > 0) walk(full, `${rel}${name}/`, d - 1) } else out.set(`${rel}${name}`, st.mtimeMs)
+    }
+  }
+  walk(cwd, '', depth)
+  return out
+}
+
+function fsDiff(cwd, before) {
+  const after = fsSnapshot(cwd)
+  let files = 0
+  for (const [k, v] of after) if (!before.has(k) || before.get(k) !== v) files += 1
+  for (const k of before.keys()) if (!after.has(k)) files += 1
+  return { changed: files > 0, files, head_at_start: null, head: null, source: 'fs' }
+}
+
 function legOpts(args) {
   const opts = {}
   if (args.mode) opts.mode = args.mode
@@ -225,6 +270,10 @@ async function main() {
       process.exit(13)
     }
     const childEnv = adapter.env(process.env)
+    // A stale DONE marker from an earlier leg must not count for this one.
+    rmSync(join(cwd, '.baton', 'DONE'), { force: true })
+    const headAtStart = gitHead(cwd)
+    const fsAtStart = headAtStart === null ? fsSnapshot(cwd) : null
     log(`spawning leg: adapter=${adapterName} run=${n} mode=${opts.mode ?? 'default'} cwd=${cwd}`)
     ledgerAppend(id, 'leg_started', `leg started: adapter=${adapterName} run=${n} mode=${opts.mode ?? 'default'}`, null, log)
     const child = spawn(spec.bin, spec.args, {
@@ -274,26 +323,44 @@ async function main() {
     child.on('exit', (code) => {
       clearTimeout(notifyTimer)
       clearTimeout(killTimer)
-      let sessionId = null
-      try { sessionId = adapter.parseResult(readFileSync(outPath, 'utf8'))?.session_id ?? null } catch {}
+      // JSON-only-at-end: the result file is read here, after the exit event,
+      // and nowhere else (LESSONS 07-10).
+      let stdout = ''
+      let stderr = ''
+      try { stdout = readFileSync(outPath, 'utf8') } catch {}
+      try { stderr = readFileSync(errPath, 'utf8') } catch {}
+      let parsed = null
+      try { parsed = adapter.parseResult(stdout) } catch {}
+      const sessionId = parsed?.session_id ?? null
       if (sessionId) {
         ledgerSafe(['update', '--card', id, '--session-id', sessionId], log)
       }
-      const base = { ...readRun(id, n), exit_code: code, session_id: sessionId, ended_at: now() }
-      if (killedByTimer) {
-        ledgerAppend(id, 'killed',
-          `[supervisor] agent killed after ${Math.round(KILL_MS / 60000)}m`, null, log)
+      const current = readRun(id, n)
+      const doneMarker = existsSync(join(cwd, '.baton', 'DONE'))
+      const diff = fsAtStart ? fsDiff(cwd, fsAtStart) : gitDiff(cwd, headAtStart)
+      const verdict = classify({
+        adapter: adapter.emulates ?? adapterName, exitCode: code, stdout, stderr, result: parsed?.raw ?? null,
+        doneMarker, diff, killedByTimer, killedByHuman: current?.kill_requested === true, spawnError: null,
+      })
+      const base = {
+        ...current, exit_code: code, session_id: sessionId, ended_at: now(),
+        outcome: verdict.outcome, signal: verdict.signal, handoff: verdict.handoff, reason: verdict.reason,
+        done_marker: doneMarker, diff,
+      }
+      const summary = `[supervisor] leg ${verdict.outcome} (exit ${code}${sessionId ? `, session ${sessionId}` : ''}${verdict.signal !== 'none' ? `, signal ${verdict.signal}` : ''})`
+      if (killedByTimer || verdict.outcome === 'killed') {
+        ledgerAppend(id, 'killed', summary, verdict.reason, log)
         writeRun(id, n, { ...base, status: 'killed' })
         process.exit(12)
       }
-      // Classification (completed / incomplete / limit / …) is the chain's job;
-      // the supervisor only records that the leg exited and how.
-      ledgerAppend(id, 'leg_exited',
-        `[supervisor] agent exited code ${code}${sessionId ? ` session ${sessionId}` : ''}`,
-        code === 0 ? null : errTail(errPath), log)
-      writeRun(id, n, { ...base, status: 'exited', outcome: null })
-      log(`leg exited code ${code}, session ${sessionId}`)
-      process.exit(code === 0 ? 0 : 13)
+      const eventType = verdict.outcome === 'limit' ? 'limit_detected'
+        : (verdict.outcome === 'auth_failed' || verdict.outcome === 'launch_failed') ? 'error'
+          : 'leg_exited'
+      ledgerAppend(id, eventType, summary,
+        verdict.outcome === 'completed' ? null : `${verdict.reason}${code === 0 ? '' : ` | stderr: ${errTail(errPath)}`}`, log)
+      writeRun(id, n, { ...base, status: 'exited' })
+      log(`leg exited code ${code}: ${verdict.outcome} (${verdict.reason})`)
+      process.exit(verdict.outcome === 'completed' ? 0 : 13)
     })
   } else if (cmd === 'sweep') {
     const log = (msg) => process.stdout.write(`${msg}\n`)

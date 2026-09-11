@@ -10,7 +10,7 @@ const adapter = {
   stdin: 'pipe', // the prompt goes to stdin; argv stays short
   modes: {
     default: 'acceptEdits',
-    // claude 2.1.268 --permission-mode choices minus bypassPermissions.
+    // claude 2.1.268 --permission-mode choices; the bypass mode is never allowed.
     allowed: ['acceptEdits', 'auto', 'plan', 'manual', 'dontAsk'],
   },
   forbiddenFlags: ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--permission-mode=bypassPermissions', 'bypassPermissions'],
@@ -28,7 +28,7 @@ const adapter = {
     if (opts.resume) args.push('--resume', opts.resume)
     if (opts.model) args.push('--model', opts.model)
     if (opts.allowedTools?.length) args.push('--allowedTools', opts.allowedTools.join(','))
-    // Never --disallowedTools Agent: a lead without the Agent tool degrades to solo.
+    // The Agent tool is never denied: a lead without it degrades to solo (LESSONS 07-10).
     return viaNode ? { bin: process.execPath, args: [bin, ...args] } : { bin, args }
   },
   env(base) { return sanitizeEnv(base) },

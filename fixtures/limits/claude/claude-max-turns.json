@@ -1,0 +1,11 @@
+{
+  "id": "claude-max-turns",
+  "adapter": "claude",
+  "source": "docs-only",
+  "produced_by": "https://code.claude.com/docs/en/cli-reference (--max-turns: \"Exits with an error when the limit is reached\")",
+  "where": "any",
+  "text": "(no message text documented; the run ends with an error once --max-turns is reached; phase 10 records the live result JSON)",
+  "pattern": "error_max_turns|max.turns",
+  "exit_code": null,
+  "classification": "budget"
+}

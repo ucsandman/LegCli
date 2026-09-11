@@ -1,0 +1,11 @@
+{
+  "id": "codex-skills-notice",
+  "adapter": "codex",
+  "source": "observed-live",
+  "produced_by": "fixtures/live/codex/out.log (item.completed, item.type=error) from scripts/probe.mjs --adapter codex, 2026-09-10",
+  "where": "stdout",
+  "text": "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter.",
+  "pattern": "Skill descriptions were shortened",
+  "exit_code": 0,
+  "classification": "info"
+}

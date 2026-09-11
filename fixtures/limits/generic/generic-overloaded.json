@@ -1,0 +1,11 @@
+{
+  "id": "generic-overloaded",
+  "adapter": "*",
+  "source": "docs-only",
+  "produced_by": "generic matcher (Anthropic API 529 overloaded_error); lowest priority",
+  "where": "any",
+  "text": "overloaded_error",
+  "pattern": "overloaded",
+  "exit_code": null,
+  "classification": "limit"
+}

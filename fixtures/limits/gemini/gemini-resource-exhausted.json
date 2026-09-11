@@ -1,0 +1,11 @@
+{
+  "id": "gemini-resource-exhausted",
+  "adapter": "gemini",
+  "source": "docs-only",
+  "produced_by": "github.com/google-gemini/gemini-cli packages/cli/src/nonInteractiveCliAgentSession.ts (status RESOURCE_EXHAUSTED => severity error on stderr) + packages/core/src/utils/errorParsing.test.ts",
+  "where": "any",
+  "text": "got status: 429 Too Many Requests. {\"error\":{\"code\":429,\"message\":\"Rate limit exceeded\",\"status\":\"RESOURCE_EXHAUSTED\"}}",
+  "pattern": "RESOURCE_EXHAUSTED",
+  "exit_code": null,
+  "classification": "limit"
+}

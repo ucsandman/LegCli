@@ -1,0 +1,11 @@
+{
+  "id": "empty-stdout-exit-0",
+  "adapter": "*",
+  "source": "observed-live",
+  "produced_by": "fixtures/live/gemini/out.log (0 bytes) and fixtures/live/grok (exit 0, no work): silence is not a limit",
+  "where": "stdout",
+  "text": "",
+  "pattern": "^$",
+  "exit_code": 0,
+  "classification": "info"
+}

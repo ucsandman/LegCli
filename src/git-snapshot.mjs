@@ -40,7 +40,9 @@ if (args['max-files'] !== undefined) {
 }
 
 function git(gitArgs) {
-  return execFileSync('git', gitArgs, { cwd: repo, encoding: 'utf8' })
+  // MSYS_NO_PATHCONV: Git Bash would rewrite a leading-slash argument into a
+  // Windows path (LESSONS 07-09); harmless elsewhere.
+  return execFileSync('git', gitArgs, { cwd: repo, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
 }
 
 try {

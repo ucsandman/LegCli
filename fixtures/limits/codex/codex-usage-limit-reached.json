@@ -1,0 +1,11 @@
+{
+  "id": "codex-usage-limit-reached",
+  "adapter": "codex",
+  "source": "docs-only",
+  "produced_by": "github.com/openai/codex codex-rs/tui/src/chatwidget/turn_runtime.rs (WorkspaceOwnerUsageLimitReached)",
+  "where": "any",
+  "text": "Usage limit reached. You've reached your usage limit. Increase your limits to continue",
+  "pattern": "Usage limit reached",
+  "exit_code": null,
+  "classification": "limit"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "claude-budget-limit",
+  "adapter": "claude",
+  "source": "docs-only",
+  "produced_by": "https://code.claude.com/docs/en/cli-reference (--max-budget-usd)",
+  "where": "any",
+  "text": "Budget limit reached",
+  "pattern": "Budget limit reached",
+  "exit_code": null,
+  "classification": "budget"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "generic-quota",
+  "adapter": "*",
+  "source": "docs-only",
+  "produced_by": "generic matcher; lowest priority",
+  "where": "any",
+  "text": "quota",
+  "pattern": "\\bquota\\b",
+  "exit_code": null,
+  "classification": "limit"
+}

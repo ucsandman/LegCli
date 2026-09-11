@@ -1,0 +1,11 @@
+{
+  "id": "codex-quota-exceeded",
+  "adapter": "codex",
+  "source": "docs-only",
+  "produced_by": "github.com/openai/codex codex-rs/response-debug-context/src/lib.rs (ApiError::QuotaExceeded => \"quota exceeded\")",
+  "where": "any",
+  "text": "quota exceeded",
+  "pattern": "quota exceeded",
+  "exit_code": null,
+  "classification": "limit"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "agy-resource-exhausted",
+  "adapter": "agy",
+  "source": "docs-only",
+  "produced_by": "`agy changelog` (\"Fixed personal accounts hitting a resource-exhausted error at startup\"); agy --help documents no limit wording; falls back to the generic matchers",
+  "where": "any",
+  "text": "resource-exhausted",
+  "pattern": "resource.exhausted",
+  "exit_code": null,
+  "classification": "limit"
+}

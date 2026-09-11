@@ -7,7 +7,7 @@ const FORBIDDEN_FLAGS = ['--dangerously-skip-permissions', '--allow-dangerously-
   '--dangerously-bypass-approvals-and-sandbox', '--yolo', '--always-approve']
 
 test('registry lists fake plus every probed CLI; grok stays out until it is verified live', async () => {
-  assert.deepEqual(names(), ['fake', ...REAL])
+  assert.deepEqual(names(), ['fake', 'fake-claude', 'fake-codex', 'fake-gemini', 'fake-agy', 'fake-nostdin', ...REAL])
   await assert.rejects(getAdapter('grok'), /unknown adapter: grok/)
 })
 

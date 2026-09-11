@@ -1,0 +1,11 @@
+{
+  "id": "codex-usage-limit",
+  "adapter": "codex",
+  "source": "docs-only",
+  "produced_by": "github.com/openai/codex codex-rs/protocol/src/error.rs (gh search code \"usage limit\" --repo openai/codex, 2026-09-10)",
+  "where": "any",
+  "text": "You’ve hit your usage limit for {limit_name}. Switch to another model now,",
+  "pattern": "You.ve hit your usage limit",
+  "exit_code": null,
+  "classification": "limit"
+}

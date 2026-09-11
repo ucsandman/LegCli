@@ -1,0 +1,11 @@
+{
+  "id": "auth-source-set",
+  "adapter": "*",
+  "source": "docs-only",
+  "produced_by": "project brief (Wes, 2026-09-10): stderr saying \"another auth source is set\" counts as a failed launch; wording not yet observed live",
+  "where": "stderr",
+  "text": "another auth source is set",
+  "pattern": "another auth source is set",
+  "exit_code": null,
+  "classification": "auth"
+}

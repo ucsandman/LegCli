@@ -1,0 +1,11 @@
+{
+  "id": "generic-resource-exhausted",
+  "adapter": "*",
+  "source": "docs-only",
+  "produced_by": "generic matcher (gRPC RESOURCE_EXHAUSTED); lowest priority",
+  "where": "any",
+  "text": "RESOURCE_EXHAUSTED",
+  "pattern": "RESOURCE_EXHAUSTED|resource.exhausted",
+  "exit_code": null,
+  "classification": "limit"
+}
