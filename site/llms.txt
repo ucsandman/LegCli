@@ -1,0 +1,48 @@
+# Baton
+
+> A local wrapper for coding-agent CLIs. Type `baton claude`, `baton codex` or `baton agy` instead of the bare command and you get the same interactive agent with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits. Zero runtime dependencies, Node 22+, MIT, binds 127.0.0.1, never edits your own config files.
+
+Site: https://baton-agents.vercel.app
+Source: https://github.com/ucsandman/baton
+npm: https://www.npmjs.com/package/baton-agents
+
+## Install
+
+```
+npm install -g baton-agents
+pip install -U context-handoff-bundle
+cd <any repo>
+baton claude
+```
+
+Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one logged-in agent CLI (`claude`, `codex` or `agy`). Anything after the agent name passes straight through (`baton claude --model opus`, `baton codex -m gpt-5.3-codex-spark`).
+
+## What runs alongside the agent
+
+1. A board in the browser at http://127.0.0.1:4747, opened once and reused. Every Baton session in every terminal is a card: agent, account, repo and branch, the task, the files being touched, the 5h and 7d usage bars, what has landed on trunk. Buttons: Land, Hand off now, End.
+2. Usage tracking per agent and account, read from what each CLI already exposes. Claude Code: the usage endpoint the built-in status line uses, polled every 60 s, and the `StopFailure` hook for the wall. Codex: rate limits from the session's rollout file, `usage_limit_exceeded` for the wall. agy: no percentages exposed; `RESOURCE_EXHAUSTED` in the log for the wall. Nothing is screen-scraped.
+3. A context handoff bundle (context-handoff-bundle on PyPI) refreshed every two minutes: the task, the last messages, `git diff --stat`, dirty files, files edited this session, recent commits, why it stopped.
+4. The handoff. At 85 percent of a window the card turns amber and the terminal bell rings once. At the limit Baton saves the bundle, stops the agent, and starts the next option in the same terminal from that bundle: another login of the same agent if one was added, otherwise the next agent (claude, then codex, then agy). The next agent's first turn reads `.baton/RESUME.md`, checks `git status` and `git diff`, and continues; nothing is retyped. When every option is out, the terminal prints each reset time, waits with a countdown, and starts that agent when the reset arrives.
+
+## Two sessions in one repo
+
+A second `baton <agent>` in a checkout that already has a live session gets its own git worktree (`.baton-worktrees/<session-id>` on branch `baton/<session-id>`). Its card has a Land button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the card says why (`rebase-conflict` with the files, `tests-red`, `dirty-trunk`). Two live sessions touching the same file are flagged red on both cards. Nothing is merged and nothing is pushed.
+
+## More than one human
+
+Off by default. `baton share on` binds the board to a Tailscale or LAN address and gives every human their own token; guests see redacted cards and can request a handoff.
+
+## What is never touched
+
+`~/.claude/settings.json`, `~/.claude.json`, `~/.codex/config.toml`, agy's files, the repo's settings. Claude Code gets hooks through a per-session `--settings` file under `~/.baton`; codex and agy get nothing injected. `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and `OPENAI_API_KEY` are stripped before any agent starts (subscription logins only). `baton uninstall --yes` removes `~/.baton` and nothing else.
+
+## Verified
+
+Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 340 tests.
+
+## Docs
+
+- README: https://github.com/ucsandman/baton#readme
+- Getting started: https://github.com/ucsandman/baton/blob/main/docs/getting-started.md
+- FAQ: https://github.com/ucsandman/baton/blob/main/docs/faq.md
+- Changelog: https://github.com/ucsandman/baton/blob/main/CHANGELOG.md

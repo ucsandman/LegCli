@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code usage limit handoff and usage monitor | Baton</title>
+<meta name="description" content="A usage monitor and board beside Claude Code, Codex or agy, a worktree per second session, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, MIT.">
+<link rel="canonical" href="https://baton-agents.vercel.app/">
+<meta name="theme-color" content="#1b4fbf">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://baton-agents.vercel.app/">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="Your agent hits the limit. The next one keeps your place.">
+<meta property="og:description" content="baton claude, baton codex or baton agy: the same agent with a board beside it, usage tracking, and a handoff to the next agent in the same terminal when the limit hits.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Your agent hits the limit. The next one keeps your place.">
+<meta name="twitter:description" content="baton claude, baton codex or baton agy: the same agent with a board beside it, usage tracking, and a handoff to the next agent in the same terminal when the limit hits.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png">
+<link rel="preload" href="fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+<script defer src="/_vercel/insights/script.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Baton",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, macOS, Linux",
+  "softwareVersion": "0.3.0",
+  "license": "https://opensource.org/license/mit",
+  "url": "https://baton-agents.vercel.app/",
+  "downloadUrl": "https://www.npmjs.com/package/baton-agents",
+  "codeRepository": "https://github.com/ucsandman/baton",
+  "author": { "@type": "Person", "name": "Wes Sander" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "description": "A local wrapper for Claude Code, Codex and agy: a board and usage monitor beside the agent, a worktree per second session, and a handoff to the next agent in the same terminal when the usage limit hits."
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Baton, home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="3" fill="#0f2a6e"/><rect x="7" y="14" width="18" height="4" rx="1" transform="rotate(-35 16 16)" fill="#ffffff"/><circle cx="8" cy="21" r="3" fill="#e08a62"/><circle cx="24" cy="11" r="3" fill="#3fc9a0"/></svg>
+      baton
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#handoff">The handoff</a>
+      <a href="#board" class="hide-sm">The board</a>
+      <a href="#two-sessions" class="hide-sm">Two sessions</a>
+      <a href="#touched" class="hide-sm">What is touched</a>
+      <a href="#install">Install</a>
+      <a class="repo" href="https://github.com/ucsandman/baton">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section id="top" class="band blue hero">
+  <div class="wrap">
+    <h1>Your agent hits the limit. The next one keeps your place.</h1>
+    <p class="lead">Baton runs Claude Code, Codex and agy. It watches the five-hour and weekly windows, and at the wall it saves the session, stops the agent, and starts your next option <b>in the same terminal</b>, from where the last one stopped. Nothing is retyped.</p>
+    <div class="commands">
+      <div class="cmd"><code>npm install -g baton-agents</code><button class="copy" type="button" data-copy="npm install -g baton-agents">Copy</button></div>
+      <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
+    </div>
+    <p>Then type <code>baton claude</code> where you would have typed <code>claude</code>. Same session, same flags.</p>
+    <p class="facts">Node 22 or newer. Zero runtime dependencies. MIT. Binds 127.0.0.1 and edits none of your config files.</p>
+  </div>
+</section>
+
+<section id="handoff" class="band blue live" aria-labelledby="handoff-h">
+  <div class="wrap">
+    <div class="live-head">
+      <h2 id="handoff-h">The handoff, as it happens in the terminal.</h2>
+      <p class="lead muted">A sample session. Every line that begins with <code>[baton]</code> is what Baton prints; the rest is the agent. It plays at reading speed when it scrolls into view.</p>
+    </div>
+
+    <div class="marker" aria-hidden="true">
+      <span class="tab warn"><code>85%</code><span>the card turns amber and the terminal bell rings once</span></span>
+    </div>
+
+    <figure class="term" id="term" data-owner="claude" aria-label="Terminal transcript of a handoff from claude to codex">
+      <div class="term-strip">
+        <span class="who"><span class="dot"></span><span id="strip-who">claude</span> <span class="muted" id="strip-acct">wes@work</span></span>
+        <span class="bar" id="bar5" data-state="ok"><span>5h</span><i style="--p:0.41"></i><b>41%</b></span>
+        <span class="bar" id="bar7" data-state="ok"><span>7d</span><i style="--p:0.18"></i><b>18%</b></span>
+        <span class="bell" id="bell" aria-hidden="true">bell</span>
+      </div>
+      <div class="term-body" id="term-body">
+        <span class="ln sh">~/acme/api $ <b>baton claude --model opus</b></span>
+        <span class="ln baton">session claude-a3f8 · claude · board http://127.0.0.1:4747 (started) · next: codex → agy</span>
+        <span class="ln gap"></span>
+        <span class="ln you" data-type="1">add an idempotency key to the refund path and cover it with tests</span>
+        <span class="ln out"><span class="k">Edited</span>src/refunds/create.ts</span>
+        <span class="ln out"><span class="k">Edited</span>src/refunds/idempotency.ts</span>
+        <span class="ln out"><span class="k">Ran</span>npm test -- refunds        <span class="fail">14 passed, 1 failed</span></span>
+        <span class="ln out" data-warn="1"><span class="k">Edited</span>test/refunds/idempotency.test.ts</span>
+        <span class="ln gap"></span>
+        <span class="ln baton limit" data-limit="1">claude hit its usage limit: rate_limit</span>
+        <span class="ln baton">bundle saved: .context-handoffs/20260911-154212-baton-claude-a3f8</span>
+        <span class="ln baton" data-switch="1">starting codex in this terminal from the bundle</span>
+        <span class="ln gap"></span>
+        <span class="ln sh">codex <b>wes@personal</b> · same folder, same branch</span>
+        <span class="ln you codex" data-type="1">You are taking over an interactive coding session from claude, which hit its usage limit. Read .baton/RESUME-claude-a3f8.md (the context handoff bundle is at .context-handoffs/20260911-154212-baton-claude-a3f8), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.</span>
+        <span class="ln out"><span class="k">Read</span>.baton/RESUME-claude-a3f8.md</span>
+        <span class="ln out"><span class="k">Ran</span>git status · git diff</span>
+        <span class="ln out"><span class="k">&nbsp;</span>The store lookup in idempotency.ts is missing. Adding it and rerunning the failing test.</span>
+        <span class="ln out" data-last="1"><span class="k">Ran</span>npm test -- refunds        15 passed</span>
+      </div>
+    </figure>
+
+    <div class="marker after" aria-hidden="true">
+      <span class="tab bad"><code>limit</code><span>the bundle is saved and the next option starts here</span></span>
+    </div>
+
+    <div class="term-foot">
+      <span>The pointer prompt is the one Baton sends; it also appends the task as you first stated it. The bundle carries the rest: the task, the last messages, <code>git diff --stat</code>, dirty files, recent commits, why it stopped.</span>
+      <button class="replay" id="replay" type="button" hidden>Replay the handoff</button>
+    </div>
+  </div>
+</section>
+
+<section id="one-word" class="band light" aria-labelledby="one-word-h">
+  <div class="wrap">
+    <div class="cols">
+      <div class="stack">
+        <h2 id="one-word-h">One word in front of the command you already type.</h2>
+        <p><code>baton claude --model opus</code> is <code>claude --model opus</code> with Baton alongside. The agent's own prompt and permission flags pass through unchanged. Baton's hooks ride in a separate per-session settings file; your own settings file is never edited.</p>
+        <p>The first <code>baton &lt;agent&gt;</code> starts the board at <code>http://127.0.0.1:4747</code> and opens it. Later sessions reuse it.</p>
+      </div>
+      <div class="stack">
+        <div class="plate before-after" aria-label="Before and after">
+          <div><span class="k">before</span><span>claude --model opus</span></div>
+          <div><span class="k">after</span><span><span class="b">baton</span> claude --model opus</span></div>
+          <div><span class="k">also</span><span><span class="b">baton</span> codex -m gpt-5.3-codex-spark</span></div>
+          <div><span class="k">also</span><span><span class="b">baton</span> agy</span></div>
+        </div>
+        <div class="table-wrap">
+          <table class="reads">
+            <thead><tr><th scope="col">command</th><th scope="col">usage percentages</th><th scope="col">the wall</th></tr></thead>
+            <tbody>
+              <tr><td><span class="sw claude"></span>baton claude</td><td>Claude Code's own usage endpoint, the same numbers as <code>/usage</code>, polled every 60 seconds</td><td>the <code>StopFailure</code> hook with <code>rate_limit</code></td></tr>
+              <tr><td><span class="sw codex"></span>baton codex</td><td>the rate limits Codex writes to its session rollout file</td><td><code>usage_limit_exceeded</code> in the same file</td></tr>
+              <tr><td><span class="sw agy"></span>baton agy</td><td>none; agy exposes no percentages</td><td><code>RESOURCE_EXHAUSTED</code> in agy's log</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small muted">Each tap was read from the CLI's source or documentation and checked on a real machine on 11 September 2026: Claude Code 2.1.268, codex-cli 0.153.4, agy 1.2.0. Nothing is screen-scraped.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="board" class="band light" aria-labelledby="board-h">
+  <div class="wrap">
+    <div class="cols rev" style="margin-bottom: 40px">
+      <h2 id="board-h">One page that knows what every session is doing.</h2>
+      <p>Every Baton session in every terminal is a card on it: agent and account, repo and branch, the task, the files being touched, the 5h and 7d bars, and what has landed on trunk. Two live sessions touching the same file are flagged red on both cards. Buttons: <b>Land</b>, <b>Hand off now</b>, <b>End</b>.</p>
+    </div>
+
+    <figure class="recreated">
+      <div class="board" role="img" aria-label="The Baton board with three live sessions: claude handing off, codex running in its own worktree, agy running">
+        <div class="board-top"><span class="live-dot">live</span><span>3 sessions</span><span class="url">http://127.0.0.1:4747</span></div>
+        <div class="accounts">
+          <span class="pill"><span class="who claude">claude</span><span class="bar" data-state="limit"><span>5h</span><i style="--p:1"></i><b>100%</b></span><span class="bar"><span>7d</span><i style="--p:0.41"></i><b>41%</b></span><span class="walled">limit · back 4:15 PM</span></span>
+          <span class="pill"><span class="who codex">codex</span><span class="bar"><span>5h</span><i style="--p:0.18"></i><b>18%</b></span><span class="bar"><span>7d</span><i style="--p:0.12"></i><b>12%</b></span></span>
+          <span class="pill"><span class="who agy">agy</span><span class="muted">no percentages</span></span>
+        </div>
+        <div class="cards">
+          <div class="card">
+            <div class="card-head"><span class="tag claude">claude</span><span class="tag hand">handed off</span><span class="age">2h 40m</span></div>
+            <div class="task">add an idempotency key to the refund path and cover it with tests</div>
+            <div class="meta"><span>acme/api@main</span><span>31 turns</span><span>9c1e2a4</span></div>
+            <div class="chips"><span class="chip">src/refunds/create.ts</span><span class="chip">src/refunds/idempotency.ts</span></div>
+            <div class="bars"><span class="bar" data-state="limit"><span>5h</span><i style="--p:1"></i><b>100%</b></span><span class="bar"><span>7d</span><i style="--p:0.41"></i><b>41%</b></span></div>
+            <div class="flag warn">↷ handed off to codex · bundle saved</div>
+            <div class="btns"><span>Remove</span></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="tag codex">codex</span><span class="tag run">running</span><span class="age">6m</span></div>
+            <div class="task">add an idempotency key to the refund path and cover it with tests</div>
+            <div class="meta"><span>acme/api@main</span><span>4 turns</span><span>9c1e2a4</span></div>
+            <div class="chips"><span class="chip">src/refunds/idempotency.ts</span><span class="chip">test/refunds/idempotency.test.ts</span></div>
+            <div class="bars"><span class="bar"><span>5h</span><i style="--p:0.18"></i><b>18%</b></span><span class="bar"><span>7d</span><i style="--p:0.12"></i><b>12%</b></span></div>
+            <div class="flag ok">✓ continued from .baton/RESUME-claude-a3f8.md</div>
+            <div class="btns"><span>Hand off now</span><span class="end">End</span></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="tag agy">agy</span><span class="tag run">running</span><span class="age">48m</span></div>
+            <div class="task">rewrite the install page for the docs site</div>
+            <div class="meta"><span>acme/docs@main</span><span>12 turns</span><span>4b77e10</span></div>
+            <div class="chips"><span class="chip">docs/install.md</span></div>
+            <div class="flag">usage unknown · agy exposes none; the wall is still caught</div>
+            <div class="btns"><span>Hand off now</span><span class="end">End</span></div>
+          </div>
+        </div>
+        <div class="landed">
+          <span class="h">landed on main · acme/api</span>
+          <span><span class="sha">9c1e2a4</span> refunds: extract the charge lookup · 2 hours ago</span>
+          <span><span class="sha">4b77e10</span> refunds: idempotency table migration · yesterday</span>
+        </div>
+      </div>
+      <figcaption>The board, recreated in HTML from the same sample session as the terminal above. The card anatomy and labels are the real ones; the task is illustrative.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="two-sessions" class="band light" aria-labelledby="two-h">
+  <div class="wrap">
+    <div class="cols">
+      <div class="stack">
+        <h2 id="two-h">A second session gets its own worktree. Nothing merges.</h2>
+        <p>Start <code>baton codex</code> in a checkout where <code>baton claude</code> is already live and the new session gets its own git worktree, <code>.baton-worktrees/&lt;id&gt;</code> on branch <code>baton/&lt;id&gt;</code>, cut from the branch the checkout has out. The terminal prints one line saying where it is.</p>
+        <p>Its card has a <b>Land</b> button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the card says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of the output, <code>dirty-trunk</code> when the checkout has local changes the landing would overwrite. Nothing is ever pushed.</p>
+      </div>
+      <figure class="recreated">
+        <div class="pair" role="img" aria-label="Two claude session cards on one repo: one landed on main, one bounced with a rebase conflict on README.md">
+          <div class="card overlap">
+            <div class="card-head"><span class="tag claude">claude</span><span class="tag run">running</span><span class="age">1m</span></div>
+            <div class="task">Append exactly one line to the end of README.md that says: session B was here. Change nothing else, do not commit, then reply done.</div>
+            <div class="meta"><span>gap3@baton/s-20260911-083321-claude-ae85</span><span>1 turn</span><span>98f8880</span></div>
+            <div class="chips"><span class="chip">own worktree · from main</span><span class="chip hot">README.md</span></div>
+            <div class="flag bad">⚠ claude (claude-a3f8) is changing README.md in another checkout; whoever lands second rebases</div>
+            <div class="flag ok">✓ landed on main · 98f8880 · 1 file +1/-0</div>
+            <div class="btns"><span>Land</span><span>Hand off now</span><span class="end">End</span></div>
+          </div>
+          <div class="card overlap">
+            <div class="card-head"><span class="tag claude">claude</span><span class="tag run">running</span><span class="age">59s</span></div>
+            <div class="task">Append exactly one line to the end of README.md that says: session C was here. Change nothing else, do not commit, then reply done.</div>
+            <div class="meta"><span>gap3@baton/s-20260911-083341-claude-a3f8</span><span>1 turn</span><span>1897ebf</span></div>
+            <div class="chips"><span class="chip">own worktree · from main</span><span class="chip hot">README.md</span></div>
+            <div class="flag bad">⚠ claude (claude-ae85) is changing README.md in another checkout; whoever lands second rebases</div>
+            <div class="flag bad">✗ bounced (rebase-conflict): rebase onto main conflicted in: README.md</div>
+            <div class="btns"><span>Land</span><span>Hand off now</span><span class="end">End</span></div>
+          </div>
+        </div>
+        <figcaption>From a live run on 11 September 2026: three claude sessions in a throwaway repo, the second and third in their own worktrees. Land on the second ran the tests and fast-forwarded main; Land on the third bounced and kept its commit on its branch.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="changeover" class="band blue" aria-labelledby="change-h">
+  <div class="wrap stack" style="--gap: 40px">
+    <h2 id="change-h">Between the warning and the wall, four things happen. You watch them.</h2>
+    <div class="steps" style="margin-top: 40px">
+      <div class="step warn"><code>85%</code><p>The card turns amber and the terminal bell rings once. Get to a stopping point, or keep typing.</p></div>
+      <div class="step bad"><code>limit</code><p>Baton saves the bundle it has been refreshing every two minutes: the task, the last messages, <code>git diff --stat</code>, dirty files, recent commits, and why it stopped.</p></div>
+      <div class="step"><code>stop</code><p>The agent process is stopped and the terminal is restored. The next option starts in it: another login of the same agent if you added one, otherwise the next agent in order.</p></div>
+      <div class="step ok"><code>first turn</code><p>The new agent reads <code>.baton/RESUME.md</code>, checks <code>git status</code> and <code>git diff</code>, and carries on with the same task.</p></div>
+    </div>
+    <div class="cols" style="margin-top: 56px">
+      <div class="stack-tight">
+        <h3>The order</h3>
+        <p class="muted">Other logins of the same agent first, then the remaining agents in order, each tried once. From claude: <code>claude/work → codex → agy</code>. From codex: <code>agy → claude</code>. An option whose wall has not reset is skipped.</p>
+      </div>
+      <div class="stack-tight">
+        <h3>When every option is out</h3>
+        <p class="muted">The terminal prints each option with its reset time, soonest first, then stays open with a countdown to the first reset and starts that agent from the bundle when it arrives. Ctrl-C, or End on the card, quits instead.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="touched" class="band light" aria-labelledby="touched-h">
+  <div class="wrap">
+    <div class="stack" style="margin-bottom: 44px">
+      <h2 id="touched-h">What is written, and what is never touched.</h2>
+      <p>Subscription logins only. Baton is meant to sit beside tools you already trust, so the list of what it does not do is as exact as the list of what it does.</p>
+    </div>
+    <div class="touched">
+      <div>
+        <h3>Never edited</h3>
+        <ul>
+          <li><code>~/.claude/settings.json</code></li>
+          <li><code>~/.claude.json</code></li>
+          <li><code>~/.codex/config.toml</code></li>
+          <li>agy's files, and your repo's settings</li>
+          <li>Claude Code gets hooks through a per-session <code>--settings</code> file under <code>~/.baton</code>; codex and agy get nothing injected</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Written in your repo</h3>
+        <ul>
+          <li><code>.baton/</code>, the session notes and <code>RESUME.md</code></li>
+          <li><code>.context-handoffs/</code>, the bundles</li>
+          <li><code>.baton-worktrees/</code>, a second session's worktree, plus its <code>baton/&lt;id&gt;</code> branch</li>
+          <li>all three added to <code>.git/info/exclude</code>; landing fast-forwards your branch and nothing is pushed</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Stripped and scrubbed</h3>
+        <ul>
+          <li><code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_BASE_URL</code>, <code>OPENAI_API_KEY</code> are removed from every agent's environment</li>
+          <li>Claude Code's stored login is read for the usage numbers and sent only to <code>api.anthropic.com</code>; it is never written or printed</li>
+          <li>the ledger scrubs bearer tokens and key shapes from every line</li>
+          <li>the board binds <code>127.0.0.1</code>; <code>baton share on</code> is the one way to listen elsewhere, with a token per human</li>
+          <li><code>baton uninstall --yes</code> removes <code>~/.baton</code> and nothing else</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="band blue install" aria-labelledby="install-h">
+  <div class="wrap">
+    <h2 id="install-h">Install</h2>
+    <p class="lead muted">Node 22 or newer, git, Python 3 with pip, and at least one logged-in agent CLI.</p>
+    <div class="commands">
+      <div class="cmd"><code>npm install -g baton-agents</code><button class="copy" type="button" data-copy="npm install -g baton-agents">Copy</button></div>
+      <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
+      <div class="cmd"><code>cd &lt;any repo&gt; &amp;&amp; baton claude</code><button class="copy" type="button" data-copy="baton claude">Copy</button></div>
+    </div>
+    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 340 tests. MIT.</p>
+    <div class="links">
+      <a href="https://github.com/ucsandman/baton#readme">README</a>
+      <a href="https://github.com/ucsandman/baton/blob/main/docs/getting-started.md">Getting started</a>
+      <a href="https://github.com/ucsandman/baton/blob/main/docs/faq.md">FAQ</a>
+      <a href="https://github.com/ucsandman/baton/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://www.npmjs.com/package/baton-agents">npm</a>
+      <a href="https://pypi.org/project/context-handoff-bundle/">context-handoff-bundle on PyPI</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Baton is by <a href="https://github.com/ucsandman">Wes Sander</a>. MIT license.</span>
+    <span><a href="https://github.com/ucsandman/baton">Source on GitHub</a> · <a href="https://github.com/ucsandman/baton/blob/main/SECURITY.md">Security</a> · <a href="llms.txt">llms.txt</a></span>
+  </div>
+</footer>
+
+<script src="site.js" defer></script>
+</body>
+</html>

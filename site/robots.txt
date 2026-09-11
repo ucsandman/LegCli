@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /og
+Sitemap: https://baton-agents.vercel.app/sitemap.xml

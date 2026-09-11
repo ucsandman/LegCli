@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A marketing site.** `site/` holds a static page for the product (hero, the handoff played in a recreated terminal, the board and the two-session cards recreated in HTML, the changeover, what is never touched, install), with the SEO floor (title from measured search volume, description, canonical, OG image, robots.txt, sitemap.xml, llms.txt) and Vercel headers. PRODUCT.md and DESIGN.md at the root carry the brief and the design tokens; docs/DECISIONS.md records why cobalt. Not part of the npm package.
+
 ## 0.3.2 (2026-09-11)
 
 A second adversarial review over 0.3.1, this time of the whole tree: 49

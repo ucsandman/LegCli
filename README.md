@@ -399,6 +399,7 @@ More in [docs/faq.md](docs/faq.md).
 | [Vocabulary](docs/VOCABULARY.md) | statuses, outcomes and event types |
 | [Roadmap v2](docs/ROADMAP-v2.md) | where this is going |
 | [Reuse](docs/REUSE.md) and [deviations](docs/DEVIATIONS.md) | what was ported and every place the plan changed |
+| [Website](site/) | the public page: static HTML in `site/`, preview with `python -m http.server 4780 --directory site`, deployed to Vercel from that directory; PRODUCT.md and DESIGN.md at the root carry its brief and tokens |
 
 ## Contributing
 
