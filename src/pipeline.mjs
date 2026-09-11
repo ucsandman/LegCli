@@ -21,6 +21,7 @@ export function normalizeChainEntry(e) {
   if (e.approve) out.approve = true
   if (e.network) out.network = true
   if (e.fakeMode !== undefined) out.fakeMode = String(e.fakeMode)
+  for (const k of ['fakeFixture', 'fakeTarget', 'fakeContent']) if (e[k] !== undefined && e[k] !== null) out[k] = String(e[k])
   if (e.model !== undefined && e.model !== null) out.model = String(e.model)
   return out
 }

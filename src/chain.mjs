@@ -151,26 +151,37 @@ export function transition(card, action, payload = {}) {
       if (!s || s.kind !== 'test') throw new IllegalTransition(card.status, action)
       if (payload.green) return { card: advance(card, i, events), events }
       const target = bounceTarget(card, i)
-      if (!target) {
-        events.push(ev('failed', `test red and no agent station to bounce to`))
-        return { card: { ...card, status: 'failed', failure: 'test' }, events }
+      // test and land bounces share one counter (land_attempts) and one cap, so a
+      // card that never goes green cannot loop forever
+      const attempts = (card.land_attempts ?? 0) + 1
+      const max = Math.max(1, parseInt(process.env.BATON_MAX_LAND_ATTEMPTS || '3', 10) || 3)
+      if (!target || attempts >= max) {
+        events.push(ev('failed', target ? `test red after ${attempts} attempt(s)` : 'test red and no agent station to bounce to', payload.reason))
+        return { card: { ...card, status: 'failed', failure: 'test', land_attempts: attempts }, events }
       }
-      events.push(ev('bounced', `test red → ${target.name}`, payload.reason))
-      return { card: { ...card, station: target.name, leg: 0, status: 'queued', bounce_reason: payload.reason ?? 'test red' }, events }
+      events.push(ev('bounced', `test red (attempt ${attempts}) → ${target.name}`, payload.reason))
+      // the next build leg starts from the bounce bundle (the failure is in its Open findings)
+      return { card: { ...card, station: target.name, leg: 0, status: 'queued', land_attempts: attempts, bounce_reason: payload.reason ?? 'test red', resume_from_bundle: true }, events }
     }
     case 'land_result': {
       // payload: { landed, bounced, reason } — phase 7 fills the real queue
       assertStatus(card, action, ['running'])
       if (!s || s.kind !== 'land') throw new IllegalTransition(card.status, action)
       if (payload.landed) {
-        events.push(ev('landed', payload.summary ?? 'landed on trunk'))
+        events.push(ev('landed', payload.summary ?? 'landed on trunk', payload.body))
         return { card: advance(card, i, events), events }
       }
+      if (payload.pr) {
+        // pr land mode: the human merges; the card waits at the land station
+        events.push(ev('approval_needed', payload.summary ?? `pull request opened: ${payload.url ?? ''}`))
+        return { card: { ...card, status: 'waiting_human', pr_url: payload.url ?? null }, events }
+      }
       const attempts = (card.land_attempts ?? 0) + 1
-      if (payload.bounced && attempts < 3) {
+      const maxAttempts = Math.max(1, parseInt(process.env.BATON_MAX_LAND_ATTEMPTS || '3', 10) || 3)
+      if (payload.bounced && attempts < maxAttempts) {
         const target = bounceTarget(card, i)
         events.push(ev('bounced', `land bounced (attempt ${attempts}) → ${target?.name}`, payload.reason))
-        return { card: { ...card, station: target.name, leg: 0, status: 'queued', land_attempts: attempts, bounce_reason: payload.reason ?? 'land bounced' }, events }
+        return { card: { ...card, station: target.name, leg: 0, status: 'queued', land_attempts: attempts, bounce_reason: payload.reason ?? 'land bounced', resume_from_bundle: true }, events }
       }
       events.push(ev('failed', `land failed after ${attempts} attempt(s)`, payload.reason))
       return { card: { ...card, status: 'failed', land_attempts: attempts, failure: 'land' }, events }

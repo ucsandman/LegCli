@@ -21,7 +21,7 @@ export const STATUSES = ['backlog', 'queued', 'running', 'handing_off', 'waiting
 const CLOSED = ['done', 'failed', 'killed']
 // card.json keys `update --patch` may set (everything else goes through a named flag)
 export const PATCHABLE = ['pipeline', 'leases', 'land_attempts', 'land_mode', 'test_command', 'title', 'trunk',
-  'bounce_reason', 'kill_requested', 'worktree', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'last_bundle']
+  'bounce_reason', 'kill_requested', 'worktree', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'last_bundle', 'pr_url']
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,39}$/i
 
 export const ROOT = process.env.BATON_HOME || join(homedir(), '.baton')

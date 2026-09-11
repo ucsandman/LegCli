@@ -9,13 +9,18 @@
 //   auth         print "another auth source is set" to stderr, exit 1
 //   crash        print a stack trace to stderr, exit 2
 //   no_progress  exit 0 touching nothing
+//   break-test   (land demo) write the target plus a failing test, DONE
+//   fix-test     (land demo) remove the failing test, DONE
+//   resolve-rebase (land demo) git rebase -X theirs <FAKE_TRUNK>, DONE
+// FAKE_CONTENT is the target file's content (default "hi").
 //   fail         (phase 2 alias of crash with a fake secret in stderr) exit 1
 //   sleep        (phase 2 alias of stall)
 //   envcheck     report which forbidden variables leaked into this process
 // FAKE_TARGET names the file success/incomplete write (default hello-fake.txt).
 // FAKE_DELAY_MS waits before acting. Output goes through process.stdout/stderr
 // on purpose: this IS a CLI.
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -48,7 +53,8 @@ function loadFixture(id) {
 }
 
 function writeTarget() {
-  writeFileSync(join(cwd, target), 'hi\n')
+  mkdirSync(dirname(join(cwd, target)), { recursive: true })
+  writeFileSync(join(cwd, target), (process.env.FAKE_CONTENT ?? 'hi') + '\n')
 }
 
 function writeDone(line) {
@@ -63,6 +69,33 @@ if (mode === 'success') {
   writeTarget()
   writeDone(`wrote ${target}`)
   out({ session_id: 'sess-fake', result: `wrote ${target} and .baton/DONE`, prompt_chars: prompt.length, argv: process.argv.slice(2) })
+  process.exit(0)
+} else if (mode === 'break-test') {
+  // land demo: ship the change together with a failing test
+  writeTarget()
+  mkdirSync(join(cwd, 'test'), { recursive: true })
+  writeFileSync(join(cwd, 'test', 'broken.test.mjs'), "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\ntest('broken on purpose by fake-agent', () => { assert.equal(1, 2) })\n")
+  writeDone(`wrote ${target} and a failing test`)
+  out({ session_id: 'sess-fake', result: 'done (with a broken test)' })
+  process.exit(0)
+} else if (mode === 'fix-test') {
+  // land demo: the bounce told us the tests are red; remove the broken one
+  rmSync(join(cwd, 'test', 'broken.test.mjs'), { force: true })
+  writeTarget()
+  writeDone('fixed the failing test')
+  out({ session_id: 'sess-fake', result: 'removed the broken test' })
+  process.exit(0)
+} else if (mode === 'resolve-rebase') {
+  // land demo: the bounce said the rebase conflicted; rebase onto trunk keeping our side
+  const trunk = process.env.FAKE_TRUNK || 'main'
+  const r = spawnSync('git', ['rebase', '-X', 'theirs', trunk], { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  if (r.status !== 0) {
+    spawnSync('git', ['rebase', '--abort'], { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+    process.stderr.write(`fake-agent: rebase failed: ${r.stderr}\n`)
+    process.exit(1)
+  }
+  writeDone(`rebased onto ${trunk}`)
+  out({ session_id: 'sess-fake', result: `rebased onto ${trunk}` })
   process.exit(0)
 } else if (mode === 'incomplete') {
   writeTarget()

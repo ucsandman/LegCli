@@ -133,7 +133,7 @@ let toolsCache = null
 function detectTools() {
   if (toolsCache) return toolsCache
   const probe = (bin, args = ['--version']) => {
-    const r = spawnSync(bin, args, { encoding: 'utf8', timeout: 8000 })
+    const r = spawnSync(bin, args, { windowsHide: true, encoding: 'utf8', timeout: 8000 })
     return !r.error && r.status === 0
   }
   let chb = false

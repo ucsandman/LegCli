@@ -271,6 +271,14 @@
     if (card.status === 'queued' && card.last_event && card.last_event.type === 'blocked_by') {
       label = 'blocked by lease'
       titleAttr = card.last_event.summary
+    } else if (card.status === 'queued' && card.bounce_reason) {
+      label = 'bounced: ' + String(card.bounce_reason).split(':')[0].slice(0, 24)
+      titleAttr = card.bounce_reason
+    } else if (card.status === 'running' && card.station_kind === 'land') {
+      label = 'landing'
+    } else if (card.status === 'waiting_human' && card.pr_url) {
+      label = 'PR open'
+      titleAttr = card.pr_url
     }
     return el('span', { class: `chip status-chip ${cls}`, title: titleAttr }, [label])
   }

@@ -5,14 +5,15 @@
 // only executes.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join } from 'node:path'
 import { transition } from './chain.mjs'
 import { stationIndex } from './pipeline.mjs'
 import { ensure as ensureWorktree } from './worktree.mjs'
 import { renderContract, writeContract, legPrompt } from './contract.mjs'
 import { writeHandoff, loadResume } from './handoff.mjs'
-import { resolveNpmCliEntry } from './adapters/resolve.mjs'
+import { runCommand } from './commands.mjs'
 import { landCard } from './land.mjs'
+import { resolveTestCommand } from './mergequeue.mjs'
 import {
   RUNNER, BATON_ACTOR, readCard, ledgerAppend, ledgerUpdate, cardDir, sleep,
 } from './store.mjs'
@@ -22,7 +23,7 @@ const POLL_MS = Number(process.env.BATON_POLL_MS || 2000)
 const WAITING = ['done', 'failed', 'killed', 'paused', 'waiting_human', 'needs_approval']
 // Patchable card keys the chain machine may change; everything else is a
 // named ledger flag.
-const PATCH_KEYS = ['pipeline', 'leases', 'land_attempts', 'bounce_reason', 'kill_requested', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure']
+const PATCH_KEYS = ['pipeline', 'leases', 'land_attempts', 'bounce_reason', 'kill_requested', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'pr_url']
 
 const log = (msg) => { if (process.env.BATON_QUIET !== '1') process.stderr.write(`[baton] ${msg}\n`) }
 
@@ -53,25 +54,42 @@ export function step(id, action, payload, actor = BATON_ACTOR) {
 
 function runJsonPath(id, n) { return join(cardDir(id), 'runs', String(n), 'run.json') }
 
+function pidAlive(pid) {
+  if (!pid) return false
+  try { process.kill(pid, 0); return true } catch { return false }
+}
+
 async function waitForRun(id, n, { pollMs = POLL_MS } = {}) {
+  let deadSince = null
   for (;;) {
     let run = null
     try { run = JSON.parse(readFileSync(runJsonPath(id, n), 'utf8')) } catch {}
-    if (run && ['exited', 'killed', 'failed', 'orphaned'].includes(run.status)) return run
+    if (run && ['exited', 'killed', 'failed', 'orphaned'].includes(run.status)) {
+      if (run.status === 'orphaned' && !run.outcome) return { ...run, outcome: 'failed', handoff: true, signal: 'none', reason: 'supervisor died before the leg finished' }
+      return run
+    }
     const card = readCard(id)
     if (card && ['killed', 'paused'].includes(card.status)) return { ...(run ?? {}), status: 'interrupted', outcome: 'killed', handoff: false }
+    // A dead supervisor never writes `exited`; do not wait on it forever.
+    if (run && ['launching', 'running'].includes(run.status) && run.supervisor_pid && !pidAlive(run.supervisor_pid)) {
+      deadSince ??= Date.now()
+      if (Date.now() - deadSince > 5000) {
+        try { writeFileSync(runJsonPath(id, n), JSON.stringify({ ...run, status: 'orphaned' }, null, 2) + '\n') } catch {}
+        return { ...run, status: 'orphaned', outcome: 'failed', handoff: true, signal: 'none', reason: `supervisor pid ${run.supervisor_pid} died before the leg finished` }
+      }
+    } else deadSince = null
     await sleep(pollMs)
   }
 }
 
 function changedFiles(worktree) {
-  const r = spawnSync('git', ['status', '--porcelain'], { cwd: worktree, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  const r = spawnSync('git', ['status', '--porcelain'], { cwd: worktree, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
   if (r.status !== 0) return []
   return r.stdout.split(/\r?\n/).filter(Boolean).map((l) => l.slice(3).trim()).filter((f) => f && !f.startsWith('.baton'))
 }
 
 function diffStat(worktree) {
-  const r = spawnSync('git', ['diff', '--stat'], { cwd: worktree, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  const r = spawnSync('git', ['diff', '--stat'], { cwd: worktree, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
   return r.status === 0 ? r.stdout : ''
 }
 
@@ -92,12 +110,19 @@ async function runLeg(card, station, worktree) {
   if (entry.mode) args.push('--mode', entry.mode)
   if (entry.maxTurns) args.push('--max-turns', String(entry.maxTurns))
   const extraEnv = {}
-  if (entry.fakeMode) extraEnv.FAKE_MODE = entry.fakeMode
+  if (entry.fakeMode) {
+    // "a;b;c" = one mode per landing attempt (demo: break-test on the first run, fix-test after the bounce)
+    const modes = String(entry.fakeMode).split(';').map((m) => m.trim()).filter(Boolean)
+    extraEnv.FAKE_MODE = modes[Math.min(card.land_attempts ?? 0, modes.length - 1)]
+  }
   if (entry.fakeFixture) extraEnv.FAKE_LIMIT_FIXTURE = entry.fakeFixture
+  if (entry.fakeTarget) extraEnv.FAKE_TARGET = entry.fakeTarget
+  if (entry.fakeContent) extraEnv.FAKE_CONTENT = entry.fakeContent
+  extraEnv.FAKE_TRUNK = card.trunk || 'main'
   if (Object.keys(extraEnv).length) args.push('--env-json', JSON.stringify(extraEnv))
   let launch
   try {
-    launch = JSON.parse(execFileSync(process.execPath, [RUNNER, ...args], { encoding: 'utf8', env: process.env }))
+    launch = JSON.parse(execFileSync(process.execPath, [RUNNER, ...args], { windowsHide: true, encoding: 'utf8', env: process.env }))
   } catch (err) {
     const text = String(err.stderr ?? err.stdout ?? err.message)
     return { status: 'failed', outcome: 'launch_failed', handoff: true, signal: 'none', reason: scrub(text).slice(0, 300), run: null, exit_code: null }
@@ -107,38 +132,8 @@ async function runLeg(card, station, worktree) {
   return run
 }
 
-function tokenize(cmd) {
-  return cmd.match(/(?:[^\s"]+|"[^"]*")+/g)?.map((t) => t.replace(/^"|"$/g, '')) ?? []
-}
-
-// A test command runs as argv, never through a shell; `npm`/`npx` resolve to
-// node + their JS entry so the Windows .cmd shim is never needed.
-export function resolveCommand(cmd) {
-  const tokens = tokenize(cmd)
-  if (!tokens.length) throw new Error('empty test command')
-  const [bin, ...rest] = tokens
-  if (bin === 'node') return { bin: process.execPath, args: rest }
-  if (bin === 'npm' || bin === 'npx') {
-    const entry = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', `${bin}-cli.js`)
-    const found = existsSync(entry) ? entry : resolveNpmCliEntry('npm', bin)
-    if (!found) throw new Error(`cannot resolve ${bin}'s JS entry`)
-    return { bin: process.execPath, args: [found, ...rest] }
-  }
-  return { bin, args: rest }
-}
-
-export function runTestCommand(cmd, cwd, { timeoutMs = 600000 } = {}) {
-  const { bin, args } = resolveCommand(cmd)
-  const r = spawnSync(bin, args, { cwd, encoding: 'utf8', timeout: timeoutMs, env: { ...process.env, MSYS_NO_PATHCONV: '1', CI: '1' } })
-  const tail = (s) => scrub(String(s ?? '')).trim().split('\n').slice(-20).join('\n')
-  return {
-    green: r.status === 0,
-    status: r.status,
-    timedOut: r.error?.code === 'ETIMEDOUT',
-    tail: tail(`${r.stdout}\n${r.stderr}`),
-    command: `${bin} ${args.join(' ')}`,
-  }
-}
+export { resolveCommand } from './commands.mjs'
+const runTestCommand = (cmd, cwd) => runCommand(cmd, cwd, { tailLines: 20 })
 
 function handoffOn(card, station, run, worktree, extra = []) {
   const entry = station.chain[card.leg]
@@ -202,7 +197,7 @@ export async function runCard(id, { actor = BATON_ACTOR } = {}) {
       continue
     }
     if (st.kind === 'test') {
-      const cmd = st.command ?? card.test_command
+      const cmd = st.command ?? resolveTestCommand(card, wt.path).command
       if (!cmd) {
         ledgerAppend(id, { type: 'status', station: st.name, leg: 0, summary: 'test station: no test command configured; treating as green' })
         card = step(id, 'test_result', { green: true }, actor)
@@ -223,9 +218,16 @@ export async function runCard(id, { actor = BATON_ACTOR } = {}) {
     if (st.kind === 'land') {
       const r = await landCard(card, wt.path)
       if (r.bounced) {
-        handoffOn(card, { name: st.name, chain: [] }, { outcome: 'land_bounced', reason: r.reason, exit_code: null, adapter: 'land' }, wt.path, [`land bounced: ${r.reason}`, r.tail ?? ''])
+        // the failure travels with the card: Open findings of the bounce bundle
+        handoffOn(card, { name: st.name, chain: [] }, { outcome: `land-${r.reason}`, reason: r.detail ?? r.reason, exit_code: null, adapter: 'land' }, wt.path,
+          [`land failure: ${r.reason}`, r.detail ?? '', ...(r.files?.length ? [`conflicting files: ${r.files.join(', ')}`] : [])].filter(Boolean))
       }
-      card = step(id, 'land_result', r, actor)
+      if (!r.landed && !r.bounced && !r.pr) {
+        ledgerAppend(id, { type: 'error', station: st.name, leg: 0, summary: `land failed: ${scrub(r.reason ?? 'unknown').slice(0, 200)}` })
+        card = step(id, 'land_result', { bounced: true, reason: r.reason }, actor)
+        continue
+      }
+      card = step(id, 'land_result', { ...r, reason: r.detail ? `${r.reason}: ${r.detail}` : r.reason }, actor)
       continue
     }
     if (st.kind === 'human') {
@@ -260,7 +262,7 @@ export function killActiveRun(id) {
     if (!['launching', 'running'].includes(run.status)) continue
     try { writeFileSync(join(runsDir, String(n), 'run.json'), JSON.stringify({ ...run, kill_requested: true }, null, 2) + '\n') } catch {}
     if (run.agent_pid) {
-      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(run.agent_pid), '/T', '/F'], { encoding: 'utf8' })
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(run.agent_pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' })
       else { try { process.kill(run.agent_pid, 'SIGKILL') } catch {} }
       killed = true
     }

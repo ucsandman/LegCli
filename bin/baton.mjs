@@ -36,6 +36,7 @@ async function cardAdd(args) {
     const card = await createCard({
       repo: args.repo, task: args.task, chain: args.chain, pipeline: args.pipeline,
       mode: args.mode, maxTurns: args['max-turns'], fakeMode: args['fake-mode'], fakeFixture: args['fake-fixture'],
+      fakeTarget: args['fake-target'], fakeContent: args['fake-content'],
       approve: args.approve, leases: args.leases, trunk: args.trunk, landMode: args['land-mode'],
       testCommand: args['test-command'], title: args.title, slug: args.slug, queue: Boolean(args.queue),
     }, { type: 'human', id: args.actor || 'local' })
@@ -115,7 +116,7 @@ async function main() {
     if (cmd === 'stop') {
       const st = schedulerStatus()
       if (!st.running) return out('scheduler not running')
-      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(st.pid), '/T', '/F'], { encoding: 'utf8' })
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(st.pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' })
       else process.kill(st.pid, 'SIGTERM')
       try { rmSync(pidfile(), { force: true }) } catch {}
       return out(`scheduler stopped (pid ${st.pid})`)

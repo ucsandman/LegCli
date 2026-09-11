@@ -43,7 +43,7 @@ export function readRuns(id) {
 export function readEvents(id) { return ledgerReadEvents(id) }
 
 function ledger(args) {
-  return execFileSync(process.execPath, [LEDGER, ...args], { encoding: 'utf8', env: process.env })
+  return execFileSync(process.execPath, [LEDGER, ...args], { windowsHide: true, encoding: 'utf8', env: process.env })
 }
 
 export function ledgerCreate(fields) {

@@ -20,7 +20,9 @@ export function pickRunnable(cards, { max = MAX_CONCURRENT, landing = new Set() 
   const blocked = []
   for (const c of queued) {
     if (running.length + start.length >= max) { blocked.push({ card: c, conflicts: [], reason: `concurrency cap ${max}` }); continue }
-    if (landing.has(c.repo)) { blocked.push({ card: c, conflicts: [], reason: 'repo is landing' }); continue }
+    // a landing repo only holds back other cards that want to land; build stations keep running
+    const wantsLand = (c.pipeline ?? []).find((s) => s.name === c.station)?.kind === 'land'
+    if (wantsLand && landing.has(c.repo)) { blocked.push({ card: c, conflicts: [], reason: 'repo is landing' }); continue }
     const cf = conflicts({ card_id: c.card_id, leases: c.leases }, [...running, ...start].filter((r) => r.repo === c.repo))
     if (cf.length) { blocked.push({ card: c, conflicts: cf, reason: 'lease overlap' }); continue }
     start.push(c)

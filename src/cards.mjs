@@ -20,9 +20,9 @@ function kv(raw) {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw
   const m = {}
   for (const part of list(raw)) {
-    const [k, v] = part.split('=')
-    if (!k || v === undefined) throw new CardInputError(`expected adapter=value, got "${part}"`)
-    m[k] = v
+    const eq = part.indexOf('=')
+    if (eq <= 0) throw new CardInputError(`expected adapter=value, got "${part}"`)
+    m[part.slice(0, eq).trim()] = part.slice(eq + 1)
   }
   return m
 }
@@ -40,6 +40,8 @@ export async function createCard(input, actor = { type: 'human', id: 'local' }) 
   const turns = kv(input.maxTurns ?? input.max_turns)
   const fakeModes = kv(input.fakeMode ?? input.fake_mode)
   const fakeFixtures = kv(input.fakeFixture ?? input.fake_fixture)
+  const fakeTargets = kv(input.fakeTarget ?? input.fake_target)
+  const fakeContents = kv(input.fakeContent ?? input.fake_content)
   const approve = list(input.approve)
   chain = chain.map((e) => ({
     ...e,
@@ -47,6 +49,8 @@ export async function createCard(input, actor = { type: 'human', id: 'local' }) 
     ...(turns[e.adapter] ? { maxTurns: parseInt(turns[e.adapter], 10) } : {}),
     ...(fakeModes[e.adapter] ? { fakeMode: fakeModes[e.adapter] } : {}),
     ...(fakeFixtures[e.adapter] ? { fakeFixture: fakeFixtures[e.adapter] } : {}),
+    ...(fakeTargets[e.adapter] ? { fakeTarget: fakeTargets[e.adapter] } : {}),
+    ...(fakeContents[e.adapter] ? { fakeContent: fakeContents[e.adapter] } : {}),
     ...(approve.includes(e.adapter) ? { approve: true } : {}),
   }))
   const pipelineArg = input.pipeline ?? 'build'

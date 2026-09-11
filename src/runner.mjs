@@ -81,7 +81,7 @@ function writeRun(id, n, r) {
 function ledgerSafe(argsArr, log) {
   try {
     execFileSync(process.execPath, [LEDGER, ...argsArr],
-      { encoding: 'utf8', env: process.env })
+      { windowsHide: true, encoding: 'utf8', env: process.env })
     return true
   } catch (err) {
     log(`ledger write failed: ${String(err.message).slice(0, 300)}`)
@@ -122,7 +122,7 @@ function killTree(pid, log) {
     return
   }
   if (process.platform === 'win32') {
-    const r = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8' })
+    const r = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' })
     if (r.status !== 0) log(`taskkill failed: ${String(r.stderr ?? '').slice(0, 300)}`)
   } else {
     try { process.kill(-pid, 'SIGKILL') } catch { try { process.kill(pid, 'SIGKILL') } catch {} }
@@ -133,12 +133,12 @@ function killTree(pid, log) {
 // Cheap and worktree-agnostic: porcelain status plus HEAD movement. Not a git
 // repo → null (the classifier then trusts only the DONE marker).
 function gitHead(cwd) {
-  const r = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  const r = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
   return r.status === 0 ? r.stdout.trim() : null
 }
 
 function gitDiff(cwd, headAtStart) {
-  const r = spawnSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  const r = spawnSync('git', ['status', '--porcelain'], { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
   if (r.status !== 0) return null
   const files = r.stdout.split(/\r?\n/).filter(Boolean).filter((l) => !/\.baton[\\/]/.test(l)).length
   const head = gitHead(cwd)
@@ -284,7 +284,7 @@ async function main() {
     log(`spawning leg: adapter=${adapterName} run=${n} mode=${opts.mode ?? 'default'} cwd=${cwd}`)
     ledgerAppend(id, 'leg_started', `leg started: adapter=${adapterName} run=${n} mode=${opts.mode ?? 'default'}`, null, log)
     const child = spawn(spec.bin, spec.args, {
-      cwd, stdio: [adapter.stdin === 'pipe' ? 'pipe' : 'ignore', outFd, errFd], env: childEnv,
+      cwd, windowsHide: true, stdio: [adapter.stdin === 'pipe' ? 'pipe' : 'ignore', outFd, errFd], env: childEnv,
     })
     if (adapter.stdin === 'pipe') {
       child.stdin.on('error', () => {})

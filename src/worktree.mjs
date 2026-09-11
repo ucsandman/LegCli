@@ -8,7 +8,7 @@ import { join, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 
 function git(cwd, argv) {
-  return execFileSync('git', argv, { cwd, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  return execFileSync('git', argv, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
 }
 
 function samePath(a, b) {

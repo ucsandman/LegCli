@@ -34,7 +34,9 @@ test('pickRunnable: a card started this tick blocks a later overlapping one; no 
 test('pickRunnable: leases only conflict within the same repo; a landing repo blocks its queued cards', () => {
   const { start } = pickRunnable([c('c1', { status: 'running', repo: 'A', leases: ['src/**'] }), c('c2', { repo: 'B', leases: ['src/**'] })], { max: 5 })
   assert.deepEqual(start.map((x) => x.card_id), ['c2'])
-  const landing = pickRunnable([c('c2', { repo: 'B' })], { max: 5, landing: new Set(['B']) })
-  assert.deepEqual(landing.start, [])
+  const landPipe = [{ name: 'build', kind: 'agent', chain: [{ adapter: 'fake' }] }, { name: 'land', kind: 'land' }]
+  const landing = pickRunnable([c('c2', { repo: 'B', station: 'land', pipeline: landPipe }), c('c3', { repo: 'B', station: 'build', pipeline: landPipe })], { max: 5, landing: new Set(['B']) })
+  assert.deepEqual(landing.start.map((x) => x.card_id), ['c3'], 'a build station keeps running while the repo lands')
+  assert.equal(landing.blocked[0].card.card_id, 'c2')
   assert.equal(landing.blocked[0].reason, 'repo is landing')
 })

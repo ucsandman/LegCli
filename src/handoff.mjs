@@ -19,13 +19,13 @@ export function resolveChb() {
     resolved = { bin: process.env.BATON_CHB_BIN, prefix: [] }
     return resolved
   }
-  const direct = spawnSync('context-handoff-bundle', ['--help'], { encoding: 'utf8', timeout: 20000 })
+  const direct = spawnSync('context-handoff-bundle', ['--help'], { windowsHide: true, encoding: 'utf8', timeout: 20000 })
   if (!direct.error && direct.status === 0) {
     resolved = { bin: 'context-handoff-bundle', prefix: [] }
     return resolved
   }
   for (const py of ['python', 'python3', 'py']) {
-    const r = spawnSync(py, ['-m', 'context_handoff_bundle', '--help'], { encoding: 'utf8', timeout: 20000 })
+    const r = spawnSync(py, ['-m', 'context_handoff_bundle', '--help'], { windowsHide: true, encoding: 'utf8', timeout: 20000 })
     if (!r.error && r.status === 0) {
       resolved = { bin: py, prefix: ['-m', 'context_handoff_bundle'] }
       return resolved
@@ -36,7 +36,7 @@ export function resolveChb() {
 
 export function chb(args, { cwd, timeout = 120000 } = {}) {
   const { bin, prefix } = resolveChb()
-  const r = spawnSync(bin, [...prefix, ...args], { cwd, encoding: 'utf8', timeout, env: process.env })
+  const r = spawnSync(bin, [...prefix, ...args], { cwd, windowsHide: true, encoding: 'utf8', timeout, env: process.env })
   if (r.error) throw new Error(`context-handoff-bundle ${args[0]} failed to start: ${r.error.message}`)
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }
 }
@@ -46,7 +46,7 @@ export function chbVersion() {
   const v = chb(['--version'])
   let text = v.status === 0 ? v.stdout.trim().split(/\s+/).pop() : null
   if (!text) {
-    const r = spawnSync('python', ['-c', "from importlib.metadata import version; print(version('context-handoff-bundle'))"], { encoding: 'utf8', timeout: 20000 })
+    const r = spawnSync('python', ['-c', "from importlib.metadata import version; print(version('context-handoff-bundle'))"], { windowsHide: true, encoding: 'utf8', timeout: 20000 })
     text = r.status === 0 ? r.stdout.trim() : null
   }
   return text
