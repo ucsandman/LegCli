@@ -5,3 +5,5 @@ node_modules/
 *.log
 docs/screenshots/*.tmp
 .baton-worktrees/
+costclaw-report.html
+costclaw-out/
