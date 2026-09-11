@@ -29,7 +29,9 @@
     "LICENSE",
     "NOTICE",
     "CHANGELOG.md",
-    "docs"
+    "docs",
+    "fixtures/limits",
+    "fixtures/live"
   ],
   "engines": {
     "node": ">=22"

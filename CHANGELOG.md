@@ -14,6 +14,10 @@ adds `baton share`). The license is the Baton License Agreement (commercial, sou
   4 once nothing is left; `baton share on` needs Team (the trial counts).
   `baton license status|activate|deactivate|refresh`. `scripts/license-sign.mjs`
   signs a key by hand. Ten tests.
+- **The npm package runs.** `files` now ships `fixtures/limits` and
+  `fixtures/live`, which `src/limits.mjs` and `src/live-capture.mjs` read at
+  load; 0.3.0 from npm crashed on every command for that reason. A lessons
+  test packs the tarball and checks it.
 - **Checkout.** Stripe payment links, a `site/api/key` function that turns a
   paid checkout into a key (deterministic per purchase), a webhook that emails
   it through Resend, and `site/thanks` that shows it. `scripts/stripe-setup.mjs`

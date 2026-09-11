@@ -1,4 +1,6 @@
-// One named test per LESSONS.md line that applies to Baton (docs/REUSE.md
+  const npmCli = join(process.env.APPDATA || '', 'npm', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  const out = execFileSync(process.execPath, [npmCli, 'pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+  const files = JSON.parse(out)[0].files.map((f) => f.path)// One named test per LESSONS.md line that applies to Baton (docs/REUSE.md
 // § LESSONS.md). All run without a real CLI.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -199,4 +201,18 @@ test('msys-no-pathconv: every git spawn in src/ sets MSYS_NO_PATHCONV=1 (and non
   assert.ok(sites.length >= 3, 'expected git spawn sites in src/')
   for (const s of sites) assert.match(s, /MSYS_NO_PATHCONV: '1'/, s)
   assert.deepEqual(grep(/\['git', \[.*'\/[a-z]/, walk(SRC)), [])
+})
+
+// 2026-09-11: 0.3.0 on npm crashed on every command because src/limits.mjs
+// reads fixtures/limits at load time and `files` did not ship it. The
+// tarball must carry every directory the runtime reads.
+test('the npm tarball ships what src reads at runtime, and never an env file', () => {
+  const npmCli = join(process.env.APPDATA || '', 'npm', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  const r = spawnSync(process.execPath, [npmCli, 'pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: ROOT, encoding: 'utf8' })
+  assert.equal(r.status, 0, r.stderr)
+  const files = JSON.parse(r.stdout)[0].files.map((f) => f.path)
+  for (const need of ['src/limits.mjs', 'src/license.mjs', 'bin/baton.mjs', 'LICENSE', 'fixtures/limits/', 'fixtures/live/', 'docs/faq.md']) {
+    assert.ok(files.some((f) => f.startsWith(need)), `tarball is missing ${need}`)
+  }
+  assert.deepEqual(files.filter((f) => /(^|\/)\.env(\.|$)/.test(f) && !f.endsWith('.env.example')), [], 'an env file is in the tarball')
 })
