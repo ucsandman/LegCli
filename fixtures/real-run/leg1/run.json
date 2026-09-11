@@ -1,0 +1,28 @@
+{
+  "card_id": "card-20260911-0232-real-calc",
+  "run": 1,
+  "adapter": "claude",
+  "mode": null,
+  "max_turns": 2,
+  "resume": null,
+  "cwd": "~\\AppData\\Local\\Temp\\claude\\C--Projects\\49952fac-5ff4-486c-8395-9973cebdfdcb\\scratchpad\\toy-real\\.baton-worktrees\\card-20260911-0232-real-calc",
+  "status": "exited",
+  "supervisor_pid": 44580,
+  "agent_pid": 60684,
+  "started_at": "2026-09-11T02:32:51.138Z",
+  "outcome": "failed",
+  "updated_at": "2026-09-11T02:33:23.040Z",
+  "exit_code": 1,
+  "session_id": "977200df-eb09-4c25-974f-a6dbd5405fec",
+  "ended_at": "2026-09-11T02:33:22.963Z",
+  "signal": "claude-max-turns",
+  "handoff": true,
+  "reason": "budget signal claude-max-turns; exit 1",
+  "done_marker": false,
+  "diff": {
+    "changed": true,
+    "files": 1,
+    "head_at_start": "ee7df2fb486cb98d8c8d422c2ad7012ccfeef1ca",
+    "head": "ee7df2fb486cb98d8c8d422c2ad7012ccfeef1ca"
+  }
+}

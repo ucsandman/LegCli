@@ -1,0 +1,76 @@
+# Real run: claude → codex, no fakes
+
+One task, two real logged-in CLIs, the real handoff path. Run on 2026-09-10 on
+a scratch repo (`toy-real`: README, package.json with `"test": "node --test"`,
+one commit). Evidence: `fixtures/real-run/` (run records, logs, bundle `show`,
+events; home paths scrubbed to `~`).
+
+## Command
+
+```
+node bin/baton.mjs card add --repo <toy-real> --chain claude,codex --max-turns claude=2 --mode codex=workspace-write --pipeline build --title "calc module (real run)" --task "Create src/calc.mjs exporting add, sub, mul and div (div throws on division by zero). Create test/calc.test.mjs using node:test covering all four functions including the divide-by-zero case. Run node --test and fix until green. Then write .baton/DONE."
+node bin/baton.mjs card run card-20260911-0232-real-calc
+```
+
+`--max-turns claude=2` is the handoff trigger: the task needs more than two
+turns, so the first leg ends before the DONE marker.
+
+## Timeline (UTC, from `fixtures/real-run/events.jsonl`)
+
+| time | event | detail |
+|------|-------|--------|
+| 02:32:50 | card_created | actor human:local, chain claude > codex |
+| 02:32:51 | leg_started | adapter `claude`, run 1, `--permission-mode acceptEdits --max-turns 2` |
+| 02:33:23 | leg_exited | **outcome `failed`**, exit 1, signal `claude-max-turns` (32 s) |
+| 02:33:24 | handoff_written | bundle `20260911-023324-baton-card-20260911-0232-real-calc-build-leg0`, quality **strong (0.65)** |
+| 02:33:25 | leg_started | adapter `codex`, run 2, `-s workspace-write` |
+| 02:35:39 | leg_exited | **outcome `completed`**, exit 0 (2 m 14 s) |
+| 02:35:40 | station_done, done | |
+
+Wall time: 2 m 50 s. `grep -c fake fixtures/real-run/events.jsonl` = 0.
+
+## Leg 1 (claude)
+
+The result JSON on stdout (`fixtures/real-run/leg1/out.log`) is the signal that
+was docs-only until this run and is now observed-live:
+
+```
+{"type":"result","subtype":"error_max_turns","is_error":true,"stop_reason":"tool_use","terminal_reason":"max_turns","num_turns":3, …}
+```
+
+Exit code 1, empty stderr, no `.baton/DONE`; the diff evidence saw one changed
+path (`.dashclaw-local/`, written by the machine's Claude Code hooks, not the
+task). Classification: `budget` signal `claude-max-turns` + non-zero exit →
+`failed`, handoff. (A budget cap is Baton's own setting, not a usage limit; it
+still hands off.)
+
+## The bundle
+
+`fixtures/real-run/bundle-show.txt`: Findings carry "Done so far", "Diff since
+leg start", the touched path; Open questions carry the outcome and exit code.
+Leg 2's prompt started with `context-handoff-bundle load` output followed by
+the contract (`.baton/CONTRACT.md`).
+
+## Leg 2 (codex)
+
+`fixtures/real-run/leg2/out.excerpt.log` (JSONL): codex read the resume,
+wrote `src/calc.mjs` and `test/calc.test.mjs`, ran the tests itself (its
+sandbox allowed `node --test` here; LESSONS 07-13 recorded a policy block on a
+different machine setup), wrote `.baton/PROGRESS.md` and `.baton/DONE`, and
+printed a summary. Verified afterwards in the worktree:
+
+```
+$ ls src test .baton
+src: calc.mjs   test: calc.test.mjs   .baton: CONTRACT.md DONE PROGRESS.md handoff-build-leg0.md
+$ node --test
+ℹ tests 5  ℹ pass 5  ℹ fail 0
+```
+
+## What this proves
+
+- The subscription logins were used (ANTHROPIC_API_KEY and OPENAI_API_KEY were
+  set in the shell and stripped by the adapters; no "another auth source"
+  warning appeared in either stderr).
+- The handoff is CLI-agnostic: the bundle written after a Claude leg was
+  consumed by a Codex leg through the same `load` + contract prompt.
+- The DONE-marker contract classified both legs without parsing prose.

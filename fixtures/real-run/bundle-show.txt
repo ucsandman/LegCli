@@ -1,0 +1,23 @@
+Bundle: 20260911-023324-baton-card-20260911-0232-real-calc-build-leg0
+Title:  baton card-20260911-0232-real-calc build leg 0 claude
+Slug:   baton-card-20260911-0232-real-calc-build-leg0
+Created: 2026-09-11T02:33:24.195684+00:00
+Repo:   ~/AppData/Local/Temp/claude/C--Projects/49952fac-5ff4-486c-8395-9973cebdfdcb/scratchpad/toy-real/.baton-worktrees/card-20260911-0232-real-calc
+Branch: baton/card-20260911-0232-real-calc
+Tags:   baton
+Path:   ~\AppData\Local\Temp\claude\C--Projects\49952fac-5ff4-486c-8395-9973cebdfdcb\scratchpad\toy-real\.baton-worktrees\card-20260911-0232-real-calc\.context-handoffs\20260911-023324-baton-card-20260911-0232-real-calc-build-leg0
+
+Quality: strong (0.65)
+
+Fresh:  yes
+
+Summary: Context handoff for baton card-20260911-0232-real-calc build leg 0 claude. Generated to preserve session understanding for cross-terminal reuse.
+
+Findings (3):
+  - F1 Done so far: (no PROGRESS.md entries from the previous agent)
+  - F2 Diff since leg start: 1 file(s) changed
+  - F3 Diff touches .dashclaw-local/
+
+Open Questions (2):
+  - Q1 Open findings: previous leg ended failed (claude-max-turns): budget signal claude-max-turns; exit 1
+  - Q2 Open findings: exit code 1

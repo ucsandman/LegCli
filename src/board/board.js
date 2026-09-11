@@ -589,8 +589,10 @@
     const approveCheckbox = el('input', { type: 'checkbox', 'aria-label': 'Approve before this leg' })
     const approveLabel = el('label', {}, [approveCheckbox, ' approve'])
     const turnsInput = el('input', { type: 'number', min: '0', 'aria-label': 'Max turns', placeholder: 'max turns' })
+    // fake adapters only: which scripted behaviour the fake agent plays (limit, success, …)
+    const fakeInput = el('input', { type: 'text', 'aria-label': 'Fake mode', placeholder: 'fake mode' })
     const removeBtn = el('button', { type: 'button', 'aria-label': 'Remove chain row' }, ['Remove'])
-    const row = el('div', { class: 'chain-row' }, [adapterSelect, modeSelect, approveLabel, turnsInput, removeBtn])
+    const row = el('div', { class: 'chain-row' }, [adapterSelect, modeSelect, approveLabel, turnsInput, fakeInput, removeBtn])
     removeBtn.addEventListener('click', () => row.remove())
 
     function populateModes() {
@@ -599,11 +601,12 @@
       const allowed = adapter ? adapter.modes.allowed : []
       for (const m of allowed) modeSelect.appendChild(el('option', { value: m }, [m]))
       if (adapter && adapter.modes.default) modeSelect.value = adapter.modes.default
+      fakeInput.hidden = !(adapter && adapter.fake)
     }
     adapterSelect.addEventListener('change', populateModes)
     populateModes()
 
-    row.fields = { adapterSelect, modeSelect, approveCheckbox, turnsInput }
+    row.fields = { adapterSelect, modeSelect, approveCheckbox, turnsInput, fakeInput }
     ui.chainRows.appendChild(row)
   }
 
@@ -631,6 +634,7 @@
         mode: row.fields.modeSelect.value,
         approve: row.fields.approveCheckbox.checked,
         turns: row.fields.turnsInput.value.trim(),
+        fake: row.fields.fakeInput.hidden ? '' : row.fields.fakeInput.value.trim(),
       }))
       .filter((r) => r.adapter)
 
@@ -647,6 +651,7 @@
       mode: rows.filter((r) => r.mode).map((r) => `${r.adapter}=${r.mode}`).join(','),
       approve: rows.filter((r) => r.approve).map((r) => r.adapter).join(','),
       maxTurns: rows.filter((r) => r.turns).map((r) => `${r.adapter}=${r.turns}`).join(','),
+      fake_mode: rows.filter((r) => r.fake).map((r) => `${r.adapter}=${r.fake}`).join(','),
       queue: ui.queue.checked,
     }
     try {

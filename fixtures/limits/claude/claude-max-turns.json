@@ -1,11 +1,11 @@
 {
   "id": "claude-max-turns",
   "adapter": "claude",
-  "source": "docs-only",
-  "produced_by": "https://code.claude.com/docs/en/cli-reference (--max-turns: \"Exits with an error when the limit is reached\")",
-  "where": "any",
-  "text": "(no message text documented; the run ends with an error once --max-turns is reached; phase 10 records the live result JSON)",
-  "pattern": "error_max_turns|max.turns",
-  "exit_code": null,
+  "source": "observed-live",
+  "produced_by": "fixtures/real-run/leg1/out.log: `claude -p --max-turns 2` on the real run, 2026-09-10 (docs: https://code.claude.com/docs/en/cli-reference --max-turns \"Exits with an error when the limit is reached\")",
+  "where": "stdout",
+  "text": "{\"type\":\"result\",\"subtype\":\"error_max_turns\",\"is_error\":true,\"stop_reason\":\"tool_use\",\"terminal_reason\":\"max_turns\",\"num_turns\":3}",
+  "pattern": "error_max_turns|\"terminal_reason\":\\s*\"max_turns\"",
+  "exit_code": 1,
   "classification": "budget"
 }
