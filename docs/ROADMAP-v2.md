@@ -1,4 +1,4 @@
-# Roadmap v2 — the software factory
+# Roadmap v2: the software factory
 
 v1 ships one wedge: a card runs a fallback chain of coding-agent CLIs, and when
 a leg hits its usage limit the next agent resumes from a handoff bundle in the

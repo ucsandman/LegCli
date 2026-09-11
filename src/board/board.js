@@ -283,6 +283,13 @@
     return el('span', { class: `chip status-chip ${cls}`, title: titleAttr }, [label])
   }
 
+  function shortWorktree(card) {
+    if (!card.worktree) return ''
+    const parts = String(card.worktree).split(/[\\/]/).filter(Boolean)
+    const i = parts.lastIndexOf('.baton-worktrees')
+    return i > 0 ? parts.slice(i - 1).join('/') : parts.slice(-2).join('/')
+  }
+
   // A bounced card carries its reason until it lands or ends: "bounced: test
   // red (attempt 1)" while it is queued, running or handing off again.
   function buildBounceChip(card) {
@@ -501,7 +508,9 @@
     content.appendChild(el('p', {}, [card.task || '']))
 
     content.appendChild(el('h3', {}, ['Worktree']))
-    content.appendChild(el('p', { class: 'mono' }, [card.worktree || '(none)']))
+    // shown relative to the repo (the full path is the tooltip): a shared board
+    // should not print an operator's home directory
+    content.appendChild(el('p', { class: 'mono', title: card.worktree || '' }, [shortWorktree(card) || '(none)']))
 
     content.appendChild(el('h3', {}, ['Pipeline']))
     const pipelineList = el('ol', { class: 'pipeline-list' })
@@ -526,7 +535,11 @@
     if (detail.bundle) {
       const pathText = detail.bundle.path || ''
       const copyBtn = el('button', { type: 'button', onclick: () => copyToClipboard(pathText) }, ['Copy path'])
-      content.appendChild(el('p', {}, [`${detail.bundle.id}: `, el('span', { class: 'mono' }, [pathText]), copyBtn]))
+      // shown from the worktree down; Copy path copies the full path
+      const parts = pathText.split(/[\\/]/).filter(Boolean)
+      const wt = parts.lastIndexOf('.baton-worktrees')
+      const shown = wt >= 0 ? parts.slice(wt + 2).join('/') : parts.slice(-3).join('/')
+      content.appendChild(el('p', {}, [`${detail.bundle.id}: `, el('span', { class: 'mono', title: pathText }, [shown || pathText]), copyBtn]))
     } else {
       content.appendChild(el('p', {}, ['no bundle']))
     }

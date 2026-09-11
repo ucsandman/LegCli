@@ -1,54 +1,137 @@
 # baton
 
-A kanban board that hands a coding agent's unfinished work to the next agent
-when the first one hits its usage limit.
+**A local kanban board that hands a coding agent's unfinished work to the next agent when the first one hits its usage limit.**
 
-You drop a task card on a local board and give it a fallback chain: Claude Code,
+[![CI](https://github.com/ucsandman/baton/actions/workflows/ci.yml/badge.svg)](https://github.com/ucsandman/baton/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
+[![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](package.json)
+[![Local first](https://img.shields.io/badge/runs-on%20your%20machine-informational.svg)](#network-exposure)
+
+![The Baton board: cards moving through stations, one running, one blocked by a lease, one bounced by red tests](docs/screenshots/kanban-final-1280.png)
+
+You drop a task card on the board and give it a fallback chain: Claude Code,
 then Codex, then Gemini CLI, then agy. Baton runs the first agent headless in
-its own git worktree. When that agent hits a session or weekly limit, stalls, or
-exits without finishing, Baton writes a handoff bundle (task, what got done, the
-diff, open findings) and starts the next agent in the same worktree from that
-bundle. Nothing is retyped and nothing is lost between "you've hit your limit"
-and the next login. The demand signal that started it: @sophiamyang asked on
-2026-09-10 for exactly this, a harness that switches CLIs on the limit instead
-of waiting five hours.
+its own git worktree. When that agent hits a session or weekly limit, stalls,
+or exits without finishing, Baton writes a handoff bundle (task, what got
+done, the diff, open findings) and starts the next agent in the same worktree
+from that bundle. Nothing is retyped and nothing is lost between "you've hit
+your limit" and the next login.
 
-The board is also the first slice of a factory floor. @mikehostetler's
-"massive multiplayer software factory" (2026-09-10) is where this goes: many
-cards, many agents and a few humans working one repo at once, stations handing
-work to each other, trunk moving in small landed pieces all day, every human
-judgment a button. v1 already has the shapes: stations instead of fixed
+The board is also the first slice of a factory floor: many cards, many agents
+and a few humans working one repo at once, stations handing work to each
+other, trunk moving in small landed pieces all day, every human judgment a
+button. Version 0.1 already has the shapes: stations instead of fixed
 columns, a scheduler with path leases, a merge queue, and a ledger where every
 event names its actor. The plan is in [docs/ROADMAP-v2.md](docs/ROADMAP-v2.md).
+
+## Contents
+
+- [What it does](#what-it-does)
+- [60-second run](#60-second-run)
+- [How it works](#how-it-works)
+- [Screenshots](#screenshots)
+- [Pipelines and presets](#pipelines-and-presets)
+- [Chains and modes](#chains-and-modes)
+- [Board buttons](#board-buttons)
+- [Floor view](#floor-view)
+- [Land station](#land-station)
+- [How a handoff works](#how-a-handoff-works)
+- [Limit signals](#limit-signals)
+- [Safety rules](#safety-rules)
+- [Network exposure](#network-exposure)
+- [Optional syncs](#optional-syncs)
+- [CLI reference](#cli-reference)
+- [Troubleshooting](#troubleshooting)
+- [Documentation](#documentation)
+- [Non-goals for v0.1](#non-goals-for-v01)
+- [Contributing](#contributing)
+- [Privacy and attribution](#privacy-and-attribution)
+- [License](#license)
 
 ## What it does
 
 - Runs one card at a time per agent, each in `<repo>/.baton-worktrees/<card>`
-  on branch `baton/<card>`, so the repo root never gets an agent's half-work.
+  on branch `baton/<card>`, so the repo root never holds an agent's half-work.
 - Detects limits, stalls, crashes and "exit 0 but not done" from the CLI's own
   output and a DONE marker, then hands off with a
   [context-handoff-bundle](https://pypi.org/project/context-handoff-bundle/).
 - Shows every card, leg, event and decision on a board served from a local
-  ledger; every judgment (approve, pause, kill, reassign, hand off now, rerun)
+  ledger. Every judgment (approve, pause, kill, reassign, hand off now, rerun)
   is a button.
 - Optionally lands the work itself: rebase, test, fast-forward trunk, or bounce
   the card back to build with the failure in the bundle.
+- Uses your logged-in subscription CLIs only. No API keys, no bypass flags,
+  no shell spawns, zero runtime dependencies.
 
 ## 60-second run
 
+Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one
+logged-in agent CLI (`claude`, `codex`, `gemini` or `agy`). The `fake`
+adapter needs none of them, so you can try the board on any machine.
+
 ```
+git clone https://github.com/ucsandman/baton.git
+cd baton
 npm install
 pip install -U context-handoff-bundle
 npm start
 ```
 
 `npm start` runs the preflight (Node, git, the bundle CLI, each agent CLI),
-boots the server on http://127.0.0.1:4747, opens the board in your browser, and
-streams prefixed, secret-redacted logs. Ctrl-C stops the server and any running
-agent. `node bin/baton.mjs up --dry` shows the preflight table and exits.
+boots the server on http://127.0.0.1:4747, opens the board in your browser,
+and streams prefixed, secret-redacted logs. Ctrl-C stops the server and any
+running agent. `node bin/baton.mjs up --dry` prints the preflight table and
+exits.
 
 Then click **New card**, pick the repo, type the task, order the chain, and
 press **Run**. The card moves across the columns on its own.
+
+Want to see a handoff without spending any subscription usage?
+
+```
+node bin/baton.mjs card add --repo <path-to-a-git-repo> --chain fake-claude,fake-codex \
+  --fake-mode fake-claude=limit --task "Add a greeting.txt file" --queue
+```
+
+The first leg prints a recorded "You've hit your session limit" message, Baton
+writes the bundle, and the second leg finishes from it. The full walkthrough
+with screenshots is in [docs/DEMO.md](docs/DEMO.md); the real run with Claude
+Code and Codex is in [docs/real-run.md](docs/real-run.md).
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Card on the board] --> B[Scheduler picks it<br/>leases free, slot free]
+    B --> C[Worktree<br/>repo/.baton-worktrees/card]
+    C --> D[Agent leg<br/>claude -p / codex exec / ...]
+    D --> E{Classify the exit}
+    E -->|DONE marker| F[Next station]
+    E -->|limit, stall, crash,<br/>exit 0 without DONE| G[Handoff bundle]
+    G --> H[Next agent in the chain,<br/>same worktree]
+    H --> D
+    F --> I{Station kind}
+    I -->|test| J[Run the repo tests]
+    I -->|land| K[Rebase, test,<br/>fast-forward trunk]
+    I -->|human| L[Wait for a button]
+    J -->|red| G
+    K -->|conflict or red| G
+```
+
+Every state change is an event in a local ledger (`~/.baton` by default). The
+board reads only the ledger, over server-sent events, so what you see is what
+happened. The words used on the board, in events and in these docs are listed
+in [docs/VOCABULARY.md](docs/VOCABULARY.md).
+
+## Screenshots
+
+| Detail drawer | Floor view |
+|---|---|
+| ![Detail drawer with the chain, events, runs and bundle](docs/screenshots/board-drawer.png) | ![Floor view with running cards, leases and the trunk lane](docs/screenshots/floor-landing.png) |
+
+Phone width works too: [kanban at 400 px](docs/screenshots/kanban-final-400.png),
+[floor at 400 px](docs/screenshots/floor-final-400.png).
 
 ## Pipelines and presets
 
@@ -57,8 +140,8 @@ A pipeline is a list of stations. Three presets ship:
 | preset | stations |
 |--------|----------|
 | `build` | build (agent) |
-| `build-land` | build (agent) → test → land |
-| `factory` | plan (agent) → build (agent) → review (agent) → test → land |
+| `build-land` | build (agent), test, land |
+| `factory` | plan (agent), build (agent), review (agent), test, land |
 
 Station kinds: `agent` (runs the chain with that station's prompt), `test`
 (runs the repo's test command, bounces on red), `land` (merge queue, see
@@ -68,7 +151,7 @@ last. Custom pipelines are a JSON file passed as `--pipeline <file>`.
 ## Chains and modes
 
 A chain is an ordered list of adapters. Each adapter is one CLI spawned as
-argv (no shell) with its own permission mode; Baton never passes a bypass
+argv (no shell) with its own permission mode. Baton never passes a bypass
 flag, and the adapters throw before spawn if one is requested.
 
 | adapter | CLI command shape | default mode | allowed modes |
@@ -77,11 +160,13 @@ flag, and the adapters throw before spawn if one is requested.
 | `codex` | `codex exec --json -s <m> -C <worktree>` | `workspace-write` | read-only, workspace-write |
 | `gemini` | `gemini -p -o json --approval-mode <m> --skip-trust` | `auto_edit` | default, auto_edit, plan |
 | `agy` | `agy -p --output-format json --mode <m> --add-dir <worktree>` | `accept-edits` | accept-edits, plan |
+| `fake`, `fake-claude`, `fake-codex`, `fake-gemini`, `fake-agy` | `node bin/fake-agent.mjs` (tests and demos, no login needed) | `acceptEdits` | acceptEdits, plan, workspace-write, read-only, accept-edits, auto_edit |
 
 Per-adapter options on a card: `--mode codex=read-only`, `--max-turns
 claude=2`, `--model gemini=<name>`. Forbidden everywhere:
 `--dangerously-skip-permissions`, `bypassPermissions`, `--full-auto`,
-`danger-full-access`, `--yolo`.
+`danger-full-access`, `--yolo`. Details per CLI, including the gotchas found
+on a real machine, are in [docs/adapters.md](docs/adapters.md).
 
 ## Board buttons
 
@@ -90,23 +175,24 @@ Every card shows the buttons its state allows:
 | button | what it does |
 |--------|--------------|
 | Run | queue the card; the scheduler starts it when a slot and its leases are free |
-| Approve | release a leg that was gated with "approve before this leg" |
+| Approve | release a leg that was gated with "approve before this leg", or finish a human station |
 | Pause / Resume | stop after the current leg / pick up where it stopped |
 | Hand off now | end the current leg, write the bundle, start the next adapter |
 | Reassign | choose the next adapter and mode from a picker instead of the chain order |
 | Kill | stop the running agent; the card ends as `killed` |
-| Rerun | start the station over from the last bundle |
+| Rerun | start the pipeline over in the same worktree |
 
 The drawer on each card shows the chain rail (✓ done, ↷ handed off, ✗ failed,
 ● running, · pending, 🔒 waiting for approval), every run with its logs, the
-events, and the bundle that the next leg will read.
+events, and the bundle the next leg will read. The full tour is in
+[docs/board-guide.md](docs/board-guide.md).
 
 ## Floor view
 
 `/floor.html` is the factory view: every running card with its adapter and
-elapsed time, the path leases each card holds, cards blocked by a lease, and
-the trunk lane with the last landed commits. It reads the same ledger as the
-board over server-sent events.
+elapsed time, the path leases each card holds, cards blocked by a lease, cards
+waiting on a human, and the trunk lane with the last landed commits. It reads
+the same ledger as the board over server-sent events.
 
 ## Land station
 
@@ -178,9 +264,10 @@ CLIs' documentation or source and have never fired here.
 `limit` hands the card to the next agent. `auth` is a failed launch and is
 never treated as a limit. `budget` is a cap Baton set itself; the card still
 hands off. Silence and compile errors are recorded as negative fixtures so
-they never classify as a limit.
+they never classify as a limit. If you hit a real limit message that Baton
+missed, please open an issue with the exact text: that is how the table grows.
 
-## Subscription-only, sanitized environment, no YOLO
+## Safety rules
 
 - Logged-in subscription CLIs only, never a per-token API. Every spawn deletes
   `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and
@@ -191,7 +278,8 @@ they never classify as a limit.
   YOLO flag is ever passed, by default or otherwise; requesting one is an
   error before spawn.
 - No shell spawns anywhere. Secrets are redacted from every log line the
-  launcher prints.
+  launcher prints. A card's repo must be a git root and can never be Baton's
+  own home directory or a parent of it.
 
 ## Network exposure
 
@@ -199,7 +287,8 @@ Baton binds `127.0.0.1` by default. To listen on another address set
 `BATON_BIND` and `BATON_TOKEN` together; without a token the server refuses to
 start (exit 3). Requests then need `Authorization: Bearer <token>`, and the
 event stream accepts `?token=`. There is no TLS and no per-user identity yet;
-see the roadmap before exposing it beyond one trusted network.
+see the roadmap before exposing it beyond one trusted network. All settings
+are listed in [docs/configuration.md](docs/configuration.md).
 
 ## Optional syncs
 
@@ -207,8 +296,8 @@ Baton ships its own board. Two mirrors exist, both off unless you set the
 flag in `.env` (copy `.env.example`):
 
 - **OpenClaw Workboard** (`BATON_SYNC_WORKBOARD=1`): every card create,
-  status change and completion runs `openclaw workboard add|move|done …` as an
-  argv child of the ledger (no shell). On the machine this was built on the
+  status change and completion runs `openclaw workboard add|move|done ...` as
+  an argv child of the ledger (no shell). On the machine this was built on the
   plugin is disabled and the CLI answers, verbatim:
 
   > The `openclaw workboard` command is unavailable because `plugins.allow` excludes "workboard". Add "workboard" to `plugins.allow` if you want that bundled plugin CLI surface.
@@ -276,23 +365,52 @@ Environment (all optional, read from `.env` through `node --env-file-if-exists`)
   card that is `queued` between legs can be picked up by the board's
   scheduler. With the board up, press Run instead of `card run`.
 
-The words on the board, in the events and in this README are listed in
-[docs/VOCABULARY.md](docs/VOCABULARY.md).
+More answers in [docs/faq.md](docs/faq.md).
 
-## Non-goals for v1
+## Documentation
+
+| guide | read it when |
+|-------|--------------|
+| [Getting started](docs/getting-started.md) | you want the first card running in ten minutes |
+| [Concepts](docs/concepts.md) | you want to know what cards, stations, chains, leases and bundles are |
+| [Board guide](docs/board-guide.md) | you want every chip, glyph and button explained |
+| [Configuration](docs/configuration.md) | you are setting environment variables or card options |
+| [Adapters](docs/adapters.md) | you are wiring a CLI, or adding one |
+| [FAQ](docs/faq.md) | you have a question the others did not answer |
+| [CLI contracts](docs/cli-contracts.md) | you want the exact argv per CLI and the limit-signal table with sources |
+| [Demo](docs/DEMO.md) and [real run](docs/real-run.md) | you want to see a handoff, fake and real |
+| [Vocabulary](docs/VOCABULARY.md) | you want the one list of statuses, outcomes and event types |
+| [Roadmap v2](docs/ROADMAP-v2.md) | you want to know where this is going |
+| [Reuse](docs/REUSE.md) and [deviations](docs/DEVIATIONS.md) | you want to know what was ported and every place the plan changed |
+
+## Non-goals for v0.1
 
 No live co-editing of the same files by several agents. No hosted service. No
 per-token API keys. No agent-side plugins or MCP configuration; each CLI keeps
 what it has. No pull-request review flow beyond the `pr` stub.
 
-## Privacy
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+for the dev setup and the rules (zero runtime deps, argv spawns only, no
+bypass flags, a privacy check on every commit). Security reports go through
+[SECURITY.md](SECURITY.md).
+
+```
+npm install
+npm test          # node --test + privacy check
+npm run lint
+bash scripts/clean-clone-check.sh /tmp   # clone, install, test, lint, up --dry
+```
+
+## Privacy and attribution
 
 Parts of the runner, ledger and git snapshot were ported from a private
-repository under the same MIT license (see NOTICE and docs/REUSE.md), with
-chat identifiers, machine paths and personal names removed. The test suite
-runs a privacy check on every commit, and the fixtures store home paths as
-`~`.
+repository under the same MIT license (see [NOTICE](NOTICE) and
+[docs/REUSE.md](docs/REUSE.md)), with chat identifiers, machine paths and
+personal names removed. The test suite runs a privacy check on every commit,
+and the fixtures store home paths as `~`.
 
 ## License
 
-MIT, see LICENSE.
+MIT, see [LICENSE](LICENSE).

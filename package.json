@@ -4,9 +4,38 @@
   "description": "Local-first kanban board and meta-harness for coding-agent CLIs: fallback chains, usage-limit handoff bundles, one worktree per card.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ucsandman/baton.git"
+  },
+  "homepage": "https://github.com/ucsandman/baton#readme",
+  "bugs": {
+    "url": "https://github.com/ucsandman/baton/issues"
+  },
+  "keywords": [
+    "kanban",
+    "coding-agents",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "agent-harness",
+    "handoff",
+    "worktree",
+    "local-first"
+  ],
+  "author": "Wes Sander",
   "bin": {
     "baton": "bin/baton.mjs"
   },
+  "files": [
+    "bin",
+    "src",
+    "scripts",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ],
   "engines": {
     "node": ">=22"
   },

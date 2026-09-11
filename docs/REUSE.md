@@ -1,4 +1,4 @@
-# REUSE — what Baton ports from the private team tooling, and what it drops
+# REUSE, what Baton ports from the private team tooling, and what it drops
 
 Source: a private ucsandman repository (team tooling for a two-agent protocol
 with a detached Claude Code launcher, a JSONL task ledger, a git snapshot tool,
@@ -41,17 +41,17 @@ reason. **Why** = the judgment.
 
 **Dropped:**
 - `telegramTarget`, `sendTelegram`, `.env.handoff`, every `notify(...)` message
-  string, and the sweep's delivery canary — Telegram delivery and chat ids
+  string, and the sweep's delivery canary, Telegram delivery and chat ids
   (privacy rule). The notify timer becomes a ledger `status` event only.
-- `LEAD_ALLOWED_TOOLS` — a hard-coded allowlist naming the team bin scripts and
+- `LEAD_ALLOWED_TOOLS`, a hard-coded allowlist naming the team bin scripts and
   two MCPs. Baton passes only the permission mode the chain entry names and
   never disallows the Agent tool.
-- `findReportEvent` — decided "completed" by scanning the lead's ledger for a
+- `findReportEvent`, decided "completed" by scanning the lead's ledger for a
   `done` event. Baton uses one CLI-agnostic completion contract (`.baton/DONE`
   in the worktree), phase 5.
-- `--model` / `--effort` / `--safe-mode` argv and the `origin` lookup — model
+- `--model` / `--effort` / `--safe-mode` argv and the `origin` lookup, model
   and effort move into the chain entry; there is no origin surface.
-- `WORKDIR = ROOT/../..` (the lead ran in the private repo's root) — Baton runs
+- `WORKDIR = ROOT/../..` (the lead ran in the private repo's root), Baton runs
   every leg in the card's worktree.
 
 **Why:** the supervise/kill/sweep logic is paid-for behaviour with tests that
@@ -110,13 +110,13 @@ modes.
 - Exit codes 2 (bad args / secret / corrupt record) and 3 (not found).
 
 **Dropped:**
-- `AGENTS = ['claude', 'openclaw']`, `RECIPIENTS`, and the `from`/`to` pair —
+- `AGENTS = ['claude', 'openclaw']`, `RECIPIENTS`, and the `from`/`to` pair -
   replaced by a validated `actor` object plus `card_id`, `station`, `leg`
   (amendment 2 §4).
 - `ORIGINS`, `lead`, `stop_condition`, `max_exchanges`,
-  `openclaw_session_key` — two-agent protocol fields with no Baton meaning.
+  `openclaw_session_key`, two-agent protocol fields with no Baton meaning.
 - The `team-` id prefix and `tasks/` directory (→ `card-`, `cards/`).
-- The DashClaw endpoint paths `/api/team-tasks…` — phase 9 wires the real
+- The DashClaw endpoint paths `/api/team-tasks…`, phase 9 wires the real
   target through config; the transport code stays.
 
 **Why:** an append-only, secret-refusing, per-writer ledger with a buffered
@@ -170,7 +170,7 @@ check need, and it never mutates the repo.
 repo → `worktree` with exact counts; `--diff-since` across two commits; non-repo
 dir exits 2; 25 untracked files truncate at 20.
 
-**Dropped:** "private-path override … yields recommendation dirty-check" — it
+**Dropped:** "private-path override … yields recommendation dirty-check", it
 asserts on a machine path that must not exist in this tree.
 
 **Why:** five of six tests are portable as-is.

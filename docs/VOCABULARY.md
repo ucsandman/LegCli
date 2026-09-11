@@ -42,7 +42,7 @@ Source: `src/limits.mjs` `OUTCOMES` (`classify()`'s return value).
 
 `limit`, `incomplete`, `no_progress`, `stalled` and `failed` hand off to the
 next adapter in the chain (`HANDOFF_OUTCOMES`); `auth_failed` and
-`launch_failed` do not advance the chain — a human fixes the environment and
+`launch_failed` do not advance the chain: a human fixes the environment and
 clicks Rerun (`NO_ADVANCE_OUTCOMES`).
 
 ## Station kinds
@@ -137,7 +137,7 @@ Card-level `bounce_reason` is stored as `"<reason>: <detail>"`
 first colon, truncated to 24 characters. The separate pipeline `test`
 station (kind `test`, distinct from a `land` station's own internal test
 step) bounces with its own free-text reason ("test red (…): …"), not one of
-the four words above — it is a different failure path through the same
+the four words above, it is a different failure path through the same
 `bounced` event type.
 
 ## Cross-check against visible strings
@@ -157,7 +157,7 @@ and `README.md`.
 - CLI human-action verbs in `bin/baton.mjs` (`pause`, `resume`, `kill`,
   `approve`, `handoff-now`, `rerun`, `reassign`) are the same 7 words as
   `HUMAN_ACTIONS`, spelled with hyphens instead of underscores on the CLI
-  surface (`handoff-now` vs `handoff_now`) — a deliberate, consistent
+  surface (`handoff-now` vs `handoff_now`), a deliberate, consistent
   per-surface convention, not a mismatch.
 - No mismatch requiring a board-file fix was found; nothing above needed
   changing in `src/board/*`.

@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.0 — 2026-09-10
+## 0.1.0 (2026-09-10)
 
-First build, local only, not published.
+First public release (source on GitHub; not on npm yet).
 
 - Ported the detached runner, the append-only ledger and the git snapshot tool
   from a private ucsandman repository (team tooling) under the same MIT license,

@@ -55,6 +55,23 @@ export function summarize(card) {
   const last = lastEventOf(card.card_id)
   const runs = readRuns(card.card_id)
   const activeRun = runs.find((r) => ['launching', 'running'].includes(r.status)) ?? null
+  // Once a station is over (done/failed) card.leg is reset, so the rail is
+  // rebuilt from the legs that actually started at this station.
+  const terminal = ['done', 'failed', 'killed'].includes(card.status)
+  const startedLegs = terminal && st?.kind === 'agent'
+    ? readEvents(card.card_id).filter((ev) => ev.type === 'leg_started' && ev.station === card.station).map((ev) => ev.leg)
+    : []
+  const lastLeg = startedLegs.length ? Math.max(...startedLegs) : card.leg
+  const legState = (i) => {
+    if (terminal) {
+      if (!startedLegs.includes(i)) return 'pending'
+      if (i < lastLeg) return 'handed'
+      return card.status === 'done' ? 'done' : 'failed'
+    }
+    if (i < card.leg) return 'handed'
+    if (i > card.leg) return 'pending'
+    return ['running', 'handing_off'].includes(card.status) ? 'active' : 'pending'
+  }
   return {
     ...card,
     column: columnOf(card),
@@ -63,8 +80,8 @@ export function summarize(card) {
     active_mode: entry?.mode ?? null,
     chain_view: st?.kind === 'agent' ? st.chain.map((e, i) => ({
       adapter: e.adapter, mode: e.mode ?? null, approve: Boolean(e.approve),
-      // a leg before the current one ended in a handoff (only the last leg can complete a station)
-      state: i < card.leg ? 'handed' : i === card.leg ? (['running', 'handing_off'].includes(card.status) ? 'active' : card.status === 'failed' ? 'failed' : card.status === 'done' ? 'done' : 'pending') : 'pending',
+      // a leg before the last one ended in a handoff (only the last leg can complete a station)
+      state: legState(i),
     })) : [],
     actions: availableActions(card),
     last_event: last ? { ts: last.ts, type: last.type, summary: last.summary, actor: last.actor } : null,
