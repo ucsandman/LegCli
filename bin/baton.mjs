@@ -134,7 +134,7 @@ async function main() {
     for (const r of listAccountRows()) if (r.name !== 'default') removeAccount(r.agent, r.name)
     down()
     rmSync(dir, { recursive: true, force: true })
-    return out(`removed ${dir}; now: npm rm -g agent-baton`)
+    return out(`removed ${dir}; now: npm rm -g baton-agents`)
   }
   if (group === 'card') {
     if (cmd === 'add') return cardAdd(args)

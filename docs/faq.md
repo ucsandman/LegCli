@@ -60,7 +60,7 @@ directories with their junctions, the v0.1 cards and runs, and the board
 pidfile. It removes the junctions as links, never following them into your
 real `~/.claude` or `~/.codex`. It does not touch any file of yours, any repo,
 or the agent CLIs themselves. Run `baton uninstall` with no flag to print what
-would go, `--yes` to do it; then `npm rm -g agent-baton` if you want the
+would go, `--yes` to do it; then `npm rm -g baton-agents` if you want the
 package gone too.
 
 **Can I run `baton claude` inside a Claude Code shell?**

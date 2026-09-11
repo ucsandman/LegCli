@@ -56,7 +56,7 @@ Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one
 logged-in agent CLI (`claude`, `codex` or `agy`).
 
 ```
-npm install -g agent-baton
+npm install -g baton-agents
 pip install -U context-handoff-bundle
 cd <any repo>
 baton claude
@@ -200,7 +200,7 @@ happens after you run `baton accounts add`; that is your call.
   and key shapes from every line regardless.
 - **`baton uninstall --yes`**: removes `~/.baton` (sessions, usage, extra
   account directories with their junctions, v0.1 cards, the board pidfile) and
-  nothing else; then `npm rm -g agent-baton`.
+  nothing else; then `npm rm -g baton-agents`.
 
 ## CLI reference
 

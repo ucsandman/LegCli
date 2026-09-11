@@ -17,7 +17,7 @@ it. The v0.1 pipeline flow is section 7 onward.
 ## 2. Install
 
 ```
-npm install -g agent-baton
+npm install -g baton-agents
 pip install -U context-handoff-bundle
 ```
 
