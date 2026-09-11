@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { makeHome, testEnv, initRepo, git, baton, readCard, events } from './helpers.mjs'
+import { makeHome, testEnv, initRepo, git, baton, readCard, events, runCardOrExplain } from './helpers.mjs'
 import { ensure } from '../src/worktree.mjs'
 
 const PKG = JSON.stringify({ name: 'toy', type: 'module', scripts: { test: 'node --test' } })
@@ -34,11 +34,11 @@ test('e2e-land: A lands, B bounced by tests-red then lands, C bounced by rebase-
   // C conflict with A's landed change later.
   for (const id of [A, B, C]) { ensure(repo, id, { trunk: 'main' }); baton(['card', 'queue', id], env) }
   const t0 = Date.now()
-  const outA = baton(['card', 'run', A], env)
+  const outA = runCardOrExplain(home, A, env)
   assert.match(outA, /done at land/)
-  const outB = baton(['card', 'run', B], env)
+  const outB = runCardOrExplain(home, B, env)
   assert.match(outB, /done at land/)
-  const outC = baton(['card', 'run', C], env)
+  const outC = runCardOrExplain(home, C, env)
   assert.match(outC, /done at land/)
   const seconds = ((Date.now() - t0) / 1000).toFixed(1)
 

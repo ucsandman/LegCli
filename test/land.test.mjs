@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { makeHome, testEnv, initRepo, git, baton, readCard, events } from './helpers.mjs'
+import { makeHome, testEnv, initRepo, git, baton, readCard, events, runCardOrExplain } from './helpers.mjs'
 
 const PKG = JSON.stringify({ name: 'toy', type: 'module', scripts: { test: 'node --test' } })
 const GREEN = "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\ntest('base', () => { assert.equal(1, 1) })\n"
@@ -33,7 +33,7 @@ test('build-land: a red test bounces the card to build with the failure in the b
   const repo = toy()
   const id = baton(['card', 'add', '--repo', repo, '--task', 'Add b.mjs', '--chain', 'fake', '--pipeline', buildLandPipeline(home),
     '--fake-mode', 'fake=break-test;fix-test', '--fake-target', 'fake=b.mjs', '--title', 'B'], env).trim()
-  const out = baton(['card', 'run', id], env)
+  const out = runCardOrExplain(home, id, env)
   assert.match(out, /done at land/)
   const card = readCard(home, id)
   assert.equal(card.status, 'done')

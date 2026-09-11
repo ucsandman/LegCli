@@ -11,10 +11,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node bin/baton.mjs up",
+    "start": "node --env-file-if-exists=.env bin/baton.mjs up",
     "test": "node --test && node scripts/privacy-check.mjs",
     "lint": "eslint .",
-    "privacy": "node scripts/privacy-check.mjs"
+    "privacy": "node scripts/privacy-check.mjs",
+    "dev": "node --env-file-if-exists=.env bin/baton.mjs up --no-open",
+    "stop": "node bin/baton.mjs down"
   },
   "devDependencies": {
     "eslint": "^9",

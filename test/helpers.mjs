@@ -1,6 +1,6 @@
 // Shared test helpers: a throwaway BATON_HOME, a toy git repo, and the CLI.
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,7 +52,13 @@ export function batonSpawn(args, env) {
 }
 
 export function readCard(home, id) {
-  return JSON.parse(readFileSync(join(home, 'cards', id, 'card.json'), 'utf8'))
+  const file = join(home, 'cards', id, 'card.json')
+  // the ledger renames into place; a reader can still race a rename on Windows
+  for (let i = 0; ; i++) {
+    try { return JSON.parse(readFileSync(file, 'utf8')) } catch (err) { if (i >= 20) throw err }
+    const t = Date.now() + 25
+    while (Date.now() < t) { /* spin */ }
+  }
 }
 
 export function events(home, id) {
@@ -65,3 +71,15 @@ export function events(home, id) {
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// `card run` that explains itself when the card does not end `done`.
+export function runCardOrExplain(home, id, env) {
+  try {
+    return baton(['card', 'run', id], env)
+  } catch (err) {
+    const evs = events(home, id).map((e) => `${e.ts.slice(11, 19)} ${e.type} ${e.summary}${e.body ? ` :: ${String(e.body).slice(0, 300)}` : ''}`)
+    const runsDir = join(home, 'cards', id, 'runs')
+    const runs = existsSync(runsDir) ? readdirSync(runsDir).map((n) => { try { const r = JSON.parse(readFileSync(join(runsDir, n, 'run.json'), 'utf8')); return `run ${n}: ${r.status} ${r.outcome} exit=${r.exit_code} ${r.reason ?? ''}` } catch { return `run ${n}: unreadable` } }) : []
+    throw new Error(`card run ${id} exited ${err.status}\nevents:\n  ${evs.join('\n  ')}\nruns:\n  ${runs.join('\n  ')}\nstderr: ${err.stderr?.toString().slice(-800)}`)
+  }
+}

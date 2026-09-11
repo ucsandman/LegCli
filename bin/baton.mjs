@@ -14,6 +14,7 @@ import { createCard, CardInputError } from '../src/cards.mjs'
 import { remove as removeWorktree } from '../src/worktree.mjs'
 import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../src/scheduler.mjs'
 import { availableActions } from '../src/chain.mjs'
+import { up, down, status, openBoard } from '../src/launcher.mjs'
 
 const out = (s) => process.stdout.write(s + '\n')
 const die = (code, msg) => { process.stderr.write(msg + '\n'); process.exit(code) }
@@ -123,10 +124,26 @@ async function main() {
     }
     die(2, `unknown scheduler command "${cmd}" (start|status|stop)`)
   }
-  if (group === 'up' || group === 'down' || group === 'status') {
-    return out(`baton ${group}: the launcher lands in phase 8`)
+  if (group === 'up') {
+    const a = parseArgs([cmd, ...rest].filter((x) => x !== undefined))
+    const code = await up({ dry: Boolean(a.dry), open: !a['no-open'], port: a.port !== undefined ? parseInt(a.port, 10) : undefined, bind: a.bind })
+    process.exit(code)
   }
-  out(`baton 0.1.0\n  card add|ls|show|run|rm|events|pause|resume|kill|approve|handoff-now|rerun|reassign\n  scheduler start|status|stop\n  presets: ${PRESET_NAMES.join(', ')}`)
+  if (group === 'down') process.exit(down())
+  if (group === 'status') process.exit(status())
+  if (group === 'open') {
+    const port = process.env.BATON_PORT || 4747
+    const url = `http://127.0.0.1:${port}`
+    out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
+    return
+  }
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (up|down|status|open|card|scheduler)`)
+  out(`baton 0.1.0 — local-first kanban + meta-harness for coding-agent CLIs
+  up [--dry] [--no-open] [--port N] [--bind ADDR]   boot the board, scheduler and merge queue; Ctrl-C stops
+  down | status | open
+  card add|ls|show|run|rm|events|queue|pause|resume|kill|approve|handoff-now|rerun|reassign
+  scheduler start|status|stop
+  presets: ${PRESET_NAMES.join(', ')}`)
 }
 
 await main()

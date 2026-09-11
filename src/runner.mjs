@@ -5,7 +5,7 @@
 // State: $BATON_HOME/cards/<id>/runs/<n>/ (run.json, prompt.txt, out.log, err.log,
 // supervisor.log). Ledger writes go through src/ledger.mjs. Exports sanitizeEnv.
 import {
-  mkdirSync, readFileSync, writeFileSync, existsSync, openSync, copyFileSync, readdirSync, rmSync, statSync,
+  mkdirSync, readFileSync, writeFileSync, existsSync, openSync, copyFileSync, readdirSync, rmSync, statSync, renameSync,
 } from 'node:fs'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { join, dirname, resolve } from 'node:path'
@@ -73,8 +73,11 @@ function readRun(id, n) {
 }
 
 function writeRun(id, n, r) {
-  writeFileSync(join(runDir(id, n), 'run.json'),
-    JSON.stringify({ ...r, updated_at: now() }, null, 2) + '\n')
+  // write-then-rename: the orchestrator and the board poll this file
+  const file = join(runDir(id, n), 'run.json')
+  const tmp = `${file}.${process.pid}.tmp`
+  writeFileSync(tmp, JSON.stringify({ ...r, updated_at: now() }, null, 2) + '\n')
+  renameSync(tmp, file)
 }
 
 // Ledger writes must never crash the supervisor; failures go to its log.
@@ -96,19 +99,9 @@ function ledgerAppend(id, type, summary, body, log) {
 }
 
 // The ledger's assertNoSecrets dies on matches; scrub BEFORE logging.
-// Patterns mirror ledger.mjs SECRET_PATTERNS (kept in both files on
-// purpose: this one rewrites, that one refuses).
-const SECRET_RES = [
-  /sk-[A-Za-z0-9]{8,}/g, /oc_live_[a-f0-9]\w*/g,
-  /Bearer\s+[A-Za-z0-9._-]{16,}/g, /ghp_[A-Za-z0-9]{20,}/g,
-  /AKIA[0-9A-Z]{12,}/g, /xox[bp]-\S*/g,
-  /api[_-]?key\s*[=:]\s*\S+/gi,
-]
-export function scrub(s) {
-  let out = s
-  for (const re of SECRET_RES) out = out.replace(re, '[REDACTED]')
-  return out
-}
+// One pattern list for the whole project lives in src/redact.mjs.
+import { scrub } from './redact.mjs'
+export { scrub }
 
 function errTail(path, lines = 10) {
   if (!existsSync(path)) return '(no stderr)'

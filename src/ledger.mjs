@@ -4,12 +4,13 @@
 // Subcommands: create | append | update | sync. Every event carries a validated
 // actor, the card id, the station and the leg, and lands in that actor's own
 // events-<actor-key>.jsonl. Importable: readEvents, parseActor, actorKey.
-import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, existsSync, unlinkSync, renameSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import https from 'node:https'
+import { SECRET_PATTERNS } from './redact.mjs'
 
 export const EVENT_TYPES = ['card_created', 'leg_started', 'leg_progress', 'leg_exited',
   'limit_detected', 'handoff_written', 'leg_resumed', 'station_done', 'bounced', 'landed',
@@ -79,6 +80,14 @@ export function actorKey(actor) {
 }
 
 const ACTOR_HELP = 'invalid --actor (expected JSON {"type":"agent","adapter":"<name>"} | {"type":"human","id":"<id>"} | {"type":"baton"})'
+
+// card.json is read by the board and the tests while the ledger writes it;
+// write-then-rename keeps every reader from seeing a half-written file.
+function writeJsonAtomic(file, obj) {
+  const tmp = `${file}.${process.pid}.tmp`
+  writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n')
+  renameSync(tmp, file)
+}
 
 function cardDir(id) {
   const dir = join(ROOT, 'cards', id)
@@ -212,16 +221,6 @@ async function syncOp(cardId, op) {
   if (!ok) bufferUnsynced(cardId, op)
 }
 
-const SECRET_PATTERNS = [
-  ['api key (sk-)', /sk-[A-Za-z0-9]{8,}/],
-  ['DashClaw key (oc_live_)', /oc_live_[a-f0-9]/],
-  ['bearer token', /Bearer\s+[A-Za-z0-9._-]{16,}/],
-  ['GitHub token (ghp_)', /ghp_[A-Za-z0-9]{20,}/],
-  ['AWS key (AKIA)', /AKIA[0-9A-Z]{12,}/],
-  ['Slack token (xox)', /xox[bp]-/],
-  ['key=value secret', /api[_-]?key\s*[=:]\s*\S/i],
-]
-
 function assertNoSecrets(...values) {
   for (const v of values) {
     if (!v) continue
@@ -326,7 +325,7 @@ async function main() {
       worktree: null, bounce_reason: null, kill_requested: false,
       session_id: null, created_at: now(), updated_at: now(), actor,
     }
-    writeFileSync(join(dir, 'card.json'), JSON.stringify(card, null, 2) + '\n')
+    writeJsonAtomic(join(dir, 'card.json'), card)
     const createdEvent = {
       ts: now(), card_id: id, actor, station: card.station, leg: card.leg, type: 'card_created',
       summary: `card created (chain=${chain.map((c) => c.adapter).join('>')})`,
@@ -401,7 +400,7 @@ async function main() {
       }
     }
     card.updated_at = now()
-    writeFileSync(join(dir, 'card.json'), JSON.stringify(card, null, 2) + '\n')
+    writeJsonAtomic(join(dir, 'card.json'), card)
     writeActive()
     await syncOp(id, {
       op: 'update', method: 'PATCH', path: SYNC_PATHS.update(id),
