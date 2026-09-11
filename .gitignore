@@ -1,0 +1,7 @@
+node_modules/
+.supergoal/
+.env
+.baton/
+*.log
+docs/screenshots/*.tmp
+.baton-worktrees/

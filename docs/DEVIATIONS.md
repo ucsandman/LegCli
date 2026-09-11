@@ -1,0 +1,26 @@
+# DEVIATIONS
+
+One row per place Baton's shape differs from the ported source or from the
+plan. Append-only. Newest at the bottom.
+
+| date | file | ported shape | baton shape | why |
+|------|------|--------------|-------------|-----|
+| 2026-09-10 | src/handoff/bundle.mjs | context-handoff-bundle imported as a Python module | called as an argv subprocess (`context-handoff-bundle save/load/validate`) | Node vs Python; the bundle format stays the one format, Baton never re-implements the schema |
+| 2026-09-10 | src/adapters/codex.mjs | runner spawns with stdin `pipe` and writes the prompt | `codex exec` spawns with stdin `ignore`, prompt in argv | plan-time probe: codex exec reads stdin when it is not a TTY and hung 170 s ("Reading additional input from stdin...") |
+| 2026-09-10 | src/pipeline.mjs | fixed kanban columns (backlog / running / done) | configurable station pipeline; board columns derive from the config; presets factory / build / build-land | factory north star (Wes, 2026-09-10) |
+| 2026-09-10 | src/scheduler.mjs | one running card at a time | scheduler runs N cards concurrently (`BATON_MAX_CONCURRENT`, default 2), each in its own worktree, with path leases; overlapping leases never start together | factory north star (Wes, 2026-09-10) |
+| 2026-09-10 | src/ledger.mjs | events carry `from`/`to` agent names and `task_id` | events carry `actor` ({type:'agent', adapter, model?} \| {type:'human', id} \| {type:'baton'}), `card_id`, `station`, `leg` | factory north star (Wes, 2026-09-10): multiplayer-ready state from day one |
+| 2026-09-10 | src/server.mjs | (no board in source) | the board reads the ledger on every request, never in-memory state; restart-persistence test | factory north star (Wes, 2026-09-10) |
+| 2026-09-10 | src/server.mjs | (no server in source) | `BATON_BIND` (default 127.0.0.1) + `BATON_TOKEN` seams; binding off loopback without a token refuses to start | factory north star (Wes, 2026-09-10) |
+| 2026-09-10 | src/land.mjs | (no landing in source; humans merged) | land station = merge queue: rebase onto trunk in the worktree, run the repo test command, ff-only trunk if green; red or conflict bounces the card to build with the failure in the bundle; `pr` is an opt-in land mode | factory north star (Wes, 2026-09-10): continuous landing |
+| 2026-09-10 | src/server.mjs | (no board in source) | floor view: running cards, station, agent, leased paths, last event, trunk lane of the last hour | factory north star (Wes, 2026-09-10) |
+| 2026-09-10 | docs/ROADMAP-v2.md | (n/a) | multi-human network access deferred to a later, security-reviewed phase; v1 is single-operator on loopback | factory north star (Wes, 2026-09-10): do not expose a merge queue to the LAN without a review |
+| 2026-09-10 | src/runner.mjs | `findReportEvent` scans the lead's ledger file for a `done`/`result` event to decide "completed" | dropped; completion is the DONE-marker contract (`.baton/DONE` in the worktree) decided in phase 5; phase 2 records `outcome: null` | one CLI-agnostic completion rule instead of parsing each CLI's prose |
+| 2026-09-10 | src/runner.mjs | `telegramTarget`, `sendTelegram`, `.env.handoff`, the sweep's delivery canary | removed; the notify timer writes a ledger `status` event only; the sweep keeps orphan detection | privacy rule: no Telegram delivery or chat ids in Baton |
+| 2026-09-10 | src/runner.mjs | `LEAD_ALLOWED_TOOLS` hard-codes an allowlist that names the team bin scripts and MCPs | no allowlist by default; adapters pass only the mode named in the chain entry; the Agent tool is never disallowed | agents keep their own permission modes; a disallowed Agent tool degrades claude to solo (LESSONS 07-10) |
+| 2026-09-10 | src/runner.mjs | `spawnClaude(model, effort, envelope)` with `--model`/`--effort` argv | `spawnAgent(adapter, opts)`; model/effort live in the chain entry, adapters build argv | one runner for four CLIs |
+| 2026-09-10 | src/runner.mjs | env sanitizer deletes ANTHROPIC_API_KEY, CLAUDECODE, CLAUDE_CODE_*, CLAUDE_EFFORT, CLAUDE_PLUGIN_DATA | also deletes ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, OPENAI_API_KEY; sets CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 | hard constraint: subscription auth only; detached `claude -p` needs the ceiling at 0 |
+| 2026-09-10 | src/ledger.mjs | `ORIGINS` (telegram \| claude-code) on every task | dropped; cards have no origin surface | no Telegram; the board is the only origin |
+| 2026-09-10 | src/ledger.mjs | id format `team-<yyyymmdd>-<hhmm>-<slug>`, dir `tasks/<id>` | `card-<yyyymmdd>-<hhmm>-<slug>`, dir `cards/<id>`, `card.json` | naming |
+| 2026-09-10 | src/git-snapshot.mjs | the hard-coded private-path constant and its `dirty-check` recommendation branch | removed; recommendation is `branch` when clean, `worktree` when dirty | private path; Baton always uses a worktree per card anyway |
+| 2026-09-10 | src/sync/dashclaw.mjs | invoke-capability.mjs governed loop with a capability registry and global `fetch` | dropped except the argv-builder pattern and the fail-closed shape; sync uses native `http`/`https` | DashClaw capability registry is not Baton's concern; global fetch crashes Node 24 on Windows at exit (LESSONS 07-12) |

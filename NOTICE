@@ -1,0 +1,4 @@
+Portions of this software (src/runner.mjs, src/ledger.mjs, src/git-snapshot.mjs
+and their tests) were ported on 2026-09-10 from a private ucsandman repository
+(team tooling) under the same MIT license. Telegram delivery, chat identifiers,
+and machine-specific paths were removed in the port.

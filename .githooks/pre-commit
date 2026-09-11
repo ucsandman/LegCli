@@ -1,0 +1,2 @@
+#!/bin/sh
+node scripts/privacy-check.mjs --staged || exit 1
