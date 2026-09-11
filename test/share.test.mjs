@@ -95,7 +95,7 @@ const OWNED = 's-share-wes'
 const OTHER = 's-share-sam'
 
 before(async () => {
-  createSession({ id: OWNED, agent: 'claude', cwd: repo, repo, branch: 'main', runner_pid: process.pid, owner: 'wes' })
+  createSession({ id: OWNED, agent: 'claude', cwd: join(repo, 'owner-private-dir'), repo, branch: 'main', runner_pid: process.pid, owner: 'wes' })
   updateSession(OWNED, { status: 'running', task: 'the owner private prompt', files_touched: ['secret-plan.md'] })
   createSession({ id: OTHER, agent: 'codex', cwd: repo, repo, branch: 'main', runner_pid: process.pid, owner: 'sam' })
   updateSession(OTHER, { status: 'running', task: "sam's own prompt" })
@@ -152,7 +152,8 @@ test('a guest sees that a terminal exists and nothing it has said, read or writt
   assert.equal(theirs.argv, undefined)
   assert.equal(JSON.stringify(v).includes('secret-plan.md'), false, 'a file name never reaches a guest')
   assert.equal(JSON.stringify(v).includes('the owner private prompt'), false, 'a prompt never reaches a guest')
-  assert.equal(JSON.stringify(v).includes(repo), false, 'the repo path never reaches a guest')
+  // the owner's own working directory, in full, appears nowhere in a guest's board
+  assert.equal(JSON.stringify(v).includes('owner-private-dir'), false, 'the owner path never reaches a guest')
   // their own terminal is not redacted
   const own = v.sessions.find((s) => s.session_id === OTHER)
   assert.equal(own.hidden, undefined)
