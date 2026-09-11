@@ -108,7 +108,12 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    `.baton/RESUME.md`, check `git status` and `git diff`, continue, and not ask
    the human to restate the task.
 4. **All out.** If every option is walled, Baton prints each one with its reset
-   time, soonest first, and exits 3. The card records `session.all_out`.
+   time, soonest first, then waits in the terminal with a one-line countdown
+   (`src/wait.mjs`) and starts the first option back from the bundle when its
+   reset passes; if that option is walled again meanwhile it re-picks and
+   waits again. The card records `session.all_out` and `session.waiting`
+   (`{ agent, account, resets_at, since }`) and shows status `waiting`. Ctrl-C
+   in the terminal, or End on the card, quits with exit 3.
 
 `BATON_NO_HANDOFF=1` keeps the warning and the record but never switches.
 

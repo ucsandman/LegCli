@@ -20,11 +20,12 @@ One interactive terminal under `baton claude|codex|agy`. Source:
 | `warning` | near limit | yes | a usage window crossed `BATON_WARN_PCT` (default 85) |
 | `limit` | limit hit | yes | the agent reported its usage limit; the account is walled |
 | `handing_off` | handing off | yes | the bundle is being saved and the next option chosen |
+| `waiting` | waiting for reset | yes | every option is walled; the terminal counts down to the first reset (`session.waiting`) and then starts that agent from the bundle |
 | `handed_off` | handed off | no | this leg is done; the next agent owns the terminal |
 | `ended` | ended | no | the agent exited, or End was pressed |
 | `lost` | lost | no | the runner process that owned the terminal is gone; never shown as live |
 
-The five active statuses are what the board counts as a live session for
+The six active statuses are what the board counts as a live session for
 overlap flags and for the accounts strip's live dot.
 
 ## Session event types
@@ -44,7 +45,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `limit` | a usage limit was detected; carries the agent's own wording, `(simulated)` when `baton sessions simulate-limit` produced it |
 | `handoff_requested` | someone pressed Hand off now, or ran `baton sessions handoff` |
 | `handoff` | the switch happened: from, to, reason, bundle id |
-| `all_out` | every option is walled; the resets are printed and the process exits 3 |
+| `all_out` | every option is walled; the resets are printed and the terminal waits for the first one (`ended` with "quit while waiting" if Ctrl-C or End cuts the wait short, exit 3) |
 | `agent_exit` | the agent process exited, with its code |
 | `ended` | the session ended |
 | `lost` | the runner pid is gone; the session was marked `lost` |

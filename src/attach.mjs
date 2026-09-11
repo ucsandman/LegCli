@@ -26,6 +26,7 @@ import { saveSessionBundle, resumePrompt } from './bundle.mjs'
 import { openBoard, pidfile } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
 import { captureLive } from './live-capture.mjs'
+import { waitForReset, fmtCountdown } from './wait.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 const SERVER = join(SRC, 'server.mjs')
@@ -45,6 +46,7 @@ function health(port) {
 export async function ensureBoard({ open = true } = {}) {
   const port = Number(process.env.BATON_PORT || 4747)
   const url = `http://127.0.0.1:${port}`
+  if (process.env.BATON_NO_BOARD === '1') return { url: null, started: false, skipped: true }
   if (await health(port)) return { url, started: false }
   mkdirSync(home(), { recursive: true })
   const logFd = (await import('node:fs')).openSync(join(home(), 'board.log'), 'a')
@@ -95,7 +97,8 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }
   const adapter = await getAdapter(agent)
   const { bin, viaNode, entry } = adapter.resolve()
   const argv = []
-  if (viaNode && entry) argv.push(entry)
+  // viaNode: either an npm entry (codex bin/codex.js) or a BATON_<AGENT>_BIN that names a .mjs (tests)
+  if (viaNode) argv.push(entry ?? bin)
   // a leg Baton starts on its own (after a hand-off) takes BATON_<AGENT>_ARGS,
   // e.g. BATON_CODEX_ARGS="-m gpt-5-mini" to keep a test chain on cheap models
   if (prompt) args = [...(process.env[`BATON_${agent.toUpperCase()}_ARGS`] ?? '').split(/\s+/).filter(Boolean), ...args]
@@ -257,6 +260,29 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
   return result
 }
 
+// The countdown: one line rewritten in place on a TTY, one line a minute
+// otherwise. Ends 'ready' at the reset, 'cancelled' on Ctrl-C or a board End.
+async function waitInTerminal({ sid, label, resetsAt }) {
+  const ac = new AbortController()
+  const onSigint = () => ac.abort()
+  process.once('SIGINT', onSigint)
+  const tty = Boolean(process.stderr.isTTY)
+  let lastLine = 0
+  const r = await waitForReset({
+    resetsAt, signal: ac.signal, tickMs: Number(process.env.BATON_WAIT_TICK_MS || 1000),
+    isCancelled: () => { const c = takeControl(sid); if (c?.end) return true; if (c?.handoff) appendEvent(sid, { type: 'status', summary: 'hand-off requested while waiting; every option is still out' }); return false },
+    onTick: (remaining) => {
+      const line = `[baton] waiting for ${label} · ${fmtCountdown(remaining)} to the reset (${new Date(resetsAt * 1000).toLocaleTimeString()}) · Ctrl-C to quit`
+      if (tty) process.stderr.write(`\r\x1b[2K${line}`)
+      else if (Date.now() - lastLine >= 60000) { lastLine = Date.now(); process.stderr.write(line + '\n') }
+    },
+  })
+  process.removeListener('SIGINT', onSigint)
+  if (tty) process.stderr.write('\r\x1b[2K')
+  if (r === 'ready') say(`${label} is back; starting it from the bundle`)
+  return r
+}
+
 function messagesFor(agent, s) {
   if (agent === 'claude') return claudeTail(s.transcript_path)
   if (agent === 'codex') return codexTail(s.transcript_path)
@@ -284,7 +310,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
   const chain = candidates({ agent, account, accounts })
   createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain })
   updateSession(sid, { head_at_start: g.head, head: g.head, files_dirty: g.dirty, board_url: board.url })
-  say(`session ${sid} · ${agent}${account !== 'default' ? '/' + account : ''} · board ${board.url}${board.started ? ' (started)' : ''} · next: ${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(' → ') || 'none'}`)
+  say(`session ${sid} · ${agent}${account !== 'default' ? '/' + account : ''} · board ${board.url ?? 'off'}${board.started ? ' (started)' : ''} · next: ${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(' → ') || 'none'}`)
 
   let prompt = null
   let legArgs = args
@@ -298,17 +324,30 @@ export async function attach(agent, args = [], { open = true } = {}) {
     say(r.reason === 'limit' ? `${agent} hit its usage limit${cur.limit?.detail ? `: ${cur.limit.detail.slice(0, 140)}` : ''}` : 'handing off as requested')
     let bundle = null
     try { bundle = saveSessionBundle(cur, { messages: messagesFor(agent, cur), why: r.reason === 'limit' ? `${agent} usage limit` : 'handoff requested' }); say(`bundle saved: ${bundle.path}`) } catch (err) { say(`bundle save failed: ${err.message}`) }
-    const choice = chooseNext({ agent, account, accounts })
-    if (!choice.next) {
+    let choice = chooseNext({ agent, account, accounts })
+    let cancelled = false
+    while (!choice.next) {
+      // every option is out: keep the terminal, count down to the first
+      // reset, then start that option from the bundle. Ctrl-C (or End on the
+      // board) quits with exit 3 the way the old all-out did.
       const lines = choice.out.map((o) => `  ${o.agent}${o.account !== 'default' ? '/' + o.account : ''}: resets ${fmtReset(o.resets_at)}`)
       const first = choice.out[0]
-      say(`every option is out. First back: ${first ? `${first.agent}${first.account !== 'default' ? '/' + first.account : ''} at ${fmtReset(first.resets_at)}` : 'unknown'}`)
+      const label = first ? `${first.agent}${first.account !== 'default' ? '/' + first.account : ''}` : 'unknown'
+      say(`every option is out. First back: ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}`)
       for (const l of lines) say(l)
-      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), all_out: choice.out }, { event: { type: 'all_out', summary: `every option is out; first back ${first ? first.agent + ' ' + fmtReset(first.resets_at) : 'unknown'}` } })
+      say(`waiting for ${label}; Ctrl-C to quit`)
+      updateSession(sid, { status: 'waiting', all_out: choice.out, waiting: first ? { agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
+      const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
+      if (r2 === 'cancelled') { cancelled = true; break }
+      choice = chooseNext({ agent, account, accounts })
+    }
+    if (cancelled) {
+      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), waiting: null }, { event: { type: 'ended', summary: 'quit while waiting for a reset (exit 3)' } })
       exit = 3
       break
     }
     const next = choice.next
+    updateSession(sid, { waiting: null })
     updateSession(sid, { status: 'handing_off', handoff: { from: { agent, account }, to: next, bundle_id: bundle?.id ?? null, reason: r.reason === 'limit' ? 'usage limit' : 'requested', at: new Date().toISOString() } }, { event: { type: 'handoff', summary: `${agent}${account !== 'default' ? '/' + account : ''} → ${next.agent}${next.account !== 'default' ? '/' + next.account : ''}${bundle ? ` (bundle ${bundle.id})` : ''}` } })
     prompt = bundle ? resumePrompt(cur, bundle, next) : `You are taking over an interactive coding session from ${agent}. Check git status and git diff in this directory and continue the work. The task: ${cur.task ?? 'see the recent changes'}`
     say(`starting ${next.agent}${next.account !== 'default' ? '/' + next.account : ''} in this terminal from the bundle`)

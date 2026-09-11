@@ -6,7 +6,7 @@
   'use strict'
   const STATUS = {
     starting: ['starting', 'muted'], running: ['running', 'ok'], warning: ['near limit', 'warn'], limit: ['limit hit', 'bad'],
-    handing_off: ['handing off', 'warn'], handed_off: ['handed off', 'muted'], ended: ['ended', 'muted'], lost: ['lost', 'bad'],
+    handing_off: ['handing off', 'warn'], waiting: ['waiting for reset', 'warn'], handed_off: ['handed off', 'muted'], ended: ['ended', 'muted'], lost: ['lost', 'bad'],
   }
   let view = null
   function getToken() { return localStorage.getItem('batonToken') || '' }
@@ -103,7 +103,8 @@
     if (s.warning) card.appendChild(el('div', { class: 'session-note warn' }, [`⚠ ${s.warning.window} window at ${Math.round(s.warning.pct)}% · next: ${s.chain && s.chain[0] ? s.chain[0].agent : 'none'}`]))
     if (s.limit) card.appendChild(el('div', { class: 'session-note bad', title: s.limit.detail || '' }, [`limit: ${s.limit.reason}${s.limit.resets_at ? ` · resets ${until(s.limit.resets_at)}` : ''}`]))
     if (s.handoff && s.handoff.to) card.appendChild(el('div', { class: 'session-note' }, [`${s.handoff.from ? s.handoff.from.agent : '?'} → ${s.handoff.to.agent}${s.handoff.to.account !== 'default' ? '/' + s.handoff.to.account : ''} (${s.handoff.reason})${s.bundle ? ` · bundle ${s.bundle.id}` : ''}`]))
-    if (s.all_out && s.all_out.length) card.appendChild(el('div', { class: 'session-note bad' }, [`every option is out · first back: ${s.all_out[0].agent} ${until(s.all_out[0].resets_at)}`]))
+    if (s.status === 'waiting' && s.waiting) card.appendChild(el('div', { class: 'session-note warn', title: 'every option is out; the terminal counts down and starts this agent from the bundle at the reset' }, [`⏳ waiting for ${s.waiting.agent}${s.waiting.account && s.waiting.account !== 'default' ? '/' + s.waiting.account : ''} at ${until(s.waiting.resets_at)}`]))
+    else if (s.all_out && s.all_out.length) card.appendChild(el('div', { class: 'session-note bad' }, [`every option is out · first back: ${s.all_out[0].agent} ${until(s.all_out[0].resets_at)}`]))
     if (s.files.length) {
       const wrap = el('div', { class: 'session-files' })
       const overlapFiles = new Set(s.overlap.flatMap((o) => o.files))

@@ -60,7 +60,8 @@ always what runs. Nothing in `~/.claude`, `~/.codex` or agy's home is edited.
 - At the limit: the bundle is saved, the agent is stopped, and the next option
   starts in the same terminal from `.baton/RESUME.md`. Order is other logins of
   the same agent first, then the remaining agents (claude, codex, agy). When
-  every option is out, Baton prints each reset time, soonest first, and exits 3.
+  every option is out, Baton prints each reset time, soonest first, waits with
+  a countdown, and starts the first one back from the bundle. Ctrl-C quits.
 
 Force a hand-off at any time with the **Hand off now** button on the card, or
 `baton sessions handoff <id>`.

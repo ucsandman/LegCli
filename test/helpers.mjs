@@ -47,8 +47,8 @@ export function batonFail(args, env) {
   }
 }
 
-export function batonSpawn(args, env) {
-  return spawn(process.execPath, [BATON, ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+export function batonSpawn(args, env, { cwd } = {}) {
+  return spawn(process.execPath, [BATON, ...args], { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
 export function readCard(home, id) {

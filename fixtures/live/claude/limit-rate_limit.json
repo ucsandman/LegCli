@@ -1,0 +1,21 @@
+{
+  "agent": "claude",
+  "signal": "rate_limit",
+  "captured_at": "2026-09-11T07:46:37.143Z",
+  "session_id": "s-20260911-070526-claude-90b4",
+  "source": "observed-live",
+  "payload": {
+    "session_id": "6699ca09-6439-496d-a5a0-331999b3f646",
+    "transcript_path": "[redacted-home]\\.claude\\projects\\C--Projects-baton\\6699ca09-6439-496d-a5a0-331999b3f646.jsonl",
+    "cwd": "[redacted-repo]",
+    "scratchpad_dir": "[redacted-home]\\AppData\\Local\\Temp\\claude\\C--Projects-baton\\6699ca09-6439-496d-a5a0-331999b3f646\\scratchpad",
+    "prompt_id": "d0d87356-0947-45c7-a73b-2bc3ed8efb6d",
+    "effort": {
+      "level": "high"
+    },
+    "hook_event_name": "StopFailure",
+    "error": "rate_limit",
+    "error_details": "429 {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your account's rate limit. Please try again later.\"},\"request_id\":\"req_011CewHHg6eZrktkEjKYr2EK\"}",
+    "last_assistant_message": "You've reached your Fable limit. Run /usage-credits to continue or switch models with /model."
+  }
+}

@@ -28,7 +28,8 @@ with your own settings, hooks and skills. `baton claude --model opus` is
    saves the bundle, stops the agent, and starts the next option in the same
    terminal from that bundle: another login of the same agent if you added
    one, otherwise the next agent (claude → codex → agy). Nothing is retyped.
-   When every option is out, it tells you which resets first and when.
+   When every option is out, it tells you which resets first and when, waits
+   for that reset with a countdown, and starts that agent from the bundle.
 
 Subscription logins only: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
 `ANTHROPIC_BASE_URL` and `OPENAI_API_KEY` are stripped before any agent
@@ -116,7 +117,9 @@ your settings file itself is never changed.
    in order, each tried once: from claude, `claude/work → codex → agy`; from
    codex, `agy → claude`. An option whose wall has not reset is skipped.
 6. **All out.** The terminal prints each option with its reset time, soonest
-   first, and exits 3. The card shows the same.
+   first, then stays open with a countdown to the first reset and starts that
+   agent from the bundle when it arrives. The card says `waiting for <agent>
+   at <time>`. Ctrl-C (or End on the card) quits with exit 3 instead.
 
 You can force a handoff any time: the **Hand off now** button on the card, or
 `baton sessions handoff <id>`. Verified on this machine: `baton claude` opened

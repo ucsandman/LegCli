@@ -221,7 +221,7 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
   `BATON_USAGE_POLL_MS` ms, default 60000 (source: src/taps/claude-usage.mjs).
   observed-live 2026-09-11: 35 % five_hour, 92 % seven_day.
 - The wall: `StopFailure` hook with `error: rate_limit` (source:
-  https://code.claude.com/docs/en/hooks#stopfailure). **docs-only** <!-- live:claude/rate_limit -->: a real limit could not be forced on the
+  https://code.claude.com/docs/en/hooks#stopfailure). **observed-live 2026-09-11** <!-- live:claude/rate_limit -->: a real limit could not be forced on the
   build machine. The path was run live with `baton sessions simulate-limit`
   (the same payload through `src/hook.mjs`, marked `baton_simulated`, never
   kept as evidence); the first real payload lands in

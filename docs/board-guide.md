@@ -65,7 +65,10 @@ One per session, active sessions first, then by start time:
 - **Limit line**: `limit: <reason> · resets <time>`, the raw limit text on
   hover.
 - **Handoff line**: `<from> → <to> (<reason>) · bundle <id>`.
-- **All-out line**: `every option is out · first back: <agent> <time>`.
+- **Waiting line** while status is `waiting`: `⏳ waiting for <agent> at
+  <time>`; the terminal starts that agent from the bundle at the reset.
+- **All-out line** on an ended card: `every option is out · first back:
+  <agent> <time>` (the terminal was quit while waiting).
 - **File chips**: up to 8 of the files this session is touching, then `+n`. A
   chip turns red when another live session is touching the same file.
 - **Overlap flags**: one line per overlapping session, `⚠ <agent> (<id tail>)
@@ -81,11 +84,14 @@ One per session, active sessions first, then by start time:
 | `warning` | near limit |
 | `limit` | limit hit |
 | `handing_off` | handing off |
+| `waiting` | waiting for reset |
 | `handed_off` | handed off |
 | `ended` | ended |
 | `lost` | lost |
 
-`lost` means the runner process that owned that terminal is gone. It is never
+`waiting` means every option is walled and the terminal is counting down to
+the first reset; the card's line reads `⏳ waiting for <agent> at <time>`, and
+End quits that terminal with exit 3. `lost` means the runner process that owned that terminal is gone. It is never
 counted as live.
 
 ### Terminal buttons

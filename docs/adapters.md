@@ -40,7 +40,7 @@ docs-only.
   60 s (`BATON_USAGE_POLL_MS`). Observed live: 35 % and 92 %.
 - **The wall**: the `StopFailure` hook fires with `error: rate_limit`
   ([docs](https://code.claude.com/docs/en/hooks#stopfailure)). Status:
-  **docs-only** <!-- live:claude/rate_limit -->. A real limit could not be
+  **observed-live 2026-09-11** <!-- live:claude/rate_limit -->. A real limit could not be
   forced on the build machine; the path is covered by the hook contract test
   and was driven end to end with `baton sessions simulate-limit <id>`, which
   sends the same payload through `src/hook.mjs`. The first real `StopFailure`

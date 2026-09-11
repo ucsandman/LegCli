@@ -13,8 +13,8 @@ import { writeJsonAtomic } from './fsx.mjs'
 import { scrub } from './redact.mjs'
 
 export const AGENTS = ['claude', 'codex', 'agy']
-export const SESSION_STATUSES = ['starting', 'running', 'warning', 'limit', 'handing_off', 'handed_off', 'ended', 'lost']
-const ACTIVE = ['starting', 'running', 'warning', 'limit', 'handing_off']
+export const SESSION_STATUSES = ['starting', 'running', 'warning', 'limit', 'handing_off', 'waiting', 'handed_off', 'ended', 'lost']
+const ACTIVE = ['starting', 'running', 'warning', 'limit', 'handing_off', 'waiting']
 
 const now = () => new Date().toISOString()
 

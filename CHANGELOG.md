@@ -20,6 +20,15 @@ human on the board.
 - `BATON_CLAUDE_ARGS`, `BATON_CODEX_ARGS`, `BATON_AGY_ARGS`: extra arguments
   for a leg Baton starts after a hand-off (keep a chain on cheap models).
 - codex's card no longer shows the injected AGENTS.md block as the task.
+- When every option is out the terminal no longer exits 3: it prints the reset
+  times, counts down to the first one, and starts that agent from the bundle
+  when it arrives (`src/wait.mjs`). The card shows `waiting for <agent> at
+  <time>`. Ctrl-C, or End on the card, quits with exit 3. Verified live: with
+  codex and agy walled for 80 s, a simulated limit on a haiku session waited
+  and then started codex from `.baton/RESUME.md`.
+- `BATON_NO_BOARD=1` runs a session without the board; a stub-agent end-to-end
+  test (`test/attach-e2e.test.mjs`) now runs `baton claude` through the hook,
+  the hand-off, the wait and the restart in CI.
 
 ## 0.2.0 (2026-09-11)
 
