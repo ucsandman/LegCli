@@ -54,6 +54,41 @@ export function step(id, action, payload, actor = BATON_ACTOR) {
 
 function runJsonPath(id, n) { return join(cardDir(id), 'runs', String(n), 'run.json') }
 
+function latestRun(id) {
+  const dir = join(cardDir(id), 'runs')
+  if (!existsSync(dir)) return null
+  const ns = readdirSync(dir).map(Number).filter(Number.isInteger).sort((a, b) => b - a)
+  for (const n of ns) { try { return JSON.parse(readFileSync(runJsonPath(id, n), 'utf8')) } catch {} }
+  return null
+}
+
+// A run whose verdict no orchestrator has consumed: the latest run has no
+// settled_at. Happens after `baton down` (agents killed, the supervisor wrote
+// its verdict, the server that would apply it was already gone) or a crashed
+// server. runCard re-attaches to it instead of launching a fresh leg.
+function unsettledRun(id) {
+  const r = latestRun(id)
+  return r && !r.settled_at ? r : null
+}
+
+// A run nobody alive is driving: unsettled and its driver (the orchestrator
+// process that launched or re-attached to it) is gone. The scheduler picks
+// these up; a live driver is left alone so two processes never apply one verdict.
+export function orphanedRun(id) {
+  const r = unsettledRun(id)
+  return r && !(r.driver_pid && pidAlive(r.driver_pid)) ? r : null
+}
+
+function patchRun(id, n, fields) {
+  if (!n) return
+  try {
+    const cur = JSON.parse(readFileSync(runJsonPath(id, n), 'utf8'))
+    writeFileSync(runJsonPath(id, n), JSON.stringify({ ...cur, ...fields }, null, 2) + '\n')
+  } catch {}
+}
+
+function settleRun(id, run) { patchRun(id, run?.run, { settled_at: new Date().toISOString() }) }
+
 function pidAlive(pid) {
   if (!pid) return false
   try { process.kill(pid, 0); return true } catch { return false }
@@ -128,6 +163,7 @@ async function runLeg(card, station, worktree) {
     return { status: 'failed', outcome: 'launch_failed', handoff: true, signal: 'none', reason: scrub(text).slice(0, 300), run: null, exit_code: null }
   }
   if (card.resume_from_bundle) ledgerUpdate(card.card_id, { patch: { resume_from_bundle: false } })
+  patchRun(card.card_id, launch.run, { driver_pid: process.pid })
   const run = await waitForRun(card.card_id, launch.run)
   return run
 }
@@ -181,7 +217,17 @@ export async function runCard(id, { actor = BATON_ACTOR } = {}) {
     const st = card.pipeline[stationIndex(card.pipeline, card.station)]
     if (!st) throw new Error(`card ${id}: unknown station ${card.station}`)
     if (st.kind === 'agent') {
-      const run = await runLeg(card, st, wt.path)
+      const pending = unsettledRun(id)
+      if (pending?.driver_pid && pending.driver_pid !== process.pid && pidAlive(pending.driver_pid)) {
+        log(`card ${id}: run ${pending.run} is driven by pid ${pending.driver_pid}; not attaching`)
+        return card
+      }
+      if (pending) {
+        ledgerAppend(id, { type: 'status', station: st.name, leg: card.leg, summary: `re-attached to run ${pending.run} (${pending.status}); no new leg launched` })
+        patchRun(id, pending.run, { driver_pid: process.pid })
+      }
+      const run = pending ? await waitForRun(id, pending.run) : await runLeg(card, st, wt.path)
+      settleRun(id, run)
       const fresh = readCard(id)
       if (['killed', 'paused'].includes(fresh.status)) {
         if (fresh.status === 'paused') handoffOn(fresh, st, run, wt.path, ['paused by a human; resume continues from this bundle'])

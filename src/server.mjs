@@ -6,7 +6,7 @@
 // multiplayer seams (src/auth.mjs).
 import http from 'node:http'
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkBind, authorize } from './auth.mjs'
@@ -75,6 +75,25 @@ export function summarize(card) {
   }
 }
 
+const LOG_TAIL_BYTES = 65536
+
+// Read at most the last `maxBytes` of a file without loading the whole thing
+// (run logs can grow large; the board only ever shows a tail of them).
+function readFileTail(path, maxBytes = LOG_TAIL_BYTES) {
+  const fd = openSync(path, 'r')
+  try {
+    const size = fstatSync(fd).size
+    const start = Math.max(0, size - maxBytes)
+    const len = size - start
+    if (!len) return ''
+    const buf = Buffer.alloc(len)
+    readSync(fd, buf, 0, len, start)
+    return buf.toString('utf8')
+  } finally {
+    closeSync(fd)
+  }
+}
+
 function logTail(id, run, tail = 200) {
   const runs = readRuns(id)
   const r = run ? runs.find((x) => x.run === run) : runs[runs.length - 1]
@@ -84,7 +103,7 @@ function logTail(id, run, tail = 200) {
   for (const f of ['out.log', 'err.log']) {
     const p = join(dir, f)
     if (!existsSync(p)) continue
-    const text = readFileSync(p, 'utf8').trim()
+    const text = readFileTail(p).trim()
     if (text) lines.push(...text.split('\n').map((l) => `${f === 'err.log' ? 'stderr ' : ''}${l}`))
   }
   return { run: r.run, adapter: r.adapter, status: r.status, outcome: r.outcome ?? null, lines: scrub(lines.slice(-tail).join('\n')).split('\n') }
@@ -179,54 +198,64 @@ function serveStatic(res, urlPath) {
   res.end(readFileSync(file))
 }
 
-// ---- SSE: poll the ledger and push what changed ----
-function createSse({ intervalMs = 500 } = {}) {
+// ---- SSE: watch $BATON_HOME/cards for fs events and push only what changed ----
+function createSse({ healthIntervalMs = 10000, debounceMs = 30 } = {}) {
   const clients = new Set()
-  const sig = new Map() // card_id → {stamp, events}
-  let timer = null
-  let tokenLog = 0
+  const sig = new Map() // card_id → events already sent
+  let watcher = null
+  let healthTimer = null
+  const pending = new Set()
+  let flushTimer = null
   const broadcast = (event, data) => {
     const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
     for (const res of clients) { try { res.write(frame) } catch {} }
   }
-  const stampOf = (id) => {
-    const dir = cardDir(id)
-    let stamp = ''
-    try {
-      for (const f of readdirSync(dir)) {
-        if (f === 'card.json' || /^events-.*\.jsonl$/.test(f)) { const st = statSync(join(dir, f)); stamp += `${f}:${st.size}:${st.mtimeMs};` }
-      }
-      const runs = join(dir, 'runs')
-      if (existsSync(runs)) for (const n of readdirSync(runs)) { const p = join(runs, n, 'run.json'); if (existsSync(p)) { const st = statSync(p); stamp += `run${n}:${st.size}:${st.mtimeMs};` } }
-    } catch {}
-    return stamp
+  // Re-read and re-emit exactly one card's files — never the whole ledger.
+  const refreshCard = (id) => {
+    const card = readCard(id)
+    if (!card) { if (sig.has(id)) { sig.delete(id); broadcast('removed', { card_id: id }) } return }
+    const events = readEvents(id)
+    const from = sig.get(id) ?? 0
+    sig.set(id, events.length)
+    broadcast('card', summarize(card))
+    for (const e of events.slice(from)) broadcast('event', e)
   }
-  const tick = () => {
-    if (!clients.size) return
-    const cards = listCards()
-    const seen = new Set()
-    for (const c of cards) {
-      seen.add(c.card_id)
-      const stamp = stampOf(c.card_id)
-      const prev = sig.get(c.card_id)
-      if (prev && prev.stamp === stamp) continue
-      const events = readEvents(c.card_id)
-      const from = prev ? prev.events : 0
-      sig.set(c.card_id, { stamp, events: events.length })
-      broadcast('card', summarize(c))
-      for (const e of events.slice(from)) broadcast('event', e)
-    }
-    for (const id of [...sig.keys()]) if (!seen.has(id)) { sig.delete(id); broadcast('removed', { card_id: id }) }
-    tokenLog += 1
-    if (tokenLog % 20 === 0) broadcast('health', { ok: true, scheduler: { ...schedulerStatus(), max_concurrent: MAX_CONCURRENT }, ts: new Date().toISOString() })
+  const flushPending = () => {
+    flushTimer = null
+    const ids = [...pending]
+    pending.clear()
+    for (const id of ids) refreshCard(id)
+  }
+  const scheduleRefresh = (id) => {
+    pending.add(id)
+    if (!flushTimer) flushTimer = setTimeout(flushPending, debounceMs)
+  }
+  const startWatch = () => {
+    if (watcher) return
+    const dir = join(home(), 'cards')
+    try {
+      mkdirSync(dir, { recursive: true })
+      watcher = fsWatch(dir, { recursive: true }, (_event, filename) => {
+        if (!filename) return
+        const id = String(filename).split(/[\\/]/)[0]
+        if (id.startsWith('card-')) scheduleRefresh(id)
+      })
+    } catch (err) { log(`sse watch: ${err.message}`); watcher = null }
+    healthTimer = setInterval(() => broadcast('health', { ok: true, scheduler: { ...schedulerStatus(), max_concurrent: MAX_CONCURRENT }, ts: new Date().toISOString() }), healthIntervalMs)
+  }
+  const stopWatch = () => {
+    if (watcher) { watcher.close(); watcher = null }
+    if (healthTimer) { clearInterval(healthTimer); healthTimer = null }
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null }
+    pending.clear()
   }
   const add = (res, cards) => {
     clients.add(res)
-    for (const c of cards) sig.set(c.card_id, { stamp: stampOf(c.card_id), events: readEvents(c.card_id).length })
-    if (!timer) timer = setInterval(tick, intervalMs)
-    res.on('close', () => { clients.delete(res); if (!clients.size && timer) { clearInterval(timer); timer = null } })
+    for (const c of cards) sig.set(c.card_id, readEvents(c.card_id).length)
+    startWatch()
+    res.on('close', () => { clients.delete(res); if (!clients.size) stopWatch() })
   }
-  const stop = () => { if (timer) clearInterval(timer); timer = null; for (const res of clients) { try { res.end() } catch {} } clients.clear() }
+  const stop = () => { stopWatch(); for (const res of clients) { try { res.end() } catch {} } clients.clear() }
   return { add, stop, broadcast, clients }
 }
 

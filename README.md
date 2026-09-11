@@ -268,6 +268,16 @@ Environment (all optional, read from `.env` through `node --env-file-if-exists`)
   A chain only needs the adapters it names.
 - **Card bounced with `dirty-trunk`**: the repo root has uncommitted changes
   or is not on the trunk branch. Commit or stash, then press Rerun.
+- **Card still `running` after `baton down`**: `down` kills the agents; each
+  run's supervisor writes its verdict, and the next `baton up` re-attaches to
+  that run and applies it (a `re-attached to run N` event). Nothing to do.
+- **`card run` from a second terminal while the board is up**: the running
+  leg is left to whoever started it (the CLI prints `driven by pid`), but a
+  card that is `queued` between legs can be picked up by the board's
+  scheduler. With the board up, press Run instead of `card run`.
+
+The words on the board, in the events and in this README are listed in
+[docs/VOCABULARY.md](docs/VOCABULARY.md).
 
 ## Non-goals for v1
 

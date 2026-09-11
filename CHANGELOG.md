@@ -26,3 +26,8 @@ First build, local only, not published.
   recording (verified live once).
 - Demo (fake limit on the board, five screenshots) and one real run: claude
   hit `--max-turns 2`, codex finished from the bundle, tests green in 2 m 50 s.
+- Polish pass: a missing CLI ends the card `failed` (was stuck `running`);
+  runs re-attach after `baton down` instead of relaunching; bounce and
+  blocked chips name their reason; repo path must be a git root outside
+  BATON_HOME; SSE re-reads only the changed card; reduced-motion and contrast
+  checks; docs/VOCABULARY.md.

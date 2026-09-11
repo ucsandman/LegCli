@@ -1,14 +1,26 @@
 // cards — create a card from loosely typed input (CLI flags or a JSON body):
 // parse the chain, build and validate the pipeline, then hand the ledger the
 // exact shape. Shared by bin/baton.mjs and src/server.mjs.
-import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { existsSync, statSync } from 'node:fs'
+import { resolve, sep, join } from 'node:path'
+import { homedir } from 'node:os'
 import { buildPipeline, validatePipeline, loadAdapterModes, parseChain } from './pipeline.mjs'
 import { PRESET_NAMES } from './presets.mjs'
 import { ledgerCreate, readCard } from './store.mjs'
 import { humanAction } from './orchestrator.mjs'
 
 export class CardInputError extends Error {}
+
+function samePath(a, b) {
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+}
+
+function isParentOf(parent, child) {
+  const p = process.platform === 'win32' ? parent.toLowerCase() : parent
+  const c = process.platform === 'win32' ? child.toLowerCase() : child
+  return c.startsWith(p + sep)
+}
 
 function list(v) {
   if (Array.isArray(v)) return v.map(String).map((x) => x.trim()).filter(Boolean)
@@ -31,6 +43,17 @@ export async function createCard(input, actor = { type: 'human', id: 'local' }) 
   if (!input.repo) throw new CardInputError('missing repo')
   const repo = resolve(String(input.repo))
   if (!existsSync(repo)) throw new CardInputError(`repo not found: ${repo}`)
+  if (!statSync(repo).isDirectory()) throw new CardInputError(`repo is not a directory: ${repo}`)
+  let top
+  try {
+    top = execFileSync('git', ['-C', repo, 'rev-parse', '--show-toplevel'], { windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } }).trim()
+  } catch {
+    throw new CardInputError(`repo is not a git repository: ${repo}`)
+  }
+  const resolvedTop = resolve(top)
+  if (!samePath(resolvedTop, repo)) throw new CardInputError(`repo is not the repository root: ${repo} (root is ${resolvedTop})`)
+  const batonHome = resolve(process.env.BATON_HOME || join(homedir(), '.baton'))
+  if (samePath(repo, batonHome) || isParentOf(repo, batonHome)) throw new CardInputError('repo cannot contain BATON_HOME')
   const task = String(input.task ?? '').trim()
   if (!task) throw new CardInputError('missing task')
   if (!input.chain || (Array.isArray(input.chain) && !input.chain.length)) throw new CardInputError('missing chain (e.g. claude,codex)')

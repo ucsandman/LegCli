@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { conflicts } from './leases.mjs'
-import { runCard } from './orchestrator.mjs'
+import { runCard, orphanedRun } from './orchestrator.mjs'
 import { listCards, ledgerAppend, ledgerLog, home, sleep } from './store.mjs'
 
 export const MAX_CONCURRENT = Math.max(1, parseInt(process.env.BATON_MAX_CONCURRENT || '2', 10) || 2)
@@ -49,7 +49,11 @@ export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor
         : `blocked: ${b.reason}`
       ledgerAppend(b.card.card_id, { actor, type: 'blocked_by', summary, station: b.card.station, leg: b.card.leg })
     }
-    for (const c of start) {
+    // Running cards nobody alive is driving (their orchestrator died with the
+    // last server) get re-attached so a finished run's verdict is applied. A
+    // card a live `card run` is driving is left to that process.
+    const reattach = cards.filter((c) => c.status === 'running' && !state.inflight.has(c.card_id) && orphanedRun(c.card_id))
+    for (const c of [...start, ...reattach]) {
       if (state.inflight.has(c.card_id)) continue
       state.blockedKeys.delete(c.card_id)
       const p = runCard(c.card_id, { actor }).catch((err) => {
@@ -57,7 +61,7 @@ export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor
       }).finally(() => state.inflight.delete(c.card_id))
       state.inflight.set(c.card_id, p)
     }
-    return { started: start.map((c) => c.card_id), blocked: blocked.map((b) => b.card.card_id), inflight: [...state.inflight.keys()] }
+    return { started: start.map((c) => c.card_id), reattached: reattach.map((c) => c.card_id), blocked: blocked.map((b) => b.card.card_id), inflight: [...state.inflight.keys()] }
   }
 
   async function run({ ticks = Infinity } = {}) {

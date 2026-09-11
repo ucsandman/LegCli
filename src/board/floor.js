@@ -79,7 +79,11 @@
   }
 
   function renderHeader(data) {
-    document.getElementById('repos-list').textContent = data.repos && data.repos.length ? data.repos.join(', ') : '(none)'
+    // repo names only on the floor (the full path is the tooltip): a shared
+    // floor should not print every operator's home directory
+    const reposEl = document.getElementById('repos-list')
+    reposEl.textContent = data.repos && data.repos.length ? data.repos.map((r) => String(r).split(/[\\/]/).filter(Boolean).pop() || r).join(', ') : '(none)'
+    reposEl.title = data.repos && data.repos.length ? data.repos.join('\n') : ''
     const sched = data.scheduler || {}
     document.getElementById('sched-status').textContent = `scheduler: ${sched.running ? 'running' : 'stopped'}, ${sched.max_concurrent ?? '?'} max`
     document.getElementById('count-running').textContent = String(data.counts.running)

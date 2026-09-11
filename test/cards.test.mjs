@@ -1,8 +1,9 @@
 // The headless CLI: card add validation and the read commands.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, writeFileSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { makeHome, testEnv, initRepo, baton, batonFail, readCard } from './helpers.mjs'
 
 test('card add refuses a forbidden mode, an unknown adapter, and a land station that is not last', () => {
@@ -67,4 +68,60 @@ test('card add --queue enqueues immediately; scheduler status reports not runnin
   const id = baton(['card', 'add', '--repo', repo, '--task', 'q', '--chain', 'fake', '--queue'], env).trim()
   assert.equal(readCard(home, id).status, 'queued')
   assert.ok(baton(['scheduler', 'status'], env).includes('not running'))
+})
+
+test('card add accepts a real scratch git repo', () => {
+  const home = makeHome()
+  const env = testEnv(home)
+  const repo = initRepo()
+  const id = baton(['card', 'add', '--repo', repo, '--task', 'ok', '--chain', 'fake'], env).trim()
+  assert.equal(readCard(home, id).status, 'backlog')
+})
+
+test('card add refuses a plain directory that is not a git repo', () => {
+  const home = makeHome()
+  const env = testEnv(home)
+  const notAGitRepo = mkdtempSync(join(tmpdir(), 'baton-cards-'))
+  const bad = batonFail(['card', 'add', '--repo', notAGitRepo, '--task', 't', '--chain', 'fake'], env)
+  assert.equal(bad.status, 2)
+  assert.match(bad.stderr, /repo is not a git repository:/)
+})
+
+test('card add refuses a file as --repo', () => {
+  const home = makeHome()
+  const env = testEnv(home)
+  const dir = mkdtempSync(join(tmpdir(), 'baton-cards-'))
+  const file = join(dir, 'not-a-dir.txt')
+  writeFileSync(file, 'hi\n')
+  const bad = batonFail(['card', 'add', '--repo', file, '--task', 't', '--chain', 'fake'], env)
+  assert.equal(bad.status, 2)
+  assert.match(bad.stderr, /repo is not a directory:/)
+})
+
+test('card add refuses a subdirectory of a git repo (root must be the repo itself)', () => {
+  const home = makeHome()
+  const env = testEnv(home)
+  const repo = initRepo()
+  const sub = join(repo, 'sub')
+  mkdirSync(sub)
+  const bad = batonFail(['card', 'add', '--repo', sub, '--task', 't', '--chain', 'fake'], env)
+  assert.equal(bad.status, 2)
+  assert.match(bad.stderr, /repo is not the repository root: .*\(root is .*\)/)
+})
+
+test('card add refuses a repo path equal to BATON_HOME', () => {
+  const repo = initRepo()
+  const env = testEnv(repo)
+  const bad = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'fake'], env)
+  assert.equal(bad.status, 2)
+  assert.match(bad.stderr, /repo cannot contain BATON_HOME/)
+})
+
+test('card add refuses a repo path that is a parent of BATON_HOME', () => {
+  const repo = initRepo()
+  const home = join(repo, 'nested', '.baton-home')
+  const env = testEnv(home)
+  const bad = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'fake'], env)
+  assert.equal(bad.status, 2)
+  assert.match(bad.stderr, /repo cannot contain BATON_HOME/)
 })

@@ -286,7 +286,16 @@ async function main() {
     child.on('error', (err) => {
       log(`agent spawn error: ${err.message}`)
       ledgerAppend(id, 'error', `[supervisor] agent spawn failed: ${scrub(err.message).slice(0, 200)}`, null, log)
-      writeRun(id, n, { ...readRun(id, n), status: 'failed', exit_code: null, ended_at: now() })
+      // A run that never started still needs a verdict, or the orchestrator
+      // has nothing to transition on and the card sits in `running` forever.
+      const verdict = classify({
+        adapter: adapter.emulates ?? adapterName, exitCode: null, stdout: '', stderr: '', result: null,
+        doneMarker: false, diff: null, killedByTimer: false, killedByHuman: false, spawnError: err.message,
+      })
+      writeRun(id, n, {
+        ...readRun(id, n), status: 'failed', exit_code: null, ended_at: now(),
+        outcome: verdict.outcome, signal: verdict.signal, handoff: verdict.handoff, reason: verdict.reason,
+      })
       process.exit(13)
     })
 

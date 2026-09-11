@@ -360,3 +360,13 @@ table.floor-table th { color: var(--muted); font-weight: 600; }
 @media (max-width: 400px) {
   .column { min-width: 260px; flex-basis: 260px; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .dot.reconnecting,
+  .pill.state-active .pill-state {
+    animation: none;
+  }
+  * {
+    transition: none;
+  }
+}

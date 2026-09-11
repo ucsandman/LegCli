@@ -269,11 +269,11 @@
     const cls = STATUS_CLASS[card.status] || 'muted'
     let titleAttr = null
     if (card.status === 'queued' && card.last_event && card.last_event.type === 'blocked_by') {
-      label = 'blocked by lease'
-      titleAttr = card.last_event.summary
-    } else if (card.status === 'queued' && card.bounce_reason) {
-      label = 'bounced: ' + String(card.bounce_reason).split(':')[0].slice(0, 24)
-      titleAttr = card.bounce_reason
+      // the scheduler writes "blocked by <holder> on <lease> …" for a lease and
+      // "blocked: <reason>" for anything else (the concurrency cap, a landing repo)
+      const s = String(card.last_event.summary || '')
+      label = /^blocked by /.test(s) ? 'blocked by lease' : 'blocked: ' + s.replace(/^blocked:\s*/, '').slice(0, 24)
+      titleAttr = s
     } else if (card.status === 'running' && card.station_kind === 'land') {
       label = 'landing'
     } else if (card.status === 'waiting_human' && card.pr_url) {
@@ -281,6 +281,15 @@
       titleAttr = card.pr_url
     }
     return el('span', { class: `chip status-chip ${cls}`, title: titleAttr }, [label])
+  }
+
+  // A bounced card carries its reason until it lands or ends: "bounced: test
+  // red (attempt 1)" while it is queued, running or handing off again.
+  function buildBounceChip(card) {
+    if (!card.bounce_reason || !['queued', 'running', 'handing_off', 'needs_approval'].includes(card.status)) return null
+    const short = String(card.bounce_reason).split(/[(:]/)[0].trim().slice(0, 24) || 'bounced'
+    const attempt = card.land_attempts ? ` (attempt ${card.land_attempts})` : ''
+    return el('span', { class: 'chip status-chip warn bounce-chip', title: card.bounce_reason }, [`bounced: ${short}${attempt}`])
   }
 
   function buildChainRail(card) {
@@ -404,8 +413,9 @@
 
     children.push(el('div', { class: 'card-meta' }, [
       el('span', { class: 'repo-name' }, [card.repo_name || '']),
-      el('span', { class: 'chip station-chip' }, [card.station || '']),
+      card.station && card.station !== '-' ? el('span', { class: 'chip station-chip' }, [card.station]) : null,
       buildStatusChip(card),
+      buildBounceChip(card),
     ]))
 
     children.push(buildChainRail(card))

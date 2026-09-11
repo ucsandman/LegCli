@@ -5,7 +5,28 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { makeHome, testEnv, initRepo, baton, readCard, events, git } from './helpers.mjs'
+import { makeHome, testEnv, initRepo, baton, batonFail, readCard, events, git } from './helpers.mjs'
+
+// Phase 12 finding: a spawn error (missing CLI binary) wrote run.json with no
+// outcome, so the orchestrator had nothing to transition on and the card sat
+// in `running` forever. The supervisor now classifies it as launch_failed.
+test('missing CLI at launch: card ends failed (launch_failed), error event names the spawn error, card run exits non-zero', () => {
+  const home = makeHome()
+  const env = testEnv(home, { BATON_CLAUDE_BIN: join(home, 'no-such-claude.exe') })
+  const repo = initRepo('missingcli-')
+  const id = baton(['card', 'add', '--repo', repo, '--task', 'never starts', '--chain', 'claude', '--slug', 'missing'], env).trim()
+  const r = batonFail(['card', 'run', id], env)
+  assert.notEqual(r.status, 0)
+  const card = readCard(home, id)
+  assert.equal(card.status, 'failed')
+  assert.equal(card.failure, 'launch_failed')
+  const err = events(home, id).find((e) => e.type === 'error')
+  assert.match(err.summary, /agent spawn failed: spawn .*no-such-claude\.exe ENOENT/)
+  const run = JSON.parse(readFileSync(join(home, 'cards', id, 'runs', '1', 'run.json'), 'utf8'))
+  assert.equal(run.status, 'failed')
+  assert.equal(run.outcome, 'launch_failed')
+  assert.equal(run.handoff, true)
+})
 
 test('e2e: fake-claude limit → bundle → fake-codex completes, exact event sequence, under 60 s', (t) => {
   const home = makeHome()
