@@ -23,7 +23,10 @@ kanban-final-1280.png     kanban-final-400.png
 ```
 
 The `demo-*` sequence is walked through in [DEMO.md](DEMO.md).
-`terminals-1280.png` is the Terminals lane.
+`terminals-1280.png` is the Terminals lane after a live Land (2026-09-11, three
+haiku sessions on a throwaway repo): one card landed on main, the other
+bounced with `rebase-conflict` on README.md, and the landed-on-trunk list names
+the terminal that landed the commit.
 
 ## Terminals lane
 
@@ -58,7 +61,9 @@ One per session, active sessions first, then by start time:
   started.
 - **Task**: the first prompt, truncated to 140 characters, or "no prompt yet".
 - **Meta**: `repo@branch` (the full path on hover), the turn count, and the
-  short HEAD sha.
+  short HEAD sha. A session that started while another was live in the same
+  checkout adds an `own worktree · from <base>` chip; hover gives the worktree
+  path and branch.
 - **Usage bars**: the 5h and 7d windows for this session's login.
 - **Warning line** at `BATON_WARN_PCT`: `⚠ <window> window at <n>% · next:
   <agent>`, naming the option Baton would hand to.
@@ -72,10 +77,18 @@ One per session, active sessions first, then by start time:
 - **File chips**: up to 8 of the files this session is touching, then `+n`. A
   chip turns red when another live session is touching the same file.
 - **Overlap flags**: one line per overlapping session, `⚠ <agent> (<id tail>)
-  is editing <files> too`. The whole card gets a red border. An overlap is two
-  live sessions in the same repo whose `files_touched` or `files_dirty` sets
-  intersect (`sessions.overlaps`), so it catches a file one agent has edited
-  and another has only made dirty.
+  is editing <files> too` when both work in the same checkout, or `⚠ <agent>
+  (<id tail>) is changing <files> in another checkout; whoever lands second
+  rebases` when they work in different ones. The whole card gets a red border.
+  An overlap is two live sessions in the same repo whose `files_touched` or
+  `files_dirty` sets intersect (`sessions.overlaps`), so it catches a file one
+  agent has edited and another has only made dirty.
+- **Land line** after a Land: `landing <branch> onto <base>: rebase, tests,
+  fast-forward…` while it runs, then `✓ landed on <base> · <sha> · <n> files
+  +<ins>/-<del>` (with `· untested` when the repo has no test command),
+  `✗ bounced (<reason>): <first line>` with the whole reason on hover, or
+  `nothing to land`. If the board restarted in the middle it reads `the landing
+  was cut off`; press Land again.
 
 | status | chip label |
 |--------|------------|
@@ -98,19 +111,23 @@ counted as live.
 
 | button | shown when | what it does |
 |--------|------------|--------------|
+| Land | the session has its own worktree, active or not; disabled with the reason on hover while it is landing or when the worktree is gone | `POST /api/sessions/:id/land` (202): commits what the agent left on `baton/<id>`, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the land line shows the result |
 | Hand off now | the session is active | `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
-| Remove | the session is not active | `DELETE /api/sessions/:id`: forgets the session record |
+| Remove | the session is not active | `DELETE /api/sessions/:id`: forgets the session record; its worktree and branch go too when the worktree is clean and the branch is already on its base, otherwise they stay and the toast says why |
 
 Each press shows a toast; **Hand off now** says the terminal switches agents in
 a few seconds, because the switch happens in the terminal, not the browser.
 
 ### Landed on trunk
 
-Below the cards, one block per repo with a live session:
-`landed on <branch> · <repo>`, then the last 6 commits of the first of `main`,
-`master` or `trunk` that exists, with sha, subject, when and author. It answers
-"what actually got in" without leaving the board.
+Below the cards, one block per repo with a live session or a session with its
+own worktree: `landed on <branch> · <repo>`, then the last 6 commits of the
+first of `main`, `master` or `trunk` that exists, with sha, subject and when. A
+commit a Land put there says `landed by <agent> (<id tail>)` in green (from
+`~/.baton/landings.jsonl`, which outlives the session); any other commit shows
+its git author. It answers "what actually got in, and from which terminal"
+without leaving the board.
 
 ## Pipelines: board layout
 

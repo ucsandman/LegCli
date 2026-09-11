@@ -8,7 +8,7 @@
 [![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](package.json)
 [![Local first](https://img.shields.io/badge/runs-on%20your%20machine-informational.svg)](#network-exposure)
 
-![The Baton board: two live terminals on one repo, both flagged because they edit README.md, the accounts strip with 5h/7d usage, and what landed on main](docs/screenshots/terminals-1280.png)
+![The Baton board: three live claude terminals on one repo, two of them in their own worktrees and flagged for changing README.md; one landed on main through the merge queue, the other bounced naming the conflicting file, and the landed-on-trunk list says which terminal landed the commit](docs/screenshots/terminals-1280.png)
 
 You keep using your coding agents exactly as you do today, in any terminal,
 with your own settings, hooks and skills. `baton claude --model opus` is
@@ -18,7 +18,8 @@ with your own settings, hooks and skills. `baton claude --model opus` is
    session in every terminal is a card on it: agent, account, repo and branch,
    the task, the files it is touching, its 5h and 7d usage, what has landed on
    trunk. Two sessions editing the same file in one repo are flagged on both
-   cards.
+   cards, and a second session in a checkout that already has one gets its
+   own worktree and a **Land** button instead of writing over the first.
 2. **Usage tracking** per agent and account, from what each CLI already
    exposes: Claude Code's usage endpoint and its `StopFailure` hook, Codex's
    session rollout file, agy's log.
@@ -41,6 +42,7 @@ or any other file of yours; `baton uninstall` removes only `~/.baton`.
 - [60-second run](#60-second-run)
 - [What Baton reads from each agent](#what-baton-reads-from-each-agent)
 - [How a handoff works](#how-a-handoff-works)
+- [Two sessions in one repo](#two-sessions-in-one-repo)
 - [The board](#the-board)
 - [Second accounts, and what the terms say](#second-accounts-and-what-the-terms-say)
 - [What is and is not touched](#what-is-and-is-not-touched)
@@ -137,6 +139,35 @@ secrets scrubbed under `fixtures/live/<agent>/` (a dev clone) or
 `~/.baton/live/`, and the docs rows for it flip from docs-only to
 observed-live (`node scripts/live-limits.mjs`).
 
+## Two sessions in one repo
+
+Two agents in one working tree write over each other's files. So when you
+start `baton codex` in a checkout where `baton claude` is already live, the new
+session gets its own git worktree, `<repo>/.baton-worktrees/<session-id>` on
+branch `baton/<session-id>`, cut from the branch the checkout has out, and the
+terminal prints one line saying where it is. The agent starts there; the card,
+the usage tracking and the handoff work the same. `--no-worktree` shares the
+checkout on purpose (Baton takes the flag out; the agent never sees it).
+
+The card of a session with its own worktree has a **Land** button. It sends
+the branch through the merge queue: whatever the agent left uncommitted is
+committed on the branch, the branch is rebased onto its base, the repo's test
+command runs (`package.json` `test`, `pytest`, or none with a warning), and the
+base is fast-forwarded, never merged. When a step fails nothing lands and the
+card says why: `rebase-conflict` with the files, `tests-red` with the end of
+the output, `dirty-trunk` when the checkout has local changes the landing
+would overwrite. Local changes it would not touch are left alone. The
+landed-on-trunk list says which terminal landed each commit. Removing a
+finished session takes its worktree and branch along only when the worktree is
+clean and the branch is already on its base.
+
+Verified live on 2026-09-11 with three haiku sessions in a throwaway repo. The
+first stayed in the checkout; the second and third each got a worktree and
+appended a line to README.md. Land on the second, clicked on the real board,
+ran the repo's tests and fast-forwarded main; Land on the third bounced with
+`rebase-conflict` on README.md and kept its commit on its branch; the
+landed-on-trunk list named the second terminal (the screenshot above).
+
 ## The board
 
 `baton <agent>` opens it; `baton open` reopens it; `baton down` stops it.
@@ -147,10 +178,14 @@ observed-live (`node scripts/live-limits.mjs`).
   limit hit, handing off, ended, lost), the first prompt, repo@branch, turns,
   HEAD, usage bars, the files being touched (chips), and the warning, limit or
   handoff line. Two live sessions on one repo touching the same file get a red
-  border and a "⚠ codex is editing README.md too" line on both cards.
+  border and a "⚠ codex is editing README.md too" line on both cards. A
+  session with its own worktree shows `own worktree · from <branch>` and, after
+  a Land, `✓ landed on main · <sha>` or `✗ bounced (<reason>): <why>`.
 - **Landed on trunk**: the last commits on `main` (or `master`) of every repo
-  with a live session.
-- **Buttons**: Hand off now, End (stops the agent), Remove (ended sessions).
+  with a live session; a commit a Land put there says `landed by <agent>
+  (<session>)`.
+- **Buttons**: Land (sessions with their own worktree), Hand off now, End
+  (stops the agent), Remove (ended sessions).
 - Below it, the v0.1 **Pipelines** columns for headless cards (see below).
 
 The board reads `~/.baton/sessions/*/session.json` over server-sent events; a
@@ -201,8 +236,11 @@ happens after you run `baton accounts add`; that is your call.
   `~/.codex/config.toml`, agy's files, your repo's settings. Claude Code gets
   hooks through a per-session `--settings` file under `~/.baton`; codex and
   agy get nothing injected.
-- **Written in your repo**: `.baton/` (session notes, `RESUME.md`) and
-  `.context-handoffs/` (the bundles), both added to `.git/info/exclude`.
+- **Written in your repo**: `.baton/` (session notes, `RESUME.md`),
+  `.context-handoffs/` (the bundles) and `.baton-worktrees/` (a second
+  session's worktree), all added to `.git/info/exclude`, plus the
+  `baton/<session-id>` branch of a session with its own worktree. Landing
+  fast-forwards your branch; nothing is ever pushed.
 - **Stripped from every agent's environment**: the four API-key variables above,
   plus `CLAUDECODE` and `CLAUDE_CODE_*` markers a parent Claude session would
   leak (they make a nested Claude refuse to start).
@@ -217,6 +255,7 @@ happens after you run `baton accounts add`; that is your call.
 
 ```
 baton claude|codex|agy [agent args…]   the interactive agent, board alongside, handoff on limit
+      [--no-worktree]                  share the checkout with a live session instead of a worktree
 baton sessions ls [--json]             every session and its usage
 baton sessions show|events <id>
 baton sessions handoff|end <id>        same as the board buttons

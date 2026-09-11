@@ -7,21 +7,22 @@ import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { chb, ensureExcluded } from './handoff.mjs'
 import { scrub } from './redact.mjs'
-import { updateSession } from './sessions.mjs'
+import { updateSession, workRoot } from './sessions.mjs'
 
 const BATON_DIRS = /^(\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
 const bullets = (items) => items.filter(Boolean).map((x) => `- ${String(x).replace(/\r?\n/g, ' ').trim()}`)
 
 function git(cwd, args) {
   const r = spawnSync('git', args, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
-  return r.status === 0 ? r.stdout.trim() : ''
+  // trimEnd only: a porcelain line starts with a space (" M README.md")
+  return r.status === 0 ? r.stdout.trimEnd() : ''
 }
 
 export function slugFor(session) { return `baton-${session.session_id}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80) }
 
 // Notes in the CLI's section vocabulary; see src/handoff.mjs buildNotes.
 export function sessionNotes(session, { messages = [], why = 'handoff' } = {}) {
-  const cwd = session.repo ?? session.cwd
+  const cwd = workRoot(session)
   const stat = git(cwd, ['diff', '--stat'])
   const dirty = git(cwd, ['status', '--porcelain']).split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')).filter((f) => !BATON_DIRS.test(f)).slice(0, 60)
   const recent = git(cwd, ['log', '--oneline', '-5'])
@@ -50,7 +51,8 @@ export function sessionNotes(session, { messages = [], why = 'handoff' } = {}) {
 
 // Save (or refresh) the session's bundle. Returns { bundle_id, path } or throws.
 export function saveSessionBundle(session, { messages = [], why = 'checkpoint' } = {}) {
-  const cwd = session.repo ?? session.cwd
+  // a session in its own worktree keeps its bundle and RESUME.md there, where the next agent starts
+  const cwd = workRoot(session)
   const batonDir = join(cwd, '.baton')
   mkdirSync(batonDir, { recursive: true })
   if (session.repo) for (const pat of ['.baton/', '.context-handoffs/']) ensureExcluded(session.repo, pat)
@@ -72,7 +74,7 @@ export function saveSessionBundle(session, { messages = [], why = 'checkpoint' }
 // The resume text for the next agent: chb load into .baton/RESUME.md, plus a
 // short pointer prompt (argv stays small; the bundle carries the context).
 export function resumePrompt(session, bundle, next) {
-  const cwd = session.repo ?? session.cwd
+  const cwd = workRoot(session)
   let loaded = ''
   try {
     const r = chb(['load', bundle.id], { cwd })

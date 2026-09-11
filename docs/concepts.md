@@ -25,9 +25,10 @@ Each session gets a directory under `$BATON_HOME/sessions/<id>/`
 | `hook.log` | what Claude Code's hooks sent, claude sessions only |
 | `claude-settings.json` | the per-session `--settings` file, claude sessions only |
 | `agy.log` | agy's `--log-file`, agy sessions only |
+| `land.json` | the last Land of a session with its own worktree (landing, landed, noop, bounced); the board server is its only writer |
 
 A session's status is one of `starting`, `running`, `warning`, `limit`,
-`handing_off`, `handed_off`, `ended`, `lost`. `lost` means the runner process
+`handing_off`, `waiting`, `handed_off`, `ended`, `lost`. `lost` means the runner process
 that owned the terminal is gone (closed window, crash); the board never shows
 it as live.
 
@@ -241,6 +242,17 @@ touched by an agent directly. Every git call sets `MSYS_NO_PATHCONV=1` so
 Git Bash on Windows does not rewrite absolute path arguments. Baton never
 pushes, opens a remote, or removes a path outside
 `<repo>/.baton-worktrees/`.
+
+Terminal sessions use the same layout when they would collide. A `baton
+<agent>` started in a checkout where another session is live gets
+`<repo>/.baton-worktrees/<session-id>` on `baton/<session-id>`, cut from the
+branch the checkout has out (`isolate` in `src/attach.mjs`); its `repo` stays
+the checkout, so the board groups it with the others. Its Land button runs the
+same merge queue as a card's land station, with one difference: the checkout
+is a live terminal and may have local changes of its own. Those are left alone,
+and a fast-forward that would overwrite one bounces `dirty-trunk` naming the
+files. `~/.baton/landings.jsonl` records every landing (session, agent, who
+pressed Land, the commits) for the landed-on-trunk list.
 
 ## Leases and the scheduler
 

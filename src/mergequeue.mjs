@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { branchName } from './worktree.mjs'
-import { runCommand } from './commands.mjs'
+import { runCommandAsync } from './commands.mjs'
 
 const TEST_TIMEOUT_MS = Number(process.env.BATON_LAND_TEST_TIMEOUT_MS || 600000)
 const queues = new Map() // repo → tail promise
@@ -59,14 +59,14 @@ export function resolveTestCommand(card, worktree) {
 }
 
 function runTests(command, worktree) {
-  return runCommand(command, worktree, { timeoutMs: TEST_TIMEOUT_MS, tailLines: 40 })
+  return runCommandAsync(command, worktree, { timeoutMs: TEST_TIMEOUT_MS, tailLines: 40 })
 }
 
 function bounce(reason, detail, extra = {}) {
   return { landed: false, bounced: true, reason, detail, ...extra }
 }
 
-async function landNow(card, worktree, { onWarning = () => {} } = {}) {
+async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = false } = {}) {
   const t0 = Date.now()
   const repo = card.repo
   const trunk = card.trunk || 'main'
@@ -74,7 +74,9 @@ async function landNow(card, worktree, { onWarning = () => {} } = {}) {
 
   const root = rootState(repo, trunk)
   if (!root.onTrunk) return bounce('dirty-trunk', `repo root is on ${root.branch}, not ${trunk}; check out ${trunk} and retry`)
-  if (root.dirty.length) return bounce('dirty-trunk', `repo root has ${root.dirty.length} uncommitted change(s): ${root.dirty.slice(0, 10).join(', ')}`)
+  // allowDirtyRoot (a terminal's Land): the root is a live checkout, dirty by
+  // nature; git's own fast-forward still refuses to overwrite a local change
+  if (root.dirty.length && !allowDirtyRoot) return bounce('dirty-trunk', `repo root has ${root.dirty.length} uncommitted change(s): ${root.dirty.slice(0, 10).join(', ')}`)
 
   const committed = commitWorktree(worktree, `baton: ${card.title ?? card.card_id}`)
   const preSha = git(worktree, ['rev-parse', 'HEAD']).stdout.trim()
@@ -92,7 +94,7 @@ async function landNow(card, worktree, { onWarning = () => {} } = {}) {
   if (!tc.command) {
     onWarning(`no test command (card, package.json, pyproject.toml); landing untested`)
   } else {
-    tests = runTests(tc.command, worktree)
+    tests = await runTests(tc.command, worktree)
     if (!tests.green) {
       return bounce('tests-red', `${tests.command} exit ${tests.status}${tests.timedOut ? ' (timed out)' : ''}:\n${tests.tail}`, { test_tail: tests.tail, pre_sha: preSha })
     }
@@ -106,6 +108,10 @@ async function landNow(card, worktree, { onWarning = () => {} } = {}) {
     const again = git(worktree, ['rebase', trunk], { ok: false })
     if (again.status === 0) merge = git(repo, ['merge', '--ff-only', branch], { ok: false })
     else git(worktree, ['rebase', '--abort'], { ok: false })
+  }
+  if (merge.status !== 0 && /would be overwritten by merge/.test(merge.stderr || merge.stdout)) {
+    const files = (merge.stderr || merge.stdout).split(/\r?\n/).filter((l) => /^\s+\S/.test(l)).map((l) => l.trim())
+    return bounce('dirty-trunk', `the ${trunk} checkout has local changes this landing would overwrite: ${files.join(', ') || '(see git output)'}`, { files })
   }
   if (merge.status !== 0) {
     return bounce('trunk-moved', `fast-forward of ${trunk} failed${retried ? ' after one retry' : ''}: ${(merge.stderr || merge.stdout).trim().slice(0, 300)}`, { retried })

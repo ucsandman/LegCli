@@ -3,6 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -168,4 +169,36 @@ test('accounts: default only, extra account dir with junctions and login line', 
   } finally {
     if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev
   }
+})
+
+test('sessions: a session in its own worktree keeps paths relative to that worktree, and overlaps say separate', () => {
+  const wt = join(cwd, '.baton-worktrees', 's-w-claude')
+  mkdirSync(wt, { recursive: true })
+  sessions.createSession({ id: 's-w-claude', agent: 'claude', cwd: wt, repo: cwd, branch: 'baton/s-w-claude', worktree: { path: wt, branch: 'baton/s-w-claude', base: 'main' } })
+  sessions.updateSession('s-w-claude', { status: 'running' })
+  assert.equal(sessions.workRoot(sessions.readSession('s-w-claude')), wt)
+  claudeTap.handleHook('s-w-claude', { hook_event_name: 'PostToolUse', tool_input: { file_path: join(wt, 'README.md') } })
+  assert.deepEqual(sessions.readSession('s-w-claude').files_touched, ['README.md'])
+  sessions.createSession({ id: 's-w-codex', agent: 'codex', cwd, repo: cwd, branch: 'main' })
+  sessions.updateSession('s-w-codex', { status: 'running', files_dirty: ['README.md'] })
+  const ov = sessions.overlaps(sessions.listSessions())
+  assert.equal(ov.get('s-w-claude').find((o) => o.session_id === 's-w-codex').separate, true)
+  assert.equal(sessions.workRoot(sessions.readSession('s-w-codex')), cwd)
+  for (const id of ['s-w-claude', 's-w-codex']) sessions.updateSession(id, { status: 'ended' })
+})
+
+test('git dirty list: a porcelain line that starts with a space keeps its first letter, and tool directories are left out (attach gitInfo, bundle notes)', async () => {
+  const { gitInfo } = await import('../src/attach.mjs')
+  const { sessionNotes } = await import('../src/bundle.mjs')
+  const repo = mkdtempSync(join(tmpdir(), 'baton-porcelain-'))
+  const g = (args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' })
+  g(['init', '-q', '-b', 'main']); g(['config', 'user.email', 't@example.com']); g(['config', 'user.name', 'T'])
+  writeFileSync(join(repo, 'README.md'), '# x\n'); g(['add', '-A']); g(['commit', '-q', '-m', 'init'])
+  writeFileSync(join(repo, 'README.md'), '# x\nchanged\n')
+  mkdirSync(join(repo, '.dashclaw-local')); writeFileSync(join(repo, '.dashclaw-local', 'state.json'), '{}')
+  // observed live 2026-09-11: " M README.md" trimmed to "M README.md" showed as EADME.md on the card
+  assert.deepEqual(gitInfo(repo).dirty, ['README.md'])
+  const notes = sessionNotes({ session_id: 's-porcelain', agent: 'claude', cwd: repo, repo, task: 't' })
+  assert.match(notes, /Dirty file: README\.md/)
+  assert.doesNotMatch(notes, /Dirty file: EADME/)
 })

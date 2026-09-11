@@ -4,7 +4,9 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
-import { makeHome, initRepo, ROOT } from './helpers.mjs'
+import { existsSync, writeFileSync } from 'node:fs'
+import { makeHome, initRepo, ROOT, git, sleep } from './helpers.mjs'
+import { canonPath } from '../src/fsx.mjs'
 
 // BATON_HOME must be set before the ledger module is imported (it reads it once).
 const HOME = makeHome()
@@ -221,4 +223,67 @@ test('sessions API: view, handoff/end control, delete, lost reaper', async () =>
   assert.equal(readSession('s-t-dead'), null)
   r = await api('/api/sessions/s-t-claude')
   assert.equal(r.json.events[0].type, 'started')
+})
+
+test('Land: a worktree session lands through the merge queue, a clashing one bounces naming the file, the checkout session has no branch, trunk says who landed', async () => {
+  const { createSession, updateSession, readLandings } = await import('../src/sessions.mjs')
+  const { ensure } = await import('../src/worktree.mjs')
+  const lrepo = initRepo('srv-land-')
+  for (const [id, agent] of [['s-land-claude', 'claude'], ['s-land-codex', 'codex']]) {
+    const wt = ensure(lrepo, id, { trunk: 'main' })
+    createSession({ id, agent, cwd: wt.path, repo: lrepo, branch: wt.branch, runner_pid: process.pid, worktree: { path: wt.path, branch: wt.branch, base: 'main' } })
+    updateSession(id, { status: 'running', task: `edit the README as ${agent}` })
+    writeFileSync(join(wt.path, 'README.md'), `# toy\n${agent} was here\n`) // left uncommitted, the way agents leave work
+  }
+  createSession({ id: 's-land-root', agent: 'agy', cwd: lrepo, repo: lrepo, branch: 'main', runner_pid: process.pid })
+  updateSession('s-land-root', { status: 'running' })
+  const landState = async (id, want) => {
+    const t0 = Date.now()
+    while (Date.now() - t0 < 20000) {
+      const v = (await api('/api/sessions')).json
+      const s = v.sessions.find((x) => x.session_id === id)
+      if (s.land?.state === want) return { s, v }
+      await sleep(100)
+    }
+    assert.fail(`${id} never reached ${want}`)
+  }
+
+  let r = await api('/api/sessions/s-land-root/land', { method: 'POST' })
+  assert.equal(r.status, 409)
+  assert.match(r.json.error, /no branch of its own/)
+
+  r = await api('/api/sessions/s-land-claude/land', { method: 'POST' })
+  assert.equal(r.status, 202)
+  const { s: landed, v } = await landState('s-land-claude', 'landed')
+  assert.deepEqual(landed.land.files, ['README.md'])
+  assert.equal(landed.land.tested, false, 'no test command in the toy repo')
+  assert.match(git(lrepo, ['show', 'main:README.md']), /claude was here/)
+  const t = v.trunk.find((x) => canonPath(x.repo) === canonPath(lrepo))
+  assert.equal(t.commits[0].landed_by.session_id, 's-land-claude', 'the trunk list says who landed it')
+  assert.equal(t.commits[0].landed_by.agent, 'claude')
+  assert.equal(t.commits[1].landed_by, undefined, 'the init commit was not a Land')
+  const entry = readLandings().filter((l) => l.session_id === 's-land-claude')
+  assert.equal(entry.length, 1)
+  assert.equal(entry[0].commits.length, 1)
+  assert.equal(entry[0].by, 'local')
+
+  r = await api('/api/sessions/s-land-codex/land', { method: 'POST' })
+  assert.equal(r.status, 202)
+  const { s: bounced } = await landState('s-land-codex', 'bounced')
+  assert.equal(bounced.land.reason, 'rebase-conflict')
+  assert.match(bounced.land.detail, /conflicted in: README\.md/)
+  assert.doesNotMatch(git(lrepo, ['show', 'main:README.md']), /codex was here/)
+  const types = (await api('/api/sessions/s-land-codex')).json.events.map((e) => e.type)
+  assert.ok(types.includes('land_requested') && types.includes('bounced'), types.join(','))
+
+  // Remove takes a landed, clean worktree with the session; a bounced branch is kept
+  updateSession('s-land-claude', { status: 'ended' })
+  updateSession('s-land-codex', { status: 'ended' })
+  r = await api('/api/sessions/s-land-claude', { method: 'DELETE' })
+  assert.equal(r.json.worktree.removed, true)
+  assert.equal(existsSync(join(lrepo, '.baton-worktrees', 's-land-claude')), false)
+  r = await api('/api/sessions/s-land-codex', { method: 'DELETE' })
+  assert.equal(r.json.worktree.removed, false)
+  assert.match(r.json.worktree.reason, /commits that are not on main/)
+  assert.equal(existsSync(join(lrepo, '.baton-worktrees', 's-land-codex')), true)
 })

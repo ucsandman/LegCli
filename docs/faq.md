@@ -97,6 +97,12 @@ always serialize. The overlap check is a deliberate approximation biased
 toward false positives: an unnecessary serialization costs minutes, a
 wrongly parallel card can corrupt a merge.
 
+For terminals: a second `baton <agent>` in a checkout that already has a live
+session gets its own worktree and branch, so the two never write over each
+other's files. Whoever presses Land first fast-forwards trunk; the second one
+rebases onto it, or bounces with the conflicting files named on the card.
+`--no-worktree` shares the checkout when that is what you want.
+
 **What if the CLI I want isn't installed?**
 `node bin/baton.mjs up --dry` prints a preflight table with `ok`/`missing`
 per adapter. A missing adapter only matters if a card's chain names it: that

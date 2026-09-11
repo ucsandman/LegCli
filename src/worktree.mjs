@@ -85,11 +85,13 @@ export function list(repo) {
   return parseWorktreeList(out)
 }
 
-function ensureExcludeEntries(repo) {
+// Never committed by a landing: Baton's own directories, and the local state a
+// DashClaw hook writes into every directory an agent runs in.
+export function ensureExcludeEntries(repo) {
   const infoDir = join(repo, '.git', 'info')
   mkdirSync(infoDir, { recursive: true })
   const excludePath = join(infoDir, 'exclude')
-  const needed = ['.baton-worktrees/', '.baton/']
+  const needed = ['.baton-worktrees/', '.baton/', '.context-handoffs/', '.dashclaw-local/']
   const content = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : ''
   const lines = content.split(/\r?\n/)
   const missing = needed.filter((n) => !lines.includes(n))

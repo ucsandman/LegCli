@@ -51,6 +51,25 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `lost` | the runner pid is gone; the session was marked `lost` |
 | `error` | a spawn error, a tap error, a failed bundle checkpoint, or an error the agent reported |
 | `status` | a note that does not fit another type |
+| `worktree` | another live session was in the checkout, so this one got its own worktree: path, branch, base |
+| `land_requested` | Land was pressed: the branch and its base |
+| `land_warning` | the landing ran without a test command |
+| `landed` | the base was fast-forwarded to the branch: sha range, files, who pressed Land |
+| `bounced` | the landing stopped with a [bounce reason](#bounce-reasons-land-station); the full detail is in `body` |
+| `land_noop` | Land found nothing on the branch beyond its base |
+
+## Land states (terminal cards)
+
+`$BATON_HOME/sessions/<id>/land.json`, written by the board server only
+(`src/land.mjs`); the runner never touches it.
+
+| state | card line | meaning |
+|-------|-----------|---------|
+| `landing` | landing `<branch>` onto `<base>`… | the merge queue has the branch |
+| `landed` | ✓ landed on `<base>` · `<sha>` | the base was fast-forwarded |
+| `noop` | nothing to land | the branch had nothing beyond its base |
+| `bounced` | ✗ bounced (`<reason>`) | a step failed and the base is untouched |
+| `interrupted` | the landing was cut off | the board restarted while it was landing; press Land again |
 
 ## Card statuses
 
@@ -172,7 +191,7 @@ file's own header comment).
 
 | reason | meaning |
 |--------|---------|
-| `dirty-trunk` | the repo root isn't on the trunk branch, or has uncommitted changes; root is left untouched |
+| `dirty-trunk` | the repo root isn't on the trunk branch, or has uncommitted changes; root is left untouched. A terminal's Land allows local changes in the checkout and bounces this way only when the fast-forward would overwrite one, naming the files |
 | `rebase-conflict` | rebasing the card's branch onto trunk conflicted |
 | `tests-red` | the land station's own test run (no test command found → falls back per `land_warning`, otherwise `test_command`/`npm test`/`pytest`) failed |
 | `trunk-moved` | trunk moved while tests ran; one fast-forward retry also failed |

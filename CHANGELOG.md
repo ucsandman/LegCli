@@ -26,6 +26,30 @@ human on the board.
   <time>`. Ctrl-C, or End on the card, quits with exit 3. Verified live: with
   codex and agy walled for 80 s, a simulated limit on a haiku session waited
   and then started codex from `.baton/RESUME.md`.
+- A second live session in a checkout that already has one gets its own git
+  worktree, `<repo>/.baton-worktrees/<session-id>` on branch
+  `baton/<session-id>`, cut from the branch the checkout has out; the terminal
+  prints one line saying where. `--no-worktree` shares the checkout (the flag
+  never reaches the agent).
+- **Land** on the card of a session with its own worktree sends its branch
+  through the merge queue: commit what the agent left, rebase onto the base,
+  run the tests, fast-forward only, or bounce with the reason
+  (`rebase-conflict` with the files, `tests-red` with the output tail,
+  `dirty-trunk` when the checkout has local changes the landing would
+  overwrite). The landed-on-trunk list says who landed each commit
+  (`~/.baton/landings.jsonl`). Remove takes the worktree and branch along only
+  when the worktree is clean and the branch is already on its base. Verified
+  live: three haiku sessions in a throwaway repo, the second and third in
+  worktrees both appending to README.md; Land on one ran the tests and
+  fast-forwarded main, Land on the other bounced with `rebase-conflict` on
+  README.md.
+- The merge queue's test run no longer blocks its process, so the board keeps
+  answering while a Land runs the tests.
+- Fixed: the first dirty file on a card (and in the bundle notes) lost its
+  first letter (`EADME.md`) because the porcelain status was trimmed;
+  `.dashclaw-local/` no longer counts as a file being touched, and it joins
+  `.baton/`, `.baton-worktrees/` and `.context-handoffs/` in
+  `.git/info/exclude` so a landing never commits it.
 - `BATON_NO_BOARD=1` runs a session without the board; a stub-agent end-to-end
   test (`test/attach-e2e.test.mjs`) now runs `baton claude` through the hook,
   the hand-off, the wait and the restart in CI.

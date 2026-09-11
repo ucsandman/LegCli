@@ -8,7 +8,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { sessionDir, updateSession, appendEvent, readSession } from '../sessions.mjs'
+import { sessionDir, updateSession, appendEvent, readSession, workRoot } from '../sessions.mjs'
 import { recordUsage, markLimited, WARN_PCT } from '../usage.mjs'
 import { writeJsonAtomic } from '../fsx.mjs'
 import { LAYOUT } from '../accounts.mjs'
@@ -105,7 +105,7 @@ export function handleHook(sessionId, p) {
     case 'PostToolUse': {
       const file = p.tool_input?.file_path ?? p.tool_input?.notebook_path ?? null
       if (!file) return 'tool (no file)'
-      const rel = relTo(s.repo ?? s.cwd, file)
+      const rel = relTo(workRoot(s), file)
       const touched = s.files_touched.includes(rel) ? s.files_touched : [...s.files_touched, rel].slice(-200)
       updateSession(sessionId, { ...base, files_touched: touched })
       return `touched ${rel}`

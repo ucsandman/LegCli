@@ -253,6 +253,7 @@ async function main() {
   out(`baton 0.2.0 — your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
+                               a second live session in one checkout gets its own worktree (--no-worktree to share)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>
   accounts ls|add <agent> <name>|rm|terms        optional second login for claude or codex
   down | status | open          the board

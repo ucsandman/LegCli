@@ -10,12 +10,14 @@
 import http from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
-import { join, dirname, resolve } from 'node:path'
+import { join, dirname, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sanitizeEnv } from './env.mjs'
 import { home } from './store.mjs'
 import { get as getAdapter } from './adapters/index.mjs'
-import { AGENTS, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir } from './sessions.mjs'
+import { AGENTS, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
+import { ensure as ensureWorktree } from './worktree.mjs'
+import { canonPath, realPath } from './fsx.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
 import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage } from './usage.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail } from './taps/claude.mjs'
@@ -68,17 +70,34 @@ export async function ensureBoard({ open = true } = {}) {
 // ---- git ----
 function git(cwd, args) {
   const r = spawnSync('git', args, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
-  return r.status === 0 ? r.stdout.trim() : null
+  // trimEnd only: a porcelain line starts with a space (" M README.md")
+  return r.status === 0 ? r.stdout.trimEnd() : null
 }
-function gitInfo(cwd) {
+export function gitInfo(cwd) {
   const repo = git(cwd, ['rev-parse', '--show-toplevel'])
   if (!repo) return { repo: null, branch: null, head: null, dirty: [] }
   return {
     repo: repo.replace(/\//g, process.platform === 'win32' ? '\\' : '/'),
     branch: git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']),
     head: git(cwd, ['rev-parse', 'HEAD']),
-    dirty: (git(cwd, ['status', '--porcelain']) ?? '').split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')).filter((f) => !f.startsWith('.baton/') && !f.startsWith('.context-handoffs/')),
+    dirty: (git(cwd, ['status', '--porcelain']) ?? '').split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')).filter((f) => !/^(\.baton|\.context-handoffs|\.dashclaw-local)\//.test(f)),
   }
+}
+
+// ---- collisions ----
+// Two agents in one working tree write over each other's files. When another
+// live session already works in this checkout, this one gets its own:
+// <repo>/.baton-worktrees/<sid> on branch baton/<sid>, cut from the branch the
+// checkout has out, and it comes back through the merge queue (Land on its card).
+export function isolate({ g, cwd, sid, sessions = reapLost(listSessions()) }) {
+  const here = canonPath(g.repo)
+  const live = sessions.filter((s) => isActive(s) && workRoot(s) && canonPath(workRoot(s)) === here)
+  if (!live.length) return null
+  const base = g.branch && g.branch !== 'HEAD' ? g.branch : null
+  const wt = ensureWorktree(g.repo, sid, { trunk: base ?? 'HEAD' })
+  const sub = relative(realPath(g.repo), realPath(cwd))
+  const inTree = sub && !sub.startsWith('..') ? join(wt.path, sub) : wt.path
+  return { path: wt.path, branch: wt.branch, base, cwd: existsSync(inTree) ? inTree : wt.path, live }
 }
 
 // ---- process control ----
@@ -292,6 +311,9 @@ function messagesFor(agent, s) {
 // ---- the command ----
 export async function attach(agent, args = [], { open = true } = {}) {
   if (!AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy)`)
+  // --no-worktree is Baton's flag, not the agent's: it never passes through
+  const shareCheckout = args.includes('--no-worktree')
+  args = args.filter((a) => a !== '--no-worktree')
   const cwd = process.cwd()
   const board = await ensureBoard({ open })
   const accounts = readAccounts()
@@ -308,9 +330,18 @@ export async function attach(agent, args = [], { open = true } = {}) {
   const g = gitInfo(cwd)
   const sid = newSessionId(agent)
   const chain = candidates({ agent, account, accounts })
-  createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain })
-  updateSession(sid, { head_at_start: g.head, head: g.head, files_dirty: g.dirty, board_url: board.url })
+  let iso = null
+  if (g.repo && !shareCheckout) {
+    try { iso = isolate({ g, cwd, sid }) } catch (err) { say(`could not make a worktree (${String(err.message).split('\n')[0].slice(0, 200)}); sharing the checkout`) }
+  }
+  createSession({ id: sid, agent, account, cwd: iso?.cwd ?? cwd, repo: g.repo, branch: iso?.branch ?? g.branch, argv: args, chain, worktree: iso ? { path: iso.path, branch: iso.branch, base: iso.base } : null })
+  updateSession(sid, { head_at_start: g.head, head: g.head, files_dirty: iso ? [] : g.dirty, board_url: board.url })
   say(`session ${sid} · ${agent}${account !== 'default' ? '/' + account : ''} · board ${board.url ?? 'off'}${board.started ? ' (started)' : ''} · next: ${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(' → ') || 'none'}`)
+  if (iso) {
+    const others = iso.live.map((s) => `${s.agent} ${s.session_id.split('-').pop()}`).join(', ')
+    say(`another session is live in this checkout (${others}): this one works in ${iso.cwd} on ${iso.branch}; Land on its card brings it to ${iso.base ?? 'nothing (detached HEAD)'} · --no-worktree to share`)
+    appendEvent(sid, { type: 'worktree', summary: `own worktree ${iso.path} on ${iso.branch} from ${iso.base ?? 'a detached HEAD'}; live in the checkout: ${others}` })
+  }
 
   let prompt = null
   let legArgs = args

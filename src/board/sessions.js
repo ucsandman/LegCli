@@ -73,14 +73,32 @@
     }
   }
 
+  const tail = (id) => String(id).split('-').slice(-2).join('-')
+
   async function act(id, action, btn) {
     btn.disabled = true
     try {
-      if (action === 'remove') await api(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
-      else await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
-      toast(action === 'handoff' ? 'hand-off requested; the terminal switches agents in a few seconds' : action === 'end' ? 'end requested' : 'removed')
+      if (action === 'remove') {
+        const r = await api(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+        toast(r.worktree ? (r.worktree.removed ? 'removed, with its worktree and branch' : `removed; worktree kept: ${r.worktree.reason}`) : 'removed')
+      } else {
+        await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
+        toast(action === 'handoff' ? 'hand-off requested; the terminal switches agents in a few seconds' : action === 'land' ? 'landing: rebase, tests, fast-forward; the card shows the result' : 'end requested')
+      }
       refresh()
     } catch (err) { toast(err.message); btn.disabled = false }
+  }
+
+  // The card's land line: in progress, landed, nothing to land, bounced with the reason.
+  function landLine(s) {
+    const L = s.land
+    if (!L) return null
+    const who = L.by && L.by !== 'local' ? ` · by ${L.by}` : ''
+    if (L.state === 'landing') return el('div', { class: 'session-note warn' }, [`landing ${L.branch} onto ${L.base}: rebase, tests, fast-forward…`])
+    if (L.state === 'landed') return el('div', { class: 'session-note ok', title: L.summary || '' }, [`✓ landed on ${L.base} · ${String(L.sha).slice(0, 7)} · ${L.files.length} file${L.files.length === 1 ? '' : 's'} +${L.insertions}/-${L.deletions}${L.tested ? '' : ' · untested'}${who}`])
+    if (L.state === 'noop') return el('div', { class: 'session-note' }, [`nothing to land: ${L.branch} has no changes beyond ${L.base}`])
+    if (L.state === 'interrupted') return el('div', { class: 'session-note bad' }, ['the landing was cut off (the board restarted); press Land again'])
+    return el('div', { class: 'session-note bad', title: L.detail || '' }, [`✗ bounced (${L.reason}): ${String(L.detail || '').split('\n')[0].slice(0, 160)}${who}`])
   }
 
   function renderSession(s) {
@@ -96,6 +114,7 @@
     card.appendChild(el('div', { class: 'session-task', title: s.task || '' }, [s.task ? (s.task.length > 140 ? s.task.slice(0, 140) + '…' : s.task) : el('span', { class: 'muted' }, ['no prompt yet'])]))
     card.appendChild(el('div', { class: 'session-meta' }, [
       el('span', { class: 'mono', title: s.cwd }, [s.repo_name || s.cwd, s.branch ? `@${s.branch}` : '']),
+      s.worktree ? el('span', { class: 'chip worktree-chip', title: `another session was live in the checkout, so this one works in ${s.worktree.path}, branch ${s.worktree.branch}, cut from ${s.worktree.base || 'a detached HEAD'}` }, [`own worktree · from ${s.worktree.base || 'HEAD'}`]) : null,
       el('span', {}, [`${s.turns || 0} turn${s.turns === 1 ? '' : 's'}`]),
       s.head ? el('span', { class: 'mono', title: 'HEAD' }, [String(s.head).slice(0, 7)]) : null,
     ]))
@@ -112,8 +131,18 @@
       if (s.files.length > 8) wrap.appendChild(el('span', { class: 'chip muted' }, [`+${s.files.length - 8}`]))
       card.appendChild(wrap)
     }
-    for (const o of s.overlap) card.appendChild(el('div', { class: 'session-note bad' }, [`⚠ ${o.agent} (${o.session_id.split('-').slice(-2).join('-')}) is editing ${o.files.slice(0, 3).join(', ')}${o.files.length > 3 ? ` +${o.files.length - 3}` : ''} too`]))
+    for (const o of s.overlap) {
+      const files = `${o.files.slice(0, 3).join(', ')}${o.files.length > 3 ? ` +${o.files.length - 3}` : ''}`
+      card.appendChild(el('div', { class: 'session-note bad' }, [o.separate ? `⚠ ${o.agent} (${tail(o.session_id)}) is changing ${files} in another checkout; whoever lands second rebases` : `⚠ ${o.agent} (${tail(o.session_id)}) is editing ${files} too`]))
+    }
+    const landNote = landLine(s)
+    if (landNote) card.appendChild(landNote)
     const actions = el('div', { class: 'card-actions' })
+    if (s.worktree) {
+      const l = el('button', { type: 'button', disabled: s.land_blocker ? '' : null, title: s.land_blocker || `commit this terminal's work on ${s.worktree.branch}, rebase it onto ${s.worktree.base}, run the tests, fast-forward ${s.worktree.base}; a bounce says why` }, ['Land'])
+      l.addEventListener('click', () => act(s.session_id, 'land', l))
+      actions.appendChild(l)
+    }
     if (s.active) {
       const h = el('button', { type: 'button', title: 'save the bundle, stop this agent, start the next option in the same terminal' }, ['Hand off now'])
       h.addEventListener('click', () => act(s.session_id, 'handoff', h))
@@ -146,7 +175,13 @@
     for (const t of v.trunk || []) {
       if (!t.branch) continue
       const list = el('ul', { class: 'trunk-list' })
-      for (const c of t.commits) list.appendChild(el('li', {}, [el('span', { class: 'mono' }, [c.sha]), ' ', c.subject, ' ', el('span', { class: 'muted' }, [`· ${c.when} · ${c.author}`])]))
+      for (const c of t.commits) {
+        const lb = c.landed_by
+        const by = lb && lb.by && lb.by !== 'local' ? ` for ${lb.by}` : ''
+        list.appendChild(el('li', {}, [el('span', { class: 'mono' }, [c.sha]), ' ', c.subject, ' ', lb
+          ? el('span', { class: 'landed-by', title: `Land on the card of ${lb.agent} session ${lb.session_id}${by}, ${new Date(lb.at).toLocaleString()}` }, [`· ${c.when} · landed by ${lb.agent} (${tail(lb.session_id)})${by}`])
+          : el('span', { class: 'muted' }, [`· ${c.when} · ${c.author}`])]))
+      }
       box.appendChild(el('div', { class: 'trunk-repo' }, [el('h3', {}, [`landed on ${t.branch} · ${t.repo_name}`]), list]))
     }
   }

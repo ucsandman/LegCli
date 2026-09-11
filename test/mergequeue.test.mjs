@@ -131,3 +131,20 @@ test('source hygiene: no --force, push, or reset --hard in the merge queue; ever
   assert.ok(mq.includes("MSYS_NO_PATHCONV: '1'"))
   assert.equal((mq.match(/spawnSync\('git'/g) || []).length, 1, 'one git helper')
 })
+
+test('allowDirtyRoot (a terminal\'s Land): an unrelated root change does not stop the landing; a root change the landing would overwrite bounces dirty-trunk naming the file', async () => {
+  const repo = toy()
+  writeFileSync(join(repo, 'notes.txt'), 'scratch\n')
+  const wt = ensure(repo, 'c-dirty-ok').path
+  writeFileSync(join(wt, 'b.mjs'), 'export const b = 1\n')
+  const ok = await land(card(repo, 'c-dirty-ok', { test_command: 'node -e 0' }), wt, { allowDirtyRoot: true })
+  assert.equal(ok.landed, true, JSON.stringify(ok))
+  assert.equal(readFileSync(join(repo, 'notes.txt'), 'utf8'), 'scratch\n', 'the root change is still there')
+  writeFileSync(join(repo, 'shared.txt'), 'root edit\n')
+  const wt2 = ensure(repo, 'c-dirty-clash').path
+  writeFileSync(join(wt2, 'shared.txt'), 'worktree edit\n')
+  const clash = await land(card(repo, 'c-dirty-clash', { test_command: 'node -e 0' }), wt2, { allowDirtyRoot: true })
+  assert.equal(clash.reason, 'dirty-trunk', JSON.stringify(clash))
+  assert.match(clash.detail, /local changes this landing would overwrite: shared\.txt/)
+  assert.equal(readFileSync(join(repo, 'shared.txt'), 'utf8'), 'root edit\n', 'the root edit survives')
+})

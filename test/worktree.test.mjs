@@ -34,6 +34,8 @@ test('ensure creates the worktree on branch baton/<id> and updates .git/info/exc
   const exclude = readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8')
   assert.match(exclude, /^\.baton-worktrees\/$/m)
   assert.match(exclude, /^\.baton\/$/m)
+  assert.match(exclude, /^\.context-handoffs\/$/m, 'bundles never ride along in a landing')
+  assert.match(exclude, /^\.dashclaw-local\/$/m, 'hook state never rides along in a landing')
 })
 
 test('ensure is idempotent (second call reuses, created false)', () => {

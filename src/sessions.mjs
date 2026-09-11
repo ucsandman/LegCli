@@ -41,9 +41,13 @@ export function listSessions() {
 
 export function isActive(s) { return ACTIVE.includes(s?.status) }
 
-export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [] }) {
+// The checkout this session's files live in: its own worktree when Baton gave
+// it one (repo stays the main checkout, for grouping and landing), else the repo.
+export function workRoot(s) { return s?.worktree?.path ?? s?.repo ?? s?.cwd ?? null }
+
+export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [], worktree = null }) {
   const session = {
-    session_id: id, agent, account, cwd, repo, branch, argv,
+    session_id: id, agent, account, cwd, repo, branch, argv, worktree,
     repo_name: repo ? repo.split(/[\\/]/).filter(Boolean).pop() : null,
     status: 'starting', runner_pid, pid: null,
     started_at: now(), updated_at: now(), ended_at: null, last_activity: now(),
@@ -101,6 +105,29 @@ export function takeControl(id) {
 
 export function removeSession(id) { rmSync(sessionDir(id), { recursive: true, force: true }) }
 
+// Land state for one session: land.json is written by the board server only
+// (the runner owns session.json), so a land result never races a tap write.
+export function readLand(id) {
+  const f = join(sessionDir(id), 'land.json')
+  if (!existsSync(f)) return null
+  try { return JSON.parse(readFileSync(f, 'utf8')) } catch { return null }
+}
+export function writeLand(id, land) {
+  if (!existsSync(sessionDir(id))) return
+  writeJsonAtomic(join(sessionDir(id), 'land.json'), land)
+}
+
+// Who landed what: one line per landing, kept after the session is removed.
+const landingsFile = () => join(home(), 'landings.jsonl')
+export function appendLanding(entry) {
+  mkdirSync(home(), { recursive: true })
+  appendFileSync(landingsFile(), JSON.stringify({ ts: now(), ...entry }) + '\n')
+}
+export function readLandings() {
+  if (!existsSync(landingsFile())) return []
+  return readFileSync(landingsFile(), 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
+}
+
 function pidAlive(pid) {
   if (!pid) return false
   try { process.kill(pid, 0); return true } catch { return false }
@@ -129,9 +156,11 @@ export function overlaps(sessions) {
       const setB = new Set([...(b.files_touched ?? []), ...(b.files_dirty ?? [])])
       const shared = [...new Set([...(a.files_touched ?? []), ...(a.files_dirty ?? [])])].filter((f) => setB.has(f))
       if (!shared.length) continue
+      // separate: each has its own checkout, so the clash waits for the second landing
+      const separate = String(workRoot(a)).toLowerCase() !== String(workRoot(b)).toLowerCase()
       for (const [x, y] of [[a, b], [b, a]]) {
         if (!out.has(x.session_id)) out.set(x.session_id, [])
-        out.get(x.session_id).push({ session_id: y.session_id, agent: y.agent, files: shared })
+        out.get(x.session_id).push({ session_id: y.session_id, agent: y.agent, files: shared, separate })
       }
     }
   }

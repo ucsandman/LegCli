@@ -10,7 +10,7 @@ import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkBind, authorize } from './auth.mjs'
-import { realPath } from './fsx.mjs'
+import { realPath, canonPath } from './fsx.mjs'
 import { listCards, readCard, readRuns, readEvents, cardDir, home } from './store.mjs'
 import { humanAction } from './orchestrator.mjs'
 import { createCard, CardInputError } from './cards.mjs'
@@ -22,7 +22,8 @@ import { createScheduler, schedulerStatus, MAX_CONCURRENT } from './scheduler.mj
 import { remove as removeWorktree } from './worktree.mjs'
 import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
-import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost } from './sessions.mjs'
+import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings } from './sessions.mjs'
+import { landSession, landBlocker, landingNow, pruneSessionWorktree } from './land.mjs'
 import { readUsage } from './usage.mjs'
 import { readAccounts } from './accounts.mjs'
 
@@ -208,24 +209,46 @@ function trunkFor(repo) {
   return data
 }
 
+// Each trunk commit a Land put there says who landed it (landings.jsonl).
+function withLandings(t, landings) {
+  if (!landings.length) return t
+  return {
+    ...t,
+    commits: t.commits.map((c) => {
+      const l = landings.findLast((x) => (x.commits?.length ? x.commits : [x.sha]).some((sha) => String(sha).startsWith(c.sha)))
+      return l ? { ...c, landed_by: { agent: l.agent, account: l.account, session_id: l.session_id, by: l.by, at: l.ts } } : c
+    }),
+  }
+}
+
 export function sessionsView() {
   const list = reapLost(listSessions())
   const ov = overlaps(list)
-  const sessions = list.map((s) => ({
-    ...s,
-    active: isActive(s),
-    overlap: ov.get(s.session_id) ?? [],
-    elapsed_ms: Date.now() - Date.parse(s.started_at),
-    files: [...new Set([...(s.files_touched ?? []), ...(s.files_dirty ?? [])])],
-  }))
+  const sessions = list.map((s) => {
+    const land = readLand(s.session_id)
+    return {
+      ...s,
+      active: isActive(s),
+      overlap: ov.get(s.session_id) ?? [],
+      elapsed_ms: Date.now() - Date.parse(s.started_at),
+      files: [...new Set([...(s.files_touched ?? []), ...(s.files_dirty ?? [])])],
+      // a 'landing' left behind by a board restart is no longer in flight
+      land: land?.state === 'landing' && !landingNow(s.session_id) ? { ...land, state: 'interrupted' } : land,
+      land_blocker: s.worktree ? landBlocker(s) : null,
+    }
+  })
   const acc = readAccounts()
   const accounts = []
   for (const agent of Object.keys(acc)) for (const account of acc[agent]) {
     const u = readUsage(agent, account)
     accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, updated_at: u.updated_at, live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length })
   }
-  const repos = [...new Set(sessions.filter((s) => s.active && s.repo).map((s) => s.repo))]
-  const trunk = repos.map((r) => { try { return trunkFor(r) } catch { return { repo: r, commits: [] } } })
+  const repos = new Map()
+  for (const s of sessions) if (s.repo && (s.active || s.worktree) && !repos.has(canonPath(s.repo))) repos.set(canonPath(s.repo), s.repo)
+  const landings = readLandings()
+  const canon = new Map()
+  const landingsFor = (key) => landings.filter((l) => { if (!canon.has(l.repo)) canon.set(l.repo, canonPath(l.repo)); return canon.get(l.repo) === key })
+  const trunk = [...repos].map(([key, r]) => { try { return withLandings(trunkFor(r), landingsFor(key)) } catch { return { repo: r, commits: [] } } })
   return { sessions, accounts, trunk, ts: new Date().toISOString() }
 }
 
@@ -379,6 +402,15 @@ export function createBoardServer({ bind = process.env.BATON_BIND || '127.0.0.1'
         const sess = readSession(id)
         if (!sess) return send(res, 404, { error: `session not found: ${id}` })
         if (req.method === 'GET' && parts.length === 3) return send(res, 200, { session: sess, events: readSessionEvents(id) })
+        if (req.method === 'POST' && parts[3] === 'land') {
+          const why = landBlocker(sess)
+          if (why) return send(res, 409, { error: why })
+          landSession(sess, { by: actor.id })
+            .catch((err) => log(`land ${id}: ${err.message}`))
+            .finally(() => { trunkCache.clear(); try { sse.broadcast('sessions', sessionsView()) } catch {} })
+          log(`land requested for ${id} by ${actor.id}`)
+          return send(res, 202, { ok: true, requested: 'land' })
+        }
         if (req.method === 'POST' && (parts[3] === 'handoff' || parts[3] === 'end')) {
           if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
           requestControl(id, parts[3] === 'handoff' ? { handoff: true, by: actor.id } : { end: true, by: actor.id })
@@ -387,9 +419,12 @@ export function createBoardServer({ bind = process.env.BATON_BIND || '127.0.0.1'
         }
         if (req.method === 'DELETE' && parts.length === 3) {
           if (isActive(sess)) return send(res, 409, { error: 'end the session before removing it' })
+          if (landingNow(id)) return send(res, 409, { error: 'wait for the landing to finish before removing it' })
+          let worktree = null
+          if (sess.worktree) { try { worktree = pruneSessionWorktree(sess) } catch (err) { worktree = { removed: false, reason: scrub(err.message).slice(0, 200) } } }
           removeSession(id)
           sse.broadcast('sessions', sessionsView())
-          return send(res, 200, { removed: id })
+          return send(res, 200, { removed: id, worktree })
         }
       }
       if (req.method === 'GET' && path === '/api/floor') return send(res, 200, floor(listCards()))

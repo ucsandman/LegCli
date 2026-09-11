@@ -1,7 +1,7 @@
 // commands — run a repository command (tests) as argv, never through a shell.
 // `npm`/`npx`/`node` resolve to node + their JS entry so the Windows .cmd shim
 // is never needed (LESSONS 07-11).
-import { spawnSync } from 'node:child_process'
+import { spawnSync, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { resolveNpmCliEntry } from './adapters/resolve.mjs'
@@ -25,14 +25,43 @@ export function resolveCommand(cmd) {
   return { bin, args: rest }
 }
 
-export function runCommand(cmd, cwd, { timeoutMs = 600000, tailLines = 40 } = {}) {
-  const { bin, args } = resolveCommand(cmd)
-  // A nested `node --test` inherits NODE_TEST_CONTEXT from a parent test runner
-  // and then reports to that parent instead of exiting red; the repo's tests
-  // must run as a plain process.
+// A nested `node --test` inherits NODE_TEST_CONTEXT from a parent test runner
+// and then reports to that parent instead of exiting red; the repo's tests
+// must run as a plain process.
+function commandEnv() {
   const env = { ...process.env, MSYS_NO_PATHCONV: '1', CI: '1' }
   for (const k of Object.keys(env)) if (k.startsWith('NODE_TEST')) delete env[k]
-  const r = spawnSync(bin, args, { cwd, windowsHide: true, encoding: 'utf8', timeout: timeoutMs, env })
+  return env
+}
+
+export function runCommand(cmd, cwd, { timeoutMs = 600000, tailLines = 40 } = {}) {
+  const { bin, args } = resolveCommand(cmd)
+  const r = spawnSync(bin, args, { cwd, windowsHide: true, encoding: 'utf8', timeout: timeoutMs, env: commandEnv() })
   const tail = scrub(`${r.stdout ?? ''}\n${r.stderr ?? ''}`).trim().split('\n').slice(-tailLines).join('\n')
   return { green: r.status === 0, status: r.status, timedOut: r.error?.code === 'ETIMEDOUT', tail, command: `${bin} ${args.join(' ')}` }
+}
+
+// The same result without blocking the event loop: the board server lands a
+// terminal's branch in-process, and a long test run must not freeze the board.
+export function runCommandAsync(cmd, cwd, { timeoutMs = 600000, tailLines = 40 } = {}) {
+  const { bin, args } = resolveCommand(cmd)
+  return new Promise((resolvePromise) => {
+    let out = ''
+    let timedOut = false
+    let done = false
+    const child = spawn(bin, args, { cwd, windowsHide: true, env: commandEnv() })
+    const keep = (d) => { out += d; if (out.length > 2e6) out = out.slice(-1e6) }
+    child.stdout.on('data', keep)
+    child.stderr.on('data', keep)
+    const timer = setTimeout(() => { timedOut = true; child.kill() }, timeoutMs)
+    const finish = (status, err) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      const tail = scrub(`${out}${err ? `\n${err.message}` : ''}`).trim().split('\n').slice(-tailLines).join('\n')
+      resolvePromise({ green: status === 0 && !timedOut, status, timedOut, tail, command: `${bin} ${args.join(' ')}` })
+    }
+    child.on('error', (err) => finish(null, err))
+    child.on('close', (code) => finish(code))
+  })
 }
