@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname, resolve } from 'node:path'
+import { join, dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sanitizeEnv } from '../src/env.mjs'
 import { get as getAdapter, names } from '../src/adapters/index.mjs'
@@ -120,8 +120,10 @@ test('no-cmd-shim: resolveNpmCliEntry never returns a .cmd/.ps1 path', () => {
   }
 })
 
-test('no-global-fetch: src/ never calls global fetch (Node 24 on Windows crashes at exit)', () => {
-  assert.deepEqual(grep(/(^|[^a-zA-Z_.])fetch\(/, walk(SRC)), [])
+test('no-global-fetch: Node code under src/ never calls global fetch (Node 24 on Windows crashes at exit); the browser board is exempt', () => {
+  const nodeFiles = walk(SRC).filter((f) => !f.includes(`${sep}board${sep}`))
+  assert.ok(nodeFiles.length > 10)
+  assert.deepEqual(grep(/(^|[^a-zA-Z_.])fetch\(/, nodeFiles), [])
 })
 
 test('no-yolo-flags: forbidden flags appear only inside forbiddenFlags declarations, and no argv emits one', async () => {

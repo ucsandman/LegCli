@@ -5,13 +5,12 @@
 //   baton card ls [--json] | show <id> | run <id> | rm <id> [--delete-branch] | events <id>
 //   baton card <pause|resume|kill|approve|handoff-now|rerun> <id> | reassign <id> --adapter a [--mode m]
 //   baton scheduler start [--ticks N] [--interval-ms N] | status | stop
-import { rmSync, existsSync } from 'node:fs'
+import { rmSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { resolve } from 'node:path'
-import { buildPipeline, validatePipeline, loadAdapterModes, parseChain } from '../src/pipeline.mjs'
 import { PRESET_NAMES } from '../src/presets.mjs'
-import { readCard, listCards, readEvents, readRuns, ledgerCreate, cardDir } from '../src/store.mjs'
+import { readCard, listCards, readEvents, readRuns, cardDir } from '../src/store.mjs'
 import { runCard, humanAction } from '../src/orchestrator.mjs'
+import { createCard, CardInputError } from '../src/cards.mjs'
 import { remove as removeWorktree } from '../src/worktree.mjs'
 import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../src/scheduler.mjs'
 import { availableActions } from '../src/chain.mjs'
@@ -32,56 +31,19 @@ function parseArgs(argv) {
   return args
 }
 
-// "adapter=value,adapter=value" → { adapter: value }
-function kv(raw) {
-  const m = {}
-  for (const part of String(raw ?? '').split(',').map((x) => x.trim()).filter(Boolean)) {
-    const [k, v] = part.split('=')
-    if (!k || v === undefined) die(2, `expected adapter=value, got "${part}"`)
-    m[k] = v
-  }
-  return m
-}
-
 async function cardAdd(args) {
-  const repo = args.repo ? resolve(args.repo) : die(2, 'missing --repo')
-  const task = args.task || die(2, 'missing --task')
-  if (!existsSync(repo)) die(2, `repo not found: ${repo}`)
-  const chainRaw = args.chain || die(2, 'missing --chain (e.g. claude,codex)')
-  const modes = kv(args.mode)
-  const turns = kv(args['max-turns'])
-  const fakeModes = kv(args['fake-mode'])
-  const fakeFixtures = kv(args['fake-fixture'])
-  const approve = String(args.approve ?? '').split(',').map((x) => x.trim()).filter(Boolean)
-  const chain = parseChain(chainRaw).map((e) => ({
-    ...e,
-    ...(modes[e.adapter] ? { mode: modes[e.adapter] } : {}),
-    ...(turns[e.adapter] ? { maxTurns: parseInt(turns[e.adapter], 10) } : {}),
-    ...(fakeModes[e.adapter] ? { fakeMode: fakeModes[e.adapter] } : {}),
-    ...(fakeFixtures[e.adapter] ? { fakeFixture: fakeFixtures[e.adapter] } : {}),
-    ...(approve.includes(e.adapter) ? { approve: true } : {}),
-  }))
-  const pipelineArg = args.pipeline || 'build'
-  let pipeline
   try {
-    pipeline = PRESET_NAMES.includes(pipelineArg)
-      ? buildPipeline({ preset: pipelineArg, chain })
-      : buildPipeline({ file: pipelineArg, chain })
-    validatePipeline(pipeline, await loadAdapterModes())
+    const card = await createCard({
+      repo: args.repo, task: args.task, chain: args.chain, pipeline: args.pipeline,
+      mode: args.mode, maxTurns: args['max-turns'], fakeMode: args['fake-mode'], fakeFixture: args['fake-fixture'],
+      approve: args.approve, leases: args.leases, trunk: args.trunk, landMode: args['land-mode'],
+      testCommand: args['test-command'], title: args.title, slug: args.slug, queue: Boolean(args.queue),
+    }, { type: 'human', id: args.actor || 'local' })
+    out(card.card_id)
   } catch (err) {
-    die(2, `invalid pipeline: ${err.message}`)
+    if (err instanceof CardInputError) die(2, err.message)
+    throw err
   }
-  const leases = String(args.leases ?? '').split(',').map((x) => x.trim()).filter(Boolean)
-  const slug = (args.slug || task.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30)) || 'card'
-  const id = ledgerCreate({
-    slug, task, repo, chain: chain.map((e) => ({ adapter: e.adapter, mode: e.mode ?? null, max_turns: e.maxTurns ?? null })),
-    pipeline, leases, trunk: args.trunk || 'main', 'land-mode': args['land-mode'] || 'ff',
-    'test-command': args['test-command'] || null, title: args.title || null,
-    actor: JSON.stringify({ type: 'human', id: args.actor || 'local' }),
-  })
-  // --queue: put it on the floor right away (the scheduler only picks queued cards)
-  if (args.queue) humanAction(id, 'enqueue', {}, { type: 'human', id: args.actor || 'local' })
-  out(id)
 }
 
 function fmtCard(c) {

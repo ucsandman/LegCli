@@ -1,0 +1,76 @@
+// cards — create a card from loosely typed input (CLI flags or a JSON body):
+// parse the chain, build and validate the pipeline, then hand the ledger the
+// exact shape. Shared by bin/baton.mjs and src/server.mjs.
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { buildPipeline, validatePipeline, loadAdapterModes, parseChain } from './pipeline.mjs'
+import { PRESET_NAMES } from './presets.mjs'
+import { ledgerCreate, readCard } from './store.mjs'
+import { humanAction } from './orchestrator.mjs'
+
+export class CardInputError extends Error {}
+
+function list(v) {
+  if (Array.isArray(v)) return v.map(String).map((x) => x.trim()).filter(Boolean)
+  return String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+}
+
+// "adapter=value,adapter=value" or {adapter: value}
+function kv(raw) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw
+  const m = {}
+  for (const part of list(raw)) {
+    const [k, v] = part.split('=')
+    if (!k || v === undefined) throw new CardInputError(`expected adapter=value, got "${part}"`)
+    m[k] = v
+  }
+  return m
+}
+
+export async function createCard(input, actor = { type: 'human', id: 'local' }) {
+  if (!input.repo) throw new CardInputError('missing repo')
+  const repo = resolve(String(input.repo))
+  if (!existsSync(repo)) throw new CardInputError(`repo not found: ${repo}`)
+  const task = String(input.task ?? '').trim()
+  if (!task) throw new CardInputError('missing task')
+  if (!input.chain || (Array.isArray(input.chain) && !input.chain.length)) throw new CardInputError('missing chain (e.g. claude,codex)')
+  let chain
+  try { chain = parseChain(input.chain) } catch (err) { throw new CardInputError(err.message) }
+  const modes = kv(input.mode)
+  const turns = kv(input.maxTurns ?? input.max_turns)
+  const fakeModes = kv(input.fakeMode ?? input.fake_mode)
+  const fakeFixtures = kv(input.fakeFixture ?? input.fake_fixture)
+  const approve = list(input.approve)
+  chain = chain.map((e) => ({
+    ...e,
+    ...(modes[e.adapter] ? { mode: modes[e.adapter] } : {}),
+    ...(turns[e.adapter] ? { maxTurns: parseInt(turns[e.adapter], 10) } : {}),
+    ...(fakeModes[e.adapter] ? { fakeMode: fakeModes[e.adapter] } : {}),
+    ...(fakeFixtures[e.adapter] ? { fakeFixture: fakeFixtures[e.adapter] } : {}),
+    ...(approve.includes(e.adapter) ? { approve: true } : {}),
+  }))
+  const pipelineArg = input.pipeline ?? 'build'
+  let pipeline
+  try {
+    if (Array.isArray(pipelineArg)) pipeline = buildPipeline({ stations: pipelineArg, chain })
+    else if (typeof pipelineArg === 'string' && pipelineArg.trim().startsWith('[')) pipeline = buildPipeline({ stations: JSON.parse(pipelineArg), chain })
+    else if (PRESET_NAMES.includes(pipelineArg)) pipeline = buildPipeline({ preset: pipelineArg, chain })
+    else pipeline = buildPipeline({ file: pipelineArg, chain })
+    validatePipeline(pipeline, await loadAdapterModes())
+  } catch (err) {
+    throw new CardInputError(`invalid pipeline: ${err.message}`)
+  }
+  const landMode = input.landMode ?? input.land_mode ?? 'ff'
+  if (!['ff', 'pr'].includes(landMode)) throw new CardInputError(`invalid land mode "${landMode}" (ff or pr)`)
+  const leases = list(input.leases)
+  const slug = (input.slug || task.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30)) || 'card'
+  const id = ledgerCreate({
+    slug, task, repo,
+    chain: chain.map((e) => ({ adapter: e.adapter, mode: e.mode ?? null, max_turns: e.maxTurns ?? null })),
+    pipeline, leases, trunk: input.trunk || 'main', 'land-mode': landMode,
+    'test-command': input.testCommand ?? input.test_command ?? null, title: input.title || null,
+    actor: JSON.stringify(actor),
+  })
+  if (input.queue) humanAction(id, 'enqueue', {}, actor)
+  return readCard(id)
+}

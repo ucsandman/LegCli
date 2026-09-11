@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baton</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="board.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Baton</div>
+  <div class="sse-status">
+    <span class="dot connecting" id="sse-dot"></span>
+    <span id="sse-text">connecting</span>
+  </div>
+  <div class="sched-status" id="sched-status">scheduler: —</div>
+  <div class="spacer"></div>
+  <button type="button" id="new-card-btn">New card</button>
+  <a href="/floor">Floor</a>
+  <details class="settings">
+    <summary>Settings</summary>
+    <label for="token-input">API token</label>
+    <input type="text" id="token-input" autocomplete="off" spellcheck="false">
+  </details>
+</header>
+
+<div class="banner" id="banner" hidden>Connecting to Baton…</div>
+
+<main id="board">
+  <div class="empty-state" id="empty-state" hidden>
+    <p>No cards yet. Add a task, choose the chain, and Baton runs it in its own worktree.</p>
+    <button type="button" id="empty-new-card-btn">New card</button>
+  </div>
+  <div class="columns" id="columns"></div>
+</main>
+
+<aside class="drawer" id="drawer" hidden aria-hidden="true">
+  <div class="drawer-inner">
+    <button type="button" id="drawer-close" aria-label="Close card details">Close</button>
+    <div id="drawer-content"></div>
+  </div>
+</aside>
+
+<dialog id="new-card-dialog" aria-label="New card">
+  <h2>New card</h2>
+  <form id="new-card-form">
+    <div class="form-error" id="new-card-error" hidden></div>
+
+    <div class="form-row">
+      <label for="nc-repo">Repo path</label>
+      <input type="text" id="nc-repo" required>
+    </div>
+
+    <div class="form-row">
+      <label for="nc-task">Task</label>
+      <textarea id="nc-task" rows="3" required></textarea>
+    </div>
+
+    <div class="form-row">
+      <label for="nc-pipeline">Pipeline</label>
+      <select id="nc-pipeline">
+        <option value="factory">factory</option>
+        <option value="build" selected>build</option>
+        <option value="build-land">build-land</option>
+        <option value="custom">custom JSON</option>
+      </select>
+      <textarea id="nc-custom-pipeline" rows="4" hidden placeholder='[{"name":"build","kind":"agent"}]'></textarea>
+    </div>
+
+    <div class="form-row">
+      <label>Chain</label>
+      <div id="nc-chain-rows"></div>
+      <button type="button" id="nc-add-row">Add chain row</button>
+    </div>
+
+    <div class="form-row">
+      <label for="nc-leases">Leases (comma separated)</label>
+      <input type="text" id="nc-leases">
+    </div>
+
+    <div class="form-row">
+      <label for="nc-trunk">Trunk branch</label>
+      <input type="text" id="nc-trunk" value="main">
+    </div>
+
+    <div class="form-row">
+      <label for="nc-land-mode">Land mode</label>
+      <select id="nc-land-mode">
+        <option value="ff" selected>ff</option>
+        <option value="pr">pr</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label for="nc-test-command">Test command</label>
+      <input type="text" id="nc-test-command">
+    </div>
+
+    <div class="form-row">
+      <label for="nc-title">Title</label>
+      <input type="text" id="nc-title">
+    </div>
+
+    <div class="form-row">
+      <label for="nc-queue">
+        <input type="checkbox" id="nc-queue" checked>
+        Queue immediately
+      </label>
+    </div>
+
+    <div class="dialog-actions">
+      <button type="button" id="nc-cancel">Cancel</button>
+      <button type="submit">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" aria-live="polite"></div>
+
+<script src="board.js" defer></script>
+</body>
+</html>
