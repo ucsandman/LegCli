@@ -150,7 +150,8 @@ test('an agent-created .env.example lands; a real .env never leaves the worktree
 test('a rebase that fails without a conflict bounces rebase-failed carrying git\'s reason', async () => {
   const repo = toy()
   const hooks = mkdtempSync(join(tmpdir(), 'land-hooks-'))
-  writeFileSync(join(hooks, 'pre-rebase'), '#!/bin/sh\necho "refused by policy" >&2\nexit 1\n')
+  // mode matters on Linux: git skips a hook that is not executable
+  writeFileSync(join(hooks, 'pre-rebase'), '#!/bin/sh\necho "refused by policy" >&2\nexit 1\n', { mode: 0o755 })
   git(repo, ['config', 'core.hooksPath', hooks.replace(/\\/g, '/')])
   const wt = ensure(repo, 'c-hook').path
   // trunk moves so the rebase is a real one for the hook to refuse
