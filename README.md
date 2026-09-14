@@ -442,6 +442,15 @@ npm run lint
 Any real agent session started only to test Baton runs on the cheapest model
 (`baton claude --model haiku`); the live checks in `test/` never start one.
 
+Maintainer releases use npm trusted publishing with no `NPM_TOKEN`. Bump the
+package, lockfile, site metadata and release notes, then push `main`. CI waits
+for the Ubuntu and Windows test matrix, validates the exact version against
+npm, and publishes only when that version is missing and newer than the stable
+`latest`. Existing versions skip cleanly; older, prerelease, and registry-error
+cases fail the job. The npm trusted publisher is bound to
+`ucsandman/baton` and `.github/workflows/ci.yml`. The repository stays private,
+so publication uses `--provenance=false`.
+
 ## Privacy and attribution
 
 Parts of the runner, ledger and git snapshot were ported from a private
@@ -456,7 +465,7 @@ Baton is commercial software under the [Baton License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.4.1; see
+and remain available. The version in this source tree is 0.4.2; see
 [npm](https://www.npmjs.com/package/baton-agents) for published versions and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
 

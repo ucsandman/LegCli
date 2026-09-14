@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2 (2026-09-14)
+
+- **Automatic npm publication.** A successful push to `main` now waits for the
+  complete Ubuntu and Windows CI matrix, validates package and lock metadata,
+  and publishes only when the exact version is missing and newer than npm's
+  stable `latest`. It uses npm trusted publishing with OIDC and no repository
+  token secret; stale versions and registry errors fail closed.
+
 ## 0.4.1 (2026-09-14)
 
 - **Codex quota and account display.** Codex usage now comes from the read-only
