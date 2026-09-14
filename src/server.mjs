@@ -25,6 +25,7 @@ import { remove as removeWorktree, worktreeDirty } from './worktree.mjs'
 import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
 import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY } from './sessions.mjs'
+import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree } from './land.mjs'
 import { readUsage, recordUsage, usageIsStale, candidates, isAvailable } from './usage.mjs'
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
@@ -636,6 +637,18 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
           return send(res, 200, { ok: true, request: hit })
         }
         if (req.method === 'GET' && parts.length === 3) return send(res, 200, { session: sess, events: readSessionEvents(id), requests: readRequests(id) })
+        // the card's drawer: what the agent last said, what it changed, what it
+        // has done. Only ever this viewer's own terminal; the guard above sent
+        // anyone else away before we read a transcript.
+        if (req.method === 'GET' && parts[3] === 'detail') return send(res, 200, sessionDetail(sess))
+        if (req.method === 'GET' && parts[3] === 'diff') {
+          try {
+            return send(res, 200, sessionDiff(sess, url.searchParams.get('file') ?? ''))
+          } catch (err) {
+            if (err instanceof DiffInputError) return send(res, 400, { error: err.message })
+            throw err
+          }
+        }
         if (req.method === 'POST' && parts[3] === 'handoff-order') {
           if (!sess.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY)) {
             return send(res, 409, { error: 'this terminal started before order changes were available; save the order as the default, then restart the terminal when ready' })

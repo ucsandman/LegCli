@@ -72,7 +72,7 @@ export function transcriptTail(path, limit = 8) {
     if (j.isSidechain) continue
     const text = textOf(j.message?.content).trim()
     if (!text || /^<[a-z-]+>/.test(text)) continue
-    out.push({ role: j.type, text: text.slice(0, 1500) })
+    out.push({ role: j.type, text: text.slice(0, 1500), ts: j.timestamp ?? null })
   }
   return out.slice(-limit)
 }

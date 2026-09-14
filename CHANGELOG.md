@@ -12,6 +12,14 @@
   usage walls, same-agent account fallback, all-out waiting, owner controls,
   and normal-exit behavior are unchanged. Older terminals say that a restart
   is required and can save the next-launch default.
+- **See what a terminal is doing.** **Details** on a terminal card (or a click
+  on its prompt) opens a drawer: the agent's last turn, the prompt the terminal
+  started from, its last eight messages, every file it changed with the line
+  counts and a diff per file, the event timeline, and the handoff order that
+  comes next. It refreshes every three seconds while open and pauses with the
+  tab or the button. Transcripts and diffs are scrubbed for secrets before they
+  leave the machine, and a terminal that belongs to another human on a shared
+  board stays refused.
 - **The terminal is left the way the agent found it.** An agent killed by End,
   Hand off now or the usage limit never runs its own cleanup, so its terminal
   modes outlived it: the mouse wheel printed raw mouse reports into the shell

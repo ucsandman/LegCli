@@ -287,9 +287,17 @@
       el('span', { class: 'spacer' }),
       el('span', { class: 'session-elapsed', title: `started ${new Date(s.started_at).toLocaleString()}` }, [ago(s.elapsed_ms)]),
     ]))
-    card.appendChild(el('div', { class: 'session-task', title: s.hidden ? '' : (s.task || '') }, [
+    const task = el('div', { class: `session-task${s.hidden ? '' : ' openable'}`, title: s.hidden ? '' : `${s.task || ''}\n\nClick for what this terminal is doing` }, [
       s.hidden ? el('span', { class: 'muted' }, ['prompt hidden']) : (s.task ? (s.task.length > 140 ? s.task.slice(0, 140) + '…' : s.task) : el('span', { class: 'muted' }, ['no prompt yet'])),
-    ]))
+    ])
+    // the whole prompt block opens the drawer: the card is the thing you look at
+    if (!s.hidden) {
+      task.setAttribute('role', 'button')
+      task.setAttribute('tabindex', '0')
+      task.addEventListener('click', () => openSessionDrawer(s.session_id))
+      task.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openSessionDrawer(s.session_id) } })
+    }
+    card.appendChild(task)
     card.appendChild(el('div', { class: 'session-meta' }, [
       el('span', { class: 'mono', title: s.cwd }, [s.repo_name || s.cwd, s.branch ? `@${s.branch}` : '']),
       s.worktree ? el('span', { class: 'chip worktree-chip', title: `another session was live in the checkout, so this one works in ${s.worktree.path}, branch ${s.worktree.branch}, cut from ${s.worktree.base || 'a detached HEAD'}` }, [`own worktree · from ${s.worktree.base || 'HEAD'}`]) : null,
@@ -337,6 +345,9 @@
       no.addEventListener('click', () => act(s.session_id, `requests/${encodeURIComponent(r.by)}/dismiss`, no))
       actions.append(ok, no)
     }
+    const details = el('button', { type: 'button', title: 'what this terminal is doing: its last turns, the files it changed, and what happens next' }, ['Details'])
+    details.addEventListener('click', () => openSessionDrawer(s.session_id))
+    actions.appendChild(details)
     if (s.worktree) {
       const l = el('button', { type: 'button', disabled: s.land_blocker ? '' : null, title: s.land_blocker || `commit this terminal's work on ${s.worktree.branch}, rebase it onto ${s.worktree.base}, run the tests, fast-forward ${s.worktree.base}; a bounce says why` }, ['Land'])
       l.addEventListener('click', () => act(s.session_id, 'land', l))
@@ -363,6 +374,208 @@
     }
     card.appendChild(actions)
     return card
+  }
+
+  // ---- drawer: what this terminal is doing ----
+  // The messages, the diffs and the timeline are one extra fetch per open
+  // terminal, so nothing here is requested until the drawer is open, and the
+  // poll stops when it is paused or the tab is in the background.
+  const drawer = { id: null, paused: false, timer: null, detail: null, error: '', expanded: new Set(), diffs: new Map() }
+
+  function drawerSession() { return view && view.sessions ? view.sessions.find((s) => s.session_id === drawer.id) : null }
+
+  function openSessionDrawer(id) {
+    drawer.id = id
+    drawer.detail = null
+    drawer.error = ''
+    drawer.paused = false
+    drawer.expanded.clear()
+    drawer.diffs.clear()
+    document.getElementById('session-drawer').hidden = false
+    renderDrawer()
+    loadDrawer()
+    if (drawer.timer) clearInterval(drawer.timer)
+    drawer.timer = setInterval(() => { if (!drawer.paused && !document.hidden) loadDrawer() }, 3000)
+    document.getElementById('session-drawer-close').focus()
+  }
+
+  function closeSessionDrawer() {
+    if (drawer.timer) clearInterval(drawer.timer)
+    drawer.timer = null
+    const id = drawer.id
+    drawer.id = null
+    document.getElementById('session-drawer').hidden = true
+    const back = id ? document.querySelector(`[data-session-id="${id.replace(/"/g, '\\"')}"] .session-task`) : null
+    if (back) back.focus()
+  }
+
+  async function loadDrawer() {
+    if (!drawer.id) return
+    const id = drawer.id
+    try {
+      const data = await api(`/api/sessions/${encodeURIComponent(id)}/detail`)
+      if (drawer.id !== id) return // the drawer moved on while this was in flight
+      drawer.detail = data
+      drawer.error = ''
+    } catch (err) {
+      if (drawer.id !== id) return
+      drawer.error = err.message
+    }
+    renderDrawer()
+  }
+
+  function whenAgo(ts) {
+    const t = Date.parse(ts)
+    return Number.isFinite(t) ? `${ago(Date.now() - t)} ago` : ''
+  }
+
+  function paintDiff(pre, d) {
+    pre.textContent = ''
+    const body = String(d.diff || '')
+    // an empty diff has three quite different meanings; say which one this is
+    if (!body.trim()) {
+      pre.appendChild(el('span', { class: 'hunk' }, [
+        d.state === 'committed' ? 'no changes against HEAD: this file is already committed'
+          : d.state === 'gone' ? 'this path is not in the working tree any more'
+            : 'nothing to show for this path',
+      ]))
+      return
+    }
+    for (const line of body.split('\n')) {
+      const cls = line.startsWith('+') && !line.startsWith('+++') ? 'add'
+        : line.startsWith('-') && !line.startsWith('---') ? 'del'
+          : line.startsWith('@@') ? 'hunk' : ''
+      pre.appendChild(el('span', { class: cls || null }, [line + '\n']))
+    }
+    if (d.truncated) pre.appendChild(el('span', { class: 'hunk' }, [`… cut off at ${d.diff.split('\n').length} lines`]))
+  }
+
+  async function showDiff(path, pre) {
+    if (!drawer.diffs.has(path)) {
+      pre.textContent = 'loading…'
+      try {
+        drawer.diffs.set(path, await api(`/api/sessions/${encodeURIComponent(drawer.id)}/diff?file=${encodeURIComponent(path)}`))
+      } catch (err) {
+        drawer.diffs.set(path, { diff: err.message, truncated: false })
+      }
+    }
+    paintDiff(pre, drawer.diffs.get(path))
+  }
+
+  function messageRow(m) {
+    const row = el('div', { class: `drawer-msg ${m.role}` }, [
+      el('span', { class: 'drawer-msg-role' }, [m.role === 'user' ? 'human' : 'agent']),
+      m.ts ? el('span', { class: 'drawer-msg-when' }, [whenAgo(m.ts)]) : null,
+      el('p', {}, [m.text]),
+    ])
+    return row
+  }
+
+  function fileRow(f) {
+    const wrap = el('div', { class: 'drawer-file' })
+    const pre = el('pre', { class: 'drawer-diff', hidden: '' })
+    const caret = el('span', { class: 'drawer-caret' }, ['▸'])
+    const row = el('button', { type: 'button', class: 'drawer-file-row', 'aria-expanded': 'false' }, [
+      caret,
+      el('span', { class: 'mono drawer-file-path', title: f.path }, [f.path]),
+      f.dirty ? el('span', { class: 'chip warn drawer-dirty' }, ['uncommitted']) : null,
+      el('span', { class: 'spacer' }),
+      Number.isFinite(f.adds) ? el('span', { class: 'drawer-adds' }, [`+${f.adds}`]) : null,
+      Number.isFinite(f.dels) ? el('span', { class: 'drawer-dels' }, [`−${f.dels}`]) : null,
+      // no counts against HEAD: the agent created it, or it is already committed
+      Number.isFinite(f.adds) ? null : el('span', { class: 'chip muted drawer-state' }, [f.state === 'new' ? 'new' : f.state === 'committed' ? 'committed' : String(f.state || '')]),
+    ])
+    const toggle = () => {
+      const opening = pre.hidden
+      pre.hidden = !opening
+      caret.textContent = opening ? '▾' : '▸'
+      row.setAttribute('aria-expanded', opening ? 'true' : 'false')
+      if (opening) { drawer.expanded.add(f.path); showDiff(f.path, pre) } else drawer.expanded.delete(f.path)
+    }
+    row.addEventListener('click', toggle)
+    if (drawer.expanded.has(f.path)) { pre.hidden = false; caret.textContent = '▾'; row.setAttribute('aria-expanded', 'true'); showDiff(f.path, pre) }
+    wrap.append(row, pre)
+    return wrap
+  }
+
+  function section(title, note, body) {
+    const s = el('section', { class: 'drawer-section' }, [
+      el('h3', {}, [title, note ? el('span', { class: 'drawer-sub' }, [note]) : null]),
+    ])
+    s.appendChild(body)
+    return s
+  }
+
+  function renderDrawer() {
+    const box = document.getElementById('session-drawer-content')
+    if (!box) return
+    const panel = document.getElementById('session-drawer')
+    const scroll = panel.scrollTop
+    const s = drawerSession()
+    const d = drawer.detail
+    box.textContent = ''
+    if (!s) {
+      box.appendChild(el('p', { class: 'session-note' }, ['This terminal is no longer on the board.']))
+      return
+    }
+    const [label] = STATUS[s.status] || [s.status]
+    box.appendChild(el('div', { class: 'drawer-top' }, [
+      el('span', { class: `pill adapter-${s.agent} state-active` }, [el('span', { class: 'pill-adapter' }, [s.agent])]),
+      el('span', { class: 'mono drawer-where', title: s.cwd }, [`${s.repo_name || s.cwd}${s.branch ? '@' + s.branch : ''}`]),
+      el('span', { class: 'spacer' }),
+      (() => {
+        const p = el('button', { type: 'button', id: 'session-drawer-pause', title: 'stop refreshing this panel' }, [drawer.paused ? 'Resume' : 'Pause'])
+        p.addEventListener('click', () => { drawer.paused = !drawer.paused; if (!drawer.paused) loadDrawer(); else renderDrawer() })
+        return p
+      })(),
+      (() => {
+        const c = el('button', { type: 'button', id: 'session-drawer-close' }, ['Close'])
+        c.addEventListener('click', closeSessionDrawer)
+        return c
+      })(),
+    ]))
+    if (drawer.error) box.appendChild(el('div', { class: 'session-note bad' }, [drawer.error]))
+
+    const last = d && d.messages ? [...d.messages].reverse().find((m) => m.role === 'assistant') : null
+    const now = el('div', { class: 'drawer-now' }, [
+      el('div', { class: 'drawer-now-line' }, [
+        `${label} · ${s.turns || 0} turn${s.turns === 1 ? '' : 's'}`,
+        s.last_activity ? ` · last activity ${whenAgo(s.last_activity)}` : '',
+      ]),
+      last ? el('p', { class: 'drawer-said' }, [last.text]) : el('p', { class: 'drawer-said muted' }, [d ? 'nothing said yet' : 'loading…']),
+    ])
+    box.appendChild(section('Now', drawer.paused ? 'paused' : `live · every 3s${d ? ` · read ${whenAgo(d.ts)}` : ''}`, now))
+
+    box.appendChild(section('Task', 'the prompt this terminal started from',
+      el('p', { class: 'drawer-task' }, [s.task || 'no prompt yet'])))
+
+    const msgs = el('div', { class: 'drawer-msgs' })
+    if (d && d.messages && d.messages.length) for (const m of d.messages) msgs.appendChild(messageRow(m))
+    else msgs.appendChild(el('p', { class: 'session-note' }, [d ? 'no transcript for this agent' : 'loading…']))
+    box.appendChild(section('Conversation', `last ${d && d.messages ? d.messages.length : 0} turns`, msgs))
+
+    const files = el('div', { class: 'drawer-files' })
+    const list = (d && d.files) || []
+    if (list.length) for (const f of list) files.appendChild(fileRow(f))
+    else files.appendChild(el('p', { class: 'session-note' }, [d ? 'no files changed yet' : 'loading…']))
+    box.appendChild(section('Files', list.length ? `${list.length} · click one for its diff` : '', files))
+
+    const timeline = el('div', { class: 'drawer-timeline' })
+    const events = (d && d.events) || []
+    for (const e of events.slice(-40)) {
+      timeline.appendChild(el('div', { class: 'drawer-event' }, [
+        el('span', { class: 'mono drawer-event-ts' }, [String(e.ts).slice(11, 19)]),
+        el('span', { class: `drawer-event-type ${e.type}` }, [e.type]),
+        el('span', {}, [e.summary || '']),
+      ]))
+    }
+    if (!events.length) timeline.appendChild(el('p', { class: 'session-note' }, [d ? 'nothing recorded yet' : 'loading…']))
+    box.appendChild(section('Timeline', 'this terminal, newest last', timeline))
+
+    const next = el('div', {}, [renderHandoffOrder(s)])
+    if (s.bundle) next.appendChild(el('div', { class: 'session-note' }, [`bundle ${s.bundle.id}${s.bundle.at ? ` · saved ${whenAgo(s.bundle.at)}` : ''}`]))
+    box.appendChild(section('What happens next', '', next))
+    panel.scrollTop = scroll
   }
 
   function renderSessions(v) {
@@ -407,11 +620,15 @@
     renderDefaultOrder(v)
     renderSessions(v)
     renderTrunk(v)
+    // the card behind the drawer just changed: status, turns and what is next
+    // live in the session view, so redraw the panel from it
+    if (drawer.id) { if (drawerSession()) renderDrawer(); else closeSessionDrawer() }
   }
   async function refresh() {
     try { render(await api('/api/sessions')) } catch (err) { toast(err.message) }
   }
   window.addEventListener('baton:sessions', (e) => render(e.detail))
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drawer.id) closeSessionDrawer() })
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('default-order-save')?.addEventListener('click', saveDefaultOrder)
     refresh()

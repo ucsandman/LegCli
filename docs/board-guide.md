@@ -86,6 +86,16 @@ One per session, active sessions first, then by start time:
   endpoint has no numbers for them the card says `usage unknown (<why>) · the
   limit still hands off` instead: no login in that config directory, a 404, a
   429, a body that is not JSON, or a shape Baton does not recognise.
+- **Details**, or a click on the prompt itself, opens the drawer on the right:
+  what this terminal is doing now, the prompt it started from, its last eight
+  turns, every file it has changed, its timeline, and what happens next. It
+  refreshes every three seconds while it is open and stops on **Pause**, when
+  the tab is in the background, or when it is closed. The board behind it stays
+  live, so the card's own buttons keep working. A file row expands to that
+  file's diff against `HEAD`; a file the agent created shows as one addition,
+  and one that is already committed says so instead of showing nothing.
+  Messages and diffs are scrubbed for secrets on the way out, and the whole
+  panel is refused for a terminal that belongs to someone else.
 - **Warning line** at `BATON_WARN_PCT`: `⚠ <window> window at <n>% · next:
   <agent>`, naming the option Baton would hand to.
 - **Limit line**: `limit: <reason> · resets <time>`, the raw limit text on
@@ -135,6 +145,7 @@ counted as live.
 | Land | the session has its own worktree, active or not; disabled with the reason on hover while it is landing or when the worktree is gone | `POST /api/sessions/:id/land` (202): commits what the agent left on `baton/<id>`, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the land line shows the result |
 | Request handoff | the board is shared and this terminal is someone else's | `POST /api/sessions/:id/request-handoff` (202): asks the owner; nothing happens until they approve |
 | Approve `<name>` / Dismiss | the board is shared and someone asked for a hand-off on your terminal | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
+| Details | any terminal of yours | `GET /api/sessions/:id/detail`: the last eight messages, the files changed with their line counts, the timeline and the current bundle; `GET /api/sessions/:id/diff?file=<path>` for one file, capped at 400 lines, refused for any path outside that terminal's own tree |
 | Hand off now | the session is active | `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal |
 | Change order | a terminal is active and has not committed a handoff | saves its validated claude/codex/agy priority; an older wrapper instead saves the machine default and says to restart the terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |

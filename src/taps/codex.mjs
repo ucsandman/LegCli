@@ -178,7 +178,7 @@ export function parseLines(lines) {
       } else if (p.type === 'task_started') out.taskStarted += 1
       else if (p.type === 'task_complete') {
         out.turnsDone += 1
-        if (p.last_agent_message) out.messages.push({ role: 'assistant', text: String(p.last_agent_message).slice(0, 1500) })
+        if (p.last_agent_message) out.messages.push({ role: 'assistant', text: String(p.last_agent_message).slice(0, 1500), ts: j.timestamp ?? null })
         const err = p.error
         if (err && (err.codex_error_info === 'usage_limit_exceeded' || USAGE_LIMIT_RE.test(err.message ?? ''))) {
           out.limit = { reason: 'usage_limit_exceeded', detail: String(err.message ?? '').slice(0, 300), resets_at: parseRetryAt(err.message), observed_at: j.timestamp ?? null, raw: j }
@@ -193,7 +193,7 @@ export function parseLines(lines) {
         const text = p.content.filter((c) => (c.type === 'input_text' || c.type === 'output_text') && c.text).map((c) => c.text).join('\n').trim()
         // skip the injected context (<environment_context>, and the "# AGENTS.md instructions" block codex
         // prepends to a thread: observed live 2026-09-11 as the first user message of every rollout)
-        if (text && !/^<[a-z_-]+>/i.test(text) && !/^# AGENTS\.md instructions/i.test(text)) out.messages.push({ role: p.role === 'user' ? 'user' : 'assistant', text: text.slice(0, 1500) })
+        if (text && !/^<[a-z_-]+>/i.test(text) && !/^# AGENTS\.md instructions/i.test(text)) out.messages.push({ role: p.role === 'user' ? 'user' : 'assistant', text: text.slice(0, 1500), ts: j.timestamp ?? null })
       } else if (p.type === 'function_call' || p.type === 'custom_tool_call') {
         const args = String(p.arguments ?? p.input ?? '')
         out.files.push(...patchFiles(args))

@@ -7,7 +7,7 @@
 [![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](package.json)
 [![Local first](https://img.shields.io/badge/runs-on%20your%20machine-informational.svg)](#network-exposure)
 
-![The Baton board: three live claude terminals on one repo, two of them in their own worktrees and flagged for changing README.md; one landed on main through the merge queue, the other bounced naming the conflicting file, and the landed-on-trunk list says which terminal landed the commit](docs/screenshots/terminals-1280.png)
+![The Baton board: three live claude terminals on one repo, two of them in their own worktrees and flagged for changing README.md; one landed on main through the merge queue, the other bounced naming the conflicting file, and the landed-on-trunk list says which terminal landed the commit](https://baton-agents.vercel.app/img/terminals-1280.png)
 
 You keep using your coding agents exactly as you do today, in any terminal,
 from your own config directory: Baton adds its hooks in a separate per-session
@@ -218,7 +218,7 @@ A token is kept as a sha256 hash, so a lost link is re-issued, never re-read.
 The board takes the token out of the address bar and keeps it in the browser.
 Your own browser on this machine needs no token.
 
-![What a guest sees: their own terminal in full, the other human's terminal read-only with the prompt hidden and one Request handoff button](docs/screenshots/share-guest-1280.png)
+![What a guest sees: their own terminal in full, the other human's terminal read-only with the prompt hidden and one Request handoff button](https://baton-agents.vercel.app/img/share-guest-1280.png)
 
 What another human sees is the terminals lane, read-only. Each card says whose
 terminal it is. On a card that is not theirs there is no prompt, no file name,

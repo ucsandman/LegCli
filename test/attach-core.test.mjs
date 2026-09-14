@@ -129,7 +129,8 @@ test('claude tap: transcript tail skips sidechains and tag-only messages', () =>
     JSON.stringify({ type: 'assistant', isSidechain: true, message: { role: 'assistant', content: [{ type: 'text', text: 'side' }] } }),
     JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'hmm' }, { type: 'text', text: 'answer' }] } }),
   ].join('\n'))
-  assert.deepEqual(claudeTap.transcriptTail(t), [{ role: 'user', text: 'real prompt' }, { role: 'assistant', text: 'answer' }])
+  // ts carries each turn's own time for the card drawer; these fixture lines have none
+  assert.deepEqual(claudeTap.transcriptTail(t), [{ role: 'user', text: 'real prompt', ts: null }, { role: 'assistant', text: 'answer', ts: null }])
   assert.equal(claudeTap.firstPrompt(t), 'real prompt')
 })
 
