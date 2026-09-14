@@ -13,6 +13,7 @@ const HOME = makeHome()
 process.env.BATON_HOME = HOME
 process.env.BATON_QUIET = '1'
 const { createBoardServer, columnsFor, columnOf } = await import('../src/server.mjs')
+const usage = await import('../src/usage.mjs')
 
 let srv
 let base
@@ -52,6 +53,29 @@ test('health reports version, bind, port, home, scheduler, tools, columns', asyn
   for (const t of ['claude', 'codex', 'agy', 'grok', 'chb', 'git']) assert.equal(typeof r.json.tools[t], 'boolean', t)
   assert.deepEqual(r.json.columns, ['backlog', 'queued', 'done', 'failed'])
   assert.equal(srv.server.address().address, '127.0.0.1')
+})
+
+test('idle Codex quota polling is opt-in, injected, and single-flight at startup', async () => {
+  let reads = 0
+  const polling = createBoardServer({
+    bind: '127.0.0.1',
+    port: 0,
+    token: '',
+    scheduler: false,
+    usagePolling: true,
+    usageReader: async () => {
+      reads += 1
+      return { ok: true, available: true, observed_at: new Date().toISOString(), limits: { five_hour: null, seven_day: { pct: 25, resets_at: 2_000_000_000, window_minutes: 10080 } } }
+    },
+  })
+  try {
+    await polling.start()
+    await sleep(50)
+    assert.equal(reads, 1)
+    assert.equal(usage.readUsage('codex', 'default').seven_day.pct, 25)
+  } finally {
+    await polling.stop()
+  }
 })
 
 test('POST /api/cards 201 with the summarized card; 400 on a forbidden mode; list shows it', async () => {
@@ -223,6 +247,68 @@ test('sessions API: view, handoff/end control, delete, lost reaper', async () =>
   assert.equal(readSession('s-t-dead'), null)
   r = await api('/api/sessions/s-t-claude')
   assert.equal(r.json.events[0].type, 'started')
+})
+
+test('session record-only removal preserves unmerged and dirty work', async () => {
+  const { createSession, updateSession, readSession } = await import('../src/sessions.mjs')
+  const { ensure } = await import('../src/worktree.mjs')
+  const lrepo = initRepo('srv-remove-record-')
+  const id = 's-remove-record-claude'
+  const wt = ensure(lrepo, id, { trunk: 'main' })
+  writeFileSync(join(wt.path, 'committed.txt'), 'keep this commit\n')
+  git(wt.path, ['add', 'committed.txt'])
+  git(wt.path, ['commit', '-q', '-m', 'unlanded terminal work'])
+  writeFileSync(join(wt.path, 'dirty.txt'), 'keep this dirty file\n')
+  createSession({ id, agent: 'claude', cwd: wt.path, repo: lrepo, branch: wt.branch, runner_pid: process.pid, worktree: { path: wt.path, branch: wt.branch, base: 'main' } })
+  updateSession(id, { status: 'ended' })
+
+  let r = await api(`/api/sessions/${id}`, { method: 'DELETE' })
+  assert.equal(r.status, 409, 'unforced remove must not orphan unmerged or dirty work')
+  assert.ok(readSession(id), 'the guarded request keeps the Baton record')
+  assert.match(r.json.error, /uncommitted changes/)
+
+  r = await api(`/api/sessions/${id}?keep_worktree=1`, { method: 'DELETE' })
+  assert.equal(r.status, 400, 'record-only removal requires explicit force')
+  assert.ok(readSession(id), 'missing force keeps the Baton record')
+
+  r = await api(`/api/sessions/${id}?force=1&keep_worktree=1`, { method: 'DELETE' })
+  assert.equal(r.status, 200)
+  assert.equal(r.json.worktree.preserved, true)
+  assert.equal(readSession(id), null, 'only the Baton record is removed')
+  assert.equal(existsSync(wt.path), true, 'worktree remains')
+  assert.equal(existsSync(join(wt.path, 'committed.txt')), true, 'committed file remains')
+  assert.equal(existsSync(join(wt.path, 'dirty.txt')), true, 'dirty file remains')
+  assert.match(git(wt.path, ['status', '--porcelain']), /dirty\.txt/)
+  assert.match(git(wt.path, ['log', '--oneline', '-1']), /unlanded terminal work/)
+  assert.match(git(lrepo, ['branch', '--list', wt.branch]), new RegExp(wt.branch.replace('/', '\\/')), 'branch remains')
+})
+
+test('session record-only removal rejects active and landing sessions', async () => {
+  const { createSession, updateSession, readSession, readLand } = await import('../src/sessions.mjs')
+  const { ensure } = await import('../src/worktree.mjs')
+  const lrepo = initRepo('srv-remove-guard-')
+  const activeId = 's-remove-record-active'
+  createSession({ id: activeId, agent: 'claude', cwd: lrepo, repo: lrepo, branch: 'main', runner_pid: process.pid })
+  updateSession(activeId, { status: 'running' })
+  let r = await api(`/api/sessions/${activeId}?force=1&keep_worktree=1`, { method: 'DELETE' })
+  assert.equal(r.status, 409, 'active sessions cannot be removed even with explicit preservation')
+  assert.ok(readSession(activeId))
+
+  const id = 's-remove-record-landing'
+  const wt = ensure(lrepo, id, { trunk: 'main' })
+  writeFileSync(join(wt.path, 'package.json'), JSON.stringify({ scripts: { test: 'node slow-test.mjs' } }))
+  writeFileSync(join(wt.path, 'slow-test.mjs'), "import { writeFileSync } from 'node:fs'\nwriteFileSync('test-started', 'yes')\nsetTimeout(() => process.exit(0), 1000)\n")
+  createSession({ id, agent: 'claude', cwd: wt.path, repo: lrepo, branch: wt.branch, runner_pid: process.pid, worktree: { path: wt.path, branch: wt.branch, base: 'main' } })
+  updateSession(id, { status: 'ended', task: 'exercise asynchronous landing test' })
+  r = await api(`/api/sessions/${id}/land`, { method: 'POST' })
+  assert.equal(r.status, 202)
+  const deadline = Date.now() + 5000
+  while (!existsSync(join(wt.path, 'test-started')) && Date.now() < deadline) await sleep(25)
+  assert.equal(existsSync(join(wt.path, 'test-started')), true, 'the asynchronous package test started')
+  assert.equal(readLand(id)?.state, 'landing')
+  r = await api(`/api/sessions/${id}?force=1&keep_worktree=1`, { method: 'DELETE' })
+  assert.equal(r.status, 409, 'a record being written by Land cannot be removed')
+  assert.ok(readSession(id), 'the landing record remains while tests run')
 })
 
 test('Land: a worktree session lands through the merge queue, a clashing one bounces naming the file, the checkout session has no branch, trunk says who landed', async () => {

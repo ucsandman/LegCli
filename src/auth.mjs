@@ -10,7 +10,20 @@ import { identify, isOn as shareIsOn, personNamed } from './share.mjs'
 export const LOOPBACK = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1']
 
 export function isLoopback(bind) {
-  return LOOPBACK.includes(String(bind ?? '').trim().toLowerCase())
+  return LOOPBACK.includes(String(bind ?? '').trim().toLowerCase().replace(/^\[|\]$/g, ''))
+}
+
+// Tokenless owner access is safe only when both ends name loopback. Checking
+// the socket alone lets an attacker-controlled DNS name rebind to 127.0.0.1;
+// its page then has a same-origin Host/Origin pair and can drive the board.
+export function isLoopbackRequest(req) {
+  if (!isLoopback(remoteAddress(req))) return false
+  const host = req?.headers?.host
+  if (typeof host !== 'string' || !host) return false
+  try {
+    const target = new URL(`http://${host}`)
+    return isLoopback(target.hostname)
+  } catch { return false }
 }
 
 export class BindRefused extends Error {
@@ -45,7 +58,7 @@ export function presentedToken(req, url) {
 }
 
 // → { ok, subject, person } where person is { name, role } when share is on.
-export function authorize({ token, req, url, share = null, bind = null }) {
+export function authorize({ token, req, url, share = null, bind = null, loopbackOwner = null }) {
   const presented = presentedToken(req, url)
   if (shareIsOn(share ?? undefined)) {
     const person = identify(share, presented)
@@ -54,7 +67,8 @@ export function authorize({ token, req, url, share = null, bind = null }) {
     // non-loopback (Tailscale/LAN) bind the server also listens on 127.0.0.1
     // (createBoardServer), so the owner opens the loopback URL tokenless while a
     // real remote peer's address is never loopback and always needs a token.
-    if (!presented && share.loopback_owner !== false && isLoopback(remoteAddress(req))) {
+    const localOwner = loopbackOwner === null ? isLoopback(remoteAddress(req)) : loopbackOwner
+    if (!presented && share.loopback_owner !== false && localOwner) {
       const owner = personNamed(share, share.owner) ?? share.people.find((p) => p.role === 'owner') ?? null
       if (owner) return { ok: true, subject: owner.name, person: owner }
     }
@@ -63,6 +77,7 @@ export function authorize({ token, req, url, share = null, bind = null }) {
   // checkBind's invariant, re-applied per request: share.json stops reading as
   // on (`baton share off`, a truncated file) while the shared address is still
   // bound, and nobody but this machine may be the local owner in that window
+  if (!token && loopbackOwner === false) return { ok: false, subject: null, person: null }
   if (!token && bind && !isLoopback(bind) && !isLoopback(remoteAddress(req))) return { ok: false, subject: null, person: null }
   if (!token) return { ok: true, subject: 'local', person: null }
   if (tokenMatches(token, presented)) return { ok: true, subject: 'token', person: null }

@@ -43,15 +43,21 @@ One pill per login, `<agent>` for the default account and `<agent>/<name>` for
 a named one:
 
 - **5h and 7d usage bars**, green under 60 %, amber from 60 %, red from 85 %.
-  A window with no reading shows an em dash. Hover gives the exact percentage
-  and when the window resets.
+  The label is `<n>% used`; a window with no reading shows an em dash. Hover
+  gives the exact percentage and when the window resets.
 - **A live dot** next to the name when a session is running on that login;
   hovering says how many.
 - **`limit · back <time>`** instead of the bars when that login is walled. The
   time is when it comes back.
 - **`no % from agy`** for agy, which exposes no percentage at all.
 - Hovering the pill names the source of the reading and how long ago it
-  arrived.
+  arrived. A reading older than five minutes is labelled stale.
+
+For Codex, the board reads the app-server's read-only
+`account/rateLimits/read` response every 60 seconds and maps its 300- and
+10080-minute windows to 5h and 7d. The active `baton codex` attach also polls
+that response. A percentage alone does not clear a limit wall: Baton waits for
+an explicit available answer from the backend.
 
 ### Terminal card
 
@@ -121,7 +127,8 @@ counted as live.
 | Approve `<name>` / Dismiss | the board is shared and someone asked for a hand-off on your terminal | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
 | Hand off now | the session is active | `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
-| Remove | the session is not active | `DELETE /api/sessions/:id`: forgets the session record; its worktree and branch go too when the worktree is clean and the branch is already on its base, otherwise they stay and the toast says why |
+| Remove | the session is not active | `DELETE /api/sessions/:id`: safely prunes the session record, worktree, and merged branch only when the worktree is clean and the branch is already on its base; otherwise it leaves them and explains why |
+| Remove record | the session is not active and has an own worktree | confirmation, then `DELETE /api/sessions/:id?force=1&keep_worktree=1`: removes only Baton's record and keeps the worktree, branch, unmerged commits, and dirty files |
 
 Each press shows a toast; **Hand off now** says the terminal switches agents in
 a few seconds, because the switch happens in the terminal, not the browser.

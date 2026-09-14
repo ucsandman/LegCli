@@ -1,10 +1,11 @@
 // usage — per (agent, account) limit state and the handoff chooser.
 // $BATON_HOME/usage/<agent>--<account>.json:
 //   { agent, account, five_hour: {pct, resets_at}|null, seven_day: {...}|null,
-//     limited_until: epoch-seconds|null, limited_reason, source, updated_at }
+//     limited_until: epoch-seconds|null, limited_reason, limited_at,
+//     source, observed_at, available_at, updated_at }
 // Sources: claude statusline JSON (rate_limits.*) and StopFailure rate_limit;
-// codex rollout token_count.rate_limits (primary=5h, secondary=7d) and the
-// usage-limit error; agy only the wall itself (no percent exposed).
+// codex app-server/rollout rate limits (identified by window duration) and
+// the usage-limit error; agy only the wall itself (no percent exposed).
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { home } from './store.mjs'
@@ -20,8 +21,12 @@ export function usageFile(agent, account = 'default') { return join(usageDir(), 
 
 export function readUsage(agent, account = 'default') {
   const f = usageFile(agent, account)
-  if (!existsSync(f)) return { agent, account, five_hour: null, seven_day: null, limited_until: null, limited_reason: null, source: null, updated_at: null }
-  try { return JSON.parse(readFileSync(f, 'utf8')) } catch { return { agent, account, five_hour: null, seven_day: null, limited_until: null, limited_reason: null, source: null, updated_at: null } }
+  if (!existsSync(f)) return emptyUsage(agent, account)
+  try { return { ...emptyUsage(agent, account), ...JSON.parse(readFileSync(f, 'utf8')) } } catch { return emptyUsage(agent, account) }
+}
+
+function emptyUsage(agent, account) {
+  return { agent, account, five_hour: null, seven_day: null, limited_until: null, limited_reason: null, limited_at: null, source: null, observed_at: null, available_at: null, updated_at: null }
 }
 
 export function listUsage() {
@@ -42,27 +47,56 @@ function mutate(agent, account, fn) {
   mkdirSync(usageDir(), { recursive: true })
   return withFileLock(usageFile(agent, account) + '.lock', () => {
     const u = readUsage(agent, account)
-    const out = fn(u) ?? u
-    write(out)
-    return out
+    const out = fn(u)
+    if (out === false) return u
+    const next = out ?? u
+    write(next)
+    return next
   })
 }
 
 // windows: { five_hour: {pct, resets_at}|null, seven_day: ... }
-export function recordUsage(agent, account, windows, source) {
-  return mutate(agent, account, (u) => {
+// `available` must be an explicit backend answer. Percentages cannot clear a
+// wall: Codex's rate-limit schema says null availability is unknown, even when
+// a window is below 100%.
+export function recordUsage(agent, account, windows, source, { observed_at = new Date().toISOString(), available = null } = {}) {
+  let applied = false
+  const value = mutate(agent, account, (u) => {
+    const seenMs = Date.parse(observed_at)
+    const currentMs = Date.parse(u.observed_at ?? u.updated_at ?? 0)
+    if (Number.isFinite(seenMs) && Number.isFinite(currentMs) && seenMs < currentMs) return false
     if (windows.five_hour !== undefined) u.five_hour = windows.five_hour
     if (windows.seven_day !== undefined) u.seven_day = windows.seven_day
     u.source = source
+    u.observed_at = Number.isFinite(seenMs) ? new Date(seenMs).toISOString() : new Date().toISOString()
+    applied = true
+    if (available === true) u.available_at = u.observed_at
     // A window that has reset clears an old wall.
     const nowS = Math.floor(Date.now() / 1000)
-    if (u.limited_until && u.limited_until <= nowS) { u.limited_until = null; u.limited_reason = null }
+    if (u.limited_until && u.limited_until <= nowS) { u.limited_until = null; u.limited_reason = null; u.limited_at = null }
+    const wallMs = Date.parse(u.limited_at ?? u.updated_at ?? 0)
+    if (u.limited_until && available === true && (!Number.isFinite(wallMs) || !Number.isFinite(seenMs) || seenMs >= wallMs)) {
+      u.limited_until = null
+      u.limited_reason = null
+      u.limited_at = null
+    } else if (available === false) {
+      const windows = [u.five_hour, u.seven_day].filter((w) => w && Number.isFinite(w.resets_at) && w.resets_at > nowS)
+      windows.sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
+      u.limited_until = windows.length ? windows[0].resets_at : nowS + DEFAULT_LIMIT_S
+      u.limited_reason = 'usage_limit_exceeded'
+      u.limited_at = u.observed_at
+    }
     return u
   })
+  return { ...value, usage_applied: applied }
 }
 
-export function markLimited(agent, account, { resets_at = null, reason = 'limit', source } = {}) {
-  return mutate(agent, account, (u) => {
+export function markLimited(agent, account, { resets_at = null, reason = 'limit', source, observed_at = new Date().toISOString() } = {}) {
+  let applied = false
+  const value = mutate(agent, account, (u) => {
+    const seenMs = Date.parse(observed_at)
+    const currentMs = Math.max(Date.parse(u.limited_at ?? 0) || 0, Date.parse(u.available_at ?? 0) || 0)
+    if (Number.isFinite(seenMs) && Number.isFinite(currentMs) && seenMs < currentMs) return false
     const nowS = Math.floor(Date.now() / 1000)
     let until = Number.isFinite(resets_at) && resets_at > nowS ? resets_at : null
     if (!until) {
@@ -75,13 +109,22 @@ export function markLimited(agent, account, { resets_at = null, reason = 'limit'
     }
     u.limited_until = until
     u.limited_reason = reason
+    u.limited_at = Number.isFinite(seenMs) ? new Date(seenMs).toISOString() : new Date().toISOString()
+    u.observed_at = u.limited_at
     if (source) u.source = source
+    applied = true
     return u
   })
+  return { ...value, wall_applied: applied }
 }
 
 export function clearLimited(agent, account) {
-  return mutate(agent, account, (u) => { u.limited_until = null; u.limited_reason = null; return u })
+  return mutate(agent, account, (u) => { u.limited_until = null; u.limited_reason = null; u.limited_at = null; return u })
+}
+
+export function usageIsStale(u, nowMs = Date.now(), maxAgeMs = 5 * 60 * 1000) {
+  const observedMs = Date.parse(u?.observed_at ?? u?.updated_at ?? 0)
+  return !Number.isFinite(observedMs) || nowMs - observedMs > maxAgeMs
 }
 
 export function isAvailable(u, nowS = Math.floor(Date.now() / 1000)) {

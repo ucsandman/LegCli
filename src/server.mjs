@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkBind, authorize, remoteAddress, presentedToken, isLoopback, tokenMatches } from './auth.mjs'
+import { checkBind, authorize, remoteAddress, presentedToken, isLoopback, isLoopbackRequest, tokenMatches } from './auth.mjs'
 import { readShare, isOn as shareIsOn, sharePath, identify, personNamed } from './share.mjs'
 import { createLimiter } from './ratelimit.mjs'
 import { realPath, canonPath } from './fsx.mjs'
@@ -26,8 +26,9 @@ import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
 import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent } from './sessions.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree } from './land.mjs'
-import { readUsage } from './usage.mjs'
-import { readAccounts } from './accounts.mjs'
+import { readUsage, recordUsage, usageIsStale } from './usage.mjs'
+import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
+import { readCodexUsage } from './taps/codex.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const BOARD_DIR = join(dirname(SELF), 'board')
@@ -276,7 +277,7 @@ export function sessionsView({ viewer = null, share = null } = {}) {
   const accounts = []
   for (const agent of Object.keys(acc)) for (const account of acc[agent]) {
     const u = readUsage(agent, account)
-    accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, updated_at: u.updated_at, live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length })
+    accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, observed_at: u.observed_at, updated_at: u.updated_at, stale: usageIsStale(u), live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length })
   }
   const repos = new Map()
   for (const s of sessions) if (s.repo && (s.active || s.worktree) && !repos.has(canonPath(s.repo))) repos.set(canonPath(s.repo), s.repo)
@@ -424,7 +425,7 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => 
 }
 
 // ---- the server ----
-export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN || '', scheduler = process.env.BATON_NO_SCHEDULER !== '1', share } = {}) {
+export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN || '', scheduler = process.env.BATON_NO_SCHEDULER !== '1', share, usagePolling = false, usageReader = readCodexUsage } = {}) {
   // An explicit `share` (tests) is fixed; the real server passes none and reads
   // share.json from disk, re-reading it per request (mtime-cached) so `baton
   // share add|rotate|rm` takes effect on a live board — a new link works at
@@ -468,6 +469,27 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
   }
   const sse = createSse({ viewFor, reauth: reauthClient })
   let sched = null
+  let usageTimer = null
+  let usageController = null
+  let usageInFlight = null
+  const refreshCodexAccounts = () => {
+    if (!usagePolling || (process.env.BATON_CODEX_BIN && usageReader === readCodexUsage) || usageInFlight) return usageInFlight
+    usageController = new AbortController()
+    const signal = usageController.signal
+    usageInFlight = Promise.all((readAccounts().codex ?? ['default']).map(async (account) => {
+      const codexHome = envFor('codex', account).CODEX_HOME || LAYOUT.codex.home()
+      const r = await usageReader({ codexHome, timeoutMs: 8000, signal })
+      if (!r.ok) return false
+      recordUsage('codex', account, r.limits, 'codex app-server account/rateLimits/read', { observed_at: r.observed_at, available: r.available })
+      return true
+    })).then((changed) => {
+      if (changed.some(Boolean)) sse.broadcast('sessions', (viewer) => viewFor(viewer))
+    }).catch((err) => log(`codex usage refresh: ${err.message}`)).finally(() => {
+      usageInFlight = null
+      usageController = null
+    })
+    return usageInFlight
+  }
 
   async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
@@ -486,7 +508,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
     const ip = remoteAddress(req) || 'unknown'
     // a token cannot be guessed at speed, and no one client can flood the board
     if (limiter.lockedOut(ip)) return send(res, 429, { error: 'too many bad tokens from here; wait a minute' }, { 'Retry-After': String(limiter.retryAfter(ip)) })
-    const auth = authorize({ token, req, url, share, bind })
+    const auth = authorize({ token, req, url, share, bind, loopbackOwner: isLoopbackRequest(req) })
     if (!auth.ok) {
       // only a token that was presented and did not match counts as a guess;
       // a board page that has not been given a token yet is not an attacker,
@@ -534,7 +556,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
         const cards = guest ? [] : listCards()
         res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map(summarize), sessions: viewFor(viewer), ts: new Date().toISOString() })}\n\n`)
-        sse.add(res, cards, viewer, { token: presentedToken(req, url), loopback: isLoopback(remoteAddress(req)) })
+        sse.add(res, cards, viewer, { token: presentedToken(req, url), loopback: isLoopbackRequest(req) })
         return
       }
       if (req.method === 'GET' && path === '/api/sessions') return send(res, 200, viewFor(viewer))
@@ -597,8 +619,12 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
           if (isActive(sess)) return send(res, 409, { error: 'end the session before removing it' })
           if (landingNow(id)) return send(res, 409, { error: 'wait for the landing to finish before removing it' })
           const force = url.searchParams.get('force') === '1'
+          const keepWorktree = url.searchParams.get('keep_worktree') === '1'
+          if (keepWorktree && !force) return send(res, 400, { error: 'keep_worktree requires force=1' })
           let worktree = null
-          if (sess.worktree) { try { worktree = pruneSessionWorktree(sess) } catch (err) { worktree = { removed: false, reason: scrub(err.message).slice(0, 200) } } }
+          if (keepWorktree && sess.worktree) {
+            worktree = { removed: false, preserved: true, path: sess.worktree.path, branch: sess.worktree.branch, reason: 'preserved by request' }
+          } else if (sess.worktree) { try { worktree = pruneSessionWorktree(sess) } catch (err) { worktree = { removed: false, reason: scrub(err.message).slice(0, 200) } } }
           // Remove must not orphan unlanded work: if the worktree could not be
           // pruned (uncommitted or unmerged), keep the record unless forced
           if (worktree && !worktree.removed && !force) return send(res, 409, { error: `not removing ${id}: ${worktree.reason}. Land it first, or retry with ?force=1 to drop the record and leave the worktree in place.`, worktree })
@@ -686,6 +712,11 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
             sched = createScheduler()
             sched.run().catch((err) => log(`scheduler crashed: ${err.message}`))
           }
+          if (usagePolling) {
+            refreshCodexAccounts()
+            usageTimer = setInterval(refreshCodexAccounts, 60000)
+            usageTimer.unref?.()
+          }
           if (loopbackCompanion) {
             loopbackCompanion.on('error', (err) => log(`loopback companion: ${err.message}`))
             loopbackCompanion.listen(addr.port, '127.0.0.1', () => log(`also on http://127.0.0.1:${addr.port} (this machine, tokenless owner)`))
@@ -695,6 +726,8 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
       })
     },
     async stop() {
+      if (usageTimer) { clearInterval(usageTimer); usageTimer = null }
+      usageController?.abort()
       sse.stop()
       if (sched) sched.stop()
       if (loopbackCompanion) await new Promise((r) => { loopbackCompanion.closeAllConnections?.(); loopbackCompanion.close(() => r()) })
@@ -707,7 +740,7 @@ const isMain = process.argv[1] && resolve(process.argv[1]).toLowerCase() === SEL
 if (isMain) {
   let srv
   try {
-    srv = createBoardServer()
+    srv = createBoardServer({ usagePolling: true })
   } catch (err) {
     process.stderr.write(err.message + '\n')
     process.exit(err.exitCode ?? 1)

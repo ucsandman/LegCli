@@ -5,7 +5,7 @@
 
   const WAIT_LABELS = { approve: 'Approve', resume: 'Resume', kill: 'Kill' }
 
-  const state = { es: null, retryMs: 1000, timers: [], stopped: false }
+  const state = { es: null, retryMs: 1000, timers: [], stopped: false, sseRequest: 0, floorRequest: 0, trunkRequest: 0 }
 
   function getToken() { return localStorage.getItem('batonToken') || '' }
 
@@ -211,24 +211,30 @@
   }
 
   async function refreshFloor() {
+    const request = ++state.floorRequest
     try {
       const data = await api('/api/floor')
+      if (state.stopped || request !== state.floorRequest) return
       renderHeader(data)
       renderRunning(data.running)
       renderWaiting(data.waiting)
       renderQueued(data.queued)
       renderLeases(data)
     } catch (err) {
+      if (state.stopped || request !== state.floorRequest) return
       if (err.status === 401 || err.status === 403) return lockOut(err.message)
       toast(err.message)
     }
   }
 
   async function refreshTrunk() {
+    const request = ++state.trunkRequest
     try {
       const data = await api('/api/trunk?since=1h')
+      if (state.stopped || request !== state.trunkRequest) return
       renderTrunkTable(data)
     } catch (err) {
+      if (state.stopped || request !== state.trunkRequest) return
       if (err.status === 401 || err.status === 403) return lockOut(err.message)
       toast(err.message)
     }
@@ -248,28 +254,32 @@
   function connectSse() {
     if (state.stopped) return
     if (state.es) { try { state.es.close() } catch { /* ignore */ } }
+    const request = ++state.sseRequest
     setSseState('connecting')
     const token = getToken()
     const url = token ? `/api/events?token=${encodeURIComponent(token)}` : '/api/events'
     const es = new EventSource(url)
     state.es = es
     es.addEventListener('hello', () => {
+      if (state.es !== es || request !== state.sseRequest) return
       state.retryMs = 1000
       setSseState('live')
       refreshFloor()
       refreshTrunk()
     })
-    es.addEventListener('card', () => refreshFloor())
+    es.addEventListener('card', () => { if (state.es === es && request === state.sseRequest) refreshFloor() })
     es.addEventListener('event', (e) => {
+      if (state.es !== es || request !== state.sseRequest) return
       refreshFloor()
       const data = JSON.parse(e.data)
       if (data.type === 'landed') refreshTrunk()
     })
     es.onerror = () => {
+      if (state.es !== es || request !== state.sseRequest) return
       setSseState('reconnecting')
       try { es.close() } catch { /* ignore */ }
       const wait = state.retryMs || 1000
-      setTimeout(connectSse, wait)
+      setTimeout(() => { if (request === state.sseRequest) connectSse() }, wait)
       state.retryMs = Math.min(wait * 2, 15000)
     }
   }

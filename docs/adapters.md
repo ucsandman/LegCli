@@ -83,9 +83,11 @@ documentation say docs-only.
   behind the last line's timestamp — so `findRollout` matches on cwd and
   accepts a birth time or mtime at or after the spawn rather than relying on
   the two agreeing.
-- **Usage percentages**: `event_msg.token_count.rate_limits`, with `primary`
-  the 300-minute window and `secondary` the 10080-minute window, each
-  `{ used_percent, window_minutes, resets_at }`. Observed live.
+- **Usage percentages**: the read-only app-server `account/rateLimits/read`
+  response. Baton identifies the returned windows by duration rather than by
+  field name: 300 minutes is 5h and 10080 minutes is 7d. The board and active
+  attach poll it every 60 seconds; neither sends a model turn nor assumes a
+  quota. Only an explicit available response clears a prior wall.
 - **The wall**: `event_msg.task_complete.error` with
   `codex_error_info: "usage_limit_exceeded"` and the message "You've hit your
   usage limit … try again at \<date>". The wording comes from

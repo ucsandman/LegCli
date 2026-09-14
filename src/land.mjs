@@ -96,8 +96,11 @@ export function pruneSessionWorktree(s) {
   // squash- or rebase-merge and a cherry-pick: git cherry marks a commit whose
   // patch is already upstream with '-', so no '+' line means the work is in base
   const cherry = wt.base ? git(s.repo, ['cherry', wt.base, wt.branch]) : { ok: false, out: '' }
-  const merged = wt.base && (git(s.repo, ['merge-base', '--is-ancestor', wt.branch, wt.base]).ok || (cherry.ok && !cherry.out.split('\n').some((l) => l.startsWith('+'))))
+  const ancestor = wt.base && git(s.repo, ['merge-base', '--is-ancestor', wt.branch, wt.base]).ok
+  const merges = wt.base ? git(s.repo, ['rev-list', '--merges', `${wt.base}..${wt.branch}`]) : { ok: false, out: '' }
+  const patchEquivalent = cherry.ok && merges.ok && !merges.out && !cherry.out.split('\n').some((l) => l.startsWith('+'))
+  const merged = wt.base && (ancestor || patchEquivalent)
   if (!merged) return { removed: false, reason: `${wt.branch} has commits that are not on ${wt.base ?? 'any branch'}` }
-  removeWorktree(s.repo, s.session_id, { deleteBranch: true })
-  return { removed: true }
+  const removed = removeWorktree(s.repo, s.session_id, { deleteBranch: true })
+  return { removed: removed.removed, branchDeleted: removed.branchDeleted, branch: wt.branch }
 }

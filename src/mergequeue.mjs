@@ -143,6 +143,9 @@ async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = 
   const trunk = card.trunk || 'main'
   const branch = branchName(card.card_id)
 
+  const checkedOut = git(worktree, ['symbolic-ref', '--short', '-q', 'HEAD'], { ok: false }).stdout.trim() || 'DETACHED'
+  if (checkedOut !== branch) return bounce('worktree-branch', `worktree is on ${checkedOut}, not ${branch}; switch it back before landing`)
+
   const busy = operationInProgress(worktree)
   if (busy) return bounce('worktree-busy', `a ${busy.replace(/-/g, ' ')} is already in progress in ${worktree}; finish or abort it there before landing (Baton will not touch a rebase it did not start)`)
 
@@ -177,6 +180,12 @@ async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = 
     retried = true
     const again = git(worktree, ['rebase', trunk], { ok: false })
     if (again.status !== 0) return rebaseBounce(worktree, trunk, again, preSha, ` after ${trunk} moved`)
+    if (tc.command) {
+      tests = await runTests(tc.command, worktree)
+      if (!tests.green) {
+        return bounce('tests-red', `${tests.command} exit ${tests.status}${tests.timedOut ? ' (timed out)' : ''} after ${trunk} moved:\n${tests.tail}`, { test_tail: tests.tail, pre_sha: preSha })
+      }
+    }
     merge = git(repo, ['merge', '--ff-only', branch], { ok: false })
   }
   if (merge.status !== 0 && /would be overwritten by merge/.test(merge.stderr || merge.stdout)) {

@@ -23,7 +23,7 @@ import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
 import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable } from './usage.mjs'
 import { entitlement, allows, describe as describeLicense } from './license.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail } from './taps/claude.mjs'
-import { findRollout, createTail, parseLines, transcriptTail as codexTail } from './taps/codex.mjs'
+import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as codexTail } from './taps/codex.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
 import { fetchClaudeUsage } from './taps/claude-usage.mjs'
 import { saveSessionBundle, resumePrompt } from './bundle.mjs'
@@ -38,6 +38,17 @@ const POLL_MS = Number(process.env.BATON_ATTACH_POLL_MS || 2000)
 const GIT_EVERY = 3 // polls
 const USAGE_MS = Number(process.env.BATON_USAGE_POLL_MS || 60000)
 const say = (line) => process.stderr.write(`[baton] ${line}\n`)
+
+async function refreshCodexUsage(account, codexHome, { timeoutMs = 8000, signal = null } = {}) {
+  const r = await readCodexUsage({ codexHome, timeoutMs, signal })
+  if (!r.ok) return r
+  const u = recordUsage('codex', account, r.limits, 'codex app-server account/rateLimits/read', { observed_at: r.observed_at, available: r.available })
+  return { ...r, usage: u }
+}
+
+export function isCurrentLeg(session, { pid, agent, account }) {
+  return Boolean(session && session.pid === pid && session.agent === agent && session.account === account)
+}
 
 // ---- board ----
 function health(port, host = '127.0.0.1') {
@@ -213,11 +224,12 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
   // (src/taps/claude-usage.mjs); the wall itself arrives through the
   // StopFailure hook.
   let usageTimer = null
+  const usageAbort = new AbortController()
   if (agent === 'claude') {
     const pollUsage = async () => {
       const r = await fetchClaudeUsage({ configDir: spec.env.CLAUDE_CONFIG_DIR || LAYOUT.claude.home() })
       const s = readSession(sid)
-      if (!s) return
+      if (!isCurrentLeg(s, { pid: child.pid, agent, account })) return
       // a 404, a body that is not JSON, or a shape with no window at all: the
       // card says usage unknown and the StopFailure hook still owns the limit
       const usable = r.ok && r.limits && (r.limits.five_hour || r.limits.seven_day)
@@ -227,6 +239,25 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
       } else if (!s.usage_error) {
         const why = r.error ?? 'the usage endpoint answered with no window'
         updateSession(sid, { usage_error: why }, { event: { type: 'status', summary: `claude usage unavailable: ${why}` } })
+      }
+    }
+    pollUsage().catch(() => {})
+    usageTimer = setInterval(() => pollUsage().catch(() => {}), USAGE_MS)
+    usageTimer.unref?.()
+  } else if (agent === 'codex' && !process.env.BATON_CODEX_BIN) {
+    const pollUsage = async () => {
+      const r = await refreshCodexUsage(account, spec.env.CODEX_HOME || LAYOUT.codex.home(), { signal: usageAbort.signal })
+      const s = readSession(sid)
+      if (!isCurrentLeg(s, { pid: child.pid, agent, account })) return
+      if (r.ok) {
+        const patch = { limits: r.limits, usage_source: 'codex app-server account/rateLimits/read', usage_error: null }
+        if (r.available === false) {
+          patch.status = 'limit'
+          patch.limit = { reason: 'usage_limit_exceeded', detail: 'Codex reports ordinary usage is unavailable', resets_at: r.usage.limited_until, at: r.observed_at }
+        }
+        updateSession(sid, patch)
+      } else if (!s.usage_error) {
+        updateSession(sid, { usage_error: r.error }, { event: { type: 'status', summary: `codex usage unavailable: ${r.error}` } })
       }
     }
     pollUsage().catch(() => {})
@@ -254,18 +285,23 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
         }
         if (tail) {
           const r = parseLines(tail.read())
-          if (r.limits) { recordUsage('codex', account, r.limits, 'codex rollout token_count'); patch.limits = r.limits; patch.last_activity = new Date().toISOString() }
+          if (r.limits) {
+            const u = recordUsage('codex', account, r.limits, 'codex rollout token_count', { observed_at: r.limits_at })
+            if (u.usage_applied) { patch.limits = r.limits; patch.last_activity = new Date().toISOString() }
+          }
           const firstUser = r.messages.find((m) => m.role === 'user')
           if (!s.task && firstUser) patch.task = firstUser.text.slice(0, 500)
           if (r.taskStarted) patch.turns = (s.turns ?? 0) + r.taskStarted
           if (r.files.length) patch.files_touched = [...new Set([...(s.files_touched ?? []), ...r.files])].slice(-200)
           for (const m of r.messages.filter((x) => x.role === 'assistant').slice(-1)) appendEvent(sid, { type: 'turn_done', summary: m.text.slice(0, 160) })
           if (r.limit) {
-            const u = markLimited('codex', account, { resets_at: r.limit.resets_at, reason: r.limit.reason, source: 'codex rollout task_complete.error' })
-            const { raw, ...lim } = r.limit
-            patch.status = 'limit'; patch.limit = { ...lim, resets_at: r.limit.resets_at ?? u.limited_until, at: new Date().toISOString() }
-            appendEvent(sid, { type: 'limit', summary: `codex usage limit: ${r.limit.detail}` })
-            try { captureLive('codex', 'usage_limit_exceeded', raw ?? lim, { sessionId: sid }) } catch {}
+            const u = markLimited('codex', account, { resets_at: r.limit.resets_at, reason: r.limit.reason, source: 'codex rollout task_complete.error', observed_at: r.limit.observed_at })
+            if (u.wall_applied) {
+              const { raw, ...lim } = r.limit
+              patch.status = 'limit'; patch.limit = { ...lim, resets_at: r.limit.resets_at ?? u.limited_until, at: new Date().toISOString() }
+              appendEvent(sid, { type: 'limit', summary: `codex usage limit: ${r.limit.detail}` })
+              try { captureLive('codex', 'usage_limit_exceeded', raw ?? lim, { sessionId: sid }) } catch {}
+            }
           }
         }
       }
@@ -326,6 +362,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
   timer.unref?.()
   const result = await done
   clearInterval(timer)
+  usageAbort.abort()
   if (usageTimer) clearInterval(usageTimer)
   void boardUrl
   return result
@@ -377,6 +414,13 @@ export async function attach(agent, args = [], { open = true } = {}) {
   const installed = await installedAgents()
   let account = process.env.BATON_ACCOUNT || 'default'
   if (!accounts[agent].includes(account)) { say(`no ${agent} account "${account}"; using default`); account = 'default' }
+  // A persisted wall is only a cache. Ask Codex's read-only account endpoint
+  // before using it to skip this login; an explicit true can clear an older
+  // wall, false refreshes it, and unknown preserves it.
+  if (agent === 'codex' && installed.codex && !process.env.BATON_CODEX_BIN) {
+    const codexHome = envFor('codex', account).CODEX_HOME || LAYOUT.codex.home()
+    await refreshCodexUsage(account, codexHome).catch(() => {})
+  }
   // Start on an account that is not at its wall, if we already know one is.
   const nowS = Math.floor(Date.now() / 1000)
   const u0 = readUsage(agent, account)

@@ -12,14 +12,14 @@
 // under $BATON_HOME. Key shape: BATON-<base64url payload>.<base64url signature>
 // where the signature is Ed25519 over the payload bytes exactly as encoded.
 import { createPublicKey, createPrivateKey, verify as cryptoVerify, sign as cryptoSign, createHash } from 'node:crypto'
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { home } from './store.mjs'
 
 export const PUBLIC_KEY_B64 = 'MCowBQYDK2VwAyEAIpVQymHHJAkIrZHv0u4o0bgfFmtW3Crm7uMwYHP53X8='
 // The date this release was cut. A personal key activates when this is on or
 // before its updates_until. Bumped with every published version.
-export const RELEASE_DATE = '2026-09-11'
+export const RELEASE_DATE = '2026-09-14'
 export const TRIAL_DAYS = 14
 export const SITE = process.env.BATON_SITE || 'https://baton-agents.vercel.app'
 export const BUY_URL = `${SITE}/#pricing`
@@ -71,7 +71,11 @@ export function licensePath() { return join(home(), 'license.json') }
 export function trialPath() { return join(home(), 'trial.json') }
 
 function readJson(f) { try { return JSON.parse(readFileSync(f, 'utf8')) } catch { return null } }
-function writeJson(f, obj) { mkdirSync(join(f, '..'), { recursive: true }); writeFileSync(f, JSON.stringify(obj, null, 2) + '\n') }
+function writeJson(f, obj) {
+  mkdirSync(join(f, '..'), { recursive: true, mode: 0o700 })
+  if (process.platform !== 'win32' && existsSync(f)) chmodSync(f, 0o600)
+  writeFileSync(f, JSON.stringify(obj, null, 2) + '\n', { mode: 0o600 })
+}
 
 export function readLicense() {
   const l = readJson(licensePath())
@@ -150,7 +154,11 @@ export async function refresh({ site = SITE, fetchImpl = globalThis.fetch } = {}
   if (!lic) throw new Error('no license to refresh; baton license activate <key>')
   const { payload } = parseLicense(lic.key)
   if (payload.plan !== 'team') throw new Error('only Team keys renew; a Personal key does not expire')
-  const r = await fetchImpl(`${site}/api/key?license=${encodeURIComponent(payload.id)}&sub=${encodeURIComponent(payload.sub ?? '')}`)
+  const r = await fetchImpl(`${site}/api/key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: lic.key }),
+  })
   if (!r.ok) throw new Error(`the site answered ${r.status}`)
   const j = await r.json()
   if (!j.key) throw new Error(j.error || 'no key in the answer')

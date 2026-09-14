@@ -1,12 +1,36 @@
 # Changelog
 
+## 0.4.1 (2026-09-14)
+
+- **Codex quota and account display.** Codex usage now comes from the read-only
+  app-server `account/rateLimits/read` response, polled every 60 seconds by the
+  board and active attach. Returned 300- and 10080-minute windows map to 5h
+  and 7d; an explicit backend available answer clears an old wall. The board
+  says `<n>% used` and labels stale readings instead of implying current data.
+- **Session and landing safety.** The board offers **Remove record** with a
+  confirmation that preserves an own worktree, branch, unmerged commits, and
+  dirty files. Normal removal remains a safe prune. Concurrent End and Hand off
+  use the session file lock; landing rejects the wrong base branch, proves a
+  merged branch before pruning, reruns tests after a retry rebase, and recovers
+  orphaned `handing_off` cards.
+- **Board freshness and roles.** Switching from a guest token back to an owner
+  restores pipeline controls without a reload; guest tokens still reconnect the
+  terminal stream. Card-list, drawer, log, Floor, and SSE responses now reject
+  stale asynchronous completions.
+- **Loopback board authorization.** Tokenless owner access now requires both a
+  loopback peer and a loopback `Host`, preventing DNS-rebound hostnames from
+  inheriting owner access to read and state-changing API routes.
+- **License delivery.** Team refresh is a signed-key POST: an expired signed
+  Team key can refresh while its subscription is active, without individual-seat
+  revocation. Webhooks accept rotated Stripe `v1` signatures; Resend receives a
+  stable event-and-delivery idempotency key, retained by Resend for 24 hours.
+
 ## 0.4.0 (2026-09-11)
 
-Baton is a prepared, unpublished paid product as of 14 September 2026: a 14-day trial, then a Personal
+Baton is a paid product as of 14 September 2026: a 14-day trial, then a Personal
 license ($79 once, 12 months of releases) or Team ($12 per seat per month,
 adds `baton share`). The license is the Baton License Agreement (commercial, source readable);
-0.2.0 and 0.3.0 remain published under MIT and are not deprecated; npm's latest
-release remains 0.3.0.
+0.2.0 and 0.3.0 remain published under MIT and are not deprecated.
 
 - **License gate.** `src/license.mjs`: Ed25519-signed keys checked offline
   against the embedded public key; a Personal key is a window over release

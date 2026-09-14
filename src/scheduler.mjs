@@ -68,8 +68,8 @@ export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor
     // test or land station left mid-way runs again, and a card that crashed
     // between `start` and its launch gets its leg. A card a live `card run`
     // is driving (its driver.lock names a live pid) is left to that process.
-    const reattach = cards.filter((c) => c.status === 'running' && !state.inflight.has(c.card_id) && !driverAlive(c.card_id)
-      && (stationKind(c) !== 'agent' || !unsettledRun(c.card_id) || orphanedRun(c.card_id)))
+    const reattach = cards.filter((c) => ACTIVE.includes(c.status) && !state.inflight.has(c.card_id) && !driverAlive(c.card_id)
+      && (c.status === 'handing_off' || stationKind(c) !== 'agent' || !unsettledRun(c.card_id) || orphanedRun(c.card_id)))
     for (const c of [...start, ...reattach]) {
       if (state.inflight.has(c.card_id)) continue
       state.blockedKeys.delete(c.card_id)

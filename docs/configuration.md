@@ -27,7 +27,7 @@ These apply to `baton claude|codex|agy`.
 | `BATON_NO_OPEN` | (unset, opens once) | set to `1` to start the board without opening a browser | `bin/baton.mjs` |
 | `BATON_NO_BOARD` | (unset) | set to `1` to run a session with no board at all (the record under `$BATON_HOME/sessions/` is still kept; the test suite uses this) | `src/attach.mjs` |
 | `BATON_WAIT_TICK_MS` | `1000` | how often the all-out countdown redraws and re-checks Ctrl-C / End while waiting for the first reset | `src/attach.mjs` |
-| `BATON_USAGE_POLL_MS` | `60000` | how often the claude usage endpoint is polled | `src/attach.mjs` |
+| `BATON_USAGE_POLL_MS` | `60000` | how often an active attach polls its usage source; Claude uses its usage endpoint and Codex uses read-only app-server rate limits | `src/attach.mjs` |
 | `BATON_ATTACH_POLL_MS` | `2000` | how often the session loop re-reads the taps; git is re-read every third poll | `src/attach.mjs` |
 | `BATON_CLAUDE_USAGE_URL` | `https://api.anthropic.com/api/oauth/usage` | the usage endpoint, for a test double | `src/taps/claude-usage.mjs` |
 | `BATON_CLAUDE_ARGS`, `BATON_CODEX_ARGS`, `BATON_AGY_ARGS` | (none) | space-separated extra arguments for a leg Baton starts on its own after a hand-off (your own `baton <agent> …` args never apply to the next agent); e.g. `BATON_CODEX_ARGS="-m gpt-5.3-codex-spark"` keeps a test chain on cheap models | `src/attach.mjs` |

@@ -15,6 +15,7 @@ const claudeTap = await import('../src/taps/claude.mjs')
 const codexTap = await import('../src/taps/codex.mjs')
 const agyTap = await import('../src/taps/agy.mjs')
 const accounts = await import('../src/accounts.mjs')
+const { isCurrentLeg } = await import('../src/attach.mjs')
 
 const cwd = mkdtempSync(join(tmpdir(), 'baton-cwd-'))
 // codex names its day directory from local time, so the fixtures do too
@@ -62,6 +63,38 @@ test('usage: record, warn pressure, limit wall, chooser order and all-out', () =
   c = usage.chooseNext({ agent: 'claude', account: 'default', accounts: acc, nowS: nowS + 100, installed: { agy: false } })
   assert.equal(c.next, null, 'agy skipped, the others still walled')
   assert.equal(c.out.length, 2)
+})
+
+test('codex quota: window duration identifies weekly-only primary data', () => {
+  const r = codexTap.parseLines([JSON.stringify({
+    type: 'event_msg',
+    timestamp: '2026-09-14T18:00:00.000Z',
+    payload: { type: 'token_count', rate_limits: { primary: { used_percent: 25, window_minutes: 10080, resets_at: 2_000_000_000 }, secondary: null } },
+  })])
+  assert.equal(r.limits.five_hour, null)
+  assert.equal(r.limits.seven_day.pct, 25)
+  assert.equal(r.limits_at, '2026-09-14T18:00:00.000Z')
+})
+
+test('codex quota: only explicit current availability clears a wall and stale limit replay is rejected', () => {
+  const nowS = Math.floor(Date.now() / 1000)
+  const oldAt = new Date(Date.now() - 60000).toISOString()
+  const currentAt = new Date().toISOString()
+  usage.markLimited('codex', 'quota-current', { resets_at: nowS + 172800, reason: 'usage_limit_exceeded', observed_at: oldAt })
+  const unknown = usage.recordUsage('codex', 'quota-current', { five_hour: null, seven_day: { pct: 25, resets_at: nowS + 172800, window_minutes: 10080 } }, 'rollout', { observed_at: currentAt })
+  assert.ok(unknown.limited_until > nowS)
+  const current = usage.recordUsage('codex', 'quota-current', { five_hour: null, seven_day: { pct: 25, resets_at: nowS + 172800, window_minutes: 10080 } }, 'app-server', { observed_at: currentAt, available: true })
+  assert.equal(current.limited_until, null)
+  const replay = usage.markLimited('codex', 'quota-current', { resets_at: nowS + 172800, reason: 'usage_limit_exceeded', observed_at: oldAt })
+  assert.equal(replay.wall_applied, false)
+  assert.equal(replay.limited_until, null)
+  const blocked = usage.recordUsage('codex', 'quota-blocked', { five_hour: null, seven_day: null }, 'app-server', { observed_at: currentAt, available: false })
+  assert.ok(blocked.limited_until > nowS)
+})
+
+test('codex quota: a completed leg rejects a delayed probe result for its replacement', () => {
+  assert.equal(isCurrentLeg({ pid: 11, agent: 'codex', account: 'default' }, { pid: 11, agent: 'codex', account: 'default' }), true)
+  assert.equal(isCurrentLeg({ pid: 12, agent: 'claude', account: 'default' }, { pid: 11, agent: 'codex', account: 'default' }), false)
 })
 
 test('claude tap: settings shape, hook handling, statusline limits', () => {

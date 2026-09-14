@@ -31,9 +31,16 @@
     logState: new Map(),
     drawerId: null,
     drawerTimer: null,
+    drawerRequest: 0,
     adapters: null,
     es: null,
     retryMs: 1000,
+    sseRequest: 0,
+    authRequest: 0,
+    cardsRequest: 0,
+    boardRevision: 0,
+    logRequests: new Map(),
+    nextLogRequest: 0,
   }
   // a card push while an agent writes its log only moves these two
   const VOLATILE_CARD_FIELDS = ['last_event', 'elapsed_ms']
@@ -142,15 +149,18 @@
 
   function connectSse() {
     if (state.es) { try { state.es.close() } catch { /* ignore */ } }
+    const request = ++state.sseRequest
     setSseState('connecting')
     const token = getToken()
     const url = token ? `/api/events?token=${encodeURIComponent(token)}` : '/api/events'
     const es = new EventSource(url)
     state.es = es
     es.addEventListener('hello', (e) => {
+      if (state.es !== es || request !== state.sseRequest) return
       state.retryMs = 1000
       setSseState('live')
       const data = JSON.parse(e.data)
+      state.boardRevision += 1
       state.columns = data.columns
       state.cards = new Map(data.cards.map((c) => [c.card_id, c]))
       renderBoard()
@@ -159,17 +169,18 @@
       scheduleDrawerRefresh()
       if (data.sessions) window.dispatchEvent(new CustomEvent('baton:sessions', { detail: data.sessions }))
     })
-    es.addEventListener('sessions', (e) => window.dispatchEvent(new CustomEvent('baton:sessions', { detail: JSON.parse(e.data) })))
-    es.addEventListener('card', (e) => upsertCard(JSON.parse(e.data)))
-    es.addEventListener('removed', (e) => dropCard(JSON.parse(e.data).card_id))
-    es.addEventListener('event', (e) => onLedgerEvent(JSON.parse(e.data)))
-    es.addEventListener('health', (e) => renderScheduler(JSON.parse(e.data).scheduler))
-    es.onopen = () => { fetchCards() }
+    es.addEventListener('sessions', (e) => { if (state.es === es && request === state.sseRequest) window.dispatchEvent(new CustomEvent('baton:sessions', { detail: JSON.parse(e.data) })) })
+    es.addEventListener('card', (e) => { if (state.es === es && request === state.sseRequest) upsertCard(JSON.parse(e.data)) })
+    es.addEventListener('removed', (e) => { if (state.es === es && request === state.sseRequest) dropCard(JSON.parse(e.data).card_id) })
+    es.addEventListener('event', (e) => { if (state.es === es && request === state.sseRequest) onLedgerEvent(JSON.parse(e.data)) })
+    es.addEventListener('health', (e) => { if (state.es === es && request === state.sseRequest) renderScheduler(JSON.parse(e.data).scheduler) })
+    es.onopen = () => { if (state.es === es && request === state.sseRequest) fetchCards() }
     es.onerror = () => {
+      if (state.es !== es || request !== state.sseRequest) return
       setSseState('reconnecting')
       try { es.close() } catch { /* ignore */ }
       const wait = state.retryMs || 1000
-      setTimeout(connectSse, wait)
+      setTimeout(() => { if (request === state.sseRequest) connectSse() }, wait)
       state.retryMs = Math.min(wait * 2, 15000)
     }
   }
@@ -189,12 +200,20 @@
     for (const el of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (el) el.hidden = true
   }
 
+  function ownerMode() {
+    document.body.classList.remove('guest')
+    for (const el of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (el) el.hidden = false
+  }
+
   const isGuest = () => document.body.classList.contains('guest')
 
   async function fetchCards() {
     if (isGuest()) return
+    const request = ++state.cardsRequest
+    const revision = state.boardRevision
     try {
       const data = await api('/api/cards')
+      if (request !== state.cardsRequest || revision !== state.boardRevision || isGuest()) return
       state.columns = data.columns
       state.cards = new Map(data.cards.map((c) => [c.card_id, c]))
       renderBoard()
@@ -206,14 +225,20 @@
   }
 
   async function loadHealth() {
+    const request = ++state.authRequest
     try {
       const data = await api('/api/health')
+      if (request !== state.authRequest) return false
       // a guest is told who they are by health, which is open to them
-      if (data.you && data.you.role && data.you.role !== 'owner') return guestMode()
+      if (data.you && data.you.role && data.you.role !== 'owner') { guestMode(); return false }
+      ownerMode()
       renderScheduler(data.scheduler)
+      return true
     } catch (err) {
+      if (request !== state.authRequest) return false
       if (ownerOnly(err)) return guestMode()
       toast(err.message)
+      return false
     }
   }
 
@@ -278,6 +303,7 @@
   }
 
   function upsertCard(card) {
+    state.boardRevision += 1
     if (!state.columnEls.has(card.column)) {
       fetchCards()
       return
@@ -291,6 +317,7 @@
   }
 
   function dropCard(id) {
+    state.boardRevision += 1
     state.cards.delete(id)
     state.logState.delete(id)
     const root = state.cardNodes.get(id)
@@ -379,22 +406,32 @@
   }
 
   async function ensureLogLoaded(id, tail) {
-    const pending = state.logState.get(id)
-    if (pending) pending.at = Date.now()
-    try {
-      const data = await api(`/api/cards/${encodeURIComponent(id)}/log?tail=${tail}`)
+    const cardAtRequest = state.cards.get(id)
+    if (!cardAtRequest) return
+    const runAtRequest = cardAtRequest.active_run ? cardAtRequest.active_run.run : null
+    const pending = state.logRequests.get(id)
+    if (pending && pending.tail >= tail && pending.run === runAtRequest && pending.runs_count === cardAtRequest.runs_count) return pending.promise
+    const request = { id: ++state.nextLogRequest, tail, run: runAtRequest, runs_count: cardAtRequest.runs_count }
+    const path = `/api/cards/${encodeURIComponent(id)}/log?tail=${tail}${runAtRequest == null ? '' : `&run=${encodeURIComponent(runAtRequest)}`}`
+    const promise = api(path).then((data) => {
       const card = state.cards.get(id)
+      if (!card || state.logRequests.get(id) !== request || card.runs_count !== cardAtRequest.runs_count || (card.active_run ? card.active_run.run : null) !== runAtRequest) return
       state.logState.set(id, {
         lines: data.lines || [],
         expanded: tail > 8,
         at: Date.now(),
-        runs_count: card ? card.runs_count : 0,
-        run: card && card.active_run ? card.active_run.run : null,
+        runs_count: card.runs_count,
+        run: runAtRequest,
       })
-      if (card) renderCard(card)
-    } catch (err) {
-      toast(err.message)
-    }
+      renderCard(card)
+    }).catch((err) => {
+      if (state.logRequests.get(id) === request) toast(err.message)
+    }).finally(() => {
+      if (state.logRequests.get(id) === request) state.logRequests.delete(id)
+    })
+    request.promise = promise
+    state.logRequests.set(id, request)
+    return promise
   }
 
   function buildLogSection(card) {
@@ -643,6 +680,7 @@
 
   async function openDrawer(id) {
     state.drawerId = id
+    const request = ++state.drawerRequest
     const drawer = document.getElementById('drawer')
     drawer.hidden = false
     drawer.setAttribute('aria-hidden', 'false')
@@ -651,7 +689,7 @@
         api(`/api/cards/${encodeURIComponent(id)}`),
         api(`/api/cards/${encodeURIComponent(id)}/log?tail=2000`),
       ])
-      if (state.drawerId !== id) return
+      if (state.drawerId !== id || request !== state.drawerRequest) return
       renderDrawer(detail, log)
     } catch (err) {
       toast(err.message)
@@ -660,6 +698,7 @@
 
   function closeDrawer() {
     state.drawerId = null
+    state.drawerRequest += 1
     const drawer = document.getElementById('drawer')
     drawer.hidden = true
     drawer.setAttribute('aria-hidden', 'true')
@@ -781,11 +820,17 @@
   function initSettings() {
     const input = document.getElementById('token-input')
     input.value = getToken()
-    input.addEventListener('change', () => {
+    input.addEventListener('change', async () => {
       const v = input.value.trim()
       if (v) localStorage.setItem('batonToken', v)
       else localStorage.removeItem('batonToken')
-      fetchCards()
+      state.boardRevision += 1
+      state.cardsRequest += 1
+      state.sseRequest += 1
+      if (state.es) { try { state.es.close() } catch { /* ignore */ } }
+      state.es = null
+      const owner = await loadHealth()
+      if (owner) fetchCards()
       connectSse()
     })
   }

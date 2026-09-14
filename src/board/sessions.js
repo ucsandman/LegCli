@@ -52,7 +52,7 @@
     return el('span', { class: `usage-bar ${pctClass(p)}`, title: `${label} window: ${p}% used${w.resets_at ? `, resets ${until(w.resets_at)}` : ''}` }, [
       el('span', { class: 'usage-label' }, [label]),
       el('span', { class: 'usage-track' }, [el('span', { class: 'usage-fill', style: `width:${p}%` })]),
-      el('span', { class: 'usage-pct' }, [`${p}%`]),
+      el('span', { class: 'usage-pct' }, [`${p}% used`]),
     ])
   }
   function accountLabel(a) { return a.account === 'default' ? a.agent : `${a.agent}/${a.account}` }
@@ -64,6 +64,7 @@
       const walled = a.limited_until && a.limited_until * 1000 > Date.now()
       const pill = el('div', { class: `account-pill adapter-${a.agent}${walled ? ' walled' : ''}`, title: a.source ? `source: ${a.source}${a.updated_at ? `, updated ${ago(Date.now() - Date.parse(a.updated_at))} ago` : ''}` : 'no usage seen yet' }, [
         el('span', { class: 'account-name' }, [accountLabel(a), a.live ? el('span', { class: 'live-dot', title: `${a.live} live session${a.live === 1 ? '' : 's'}` }) : null]),
+        a.stale && a.agent !== 'agy' ? el('span', { class: 'chip status-chip muted', title: 'the last quota check is over five minutes old' }, ['usage stale']) : null,
         walled ? el('span', { class: 'chip status-chip bad' }, [`limit · back ${until(a.limited_until)}`]) : null,
         !walled && a.agent === 'agy' && !a.five_hour ? el('span', { class: 'chip status-chip muted', title: 'agy exposes no usage percentage; Baton sees the wall when agy hits it' }, ['no % from agy']) : null,
         !walled && (a.five_hour || a.seven_day || a.agent !== 'agy') ? bar('5h', a.five_hour) : null,
@@ -88,7 +89,10 @@
         toast('asked; the owner of that terminal decides')
       } else if (action === 'remove') {
         const r = await api(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
-        toast(r.worktree ? (r.worktree.removed ? 'removed, with its worktree and branch' : `removed; worktree kept: ${r.worktree.reason}`) : 'removed')
+        toast(r.worktree ? (r.worktree.removed ? (r.worktree.branchDeleted === false ? 'removed worktree; branch kept' : 'removed, with its worktree and branch') : `removed; worktree kept: ${r.worktree.reason}`) : 'removed')
+      } else if (action === 'remove-record') {
+        await api(`/api/sessions/${encodeURIComponent(id)}?force=1&keep_worktree=1`, { method: 'DELETE' })
+        toast('record removed; worktree and branch kept')
       } else {
         await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
         toast(action === 'handoff' ? 'hand-off requested; the terminal switches agents in a few seconds' : action === 'land' ? 'landing: rebase, tests, fast-forward; the card shows the result' : 'end requested')
@@ -189,6 +193,14 @@
       const r = el('button', { type: 'button' }, ['Remove'])
       r.addEventListener('click', () => act(s.session_id, 'remove', r))
       actions.appendChild(r)
+      if (s.worktree) {
+        const keep = el('button', { type: 'button', class: 'danger', title: 'remove only Baton\'s saved terminal record; keep this worktree and branch' }, ['Remove record'])
+        keep.addEventListener('click', () => {
+          const message = `Remove only the Baton record for ${s.session_id}?\n\nKeep worktree: ${s.worktree.path}\nKeep branch: ${s.worktree.branch}\n\nNo worktree files, commits, or branch will be deleted.`
+          if (confirm(message)) act(s.session_id, 'remove-record', keep)
+        })
+        actions.appendChild(keep)
+      }
     }
     card.appendChild(actions)
     return card

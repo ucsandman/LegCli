@@ -259,10 +259,12 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
   rollout was found for a real hand-off. The file's mtime is not a content
   clock on Windows — six rollouts from that day had mtimes 7 s to 9 min
   behind their last line — so nothing depends on the two matching.
-- Usage: `event_msg.token_count.rate_limits`, `primary`
-  `window_minutes: 300` and `secondary` `window_minutes: 10080`, each
-  `{ used_percent, resets_at }` (source: src/taps/codex.mjs header;
-  observed-live 2026-09-11).
+- Usage: read-only app-server `account/rateLimits/read`, polled every 60
+  seconds by the board and active attach. Baton maps windows by duration,
+  including 300 minutes to 5h and 10080 minutes to 7d, rather than assuming
+  `primary` or `secondary` names. It sends no model turn and does not hardcode
+  a quota; only explicit backend availability clears a previous wall (sources:
+  `src/taps/codex.mjs`, `src/attach.mjs`, `src/server.mjs`, `src/usage.mjs`).
 - The wall: `event_msg.task_complete.error` with
   `codex_error_info: "usage_limit_exceeded"` and message "You've hit your usage
   limit … try again at \<date>" (source:

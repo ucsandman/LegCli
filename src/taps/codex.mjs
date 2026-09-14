@@ -9,9 +9,14 @@
 //   event_msg.task_complete.error {message:"You've hit your usage limit…", codex_error_info:"usage_limit_exceeded"}
 //   response_item.message {role:'user'|'assistant', content:[{type:'input_text'|'output_text', text}]}
 // Source of the error text: codex-rs/protocol/src/error.rs (UsageLimitReachedError).
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync, fstatSync } from 'node:fs'
 import { join } from 'node:path'
 import { LAYOUT } from '../accounts.mjs'
+import { sanitizeEnv } from '../env.mjs'
+import codexAdapter from '../adapters/codex.mjs'
+
+const BATON_VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version } catch { return 'unknown' } })()
 
 export function sessionsRootFor(codexHome = LAYOUT.codex.home()) { return join(codexHome, 'sessions') }
 
@@ -96,6 +101,25 @@ export function createTail(path, { from = 0 } = {}) {
 const USAGE_LIMIT_RE = /hit your usage limit/i
 const RETRY_AT_RE = /try again at ([^.]+?)(?:\.|$)/i
 
+// Codex can expose either window as primary. The duration is the identity:
+// current Pro Lite rollouts expose only primary=10080 (the weekly window).
+export function normalizeRateLimits(rateLimits) {
+  const out = { five_hour: null, seven_day: null }
+  const entries = [rateLimits?.primary, rateLimits?.secondary]
+  for (const raw of entries) {
+    if (!raw) continue
+    const pct = Number(raw.used_percent ?? raw.usedPercent)
+    if (!Number.isFinite(pct)) continue
+    const minutes = Number(raw.window_minutes ?? raw.windowDurationMins)
+    const window = { pct, resets_at: raw.resets_at ?? raw.resetsAt ?? null, window_minutes: Number.isFinite(minutes) ? minutes : null }
+    if (minutes === 300) out.five_hour = window
+    else if (minutes === 10080) out.seven_day = window
+    // An absent or unfamiliar duration stays unknown. Primary is a transport
+    // position, not a promise that this is the 5-hour bucket.
+  }
+  return out
+}
+
 function parseRetryAt(msg) {
   const m = RETRY_AT_RE.exec(msg ?? '')
   if (!m) return null
@@ -106,7 +130,7 @@ function parseRetryAt(msg) {
 
 // lines → { limits, limit, messages, turnsDone, taskStarted, threadId }
 export function parseLines(lines) {
-  const out = { limits: null, limit: null, messages: [], turnsDone: 0, taskStarted: 0, threadId: null, files: [] }
+  const out = { limits: null, limits_at: null, limit: null, messages: [], turnsDone: 0, taskStarted: 0, threadId: null, files: [] }
   for (const line of lines) {
     let j
     try { j = JSON.parse(line) } catch { continue }
@@ -114,18 +138,18 @@ export function parseLines(lines) {
     if (j.type === 'session_meta') { out.threadId = p.id ?? null; continue }
     if (j.type === 'event_msg') {
       if (p.type === 'token_count' && p.rate_limits) {
-        const w = (x) => (x && Number.isFinite(x.used_percent) ? { pct: x.used_percent, resets_at: x.resets_at ?? null, window_minutes: x.window_minutes ?? null } : null)
-        out.limits = { five_hour: w(p.rate_limits.primary), seven_day: w(p.rate_limits.secondary) }
+        out.limits = normalizeRateLimits(p.rate_limits)
+        out.limits_at = j.timestamp ?? null
       } else if (p.type === 'task_started') out.taskStarted += 1
       else if (p.type === 'task_complete') {
         out.turnsDone += 1
         if (p.last_agent_message) out.messages.push({ role: 'assistant', text: String(p.last_agent_message).slice(0, 1500) })
         const err = p.error
         if (err && (err.codex_error_info === 'usage_limit_exceeded' || USAGE_LIMIT_RE.test(err.message ?? ''))) {
-          out.limit = { reason: 'usage_limit_exceeded', detail: String(err.message ?? '').slice(0, 300), resets_at: parseRetryAt(err.message), raw: j }
+          out.limit = { reason: 'usage_limit_exceeded', detail: String(err.message ?? '').slice(0, 300), resets_at: parseRetryAt(err.message), observed_at: j.timestamp ?? null, raw: j }
         }
       } else if (p.type === 'error' && USAGE_LIMIT_RE.test(p.message ?? '')) {
-        out.limit = { reason: 'usage_limit_exceeded', detail: String(p.message).slice(0, 300), resets_at: parseRetryAt(p.message), raw: j }
+        out.limit = { reason: 'usage_limit_exceeded', detail: String(p.message).slice(0, 300), resets_at: parseRetryAt(p.message), observed_at: j.timestamp ?? null, raw: j }
       }
       continue
     }
@@ -144,6 +168,77 @@ export function parseLines(lines) {
     }
   }
   return out
+}
+
+// Read the account quota without starting a model turn. This protocol and the
+// `ordinaryUsageAllowed` tri-state come from `codex app-server
+// generate-json-schema --experimental`; null means unavailable and must not be
+// inferred from percentages.
+export function readCodexUsage({ codexHome = LAYOUT.codex.home(), timeoutMs = 8000, signal = null } = {}) {
+  return new Promise((resolvePromise) => {
+    let child
+    let settled = false
+    let stdout = ''
+    const killProbe = () => {
+      if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+      else { try { process.kill(-child.pid, 'SIGTERM') } catch { try { child.kill() } catch {} } }
+    }
+    const finish = (result, { kill = false } = {}) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      signal?.removeEventListener?.('abort', onAbort)
+      if (kill) killProbe()
+      else {
+        try { child?.stdin.end() } catch {}
+        const cleanup = setTimeout(killProbe, 1000)
+        cleanup.unref?.()
+        child?.once('exit', () => clearTimeout(cleanup))
+      }
+      resolvePromise(result)
+    }
+    const stop = (error) => {
+      finish({ ok: false, limits: null, available: null, observed_at: null, error }, { kill: true })
+    }
+    const onAbort = () => stop('codex usage read cancelled')
+    const timer = setTimeout(() => stop('codex usage read timed out'), timeoutMs)
+    timer.unref?.()
+    if (signal?.aborted) return onAbort()
+    signal?.addEventListener?.('abort', onAbort, { once: true })
+    try {
+      const { bin, viaNode, entry } = codexAdapter.resolve()
+      const args = [...(viaNode ? [entry ?? bin] : []), 'app-server', '--listen', 'stdio://']
+      const env = { ...sanitizeEnv(process.env, { interactive: true }), CODEX_HOME: codexHome }
+      child = spawn(viaNode ? process.execPath : bin, args, { env, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] })
+      child.stderr.resume()
+    } catch { return stop('codex app-server failed to start') }
+    child.on('error', () => stop('codex app-server failed to start'))
+    child.stdin.on('error', () => stop('codex app-server input closed'))
+    child.on('exit', (code) => { if (!settled) finish({ ok: false, limits: null, available: null, observed_at: null, error: `codex app-server exited (${code ?? 'unknown'})` }) })
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString('utf8')
+      const lines = stdout.split('\n')
+      stdout = lines.pop() ?? ''
+      for (const line of lines) {
+        let message
+        try { message = JSON.parse(line) } catch { continue }
+        if (message.id === 1 && message.result) {
+          try {
+            child.stdin.write(`${JSON.stringify({ method: 'initialized' })}\n`)
+            child.stdin.write(`${JSON.stringify({ id: 2, method: 'account/rateLimits/read', params: { excludeResetCreditDetails: true } })}\n`)
+          } catch { return stop('codex app-server input closed') }
+        } else if (message.id === 2) {
+          if (message.error || !message.result) return stop('codex rate-limit read failed')
+          const snapshot = message.result.rateLimitsByLimitId?.codex ?? message.result.rateLimits
+          const limits = normalizeRateLimits(snapshot)
+          const available = typeof message.result.ordinaryUsageAllowed === 'boolean' ? message.result.ordinaryUsageAllowed : null
+          return finish({ ok: available !== null || Boolean(limits.five_hour || limits.seven_day), limits, available, observed_at: new Date().toISOString(), error: null })
+        }
+      }
+    })
+    try { child.stdin.write(`${JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'baton', version: BATON_VERSION }, capabilities: { experimentalApi: true } } })}\n`) } catch { stop('codex app-server input closed') }
+  })
 }
 
 export function firstPrompt(path) {

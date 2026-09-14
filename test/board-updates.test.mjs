@@ -47,6 +47,42 @@ function card(extra = {}) {
 const NOW = 1_000_000
 function cache(extra = {}) { return { lines: ['a'], expanded: false, at: NOW, runs_count: 1, run: 1, ...extra } }
 
+function deferred() {
+  let resolve
+  const promise = new Promise((r) => { resolve = r })
+  return { promise, resolve }
+}
+
+function fakeNode() {
+  const n = {
+    children: [], hidden: false, attrs: {}, className: '', value: '', listeners: {},
+    classList: { values: new Set(), add(...xs) { xs.forEach((x) => this.values.add(x)) }, remove(...xs) { xs.forEach((x) => this.values.delete(x)) }, contains(x) { return this.values.has(x) } },
+    appendChild(c) { this.children.push(c); return c }, removeChild(c) { this.children = this.children.filter((x) => x !== c) }, remove() {},
+    setAttribute(k, v) { this.attrs[k] = String(v) }, removeAttribute(k) { delete this.attrs[k] }, addEventListener(k, fn) { this.listeners[k] = fn },
+    querySelector() { return null }, showModal() {}, close() {}, select() {},
+  }
+  Object.defineProperty(n, 'firstChild', { get() { return this.children[0] || null } })
+  Object.defineProperty(n, 'textContent', { get() { return this._text || this.children.map((c) => c.textContent || '').join('') }, set(v) { this._text = String(v); this.children = [] } })
+  return n
+}
+
+function loadBehavior(src, names, fetchImpl) {
+  const els = new Map()
+  for (const id of ['toast', 'board', 'new-card-btn', 'sched-status', 'columns', 'empty-state', 'drawer', 'drawer-content', 'token-input', 'banner', 'sse-dot', 'sse-text', 'repos-list', 'count-running', 'count-queued', 'count-waiting', 'count-done', 'running-body', 'waiting-body', 'queued-body', 'leases-body', 'trunk-body']) els.set(id, fakeNode())
+  const doc = { body: fakeNode(), createElement: fakeNode, createTextNode: (text) => ({ textContent: String(text) }), getElementById: (id) => els.get(id) || fakeNode(), querySelector: () => fakeNode(), addEventListener() {} }
+  const streams = []
+  class EventSource { constructor(url) { this.url = url; this.listeners = {}; streams.push(this) } addEventListener(k, fn) { this.listeners[k] = fn } close() { this.closed = true } }
+  const localStorage = { value: '', getItem() { return this.value }, setItem(_, v) { this.value = v }, removeItem() { this.value = '' } }
+  const mod = { exports: {} }
+  const exports = names.join(', ')
+  const transformed = src.replace(/module\.exports = \{[^}]+\}/, `module.exports = { ${exports} }`)
+  new Function('module', 'document', 'fetch', 'EventSource', 'localStorage', 'location', 'history', 'window', 'confirm', 'setTimeout', 'setInterval', transformed)(mod, doc, fetchImpl, EventSource, localStorage, { href: 'http://board/' }, { replaceState() {} }, { dispatchEvent() {} }, () => true, () => 0, () => 0)
+  return { ...mod.exports, els, streams }
+}
+
+const jsonResponse = (json) => ({ ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify(json) })
+const nextTurn = () => new Promise((resolvePromise) => setImmediate(resolvePromise))
+
 // ---- drawer refetch ----
 test('a card push that only moves elapsed_ms / last_event does not refetch the drawer', () => {
   const next = card({ elapsed_ms: 41000, last_event: { ts: '2026-09-11T09:00:41.000Z', type: 'log', summary: 'y' } })
@@ -131,4 +167,71 @@ test('a 401/403 from the floor APIs stops the polling and renders a way back (so
 
 test('a locked-out floor does not reconnect its SSE (source-level)', () => {
   assert.match(fnBody(FLOOR_JS, 'function connectSse'), /if \(state\.stopped\) return/)
+})
+
+// ---- deferred UI behavior ----
+test('token changes reconnect sessions for guests and restore the pipeline for owners', async () => {
+  let role = 'owner'
+  const app = loadBehavior(BOARD_JS, ['state', 'initSettings'], async (url) => jsonResponse(url === '/api/health' ? { you: { role } } : { columns: [], cards: [] }))
+  app.initSettings()
+  const input = app.els.get('token-input')
+  input.value = 'owner-token'; await input.listeners.change()
+  assert.equal(app.streams.length, 1)
+  assert.equal(app.els.get('board').hidden, false)
+
+  role = 'guest'; input.value = 'guest-token'; await input.listeners.change()
+  assert.equal(app.streams.length, 2, 'a valid guest still receives terminal/session SSE')
+  assert.equal(app.els.get('board').hidden, true)
+
+  role = 'owner'; input.value = 'owner-token-2'; await input.listeners.change()
+  assert.equal(app.streams.length, 3)
+  assert.equal(app.els.get('board').hidden, false, 'owner access restores pipeline controls without reload')
+})
+
+test('an old card-list response cannot overwrite a newer SSE card update', async () => {
+  const wait = deferred()
+  const app = loadBehavior(BOARD_JS, ['state', 'fetchCards', 'upsertCard'], async (url) => url === '/api/cards' ? wait.promise : jsonResponse({ you: { role: 'owner' } }))
+  app.state.columnEls.set('build', { list: fakeNode(), countEl: fakeNode() })
+  app.fetchCards()
+  app.upsertCard({ card_id: 'c', column: 'build', status: 'running', runs_count: 0, active_run: null })
+  wait.resolve(jsonResponse({ columns: ['backlog'], cards: [{ card_id: 'c', column: 'backlog', status: 'backlog', runs_count: 0, active_run: null }] }))
+  await nextTurn(); await nextTurn()
+  assert.equal(app.state.cards.get('c').column, 'build')
+})
+
+test('an old response for the same open drawer cannot overwrite a refresh', async () => {
+  const waits = []
+  const app = loadBehavior(BOARD_JS, ['openDrawer'], async () => { const wait = deferred(); waits.push(wait); return wait.promise })
+  const first = app.openDrawer('c')
+  const second = app.openDrawer('c')
+  waits[2].resolve(jsonResponse({ card: { card_id: 'c', title: 'new' }, events: [], runs: [], bundle: null })); waits[3].resolve(jsonResponse({ lines: ['new'] }))
+  await second
+  waits[0].resolve(jsonResponse({ card: { card_id: 'c', title: 'old' }, events: [], runs: [], bundle: null })); waits[1].resolve(jsonResponse({ lines: ['old'] }))
+  await first
+  assert.match(app.els.get('drawer-content').textContent, /new/)
+})
+
+test('an ABA log completion cannot overwrite or delete a later request', async () => {
+  const waits = []
+  const app = loadBehavior(BOARD_JS, ['state', 'ensureLogLoaded'], async () => { const wait = deferred(); waits.push(wait); return wait.promise })
+  app.state.cards.set('c', { card_id: 'c', runs_count: 1, active_run: { run: 1 } })
+  app.ensureLogLoaded('c', 8)
+  app.ensureLogLoaded('c', 200)
+  waits[1].resolve(jsonResponse({ lines: ['newer'] })); await nextTurn(); await nextTurn()
+  app.ensureLogLoaded('c', 8)
+  waits[0].resolve(jsonResponse({ lines: ['older'] })); await nextTurn(); await nextTurn()
+  assert.deepEqual(app.state.logState.get('c').lines, ['newer'])
+  assert.ok(app.state.logRequests.has('c'), 'old completion must not delete the later request')
+})
+
+test('a later floor refresh wins over an older deferred response', async () => {
+  const waits = []
+  const app = loadBehavior(FLOOR_JS, ['state', 'refreshFloor'], async () => { const wait = deferred(); waits.push(wait); return wait.promise })
+  const first = app.refreshFloor()
+  const second = app.refreshFloor()
+  waits[1].resolve(jsonResponse({ running: [], waiting: [], queued: [], leases: [], repos: [], scheduler: {}, counts: { running: 2, queued: 0, waiting: 0, done: 0 } }))
+  await second
+  waits[0].resolve(jsonResponse({ running: [], waiting: [], queued: [], leases: [], repos: [], scheduler: {}, counts: { running: 1, queued: 0, waiting: 0, done: 0 } }))
+  await first
+  assert.equal(app.els.get('count-running').textContent, '2')
 })

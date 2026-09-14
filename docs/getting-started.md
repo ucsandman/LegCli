@@ -62,6 +62,11 @@ Claude print session. The subscription login is always what runs. Nothing in
   prompt, turns, the files being touched, 5h and 7d usage.
 - A warning at 85 % of either window (`BATON_WARN_PCT`): amber card, an event,
   one terminal bell.
+- For Codex, the board and active attach poll the read-only app-server
+  `account/rateLimits/read` response every 60 seconds. Baton maps the returned
+  300- and 10080-minute durations to 5h and 7d, shows `<n>% used`, and labels
+  old readings stale. Only an explicit backend available answer clears a prior
+  wall; no model turn or hardcoded quota is used.
 - A `context-handoff-bundle` for this session, refreshed every two minutes and
   at every warning, limit and hand-off.
 - At the limit: the bundle is saved, the agent is stopped, and the next option
@@ -86,6 +91,12 @@ baton sessions simulate-limit <id>   drive the real limit path without a real wa
 baton accounts ls            logins and their 5h/7d usage
 baton open | down | status   the board
 ```
+
+On the board, **Remove** safely prunes an ended session only when its worktree
+is clean and its branch is already merged into the base. For a session that
+needs to be removed from the board while preserving its work, use the visible
+**Remove record** button, read its confirmation, and keep the worktree, branch,
+unmerged commits, and dirty files intact.
 
 ## 6. Where files live
 

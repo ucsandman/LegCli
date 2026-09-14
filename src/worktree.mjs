@@ -170,7 +170,7 @@ export function remove(repo, cardId, { deleteBranch = false, force = false } = {
   const already = list(resolvedRepo).find((w) => samePath(w.path, wtPath))
   let removed = false
   if (already) {
-    git(resolvedRepo, ['worktree', 'remove', '--force', wtPath])
+    git(resolvedRepo, ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath])
     git(resolvedRepo, ['worktree', 'prune'])
     removed = true
   }

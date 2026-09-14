@@ -84,27 +84,33 @@ function licenseFromSubscription(sub, { email, seats } = {}) {
   return { key: signLicense(payload), payload, email: email || '' };
 }
 
-async function sendKeyEmail({ to, key, payload }) {
+async function sendKeyEmail({ to, key, payload, idempotencyKey }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { skipped: true, reason: 'missing_resend_api_key', retryable: true };
   if (!to) return { skipped: true, reason: 'missing_recipient', retryable: false };
   const plan = payload.plan === 'team' ? `Team, ${payload.seats} seat${payload.seats === 1 ? '' : 's'}` : 'Personal';
   const until = payload.plan === 'team' ? `It renews with your subscription and is valid through ${payload.expires}; a renewed key is emailed each period, and "baton license refresh" fetches it.` : `It covers every Baton release dated on or before ${payload.updates_until}. The version you have keeps working after that.`;
   const text = `Your Baton license (${plan})\n\nKey:\n${key}\n\nActivate it on each machine:\n\n  baton license activate ${key}\n\n${until}\n\nYour receipt is in the email from Stripe. Reply to this email for help.\n\n${SITE}\n`;
-  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: FROM, to: [to], subject: `Your Baton ${payload.plan === 'team' ? 'Team' : 'Personal'} license key`, text, reply_to: process.env.BATON_MAIL_REPLY_TO || undefined }) });
+  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json', ...(idempotencyKey && { 'Idempotency-Key': idempotencyKey }) }, body: JSON.stringify({ from: FROM, to: [to], subject: `Your Baton ${payload.plan === 'team' ? 'Team' : 'Personal'} license key`, text, reply_to: process.env.BATON_MAIL_REPLY_TO || undefined }) });
   const j = await r.json().catch(() => ({}));
+  if (r.status === 409 && j.name === 'invalid_idempotent_request') return { skipped: true, reason: 'idempotency_payload_mismatch', retryable: false };
   if (!r.ok) throw new Error(j.message || `resend ${r.status}`);
   return { id: j.id };
 }
 
 function verifyStripeSignature(rawBody, header, secret, toleranceSec = 300) {
-  const parts = Object.fromEntries(String(header || '').split(',').map((p) => p.split('=')));
-  const t = parts.t; const v1 = parts.v1;
-  if (!t || !v1) return false;
+  const parts = String(header || '').split(',').map((part) => part.trim().split('='));
+  const t = parts.find(([key]) => key === 't')?.[1];
+  const signatures = parts.filter(([key]) => key === 'v1').map(([, value]) => value).filter(Boolean);
+  if (!t || signatures.length === 0) return false;
+  const timestamp = Number(t);
+  if (!Number.isFinite(timestamp) || Math.abs(Date.now() / 1000 - timestamp) > toleranceSec) return false;
   const expected = crypto.createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
-  const a = Buffer.from(expected); const b = Buffer.from(v1);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
-  return Math.abs(Date.now() / 1000 - Number(t)) <= toleranceSec;
+  const a = Buffer.from(expected);
+  return signatures.some((signature) => {
+    const b = Buffer.from(signature);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
 }
 
 function readRaw(req) {

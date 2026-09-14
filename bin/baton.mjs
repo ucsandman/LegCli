@@ -130,7 +130,12 @@ async function main() {
       // prune the worktree and branch too, the way the board's Remove does, so
       // the CLI twin never orphans a worktree the board can no longer reach
       if (s.worktree) {
-        try { const r = pruneSessionWorktree(s); out(r.removed ? `removed worktree ${s.worktree.path} and branch ${s.worktree.branch}` : `kept the worktree (${r.reason}); Land it or delete it by hand`) } catch (e) { out(`worktree not pruned: ${e.message}`) }
+        try {
+          const r = pruneSessionWorktree(s)
+          out(r.removed
+            ? `removed worktree ${s.worktree.path}${r.branchDeleted ? ` and branch ${s.worktree.branch}` : `; kept branch ${s.worktree.branch}`}`
+            : `kept the worktree (${r.reason}); Land it or delete it by hand`)
+        } catch (e) { out(`worktree not pruned: ${e.message}`) }
       }
       removeSession(id); return out(`removed ${id}`)
     }
@@ -320,7 +325,7 @@ async function main() {
       try {
         const r = removeWorktree(card.repo, id, { deleteBranch: Boolean(args['delete-branch']), force: Boolean(args.force) })
         if (args['delete-branch'] && r.branchUnmerged && !r.branchDeleted) out(`kept branch baton/${id}: it has commits not on its base (rerun with --force to discard them)`)
-      } catch (err) { process.stderr.write(`worktree: ${err.message}\n`) }
+      } catch (err) { die(3, `worktree: ${err.message}`) }
       rmSync(cardDir(id), { recursive: true, force: true })
       return out(`removed ${id}`)
     }

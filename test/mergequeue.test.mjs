@@ -58,6 +58,20 @@ test('clean path: worktree changes are committed, rebased, tested, fast-forwarde
   assert.equal(readFileSync(join(repo, 'a.mjs'), 'utf8').trim(), 'export const a = 1')
 })
 
+test('landing refuses a card worktree that an agent switched to another branch', async () => {
+  const repo = toy()
+  const wt = ensure(repo, 'c-wrong-branch').path
+  git(wt, ['checkout', '-q', '-b', 'agent-switched'])
+  writeFileSync(join(wt, 'UNSAVED.txt'), 'keep me\n')
+  const before = trunkHead(repo)
+
+  const r = await land(card(repo, 'c-wrong-branch'), wt)
+  assert.equal(r.bounced, true)
+  assert.equal(r.reason, 'worktree-branch')
+  assert.equal(trunkHead(repo), before)
+  assert.equal(existsSync(join(wt, 'UNSAVED.txt')), true)
+})
+
 test('rebase-conflict: abort, list the files, root untouched', async () => {
   const repo = toy()
   const wt = ensure(repo, 'c-conf').path
@@ -188,6 +202,33 @@ test('the retry rebase after trunk moved reports its own conflict, not a fast-fo
   assert.deepEqual(r.files, ['shared.txt'])
   assert.match(r.detail, /after main moved/)
   assert.equal(git(wt, ['status', '--porcelain']).trim(), '', 'worktree left clean after abort')
+})
+
+test('tests run again after a trunk-move rebase before the combined tree lands', async () => {
+  const repo = toy()
+  const wt = ensure(repo, 'c-retest').path
+  const check = join(mkdtempSync(join(tmpdir(), 'land-retest-')), 'check.mjs')
+  writeFileSync(check, [
+    "import { execFileSync } from 'node:child_process'",
+    "import { existsSync, writeFileSync } from 'node:fs'",
+    "import { join } from 'node:path'",
+    'const repo = process.argv[2]',
+    "if (!existsSync(join(repo, 'policy.txt'))) {",
+    "  writeFileSync(join(repo, 'policy.txt'), 'policy\\n')",
+    "  execFileSync('git', ['add', 'policy.txt'], { cwd: repo, env: { ...process.env, MSYS_NO_PATHCONV: '1' } })",
+    "  execFileSync('git', ['commit', '-q', '--no-verify', '-m', 'trunk moved during tests'], { cwd: repo, env: { ...process.env, MSYS_NO_PATHCONV: '1' } })",
+    '  process.exit(0)',
+    '}',
+    "if (existsSync('feature.txt') && existsSync('policy.txt')) { console.error('RED combined tree'); process.exit(7) }",
+    '',
+  ].join('\n'))
+  writeFileSync(join(wt, 'feature.txt'), 'feature\n')
+
+  const r = await land(card(repo, 'c-retest', { test_command: `node ${check} ${repo}` }), wt)
+  assert.equal(r.bounced, true)
+  assert.equal(r.reason, 'tests-red')
+  assert.match(r.detail, /exit 7 after main moved/)
+  assert.equal(existsSync(join(repo, 'feature.txt')), false)
 })
 
 test('allowDirtyRoot (a terminal\'s Land): an unrelated root change does not stop the landing; a root change the landing would overwrite bounces dirty-trunk naming the file', async () => {

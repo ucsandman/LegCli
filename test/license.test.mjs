@@ -4,11 +4,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
-import { writeFileSync, existsSync } from 'node:fs'
+import { writeFileSync, existsSync, chmodSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeHome, testEnv, BATON } from './helpers.mjs'
-import { signLicense, verifyLicense, parseLicense, activate, deactivate, readLicense, trial, entitlement, allows, describe as describeEnt, emailHash, TRIAL_DAYS } from '../src/license.mjs'
+import { signLicense, verifyLicense, parseLicense, activate, deactivate, readLicense, licensePath, trial, entitlement, allows, describe as describeEnt, refresh, emailHash, TRIAL_DAYS } from '../src/license.mjs'
 
 const pair = generateKeyPairSync('ed25519')
 const PUB = pair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64')
@@ -66,6 +66,34 @@ test('activate writes the key under BATON_HOME, refuses a bad one, and deactivat
   assert.equal(deactivate(), true)
   assert.equal(readLicense(), null)
   assert.equal(deactivate(), false)
+})
+
+test('license storage uses private POSIX permissions for new and existing files', { skip: process.platform === 'win32' }, () => {
+  const parent = makeHome()
+  process.env.BATON_HOME = join(parent, 'secure-home')
+  const key = signLicense(personal(), PRIV)
+  activate(key, opts())
+  assert.equal(statSync(process.env.BATON_HOME).mode & 0o777, 0o700)
+  assert.equal(statSync(licensePath()).mode & 0o777, 0o600)
+  chmodSync(licensePath(), 0o644)
+  activate(key, opts())
+  assert.equal(statSync(licensePath()).mode & 0o777, 0o600)
+})
+
+test('refresh posts the installed Team key and preserves it when the site refuses', async () => {
+  process.env.BATON_HOME = makeHome()
+  const key = signLicense(team(), PRIV)
+  activate(key, opts())
+  let request
+  await assert.rejects(() => refresh({
+    site: 'https://example.test',
+    fetchImpl: async (url, options) => { request = { url, options }; return { ok: false, status: 403 } }
+  }), /site answered 403/)
+  assert.equal(request.url, 'https://example.test/api/key')
+  assert.equal(request.options.method, 'POST')
+  assert.equal(request.options.headers['Content-Type'], 'application/json')
+  assert.deepEqual(JSON.parse(request.options.body), { key })
+  assert.equal(readLicense().key, key)
 })
 
 test('the trial starts on first ask, counts down by calendar day, and ends after TRIAL_DAYS', () => {

@@ -1,7 +1,12 @@
 // POST /api/webhook   Stripe events: a paid checkout emails the key; a paid
 // renewal invoice emails a fresh Team key. Signature-checked on the raw body.
 'use strict';
-const { licenseFromSession, licenseFromSubscription, planOf, sendKeyEmail, verifyStripeSignature, readRaw, stripe } = require('./_lib.js');
+const { licenseFromSession, licenseFromSubscription, planOf, sendKeyEmail, verifyStripeSignature, readRaw, sha, stripe } = require('./_lib.js');
+
+function emailIdempotencyKey(eventId, deliveryKind) {
+  const stableEventId = String(eventId || '').length <= 128 ? String(eventId || '') : sha(eventId).slice(0, 32);
+  return `stripe-webhook:${stableEventId}:${deliveryKind}`;
+}
 
 function deliveryOf(result) {
   if (!result?.skipped) return { status: 'accepted' };
@@ -23,7 +28,7 @@ module.exports = async (req, res) => {
       const s = event.data.object;
       if (s.payment_status === 'paid' || s.mode === 'subscription') {
         const { key, payload, email } = await licenseFromSession(s.id);
-        delivery = deliveryOf(await sendKeyEmail({ to: email, key, payload }));
+        delivery = deliveryOf(await sendKeyEmail({ to: email, key, payload, idempotencyKey: emailIdempotencyKey(event.id, 'checkout.session.completed') }));
       }
     } else if (event.type === 'invoice.paid') {
       const inv = event.data.object;
@@ -32,7 +37,7 @@ module.exports = async (req, res) => {
         const sub = await stripe(`/subscriptions/${subId}`);
         if (planOf(sub.items?.data?.[0]?.price) !== 'team') { const e = new Error('this subscription is not for a Baton Team plan'); e.status = 400; throw e; }
         const { key, payload } = licenseFromSubscription(sub, { email: inv.customer_email });
-        delivery = deliveryOf(await sendKeyEmail({ to: inv.customer_email, key, payload }));
+        delivery = deliveryOf(await sendKeyEmail({ to: inv.customer_email, key, payload, idempotencyKey: emailIdempotencyKey(event.id, 'invoice.paid') }));
       }
     }
     if (delivery?.retryable) res.statusCode = 500;

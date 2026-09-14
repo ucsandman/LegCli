@@ -103,17 +103,21 @@ export function readEvents(id) {
 // instead of the second write silently dropping the first.
 export function requestControl(id, req) {
   const f = join(sessionDir(id), 'control.json')
-  let existing = {}
-  if (existsSync(f)) { try { existing = JSON.parse(readFileSync(f, 'utf8')) } catch {} }
-  writeJsonAtomic(f, { ...existing, ...req, requested_at: now() })
+  return withFileLock(join(sessionDir(id), '.control.lock'), () => {
+    let existing = {}
+    if (existsSync(f)) { try { existing = JSON.parse(readFileSync(f, 'utf8')) } catch {} }
+    writeJsonAtomic(f, { ...existing, ...req, requested_at: now() })
+  })
 }
 export function takeControl(id) {
   const f = join(sessionDir(id), 'control.json')
-  if (!existsSync(f)) return null
-  let req = null
-  try { req = JSON.parse(readFileSync(f, 'utf8')) } catch {}
-  rmSync(f, { force: true })
-  return req
+  return withFileLock(join(sessionDir(id), '.control.lock'), () => {
+    if (!existsSync(f)) return null
+    let req = null
+    try { req = JSON.parse(readFileSync(f, 'utf8')) } catch {}
+    rmSync(f, { force: true })
+    return req
+  })
 }
 
 export function removeSession(id) { rmSync(sessionDir(id), { recursive: true, force: true }) }

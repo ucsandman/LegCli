@@ -5,6 +5,7 @@ import { existsSync, writeFileSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { makeHome, testEnv, initRepo, baton, batonFail, readCard, git } from './helpers.mjs'
+import { ensure } from '../src/worktree.mjs'
 
 test('card add refuses a forbidden mode, an unknown adapter, and a land station that is not last', () => {
   const home = makeHome()
@@ -71,6 +72,21 @@ test('card add writes the full card shape; ls/show/events read it back; rm remov
   assert.equal(readCard(home, id).status, 'queued')
   assert.ok(baton(['card', 'rm', id], env).includes(`removed ${id}`))
   assert.ok(!existsSync(join(home, 'cards', id)))
+})
+
+test('card rm preserves a dirty worktree and its card record unless force is explicit', () => {
+  const home = makeHome()
+  const env = testEnv(home)
+  const repo = initRepo()
+  const id = baton(['card', 'add', '--repo', repo, '--task', 'keep unsaved work', '--chain', 'fake'], env).trim()
+  const worktree = ensure(repo, id).path
+  writeFileSync(join(worktree, 'UNSAVED.txt'), 'do not discard\n')
+
+  const refused = batonFail(['card', 'rm', id], env)
+  assert.equal(refused.status, 3)
+  assert.match(refused.stderr, /worktree:/)
+  assert.equal(existsSync(join(worktree, 'UNSAVED.txt')), true)
+  assert.equal(existsSync(join(home, 'cards', id, 'card.json')), true)
 })
 
 test('card add --queue enqueues immediately; scheduler status reports not running', () => {

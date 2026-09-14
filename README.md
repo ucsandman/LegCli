@@ -2,7 +2,6 @@
 
 **Type `baton claude`, `baton codex` or `baton agy` instead of the bare command. You get the same interactive agent; Baton opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.**
 
-[![CI](https://github.com/ucsandman/baton/actions/workflows/ci.yml/badge.svg)](https://github.com/ucsandman/baton/actions/workflows/ci.yml)
 [![License: commercial](https://img.shields.io/badge/license-commercial-blue.svg)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](package.json)
 [![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](package.json)
@@ -23,7 +22,7 @@ settings file and never edits yours. `baton claude --model opus` is
    own worktree and a **Land** button instead of writing over the first.
 2. **Usage tracking** per agent and account, from what each CLI already
    exposes: Claude Code's usage endpoint and its `StopFailure` hook, Codex's
-   session rollout file, agy's log.
+   read-only app-server rate-limit read, agy's log.
 3. **A context handoff bundle** ([context-handoff-bundle](https://pypi.org/project/context-handoff-bundle/))
    refreshed as the session goes, so the work is always ready to hand off.
 4. **The handoff itself.** Near the limit you get a warning. At the limit Baton
@@ -81,7 +80,8 @@ agent name passes straight through (`baton codex -m gpt-5.3-codex-spark`,
 through unchanged, and your settings file is never edited: Baton's hooks ride
 in a separate per-session `--settings` file.
 
-From a clone instead of npm: `git clone https://github.com/ucsandman/baton.git && cd baton && npm install && npm link`.
+Maintainers with repository access can install from a clone instead:
+`git clone https://github.com/ucsandman/baton.git && cd baton && npm install && npm link`.
 
 ## What Baton reads from each agent
 
@@ -93,7 +93,7 @@ which.
 | agent | usage percentages | the wall (limit hit) | how Baton attaches | status |
 |-------|-------------------|----------------------|--------------------|--------|
 | claude | `GET api.anthropic.com/api/oauth/usage` with the login Claude Code stored, the same data as `/usage` and the built-in status line (`five_hour`, `seven_day`, `utilization`, `resets_at`); polled every 60 s | `StopFailure` hook with `error: rate_limit` ([docs](https://code.claude.com/docs/en/hooks#stopfailure)) | one extra settings file per session via `--settings`, carrying only Baton's own hooks; `autoContinueAtUsageLimit` is set to `false` because Baton owns the handoff | observed live |
-| codex | `event_msg.token_count.rate_limits` in the session's rollout file (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, flushed per event): `primary` = 300 min window, `secondary` = 10080 min | `task_complete.error.codex_error_info: usage_limit_exceeded`, message "You've hit your usage limit … try again at …" (`codex-rs/protocol/src/error.rs`) | Baton tails the rollout whose `session_meta.cwd` is the session's directory (test-only); no hook is injected, per the adapter's source, so codex never asks you to review a new hook | observed live |
+| codex | read-only `account/rateLimits/read` through the app-server, polled every 60 s by the board and active attach; windows are identified by duration (300 minutes = 5h, 10080 = 7d) | `task_complete.error.codex_error_info: usage_limit_exceeded`, message "You've hit your usage limit … try again at …" (`codex-rs/protocol/src/error.rs`) | no model turn and no hook are injected; the board reads the CLI backend and records only returned windows | verified by source and regression tests |
 | agy | none exposed (agy's own status line fetches a quota summary that is written nowhere) | `RESOURCE_EXHAUSTED`, "it resets in …", "out of quota" in the log | `--log-file` per session; `~/.gemini/antigravity-cli/history.jsonl` gives the prompts and conversation id | observed live (a real `RESOURCE_EXHAUSTED` with its reset was read from the log on 2026-09-11) |
 
 Why not Claude Code's status line JSON (`rate_limits.five_hour.used_percentage`):
@@ -101,6 +101,11 @@ on 2.1.268 the custom `statusLine` Baton passes through `--settings` did not
 run, so the endpoint poll is the source. Baton still writes a `statusLine`
 entry that records the same fields, so the moment a build honours it the poll
 becomes a fallback.
+
+For Codex, Baton does not infer availability from a lower percentage: only an
+explicit available answer from the backend clears an earlier wall. The board
+labels each bar as `<n>% used` and marks an old reading as stale rather than
+presenting it as current.
 
 ## How a handoff works
 
@@ -168,9 +173,11 @@ base is fast-forwarded, never merged. When a step fails nothing lands and the
 card says why: `rebase-conflict` with the files, `tests-red` with the end of
 the output, `dirty-trunk` when the checkout has local changes the landing
 would overwrite. Local changes it would not touch are left alone. The
-landed-on-trunk list says which terminal landed each commit. Removing a
-finished session takes its worktree and branch along only when the worktree is
-clean and the branch is already on its base.
+landed-on-trunk list says which terminal landed each commit. **Remove** safely
+prunes a finished session only when its worktree is clean and its branch is
+already on the base. **Remove record** is a separate visible button with a
+confirmation: it removes only Baton's saved session record and deliberately
+keeps the worktree, branch, unmerged commits, and dirty files.
 
 Verified live on 2026-09-11 with three haiku sessions in a throwaway repo. The
 first stayed in the checkout; the second and third each got a worktree and
@@ -374,7 +381,9 @@ anywhere else: it binds your Tailscale or LAN address and every human gets
 their own token (see [More than one human](#more-than-one-human)). Without
 share, setting `BATON_BIND` to a non-loopback address needs `BATON_TOKEN` too,
 or the server refuses to start (exit 3), and requests then need
-`Authorization: Bearer <token>`. Either way there is no TLS.
+`Authorization: Bearer <token>`. Tokenless owner access also requires a
+loopback hostname (`127.0.0.1`, `localhost`, or `[::1]`), which prevents a
+DNS-rebound hostname from inheriting local access. Either way there is no TLS.
 
 ## Troubleshooting
 
@@ -385,9 +394,10 @@ or the server refuses to start (exit 3), and requests then need
   expired (start `claude` once, it refreshes), or the usage endpoint answered
   with something Baton does not recognise. The card says which. The wall is
   still caught through the hook; only the percentages are missing.
-- **codex's card never shows usage**: the rollout for that directory was not
-  found. codex writes it only once a thread starts; a directory codex does not
-  trust yet shows its trust prompt first, answer it and the tap catches up.
+- **codex usage is unavailable or stale**: the read-only Codex app-server quota
+  request failed or has not completed in the last five minutes. The board
+  retries every minute; an active Codex session also keeps its rollout tap as a
+  fallback for percentages and the wall signal.
 - **agy's card has no percentage**: expected, agy exposes none. Baton sees the
   wall when agy hits it.
 - **A session shows `lost`**: the terminal that ran `baton <agent>` is gone
@@ -446,9 +456,9 @@ Baton is commercial software under the [Baton License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-with no downloads. Version 0.4.0 is prepared but unpublished as of 14
-September 2026; npm's latest release remains 0.3.0, and 0.2.0 and 0.3.0 are
-not deprecated.
+and remain available. The version in this source tree is 0.4.1; see
+[npm](https://www.npmjs.com/package/baton-agents) for published versions and
+[CHANGELOG.md](CHANGELOG.md) for release notes.
 
 Using it: a 14-day trial starts the first time you type `baton <agent>`,
 every feature on, no card. After that a license: **Personal, $79 once**, one
