@@ -8,6 +8,13 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { join } from 'node:path'
 import { makeHome, testEnv, baton, batonFail, ROOT, BATON, sleep } from './helpers.mjs'
 
+test('--version and -v print the package version without initializing BATON_HOME', () => {
+  const home = makeHome()
+  const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
+  for (const args of [['--version'], ['-v']]) assert.equal(baton(args, testEnv(home)).trim(), version)
+  assert.deepEqual(readdirSync(home), [])
+})
+
 test('up --dry prints every would-be argv as JSON, creates no process and no pidfile', () => {
   const home = makeHome()
   const env = testEnv(home)

@@ -101,6 +101,7 @@ const TERMS = `Terms check (fetched 2026-09-11): Anthropic Consumer Terms forbid
 async function main() {
   const [group, cmd, ...rest] = process.argv.slice(2)
   const args = parseArgs(rest)
+  if (group === '--version' || group === '-v') return out(VERSION)
   if (AGENTS.includes(group)) {
     // baton claude|codex|agy [agent args...]: everything after the agent name
     // goes straight through.
