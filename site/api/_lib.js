@@ -48,9 +48,9 @@ function plusDays(unixSeconds, days) { return new Date(unixSeconds * 1000 + days
 // The plan is read from the price's lookup_key (baton_personal | baton_team),
 // set when the prices were created, so a renamed product cannot change it.
 function planOf(price) {
-  const k = String(price?.lookup_key || price?.metadata?.plan || '');
-  if (k.includes('team')) return 'team';
-  if (k.includes('personal')) return 'personal';
+  const k = price?.lookup_key;
+  if (k === 'baton_team') return 'team';
+  if (k === 'baton_personal') return 'personal';
   return null;
 }
 
@@ -63,6 +63,7 @@ async function licenseFromSession(sessionId) {
   const item = s.line_items?.data?.[0];
   const plan = planOf(item?.price);
   if (!plan) { const e = new Error('this checkout is not for a Baton plan'); e.status = 400; throw e; }
+  if (s.mode === 'subscription' && plan !== 'team') { const e = new Error('this checkout is not for a Baton plan'); e.status = 400; throw e; }
   const email = s.customer_details?.email || s.customer_email || '';
   if (plan === 'personal') {
     const issued = isoDay(s.created);
@@ -77,6 +78,7 @@ function licenseFromSubscription(sub, { email, seats } = {}) {
   const active = ['active', 'trialing', 'past_due'].includes(sub.status);
   if (!active) { const e = new Error(`the subscription is ${sub.status}`); e.status = 402; throw e; }
   const item = sub.items?.data?.[0];
+  if (planOf(item?.price) !== 'team') { const e = new Error('this subscription is not for a Baton Team plan'); e.status = 400; throw e; }
   const periodEnd = item?.current_period_end || sub.current_period_end;
   const payload = { v: 1, id: 'lic_' + sha(sub.id).slice(0, 20), plan: 'team', seats: seats || item?.quantity || 1, email_hash: emailHash(email || ''), issued: isoDay(sub.created), expires: plusDays(periodEnd, 3), sub: sub.id };
   return { key: signLicense(payload), payload, email: email || '' };
@@ -110,4 +112,4 @@ function readRaw(req) {
 
 const maskEmail = (e) => { const [u, d] = String(e || '').split('@'); return d ? `${u.slice(0, 2)}***@${d}` : ''; };
 
-module.exports = { stripe, signLicense, licenseFromSession, licenseFromSubscription, sendKeyEmail, verifyStripeSignature, readRaw, maskEmail, sha, SITE };
+module.exports = { stripe, signLicense, planOf, licenseFromSession, licenseFromSubscription, sendKeyEmail, verifyStripeSignature, readRaw, maskEmail, sha, SITE };

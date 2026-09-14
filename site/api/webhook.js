@@ -1,7 +1,7 @@
 // POST /api/webhook   Stripe events: a paid checkout emails the key; a paid
 // renewal invoice emails a fresh Team key. Signature-checked on the raw body.
 'use strict';
-const { licenseFromSession, licenseFromSubscription, sendKeyEmail, verifyStripeSignature, readRaw, stripe } = require('./_lib.js');
+const { licenseFromSession, licenseFromSubscription, planOf, sendKeyEmail, verifyStripeSignature, readRaw, stripe } = require('./_lib.js');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end('POST only'); }
@@ -22,6 +22,7 @@ module.exports = async (req, res) => {
       const subId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id || inv.parent?.subscription_details?.subscription;
       if (subId && inv.billing_reason === 'subscription_cycle') {
         const sub = await stripe(`/subscriptions/${subId}`);
+        if (planOf(sub.items?.data?.[0]?.price) !== 'team') { const e = new Error('this subscription is not for a Baton Team plan'); e.status = 400; throw e; }
         const { key, payload } = licenseFromSubscription(sub, { email: inv.customer_email });
         await sendKeyEmail({ to: inv.customer_email, key, payload });
       }
