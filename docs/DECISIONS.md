@@ -37,3 +37,11 @@ Durable product and design decisions that the code does not explain on its own. 
 
 - **Order.** The saved order (Settings for new terminals, **Change order** per running terminal) is applied as an absolute priority list: drop the agent already running, keep the rest in the saved order. It used to rotate, anchored on the current agent and wrapping, so `codex > claude > agy` handed a Claude terminal to agy first. Wes: "I want agy to always be the last option." A rotation cannot express that; a priority list can, and every option is still tried exactly once. Same-agent alternate accounts still come before any agent switch, because continuing with the same agent on another login loses the least.
 - **Terminal restore.** Baton kills the agent on End, Hand off now and the usage limit, so nothing the agent set is ever unset by the agent itself. Baton now undoes all of it (mouse reporting, bracketed paste, focus events, application keys, autowrap, the scrolling region) instead of only leaving the alternate screen. DECSTBM homes the cursor, so the margin reset sits between DECSC and DECRC, and the erase clears only what is below the cursor.
+
+## 2026-09-14: the site deploys itself from git
+
+- **Connected.** The `baton-agents` Vercel project is connected to `github.com/ucsandman/baton`, with Root Directory `site`, so a push to `main` publishes the marketing site and its two functions. A manual `vercel --prod` from `site/` still works and is the fallback.
+- **Root Directory had to change first.** It was `.`, which is correct when deploying from inside `site/` but would have published the repo root on a git build: no `index.html`, and `api/key` and `api/webhook` gone, so a purchase in flight would not have received its key.
+- **Not every push.** `site/vercel.json` carries `ignoreCommand: git diff --quiet HEAD^ HEAD .`, which Vercel maps to the Ignored Build Step. A commit that touches nothing under `site/` cancels the build. The command failing (a shallow clone with no `HEAD^`) exits non-zero, which builds, so the failure mode is a redundant deploy rather than a missed one.
+- **Agent sessions cannot do this part.** `vercel --prod` and `vercel git connect` are both denied by the harness classifier as production deploys, and the CLI auth token cannot be read. Wes ran both.
+
