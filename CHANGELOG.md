@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.3 (2026-09-14)
 
 - **Choose terminal handoff order.** Settings stores the priority order copied
   by new terminals, and each newly attached terminal can change its own order
