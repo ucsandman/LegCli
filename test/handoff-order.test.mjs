@@ -7,6 +7,9 @@ import { mkdtempSync, writeFileSync, readdirSync, readFileSync, mkdirSync } from
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { makeHome, testEnv, initRepo, batonSpawn, sleep } from './helpers.mjs'
+// a Windows runner hands out a short 8.3 TEMP path while git reports the long
+// one, so the session's repo only matches after both are canonicalized
+import { canonPath } from '../src/fsx.mjs'
 
 const HOME = makeHome()
 process.env.BATON_HOME = HOME
@@ -163,7 +166,7 @@ writeFileSync(process.env.STUB_DIR + '/agy-' + Date.now() + '.json', JSON.string
   let session = null
   const t0 = Date.now()
   while (Date.now() - t0 < 15000) {
-    session = sessions.listSessions().find((item) => item.repo?.toLowerCase() === repo.toLowerCase() && item.pid)
+    session = sessions.listSessions().find((item) => item.repo && canonPath(item.repo) === canonPath(repo) && item.pid)
     if (session) break
     await sleep(100)
   }
