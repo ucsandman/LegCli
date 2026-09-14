@@ -112,7 +112,10 @@ test('files carry their line counts, and a diff is only ever read from inside th
   const gone = detail.sessionDiff(sessions.readSession(s.session_id), 'never-existed.mjs')
   assert.equal(gone.state, 'gone', 'a path that is not there at all is not "no changes"')
 
-  for (const bad of ['../outside.txt', '../../.env', 'C:\\Windows\\win.ini', '/etc/passwd']) {
+  // a drive-letter path is only absolute on Windows: on Linux it is a legal
+  // file name that lands inside the repo, so it belongs in the windows case
+  const outside = ['../outside.txt', '../../.env', '/etc/passwd', ...(process.platform === 'win32' ? ['C:\\Windows\\win.ini'] : [])]
+  for (const bad of outside) {
     assert.throws(() => detail.sessionDiff(sessions.readSession(s.session_id), bad), detail.DiffInputError, bad)
   }
   assert.throws(() => detail.sessionDiff(sessions.readSession(s.session_id), ''), detail.DiffInputError)
