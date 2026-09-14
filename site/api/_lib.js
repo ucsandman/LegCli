@@ -86,7 +86,8 @@ function licenseFromSubscription(sub, { email, seats } = {}) {
 
 async function sendKeyEmail({ to, key, payload }) {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey || !to) return { skipped: true };
+  if (!apiKey) return { skipped: true, reason: 'missing_resend_api_key', retryable: true };
+  if (!to) return { skipped: true, reason: 'missing_recipient', retryable: false };
   const plan = payload.plan === 'team' ? `Team, ${payload.seats} seat${payload.seats === 1 ? '' : 's'}` : 'Personal';
   const until = payload.plan === 'team' ? `It renews with your subscription and is valid through ${payload.expires}; a renewed key is emailed each period, and "baton license refresh" fetches it.` : `It covers every Baton release dated on or before ${payload.updates_until}. The version you have keeps working after that.`;
   const text = `Your Baton license (${plan})\n\nKey:\n${key}\n\nActivate it on each machine:\n\n  baton license activate ${key}\n\n${until}\n\nYour receipt is in the email from Stripe. Reply to this email for help.\n\n${SITE}\n`;

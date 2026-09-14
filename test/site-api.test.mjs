@@ -43,6 +43,26 @@ const response = () => {
   return result
 }
 
+async function callWebhook(event, secret) {
+  const raw = JSON.stringify(event)
+  const timestamp = Math.floor(Date.now() / 1000)
+  const signature = createHmac('sha256', secret).update(`${timestamp}.${raw}`).digest('hex')
+  const req = Readable.from([Buffer.from(raw)])
+  req.method = 'POST'
+  req.headers = { 'stripe-signature': `t=${timestamp},v1=${signature}` }
+  const res = response()
+  await webhookHandler(req, res)
+  return res
+}
+
+async function captureErrors(run) {
+  const original = console.error
+  const lines = []
+  console.error = (...args) => { lines.push(args.map(String).join(' ')) }
+  try { await run() } finally { console.error = original }
+  return lines
+}
+
 async function rejects400(run) {
   await assert.rejects(run, (error) => {
     assert.equal(error.status, 400)
@@ -192,4 +212,74 @@ test('an unrelated subscription-cycle invoice is acknowledged without sending em
   assert.equal(res.statusCode, 200)
   assert.equal(JSON.parse(res.body).error, 'this subscription is not for a Baton Team plan')
   assert.equal(calls.filter((url) => url.includes('api.resend.com')).length, 0)
+})
+
+test('missing Resend configuration is a retryable visible failure with redacted logs', async () => {
+  const secret = '<TEST_WEBHOOK_SECRET>'
+  process.env.STRIPE_WEBHOOK_SECRET = secret
+  delete process.env.RESEND_API_KEY
+  const skipped = await lib.sendKeyEmail({ to: 'sensitive-recipient@example.test', key: '<TEST_LICENSE_KEY>', payload: { plan: 'personal' } })
+  assert.deepEqual(skipped, { skipped: true, reason: 'missing_resend_api_key', retryable: true })
+  const session = {
+    id: 'cs_test_missingmail', payment_status: 'paid', mode: 'payment', status: 'complete', created: 1789084800,
+    customer_details: { email: 'sensitive-recipient@example.test' },
+    line_items: { data: [{ price: { lookup_key: 'baton_personal' }, quantity: 1 }] }
+  }
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/checkout/sessions/')) return jsonResponse(session)
+    throw new Error('email transport must not run without configuration')
+  }
+  let res
+  const logs = await captureErrors(async () => { res = await callWebhook({ type: 'checkout.session.completed', data: { object: session } }, secret) })
+  assert.equal(res.statusCode, 500)
+  assert.deepEqual(JSON.parse(res.body), { received: true, delivery: { status: 'failed', reason: 'missing_resend_api_key', retryable: true } })
+  assert.deepEqual(logs, ['Baton license delivery failed: reason=missing_resend_api_key retryable=true'])
+  assert.doesNotMatch(logs.join('\n'), /sensitive-recipient|TEST_LICENSE_KEY|Authorization|customer_details/)
+})
+
+test('missing recipient is a terminal visible failure with redacted logs', async () => {
+  const secret = '<TEST_WEBHOOK_SECRET>'
+  process.env.STRIPE_WEBHOOK_SECRET = secret
+  process.env.RESEND_API_KEY = '<TEST_RESEND_API_KEY>'
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/subscriptions/')) return jsonResponse(teamSubscription({ id: 'sub_sensitive_customer' }))
+    throw new Error('email transport must not run without a recipient')
+  }
+  let res
+  const event = { type: 'invoice.paid', data: { object: { subscription: 'sub_sensitive_customer', billing_reason: 'subscription_cycle' } } }
+  const logs = await captureErrors(async () => { res = await callWebhook(event, secret) })
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(JSON.parse(res.body), { received: true, delivery: { status: 'failed', reason: 'missing_recipient', retryable: false } })
+  assert.deepEqual(logs, ['Baton license delivery failed: reason=missing_recipient retryable=false'])
+  assert.doesNotMatch(logs.join('\n'), /sub_sensitive_customer|TEST_LICENSE_KEY|Authorization|customer/)
+})
+
+test('an accepted Resend request is visible without exposing delivery details', async () => {
+  const secret = '<TEST_WEBHOOK_SECRET>'
+  process.env.STRIPE_WEBHOOK_SECRET = secret
+  process.env.RESEND_API_KEY = '<TEST_RESEND_API_KEY>'
+  const session = {
+    id: 'cs_test_acceptedmail', payment_status: 'paid', mode: 'payment', status: 'complete', created: 1789084800,
+    customer_details: { email: 'buyer@example.test' },
+    line_items: { data: [{ price: { lookup_key: 'baton_personal' }, quantity: 1 }] }
+  }
+  const calls = []
+  globalThis.fetch = async (url) => {
+    calls.push(String(url))
+    if (String(url).includes('/checkout/sessions/')) return jsonResponse(session)
+    return jsonResponse({ id: '<TEST_MESSAGE_ID>' })
+  }
+  const res = await callWebhook({ type: 'checkout.session.completed', data: { object: session } }, secret)
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(JSON.parse(res.body), { received: true, delivery: { status: 'accepted' } })
+  assert.equal(calls.filter((url) => url.includes('api.resend.com')).length, 1)
+})
+
+test('an ignored Stripe event makes no email-delivery claim', async () => {
+  const secret = '<TEST_WEBHOOK_SECRET>'
+  process.env.STRIPE_WEBHOOK_SECRET = secret
+  globalThis.fetch = async () => { throw new Error('ignored events must not make requests') }
+  const res = await callWebhook({ type: 'customer.created', data: { object: { id: 'cus_ignored' } } }, secret)
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(JSON.parse(res.body), { received: true })
 })

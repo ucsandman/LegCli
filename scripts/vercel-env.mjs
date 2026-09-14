@@ -5,6 +5,10 @@
 import { spawnSync } from 'node:child_process'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => a.startsWith('--') ? [a.slice(2), all[i + 1]] : []).filter((x) => x.length))
+if (!['test', 'live'].includes(args.mode)) {
+  console.error('Usage: node scripts/vercel-env.mjs --mode test|live [--site URL]')
+  process.exit(2)
+}
 const live = args.mode === 'live'
 const vars = {
   STRIPE_SECRET_KEY: live ? process.env.STRIPE_SECRET_KEY : process.env.STRIPE_TEST_SECRET_KEY,
