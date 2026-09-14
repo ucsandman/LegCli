@@ -99,9 +99,14 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    in place. A checkpoint runs about every two minutes while the session has
    turns, and at every warning, limit and hand-off.
 2. **Choose.** `candidates()` lists the other accounts of the same agent first,
-   then the remaining agents in order claude, codex, agy, wrapping, so every
-   option is tried once. From codex the order is agy, then claude.
-   `chooseNext()` skips any option whose wall has not reset.
+   then every other agent in the terminal's saved order. That order is an
+   absolute priority list, not a rotation anchored on the agent running now:
+   an agent placed last is tried last whichever agent the terminal started on,
+   and every option is still tried once. The default order is claude, codex,
+   agy. `chooseNext()` skips a missing CLI or an option whose wall has not
+   reset. The board can save a new order for an active terminal; the wrapper reads
+   it again at the transition and during all-out waiting. Machine Settings is
+   copied only when a new terminal starts.
 3. **Switch.** The agent process is stopped and the terminal restored. The
    bundle's `context-handoff-bundle load <id>` output is written to
    `.baton/RESUME.md`, and the next agent starts in the same terminal with a

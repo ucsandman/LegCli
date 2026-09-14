@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+- **Choose terminal handoff order.** Settings stores the priority order copied
+  by new terminals, and each newly attached terminal can change its own order
+  while it is running. The order is absolute, not a rotation anchored on the
+  agent running now: an agent moved to the bottom (agy, say) is the last option
+  from every starting agent instead of jumping to the front of the list for the
+  agents above it. The card shows Now, the exact fallback candidates, the
+  preferred next option, and the first currently eligible option. Missing CLIs,
+  usage walls, same-agent account fallback, all-out waiting, owner controls,
+  and normal-exit behavior are unchanged. Older terminals say that a restart
+  is required and can save the next-launch default.
+- **The terminal is left the way the agent found it.** An agent killed by End,
+  Hand off now or the usage limit never runs its own cleanup, so its terminal
+  modes outlived it: the mouse wheel printed raw mouse reports into the shell
+  after the session ended, and a leftover scrolling region made the next leg's
+  output land on top of the lines already on screen. The restore now turns off
+  every mouse reporting mode, bracketed paste and focus events, puts cursor
+  keys, the keypad and autowrap back, resets the scrolling region without
+  moving the cursor, and clears only the dead agent's half-drawn frame.
+- **Clearer background cards.** The New background card form leads with repo,
+  task, and a real first agent; explains its separate worktree and Run now
+  versus draft; and puts workflow, fallback, permissions, approvals, limits,
+  leases, landing, tests, titles, and labeled test/demo adapters under Advanced
+  options. Build only explicitly says it does not merge, while workflows with
+  an automatic merge say so in their labels.
+
 ## 0.4.2 (2026-09-14)
 
 - **Automatic npm publication.** A successful push to `main` now waits for the

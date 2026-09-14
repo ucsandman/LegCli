@@ -11,8 +11,10 @@ import { randomBytes } from 'node:crypto'
 import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { scrub } from './redact.mjs'
+import { HANDOFF_AGENTS, normalizeHandoffOrder } from './preferences.mjs'
 
-export const AGENTS = ['claude', 'codex', 'agy']
+export const AGENTS = HANDOFF_AGENTS
+export const HANDOFF_ORDER_CAPABILITY = 'handoff_order_v1'
 export const SESSION_STATUSES = ['starting', 'running', 'warning', 'limit', 'handing_off', 'waiting', 'handed_off', 'ended', 'lost']
 const ACTIVE = ['starting', 'running', 'warning', 'limit', 'handing_off', 'waiting']
 
@@ -45,7 +47,7 @@ export function isActive(s) { return ACTIVE.includes(s?.status) }
 // it one (repo stays the main checkout, for grouping and landing), else the repo.
 export function workRoot(s) { return s?.worktree?.path ?? s?.repo ?? s?.cwd ?? null }
 
-export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [], worktree = null, owner = null }) {
+export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [], worktree = null, owner = null, handoffOrder = AGENTS, installed = null, runtimeCapabilities = [] }) {
   const session = {
     session_id: id, agent, account, cwd, repo, branch, argv, worktree, owner,
     repo_name: repo ? repo.split(/[\\/]/).filter(Boolean).pop() : null,
@@ -56,6 +58,8 @@ export function createSession({ id, agent, account = 'default', cwd, repo = null
     files_touched: [], files_dirty: [], head: null, head_at_start: null,
     limits: null, limit: null, warning: null,
     bundle: null, handoff: null, chain,
+    handoff_order: normalizeHandoffOrder(handoffOrder), installed,
+    runtime_capabilities: [...new Set(runtimeCapabilities)],
     lineage: { from: null, to: null },
     exit_code: null,
   }

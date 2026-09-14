@@ -28,7 +28,9 @@ settings file and never edits yours. `baton claude --model opus` is
 4. **The handoff itself.** Near the limit you get a warning. At the limit Baton
    saves the bundle, stops the agent, and starts the next option in the same
    terminal from that bundle: another login of the same agent if you added
-   one, otherwise the next agent (claude → codex → agy). Nothing is retyped.
+   one, otherwise the next agent in the order shown on the terminal card.
+   The default is claude → codex → agy, and Settings changes the default for
+   new terminals. Nothing is retyped.
    When every option is out, it tells you which resets first and when, waits
    for that reset with a countdown, and starts that agent from the bundle.
 
@@ -55,7 +57,7 @@ only `~/.baton`.
 - [Second accounts, and what the terms say](#second-accounts-and-what-the-terms-say)
 - [What is and is not touched](#what-is-and-is-not-touched)
 - [CLI reference](#cli-reference)
-- [Pipelines: the v0.1 extras](#pipelines-the-v01-extras)
+- [Background tasks: the v0.1 extras](#background-tasks-the-v01-extras)
 - [Troubleshooting](#troubleshooting)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -128,9 +130,15 @@ presenting it as current.
    ask the human to restate the task. `claude "<prompt>"`, `codex "<prompt>"`
    and `agy -i "<prompt>"` all open the normal interactive session with that
    first turn.
-5. **Order.** Other accounts of the same agent first, then the remaining agents
-   in order, each tried once: from claude, `claude/work → codex → agy`; from
-   codex, `agy → claude`. An option whose wall has not reset is skipped.
+5. **Order.** Other accounts of the same agent come first, then every other
+   agent in the saved order, each tried once. The order is a priority list, not
+   a rotation: put agy at the bottom and agy is the last option from a Claude
+   terminal and from a Codex terminal alike. The board shows the exact
+   sequence with the agent running now skipped, plus the preferred option and
+   the first option eligible from current install and limit state. Use **Change
+   order** on a terminal card to change that terminal, or Settings to set the
+   default copied by new terminals. An option whose CLI is missing or whose
+   wall has not reset is skipped.
 6. **All out.** The terminal prints each option with its reset time, soonest
    first, then stays open with a countdown to the first reset and starts that
    agent from the bundle when it arrives. The card says `waiting for <agent>
@@ -154,6 +162,11 @@ scrubbed, at `fixtures/live/claude/limit-rate_limit.json`, and the claude docs
 row flipped to observed-live (`node scripts/live-limits.mjs`). The same
 capture is wired for codex `usage_limit_exceeded` and agy `RESOURCE_EXHAUSTED`;
 no payload for either has been kept yet.
+
+Terminals started by this version can change order while they run. An older
+terminal stays on the order it started with; its card says a restart is needed
+and can save the desired default for the next launch. A normal agent exit ends
+the terminal. It does not trigger a handoff.
 
 ## Two sessions in one repo
 
@@ -245,7 +258,8 @@ one sam's; sam's board showed wes's card with the prompt hidden and only
   (<session>)`.
 - **Buttons**: Land (sessions with their own worktree), Hand off now, End
   (stops the agent), Remove (ended sessions).
-- Below it, the v0.1 **Pipelines** columns for headless cards (see below).
+- Below it, optional **Background tasks** an agent runs in a separate worktree
+  without joining the terminal conversation (see below).
 
 The board reads `~/.baton/sessions/*/session.json` over server-sent events; a
 session whose runner process is gone is marked `lost`, never shown as live.
@@ -347,12 +361,21 @@ a hand-off, e.g. `-m gpt-5.3-codex-spark`), `BATON_CLAUDE_BIN`,
 terminal this is when the board is shared), `BATON_RATE_MAX` (600 requests a
 minute per human) and `BATON_RATE_MAX_FAILURES` (20 wrong tokens per address).
 
-## Pipelines: the v0.1 extras
+## Background tasks: the v0.1 extras
 
 Version 0.1 was the other way round: you dropped a task card on the board and
 Baton ran the agents headless in a git worktree, one per card, with a fallback
 chain, path leases, a scheduler and a merge queue. All of that still works and
 lives below the terminals lane, but it is no longer the way in.
+
+The New background card form starts with a repo, task, and real first agent.
+**Run now** queues it; turning that off saves a draft in Backlog. The default
+**Build only** workflow stops with its changes in the card's worktree and does
+not merge them. The Advanced **Build, test, and merge** and **Factory**
+workflows include an automatic land station; their labels say so before you
+choose them. Fallback agents, permissions, approval gates, turn caps, leases,
+trunk, merge method, tests, title, and scripted test/demo adapters are also
+under Advanced options.
 
 - `baton up` boots the board with the scheduler and merge queue and streams
   redacted logs; `baton card add --repo <path> --task "<t>" --chain claude,codex --queue`

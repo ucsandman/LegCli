@@ -712,6 +712,10 @@
       error: document.getElementById('new-card-error'),
       repo: document.getElementById('nc-repo'),
       task: document.getElementById('nc-task'),
+      firstAgent: document.getElementById('nc-first-agent'),
+      firstControls: document.getElementById('nc-first-controls'),
+      testAdapter: document.getElementById('nc-test-adapter'),
+      fallbackSummary: document.getElementById('nc-fallback-summary'),
       pipeline: document.getElementById('nc-pipeline'),
       customPipeline: document.getElementById('nc-custom-pipeline'),
       chainRows: document.getElementById('nc-chain-rows'),
@@ -726,18 +730,23 @@
     }
   }
 
-  function addChainRow(ui) {
+  function adapterLabel(adapter) { return adapter.fake ? `${adapter.name} (test/demo)` : adapter.name }
+
+  function addChainRow(ui, { adapter: preferred = null, first = false } = {}) {
     const adapterSelect = el('select', { 'aria-label': 'Chain adapter' })
-    for (const a of state.adapters || []) adapterSelect.appendChild(el('option', { value: a.name }, [a.name]))
+    const adapters = [...(state.adapters || [])].sort((a, b) => Number(a.fake) - Number(b.fake))
+    for (const a of adapters) adapterSelect.appendChild(el('option', { value: a.name }, [adapterLabel(a)]))
+    if (preferred && adapters.some((a) => a.name === preferred)) adapterSelect.value = preferred
     const modeSelect = el('select', { 'aria-label': 'Chain mode' })
     const approveCheckbox = el('input', { type: 'checkbox', 'aria-label': 'Approve before this leg' })
-    const approveLabel = el('label', {}, [approveCheckbox, ' approve'])
+    const approveLabel = el('label', {}, [approveCheckbox, ' approval before start'])
     const turnsInput = el('input', { type: 'number', min: '0', 'aria-label': 'Max turns', placeholder: 'max turns' })
-    // fake adapters only: which scripted behaviour the fake agent plays (limit, success, …)
-    const fakeInput = el('input', { type: 'text', 'aria-label': 'Fake mode', placeholder: 'fake mode' })
-    const removeBtn = el('button', { type: 'button', 'aria-label': 'Remove chain row' }, ['Remove'])
-    const row = el('div', { class: 'chain-row' }, [adapterSelect, modeSelect, approveLabel, turnsInput, fakeInput, removeBtn])
-    removeBtn.addEventListener('click', () => row.remove())
+    const fakeInput = el('input', { type: 'text', 'aria-label': 'Scripted test behavior', placeholder: 'test behavior' })
+    const removeBtn = first ? null : el('button', { type: 'button', 'aria-label': 'Remove fallback agent' }, ['Remove'])
+    const title = el('span', { class: 'fallback-row-title' }, [first ? `First: ${preferred}` : `Fallback ${ui.chainRows.children.length + 1}`])
+    const row = el('div', { class: `chain-row${first ? '' : ' fallback-row'}` }, [title, adapterSelect, modeSelect, approveLabel, turnsInput, fakeInput, removeBtn])
+    if (first) adapterSelect.hidden = true
+    if (removeBtn) removeBtn.addEventListener('click', () => { row.remove(); refreshFallbackSummary(ui) })
 
     function populateModes() {
       modeSelect.textContent = ''
@@ -751,7 +760,30 @@
     populateModes()
 
     row.fields = { adapterSelect, modeSelect, approveCheckbox, turnsInput, fakeInput }
-    ui.chainRows.appendChild(row)
+    ;(first ? ui.firstControls : ui.chainRows).appendChild(row)
+    refreshFallbackSummary(ui)
+    return row
+  }
+
+  function refreshFallbackSummary(ui) {
+    const names = [...ui.chainRows.children].filter((row) => row.fields).map((row) => row.fields.adapterSelect.value)
+    ui.fallbackSummary.textContent = names.length
+      ? `If the first agent cannot continue, Baton tries ${names.join(' → ')} in this order.`
+      : 'No fallback agent is set. Add one under Advanced options if another agent should take over.'
+  }
+
+  function rebuildFirstControls(ui) {
+    ui.firstControls.textContent = ''
+    addChainRow(ui, { adapter: ui.testAdapter.value || ui.firstAgent.value, first: true })
+  }
+
+  function rebuildDefaultFallbacks(ui) {
+    ui.chainRows.textContent = ''
+    const first = ui.firstAgent.value
+    const real = (state.adapters || []).filter((a) => !a.fake).map((a) => a.name)
+    const preferred = ['claude', 'codex', 'agy'].filter((name) => real.includes(name) && name !== first)
+    for (const adapter of preferred) addChainRow(ui, { adapter })
+    refreshFallbackSummary(ui)
   }
 
   async function openNewCardDialog() {
@@ -763,15 +795,24 @@
     ui.error.hidden = true
     ui.error.textContent = ''
     ui.customPipeline.hidden = ui.pipeline.value !== 'custom'
+    const real = (state.adapters || []).filter((a) => !a.fake)
+    ui.firstAgent.textContent = ''
+    for (const adapter of real) ui.firstAgent.appendChild(el('option', { value: adapter.name }, [adapter.name]))
+    if (real.some((a) => a.name === 'claude')) ui.firstAgent.value = 'claude'
+    ui.testAdapter.textContent = ''
+    ui.testAdapter.appendChild(el('option', { value: '' }, ['Use the real first agent above']))
+    for (const adapter of (state.adapters || []).filter((a) => a.fake)) ui.testAdapter.appendChild(el('option', { value: adapter.name }, [adapterLabel(adapter)]))
+    ui.firstControls.textContent = ''
     ui.chainRows.textContent = ''
-    addChainRow(ui)
+    rebuildFirstControls(ui)
+    rebuildDefaultFallbacks(ui)
     ui.dialog.showModal()
   }
 
   async function submitNewCard(e) {
     e.preventDefault()
     const ui = newCardDialogEls()
-    const rows = [...ui.chainRows.children]
+    const rows = [...ui.firstControls.children, ...ui.chainRows.children]
       .filter((row) => row.fields)
       .map((row) => ({
         adapter: row.fields.adapterSelect.value,
@@ -813,6 +854,8 @@
     ui.form.addEventListener('submit', submitNewCard)
     ui.cancel.addEventListener('click', () => ui.dialog.close())
     ui.pipeline.addEventListener('change', () => { ui.customPipeline.hidden = ui.pipeline.value !== 'custom' })
+    ui.firstAgent.addEventListener('change', () => { ui.testAdapter.value = ''; rebuildFirstControls(ui); rebuildDefaultFallbacks(ui) })
+    ui.testAdapter.addEventListener('change', () => rebuildFirstControls(ui))
     ui.addRowBtn.addEventListener('click', () => addChainRow(ui))
   }
 

@@ -24,11 +24,12 @@ import { createScheduler, schedulerStatus, MAX_CONCURRENT } from './scheduler.mj
 import { remove as removeWorktree, worktreeDirty } from './worktree.mjs'
 import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
-import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent } from './sessions.mjs'
+import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY } from './sessions.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree } from './land.mjs'
-import { readUsage, recordUsage, usageIsStale } from './usage.mjs'
+import { readUsage, recordUsage, usageIsStale, candidates, isAvailable } from './usage.mjs'
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
 import { readCodexUsage } from './taps/codex.mjs'
+import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder } from './preferences.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const BOARD_DIR = join(dirname(SELF), 'board')
@@ -256,26 +257,45 @@ function redactSession(s) {
   }
 }
 
+function visibleSessionFile(file) {
+  const value = String(file ?? '')
+  return !value.includes('*** Begin Patch') && !value.includes('*** End Patch')
+}
+
 export function sessionsView({ viewer = null, share = null } = {}) {
   const shared = Boolean(share && shareIsOn(share))
   const list = reapLost(listSessions())
   const ov = overlaps(list)
+  const configuredAccounts = readAccounts()
   const sessions = list.map((s) => {
     const land = readLand(s.session_id)
+    const handoffOrder = normalizeHandoffOrder(s.handoff_order)
+    const chain = candidates({ agent: s.agent, account: s.account, accounts: configuredAccounts, order: handoffOrder })
+    const preferredNext = chain[0] ?? null
+    const availabilityKnown = Boolean(s.installed)
+    const eligibleNext = availabilityKnown ? (chain.find((next) => s.installed[next.agent] !== false && isAvailable(readUsage(next.agent, next.account))) ?? null) : null
     return {
       ...s,
+      handoff_order: handoffOrder,
+      chain,
+      preferred_next: preferredNext,
+      eligible_next: eligibleNext,
+      handoff_availability_known: availabilityKnown,
+      can_edit_handoff_order: s.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY) ?? false,
       active: isActive(s),
       overlap: ov.get(s.session_id) ?? [],
       elapsed_ms: Date.now() - Date.parse(s.started_at),
-      files: [...new Set([...(s.files_touched ?? []), ...(s.files_dirty ?? [])])],
+      // Older attached Codex processes can retain one parser mistake where an
+      // apply_patch source block was stored as a file name. Keep history on
+      // disk and hide only unmistakable patch envelopes in the board view.
+      files: [...new Set([...(s.files_touched ?? []), ...(s.files_dirty ?? [])])].filter(visibleSessionFile),
       // a 'landing' left behind by a board restart is no longer in flight
       land: land?.state === 'landing' && !landingNow(s.session_id) ? { ...land, state: 'interrupted' } : land,
       land_blocker: s.worktree ? landBlocker(s) : null,
     }
   })
-  const acc = readAccounts()
   const accounts = []
-  for (const agent of Object.keys(acc)) for (const account of acc[agent]) {
+  for (const agent of Object.keys(configuredAccounts)) for (const account of configuredAccounts[agent]) {
     const u = readUsage(agent, account)
     accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, observed_at: u.observed_at, updated_at: u.updated_at, stale: usageIsStale(u), live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length })
   }
@@ -295,6 +315,7 @@ export function sessionsView({ viewer = null, share = null } = {}) {
     trunk: guest ? trunk.map((t) => ({ repo_name: t.repo_name, branch: t.branch, commits: t.commits ?? [] })) : trunk,
     you: viewer,
     share: { on: shared, bind: shared ? share.bind : null, people: shared ? share.people.length : 0 },
+    preferences: guest ? null : readPreferences(),
     ts: new Date().toISOString(),
   }
 }
@@ -560,6 +581,21 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
         return
       }
       if (req.method === 'GET' && path === '/api/sessions') return send(res, 200, viewFor(viewer))
+      if (path === '/api/settings') {
+        if (guest) return send(res, 403, { error: 'the machine settings belong to the owner of this board' })
+        if (req.method === 'GET') return send(res, 200, { preferences: readPreferences() })
+        if (req.method === 'POST' || req.method === 'PATCH') {
+          const body = await readBody(req)
+          try {
+            const preferences = writePreferences({ handoff_order: requireHandoffOrder(body.handoff_order) })
+            sse.broadcast('sessions', (v) => viewFor(v))
+            return send(res, 200, { preferences })
+          } catch (err) {
+            if (err instanceof TypeError) return send(res, 400, { error: err.message })
+            throw err
+          }
+        }
+      }
       if (parts[1] === 'sessions' && parts[2]) {
         const id = parts[2]
         const sess = readSession(id)
@@ -600,6 +636,35 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
           return send(res, 200, { ok: true, request: hit })
         }
         if (req.method === 'GET' && parts.length === 3) return send(res, 200, { session: sess, events: readSessionEvents(id), requests: readRequests(id) })
+        if (req.method === 'POST' && parts[3] === 'handoff-order') {
+          if (!sess.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY)) {
+            return send(res, 409, { error: 'this terminal started before order changes were available; save the order as the default, then restart the terminal when ready' })
+          }
+          if (!['starting', 'running', 'warning', 'limit', 'waiting'].includes(sess.status)) {
+            return send(res, 409, { error: `handoff order cannot change while this terminal is ${sess.status}` })
+          }
+          const body = await readBody(req)
+          try {
+            const order = requireHandoffOrder(body.handoff_order)
+            const next = updateSession(id, (current) => {
+              if (!['starting', 'running', 'warning', 'limit', 'waiting'].includes(current.status)) {
+                const conflict = new Error(`handoff order cannot change while this terminal is ${current.status}`)
+                conflict.statusCode = 409
+                throw conflict
+              }
+              return {
+                handoff_order: order,
+                chain: candidates({ agent: current.agent, account: current.account, accounts: readAccounts(), order }),
+              }
+            }, { event: { type: 'status', by: actor.id, summary: `handoff order changed to ${order.join(' → ')}` } })
+            sse.broadcast('sessions', (v) => viewFor(v))
+            return send(res, 200, { session: next })
+          } catch (err) {
+            if (err instanceof TypeError) return send(res, 400, { error: err.message })
+            if (err.statusCode === 409) return send(res, 409, { error: err.message })
+            throw err
+          }
+        }
         if (req.method === 'POST' && parts[3] === 'land') {
           const why = landBlocker(sess)
           if (why) return send(res, 409, { error: why })

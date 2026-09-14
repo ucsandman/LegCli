@@ -100,6 +100,41 @@ export function createTail(path, { from = 0 } = {}) {
 
 const USAGE_LIMIT_RE = /hit your usage limit/i
 const RETRY_AT_RE = /try again at ([^.]+?)(?:\.|$)/i
+const PATCH_BLOCK_RE = /\*\*\* Begin Patch\n([\s\S]*?)\n\*\*\* End Patch/g
+const PATCH_FILE_RE = /^\*\*\* (?:Add|Update|Delete) File: ([^\r\n]+)$/gm
+
+function applyPatchArgument(args) {
+  const text = String(args ?? '')
+  if (text.startsWith('*** Begin Patch')) return text
+  const start = /tools\.apply_patch\(\s*(['"])/.exec(text)
+  if (!start) return text
+  const quote = start[1]
+  let value = ''
+  for (let i = start.index + start[0].length; i < text.length; i += 1) {
+    const char = text[i]
+    if (char === quote) return value
+    if (char !== '\\' || i + 1 === text.length) { value += char; continue }
+    const escaped = text[++i]
+    if (escaped === 'n') value += '\n'
+    else if (escaped === 'r') value += '\r'
+    else if (escaped === '\\' || escaped === quote) value += escaped
+    else value += `\\${escaped}`
+  }
+  return text
+}
+
+function patchFiles(args) {
+  // A functions.exec payload can contain an apply_patch JavaScript string,
+  // where patch line breaks are serialized as literal "\\n". Decode only
+  // that string argument so direct patches retain literal Windows backslashes.
+  const patch = applyPatchArgument(args).replace(/\r\n/g, '\n')
+  const files = []
+  for (const block of patch.matchAll(PATCH_BLOCK_RE)) {
+    let match
+    while ((match = PATCH_FILE_RE.exec(block[1]))) files.push(match[1].trim())
+  }
+  return files
+}
 
 // Codex can expose either window as primary. The duration is the identity:
 // current Pro Lite rollouts expose only primary=10080 (the weekly window).
@@ -161,9 +196,7 @@ export function parseLines(lines) {
         if (text && !/^<[a-z_-]+>/i.test(text) && !/^# AGENTS\.md instructions/i.test(text)) out.messages.push({ role: p.role === 'user' ? 'user' : 'assistant', text: text.slice(0, 1500) })
       } else if (p.type === 'function_call' || p.type === 'custom_tool_call') {
         const args = String(p.arguments ?? p.input ?? '')
-        const m = /\*\*\* (?:Add|Update|Delete) File: ([^\n]+)/g
-        let x
-        while ((x = m.exec(args))) out.files.push(x[1].trim())
+        out.files.push(...patchFiles(args))
       }
     }
   }

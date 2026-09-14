@@ -97,7 +97,8 @@ async function until(pred, ms = 20000) {
 function startAgent(agent, repo, stubDir, extra = {}) {
   const child = batonSpawn([agent], envFor(stubDir, extra), { cwd: repo })
   child.err = ''
-  child.stderr.on('data', (d) => { child.err += d }); child.stdout.resume()
+  child.out = ''
+  child.stderr.on('data', (d) => { child.err += d }); child.stdout.on('data', (d) => { child.out += d })
   child.exited = new Promise((r) => child.on('exit', r))
   return child
 }
@@ -142,14 +143,14 @@ test('the second agent starts with the first one’s usage gone from the card', 
 test('the chain is recomputed at the hand-off, so it never names the agent already running', async () => {
   const h = await handoff()
   assert.ok(h.dump, `codex started and dumped its leg record; stderr: ${h.err.slice(-800)}`)
-  assert.deepEqual(h.dump.chain.map((c) => c.agent), ['agy', 'claude'], 'the chain after codex')
+  assert.deepEqual(h.dump.chain.map((c) => c.agent), ['claude', 'agy'], 'the chain after codex keeps the saved priority, so agy stays last')
 })
 
 test('the near-limit warning fires again on the second leg', async () => {
   const warnings = (await handoff()).events.filter((e) => e.type === 'warning')
   assert.equal(warnings.length, 2, `one warning per leg, got: ${warnings.map((w) => w.summary).join(' | ') || 'none'}`)
   assert.match(warnings[1].summary, /^codex 5h window at 99%/)
-  assert.match(warnings[1].summary, /next option agy/)
+  assert.match(warnings[1].summary, /next option claude/)
 })
 
 test('Hand off from the board with every other option walled restarts the current agent instead of parking the terminal', async () => {
@@ -166,6 +167,10 @@ test('Hand off from the board with every other option walled restarts the curren
     requestControl(s.session_id, { handoff: true })
     const outcome = await until(() => (records(stubDir, 'claude-').length >= 2 && 'restarted') || (readEvents(s.session_id).some((e) => e.type === 'all_out') && 'waited'), 25000)
     assert.equal(outcome, 'restarted', `claude is available, so the hand-off restarts it instead of waiting; stderr: ${child.err.slice(-800)}`)
+    // the killed agent's terminal modes are undone before the next leg draws:
+    // otherwise the wheel prints mouse reports and a stale scrolling region
+    // makes the new output land on top of the lines already on screen
+    assert.ok(child.out.includes('\x1b[?1006l') && child.out.includes('\x1b7\x1b[r\x1b8'), 'the hand-off restored the terminal')
     const second = records(stubDir, 'claude-')[1]
     assert.match(second.argv[second.argv.length - 1], /taking over an interactive coding session from claude/)
   } finally {

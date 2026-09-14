@@ -15,7 +15,7 @@ const claudeTap = await import('../src/taps/claude.mjs')
 const codexTap = await import('../src/taps/codex.mjs')
 const agyTap = await import('../src/taps/agy.mjs')
 const accounts = await import('../src/accounts.mjs')
-const { isCurrentLeg } = await import('../src/attach.mjs')
+const { isCurrentLeg, TERMINAL_RESET } = await import('../src/attach.mjs')
 
 const cwd = mkdtempSync(join(tmpdir(), 'baton-cwd-'))
 // codex names its day directory from local time, so the fixtures do too
@@ -44,7 +44,7 @@ test('usage: record, warn pressure, limit wall, chooser order and all-out', () =
   usage.recordUsage('claude', 'default', { five_hour: { pct: 91, resets_at: 1_900_000_000 }, seven_day: { pct: 40, resets_at: 1_900_500_000 } }, 'test')
   assert.equal(usage.hottest(usage.readUsage('claude', 'default')).window, '5h')
   assert.deepEqual(usage.candidates({ agent: 'claude', account: 'default', accounts: acc }).map((c) => `${c.agent}/${c.account}`), ['claude/work', 'codex/default', 'agy/default'])
-  assert.deepEqual(usage.candidates({ agent: 'codex', account: 'default', accounts: acc }).map((c) => `${c.agent}/${c.account}`), ['agy/default', 'claude/default', 'claude/work'])
+  assert.deepEqual(usage.candidates({ agent: 'codex', account: 'default', accounts: acc }).map((c) => `${c.agent}/${c.account}`), ['claude/default', 'claude/work', 'agy/default'])
   const nowS = 1_800_000_000
   const u = usage.markLimited('claude', 'default', { reason: 'rate_limit' })
   assert.equal(u.limited_until, 1_900_000_000, 'wall = soonest known window reset')
@@ -316,4 +316,19 @@ test('claude usage endpoint: 404, a body that is not JSON, and a shape with no w
   assert.equal(after.limits, null, 'no percentages were ever recorded')
   assert.equal(after.limit.reason, 'rate_limit')
   sessions.updateSession(s.session_id, { status: 'ended' })
+})
+
+test('the terminal reset undoes what a killed agent left behind: mouse reporting, paste, keys, margins', () => {
+  // the wheel printed `[<65;40;24M` into the shell after End because the agent
+  // was killed with mouse tracking on: every mode it can set has to go off
+  for (const mode of [1000, 1002, 1003, 1005, 1006, 1015, 1004, 2004]) {
+    assert.ok(TERMINAL_RESET.includes(`\x1b[?${mode}l`), `mode ${mode} is turned off`)
+  }
+  assert.ok(TERMINAL_RESET.startsWith('\x1b[?1049l'), 'the alternate screen is left first')
+  // a leftover scrolling region made the next leg overwrite the lines on screen;
+  // DECSTBM homes the cursor, so the reset sits between DECSC and DECRC
+  assert.ok(TERMINAL_RESET.includes('\x1b7\x1b[r\x1b8'), 'margins are reset without moving the cursor')
+  assert.ok(TERMINAL_RESET.includes('\x1b[?1l\x1b>'), 'cursor keys and keypad are back to normal')
+  assert.ok(TERMINAL_RESET.includes('\x1b[?7h'), 'autowrap is back on')
+  assert.ok(TERMINAL_RESET.endsWith('\x1b[?25h\x1b[0m\r\x1b[J\n'), 'ends visible, unstyled, on a clean line')
 })

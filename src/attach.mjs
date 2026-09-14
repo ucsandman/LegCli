@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { sanitizeEnv } from './env.mjs'
 import { home } from './store.mjs'
 import { get as getAdapter } from './adapters/index.mjs'
-import { AGENTS, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
+import { AGENTS, HANDOFF_ORDER_CAPABILITY, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
 import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.mjs'
 import { canonPath, realPath } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
@@ -31,6 +31,7 @@ import { openBoard, pidfile } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
 import { captureLive } from './live-capture.mjs'
 import { waitForReset, fmtCountdown } from './wait.mjs'
+import { readPreferences, normalizeHandoffOrder } from './preferences.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 const SERVER = join(SRC, 'server.mjs')
@@ -157,9 +158,25 @@ function killTree(pid) {
   if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' })
   else { try { process.kill(-pid, 'SIGTERM') } catch { try { process.kill(pid, 'SIGTERM') } catch {} } }
 }
+// A killed agent never runs its own cleanup, so every mode it set outlives it:
+// mouse reporting (the wheel then prints `[<65;40;24M` runs into the shell),
+// bracketed paste, application keys, autowrap off, and a scrolling region that
+// makes the next leg's output land on top of the lines already on screen.
+// DECSTBM homes the cursor, so the margin reset is wrapped in DECSC/DECRC, and
+// the erase clears only the dead agent's half-drawn frame below the cursor.
+export const TERMINAL_RESET =
+  '\x1b[?1049l' +                                                          // leave any alternate screen
+  '\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l' +   // every mouse reporting mode
+  '\x1b[?1004l\x1b[?2004l' +                                               // focus events, bracketed paste
+  '\x1b[?1l\x1b>' +                                                        // normal cursor keys, numeric keypad
+  '\x1b[?7h' +                                                             // autowrap
+  '\x1b7\x1b[r\x1b8' +                                                     // full-height scrolling region, cursor kept
+  '\x1b[?25h\x1b[0m' +                                                     // cursor visible, default attributes
+  '\r\x1b[J\n'                                                             // a clean line to continue on
+
 function restoreTerminal() {
   try { if (process.stdin.isTTY) process.stdin.setRawMode(false) } catch {}
-  try { process.stdout.write('\x1b[?1049l\x1b[?25h\x1b[0m\r\n') } catch {}
+  try { process.stdout.write(TERMINAL_RESET) } catch {}
 }
 
 // ---- spawn spec per agent ----
@@ -397,6 +414,37 @@ function messagesFor(agent, s) {
   return []
 }
 
+// Choose and commit the next provider under the same session-file lock used by
+// the board's order editor. Whichever writer acquires the lock first wins:
+// an order save is consumed here, or the editor sees handing_off and refuses.
+// No eligible choice leaves the session unclaimed so all-out waiting can keep
+// accepting order edits.
+export function claimHandoffChoice({ sid, agent, account, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000) }) {
+  let choice = { next: null, out: [] }
+  let claimed = false
+  const session = updateSession(sid, (current) => {
+    const accounts = readAccounts()
+    const order = normalizeHandoffOrder(current.handoff_order)
+    choice = chooseNext({ agent, account, accounts, installed, order, nowS })
+    if (!choice.next && isAvailable(readUsage(agent, account), nowS)) choice = { next: { agent, account }, out: [] }
+    if (!choice.next) return {}
+    claimed = true
+    return {
+      status: 'handing_off',
+      waiting: null,
+      all_out: null,
+      handoff: {
+        from: { agent, account },
+        to: choice.next,
+        bundle_id: bundle?.id ?? null,
+        reason: reason === 'limit' ? 'usage limit' : 'requested',
+        at: new Date().toISOString(),
+      },
+    }
+  })
+  return { choice, claimed, session }
+}
+
 // ---- the command ----
 export async function attach(agent, args = [], { open = true } = {}) {
   if (!AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy)`)
@@ -410,8 +458,9 @@ export async function attach(agent, args = [], { open = true } = {}) {
   args = args.filter((a) => a !== '--no-worktree')
   const cwd = process.cwd()
   const board = await ensureBoard({ open })
-  const accounts = readAccounts()
+  let accounts = readAccounts()
   const installed = await installedAgents()
+  const handoffOrder = readPreferences().handoff_order
   let account = process.env.BATON_ACCOUNT || 'default'
   if (!accounts[agent].includes(account)) { say(`no ${agent} account "${account}"; using default`); account = 'default' }
   // A persisted wall is only a cache. Ask Codex's read-only account endpoint
@@ -425,17 +474,17 @@ export async function attach(agent, args = [], { open = true } = {}) {
   const nowS = Math.floor(Date.now() / 1000)
   const u0 = readUsage(agent, account)
   if (u0.limited_until && u0.limited_until > nowS) {
-    const alt = chooseNext({ agent, account, accounts, installed, nowS })
+    const alt = chooseNext({ agent, account, accounts, installed, order: handoffOrder, nowS })
     if (alt.next) { say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting ${alt.next.agent} (${alt.next.account}) instead`); agent = alt.next.agent; account = alt.next.account }
     else say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting anyway (every option is out)`)
   }
   const g = gitInfo(cwd)
   const sid = newSessionId(agent)
-  const chain = candidates({ agent, account, accounts })
+  const chain = candidates({ agent, account, accounts, order: handoffOrder })
   // record the session BEFORE cutting a worktree, so a crash or Ctrl-C during
   // `git worktree add` still leaves a card (with a Remove button), never a
   // silent orphan under .baton-worktrees with no record and no button
-  createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain, worktree: null, owner: whoami() })
+  createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain, worktree: null, owner: whoami(), handoffOrder, installed, runtimeCapabilities: [HANDOFF_ORDER_CAPABILITY] })
   let iso = null
   if (g.repo && !shareCheckout) {
     try { iso = isolate({ g, cwd, sid }) } catch (err) { say(`could not make a worktree (${String(err.message).split('\n')[0].slice(0, 200)}); sharing the checkout`); try { removeWorktree(g.repo, sid) } catch {} }
@@ -467,11 +516,8 @@ export async function attach(agent, args = [], { open = true } = {}) {
     // saveSessionBundle writes the notes file before it shells out to chb, so
     // even when chb is missing and the save throws, the context is on disk
     const notesFile = join(workRoot(cur) ?? cur.cwd, '.baton', `session-${sid}.md`)
-    let choice = chooseNext({ agent, account, accounts, installed })
-    // every OTHER option is walled but this one is not (a Hand off from the
-    // board on a live agent): start it again here, rather than count down to
-    // someone else's reset with the terminal already empty
-    if (!choice.next && isAvailable(readUsage(agent, account))) choice = { next: { agent, account }, out: [] }
+    let claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason })
+    let choice = claim.choice
     let cancelled = false
     while (!choice.next) {
       // every option is out: keep the terminal, count down to the SOONEST reset
@@ -489,9 +535,8 @@ export async function attach(agent, args = [], { open = true } = {}) {
       updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
       const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
       if (r2 === 'cancelled') { cancelled = true; break }
-      // the current pair may be the one that came back; chooseNext excludes it
-      if (isAvailable(readUsage(agent, account))) { choice = { next: { agent, account }, out: [] }; break }
-      choice = chooseNext({ agent, account, accounts, installed })
+      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason })
+      choice = claim.choice
     }
     if (cancelled) {
       updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), waiting: null }, { event: { type: 'ended', summary: 'quit while waiting for a reset (exit 3)' } })
@@ -499,7 +544,6 @@ export async function attach(agent, args = [], { open = true } = {}) {
       break
     }
     const next = choice.next
-    updateSession(sid, { waiting: null, all_out: null })
     // bound the number of hand-offs in one terminal so a chain that limits
     // instantly can never loop forever; stopping is explicit, not a silent exit 0
     if (leg >= 11) {
@@ -508,7 +552,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
       exit = 3
       break
     }
-    updateSession(sid, { status: 'handing_off', handoff: { from: { agent, account }, to: next, bundle_id: bundle?.id ?? null, reason: r.reason === 'limit' ? 'usage limit' : 'requested', at: new Date().toISOString() } }, { event: { type: 'handoff', summary: `${agent}${account !== 'default' ? '/' + account : ''} → ${next.agent}${next.account !== 'default' ? '/' + next.account : ''}${bundle ? ` (bundle ${bundle.id})` : ''}` } })
+    appendEvent(sid, { type: 'handoff', summary: `${agent}${account !== 'default' ? '/' + account : ''} → ${next.agent}${next.account !== 'default' ? '/' + next.account : ''}${bundle ? ` (bundle ${bundle.id})` : ''}` })
     prompt = bundle
       ? resumePrompt(cur, bundle, next)
       : `You are taking over an interactive coding session from ${agent}.${existsSync(notesFile) ? ` Read ${notesFile} in this directory first (the previous agent's notes: task, last messages, dirty files).` : ''} Check git status and git diff, then continue the work. The task: ${cur.task ?? 'see the recent changes'}`
@@ -516,7 +560,10 @@ export async function attach(agent, args = [], { open = true } = {}) {
     agent = next.agent; account = next.account; legArgs = []
     // the chain is what comes after the agent now taking over, not after the
     // one that started the session: the card's "next" names a live option
-    updateSession(sid, { lineage: { from: cur.agent, to: next.agent }, chain: candidates({ agent: next.agent, account: next.account, accounts }) })
+    updateSession(sid, (fresh) => {
+      const freshOrder = normalizeHandoffOrder(fresh.handoff_order)
+      return { lineage: { from: cur.agent, to: next.agent }, chain: candidates({ agent: next.agent, account: next.account, accounts: readAccounts(), order: freshOrder }) }
+    })
   }
   const fin = readSession(sid)
   if (fin && fin.status !== 'ended') updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: exit }, { event: { type: 'ended', summary: `session ended (exit ${exit})` } })

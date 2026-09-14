@@ -9,6 +9,8 @@
     handing_off: ['handing off', 'warn'], waiting: ['waiting for reset', 'warn'], handed_off: ['handed off', 'muted'], ended: ['ended', 'muted'], lost: ['lost', 'bad'],
   }
   let view = null
+  const sessionEditors = new Map()
+  const defaultEditor = { order: null, dirty: false, saving: false, status: '', statusClass: '' }
   function getToken() { return localStorage.getItem('batonToken') || '' }
   async function api(path, opts = {}) {
     const headers = { 'Content-Type': 'application/json' }
@@ -56,6 +58,91 @@
     ])
   }
   function accountLabel(a) { return a.account === 'default' ? a.agent : `${a.agent}/${a.account}` }
+  function optionLabel(a) { return a ? (a.account && a.account !== 'default' ? `${a.agent}/${a.account}` : a.agent) : 'none' }
+
+  function moveOrder(order, index, delta) {
+    const target = index + delta
+    if (target < 0 || target >= order.length) return [...order]
+    const next = [...order]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    return next
+  }
+
+  function orderRows(order, onMove, scope) {
+    const box = el('div', { class: 'order-list' })
+    order.forEach((agent, index) => {
+      const attrs = (direction) => ({ 'data-order-scope': scope, 'data-order-agent': agent, 'data-order-direction': direction })
+      const up = el('button', { type: 'button', 'aria-label': `Move ${agent} earlier`, disabled: index === 0 ? '' : null, ...attrs('up') }, ['↑'])
+      const down = el('button', { type: 'button', 'aria-label': `Move ${agent} later`, disabled: index === order.length - 1 ? '' : null, ...attrs('down') }, ['↓'])
+      up.addEventListener('click', () => onMove(index, -1))
+      down.addEventListener('click', () => onMove(index, 1))
+      box.appendChild(el('div', { class: 'order-row' }, [el('span', { class: 'order-row-name' }, [`${index + 1}. ${agent}`]), up, down]))
+    })
+    return box
+  }
+
+  function focusedOrderControl() {
+    const node = document.activeElement
+    if (!node?.dataset?.orderScope) return null
+    return { scope: node.dataset.orderScope, agent: node.dataset.orderAgent, direction: node.dataset.orderDirection }
+  }
+
+  function restoreOrderFocus(focus) {
+    if (!focus) return
+    let target = document.querySelector(`[data-order-scope="${focus.scope}"][data-order-agent="${focus.agent}"][data-order-direction="${focus.direction}"]`)
+    if (target?.disabled) target = document.querySelector(`[data-order-scope="${focus.scope}"][data-order-agent="${focus.agent}"]:not([disabled])`)
+    target?.focus()
+  }
+
+  // Absolute priority, not a rotation: the saved list decides, minus the agent
+  // already running here, so an agent placed last stays last.
+  function agentsAfter(current, order) {
+    return order.filter((agent) => agent !== current)
+  }
+
+  function renderDefaultOrder(v) {
+    const field = document.getElementById('default-order')
+    if (!field) return
+    field.hidden = !v.preferences
+    if (!v.preferences) return
+    if (!defaultEditor.order || (!defaultEditor.dirty && !defaultEditor.saving)) defaultEditor.order = [...v.preferences.handoff_order]
+    const list = document.getElementById('default-order-list')
+    const focus = focusedOrderControl()
+    list.textContent = ''
+    list.appendChild(orderRows(defaultEditor.order, (index, delta) => {
+      defaultEditor.order = moveOrder(defaultEditor.order, index, delta)
+      defaultEditor.dirty = true
+      defaultEditor.status = ''
+      renderDefaultOrder(view)
+    }, 'default'))
+    const save = document.getElementById('default-order-save')
+    save.disabled = defaultEditor.saving || !defaultEditor.dirty
+    save.textContent = defaultEditor.saving ? 'Saving…' : 'Save default'
+    const status = document.getElementById('default-order-status')
+    status.textContent = defaultEditor.status
+    status.className = `field-status ${defaultEditor.statusClass}`
+    restoreOrderFocus(focus)
+  }
+
+  async function saveDefaultOrder() {
+    defaultEditor.saving = true
+    defaultEditor.status = ''
+    renderDefaultOrder(view)
+    try {
+      const data = await api('/api/settings', { method: 'PATCH', body: { handoff_order: defaultEditor.order } })
+      if (view) view.preferences = data.preferences
+      defaultEditor.order = [...data.preferences.handoff_order]
+      defaultEditor.dirty = false
+      defaultEditor.status = 'Saved for new terminals.'
+      defaultEditor.statusClass = 'ok'
+    } catch (err) {
+      defaultEditor.status = err.message
+      defaultEditor.statusClass = 'bad'
+    } finally {
+      defaultEditor.saving = false
+      renderDefaultOrder(view)
+    }
+  }
 
   function renderAccounts(accounts) {
     const box = document.getElementById('accounts')
@@ -118,6 +205,77 @@
     return el('div', { class: 'session-note bad', title: L.detail || '' }, [`✗ bounced (${L.reason}): ${String(L.detail || '').split('\n')[0].slice(0, 160)}${who}`])
   }
 
+  function renderHandoffOrder(s) {
+    const wrap = el('div', { class: 'session-handoff' })
+    const sequence = el('div', { class: 'handoff-sequence', 'aria-label': 'Terminal handoff sequence' }, [
+      el('span', { class: 'chip now' }, [`Now: ${optionLabel(s)}`]),
+    ])
+    for (const next of s.chain || []) sequence.append(el('span', { class: 'handoff-arrow', 'aria-hidden': 'true' }, ['→']), el('span', { class: `chip adapter-${next.agent}` }, [optionLabel(next)]))
+    wrap.appendChild(sequence)
+    const preferred = optionLabel(s.preferred_next)
+    const eligible = optionLabel(s.eligible_next)
+    if (!s.handoff_availability_known) wrap.appendChild(el('div', { class: 'session-note' }, [`Preferred: ${preferred} · current eligibility is unavailable for this older terminal.`]))
+    else if (!s.eligible_next) wrap.appendChild(el('div', { class: 'session-note warn' }, [`Preferred: ${preferred}. No fallback is eligible now; Baton waits if every account is at its limit.`]))
+    else if (eligible !== preferred) wrap.appendChild(el('div', { class: 'session-note' }, [`Preferred: ${preferred} · first eligible now: ${eligible}`]))
+    else wrap.appendChild(el('div', { class: 'session-note' }, [`First eligible now: ${eligible}`]))
+    wrap.appendChild(el('div', { class: 'session-note' }, ['Used after a usage limit or Hand off now. A normal exit ends this terminal.']))
+
+    const editableNow = ['starting', 'running', 'warning', 'limit', 'waiting'].includes(s.status)
+    if (!s.hidden && editableNow) {
+      let state = sessionEditors.get(s.session_id)
+      const sourceOrder = s.can_edit_handoff_order ? s.handoff_order : (view?.preferences?.handoff_order ?? s.handoff_order)
+      if (!state) {
+        state = { open: false, order: [...sourceOrder], dirty: false, saving: false, status: '', statusClass: '' }
+        sessionEditors.set(s.session_id, state)
+      } else if (!state.dirty && !state.saving) state.order = [...sourceOrder]
+      const change = el('button', { type: 'button', 'aria-expanded': state.open ? 'true' : 'false' }, [state.open ? 'Close order editor' : 'Change order'])
+      change.addEventListener('click', () => { state.open = !state.open; renderSessions(view) })
+      wrap.appendChild(change)
+      if (state.open) {
+        const editor = el('div', { class: 'handoff-editor' })
+        editor.appendChild(el('div', { class: 'session-note' }, [s.can_edit_handoff_order
+          ? 'Move agents to set the priority for this terminal. All three stay available; the agent running now is skipped, and the rest keep this order.'
+          : 'This terminal started before order changes were available. Save this order for the next terminal, then restart when ready.']))
+        editor.appendChild(orderRows(state.order, (index, delta) => {
+          state.order = moveOrder(state.order, index, delta)
+          state.dirty = true
+          state.status = ''
+          renderSessions(view)
+        }, s.session_id))
+        editor.appendChild(el('div', { class: 'session-note' }, [`Draft priority after ${s.agent}: ${agentsAfter(s.agent, state.order).join(' → ')}`]))
+        const status = el('span', { class: `field-status ${state.statusClass}`, 'aria-live': 'polite' }, [state.status])
+        const save = el('button', { type: 'button', disabled: state.saving || !state.dirty ? '' : null }, [state.saving ? 'Saving…' : s.can_edit_handoff_order ? 'Save for this terminal' : 'Save as default for next launch'])
+        save.addEventListener('click', async () => {
+          state.saving = true; state.status = ''; renderSessions(view)
+          try {
+            if (s.can_edit_handoff_order) {
+              await api(`/api/sessions/${encodeURIComponent(s.session_id)}/handoff-order`, { method: 'POST', body: { handoff_order: state.order } })
+              state.status = 'Saved for this terminal.'
+            } else {
+              const data = await api('/api/settings', { method: 'PATCH', body: { handoff_order: state.order } })
+              if (view) view.preferences = data.preferences
+              defaultEditor.order = [...data.preferences.handoff_order]
+              defaultEditor.dirty = false
+              state.status = 'Saved as the default. Restart this terminal when ready.'
+            }
+            state.dirty = false
+            state.statusClass = 'ok'
+            await refresh()
+          } catch (err) {
+            state.status = err.message
+            state.statusClass = 'bad'
+          } finally {
+            state.saving = false
+            renderSessions(view)
+          }
+        })
+        editor.append(status, save)
+        wrap.appendChild(editor)
+      }
+    }
+    return wrap
+  }
+
   function renderSession(s) {
     const [label, cls] = STATUS[s.status] || [s.status, 'muted']
     const card = el('article', { class: `session-card adapter-${s.agent} status-${s.status}${s.overlap.length ? ' overlapping' : ''}${s.active ? '' : ' inactive'}${s.hidden ? ' hidden-card' : ''}`, 'data-session-id': s.session_id })
@@ -138,6 +296,7 @@
       el('span', {}, [`${s.turns || 0} turn${s.turns === 1 ? '' : 's'}`]),
       s.head ? el('span', { class: 'mono', title: 'HEAD' }, [String(s.head).slice(0, 7)]) : null,
     ]))
+    if (!s.hidden) card.appendChild(renderHandoffOrder(s))
     if (s.limits && (s.limits.five_hour || s.limits.seven_day)) card.appendChild(el('div', { class: 'session-usage' }, [bar('5h', s.limits.five_hour), bar('7d', s.limits.seven_day)]))
     else if (s.usage_error) card.appendChild(el('div', { class: 'session-note', title: s.usage_error }, [`usage unknown (${String(s.usage_error).slice(0, 60)}) · the limit still hands off`]))
     if (s.warning) card.appendChild(el('div', { class: 'session-note warn' }, [`⚠ ${s.warning.window} window at ${Math.round(s.warning.pct)}% · next: ${s.chain && s.chain[0] ? s.chain[0].agent : 'none'}`]))
@@ -207,14 +366,17 @@
   }
 
   function renderSessions(v) {
+    const focus = focusedOrderControl()
     const grid = document.getElementById('session-grid')
     grid.textContent = ''
     const list = [...v.sessions].sort((a, b) => (a.active === b.active ? (a.started_at < b.started_at ? 1 : -1) : a.active ? -1 : 1))
     if (!list.length) {
       grid.appendChild(el('div', { class: 'session-empty' }, ['No terminals yet. In any repo: ', el('code', {}, ['baton claude']), ' — the normal Claude Code, with this board alongside and a hand-off to codex or agy when it hits its limit.']))
+      restoreOrderFocus(focus)
       return
     }
     for (const s of list) grid.appendChild(renderSession(s))
+    restoreOrderFocus(focus)
   }
 
   function renderTrunk(v) {
@@ -242,6 +404,7 @@
       who.textContent = v.share && v.share.on && v.you ? `you are ${v.you.name}${v.you.role === 'owner' ? '' : ' (guest)'} · ${v.share.people} on this board` : ''
     }
     renderAccounts(v.accounts || [])
+    renderDefaultOrder(v)
     renderSessions(v)
     renderTrunk(v)
   }
@@ -250,6 +413,7 @@
   }
   window.addEventListener('baton:sessions', (e) => render(e.detail))
   document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('default-order-save')?.addEventListener('click', saveDefaultOrder)
     refresh()
     setInterval(() => { if (view) renderSessions(view) }, 15000)
   })

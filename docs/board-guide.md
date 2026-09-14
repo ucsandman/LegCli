@@ -2,8 +2,8 @@
 
 For anyone using the Baton board day to day: what every element means and
 when it shows up. The board has two halves: the **Terminals** lane at the top
-(the sessions started with `baton claude|codex|agy`) and the v0.1 **Pipelines**
-columns below it. Start a session (`baton claude`) or the pipeline board
+(the sessions started with `baton claude|codex|agy`) and optional **Background
+tasks** below it. Start a session (`baton claude`) or the background-task board
 (`npm start`), see [getting-started.md](getting-started.md), then use this as a
 reference.
 
@@ -72,6 +72,16 @@ One per session, active sessions first, then by start time:
   short HEAD sha. A session that started while another was live in the same
   checkout adds an `own worktree · from <base>` chip; hover gives the worktree
   path and branch.
+- **Handoff order**: `Now: <agent/account>` followed by the exact fallback
+  candidates. The line below distinguishes the preferred first option from
+  the first one currently eligible when a CLI is missing or an account is at
+  its limit. **Change order** moves the three agents without removing one;
+  same-agent secondary accounts still come before the other agents. The list
+  is an absolute priority: an agent moved to the bottom is tried last from
+  every starting agent. The editor previews the resulting priority, with the
+  agent running now skipped, before saving.
+  The sequence is used only after a usage limit or **Hand off now**. A normal
+  exit ends the terminal.
 - **Usage bars**: the 5h and 7d windows for this session's login. When the
   endpoint has no numbers for them the card says `usage unknown (<why>) · the
   limit still hands off` instead: no login in that config directory, a 404, a
@@ -126,12 +136,14 @@ counted as live.
 | Request handoff | the board is shared and this terminal is someone else's | `POST /api/sessions/:id/request-handoff` (202): asks the owner; nothing happens until they approve |
 | Approve `<name>` / Dismiss | the board is shared and someone asked for a hand-off on your terminal | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
 | Hand off now | the session is active | `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal |
+| Change order | a terminal is active and has not committed a handoff | saves its validated claude/codex/agy priority; an older wrapper instead saves the machine default and says to restart the terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
 | Remove | the session is not active | `DELETE /api/sessions/:id`: safely prunes the session record, worktree, and merged branch only when the worktree is clean and the branch is already on its base; otherwise it leaves them and explains why |
 | Remove record | the session is not active and has an own worktree | confirmation, then `DELETE /api/sessions/:id?force=1&keep_worktree=1`: removes only Baton's record and keeps the worktree, branch, unmerged commits, and dirty files |
 
 Each press shows a toast; **Hand off now** says the terminal switches agents in
 a few seconds, because the switch happens in the terminal, not the browser.
+Settings has the same order editor for the default copied by new terminals.
 
 ### Landed on trunk
 
@@ -158,26 +170,26 @@ the reason and the reset time (never the raw limit text); its only button is
 **Request handoff**. The owner sees `<name> asked for a hand-off
 <when>` on their own card with **Approve** and **Dismiss**.
 
-A guest's board has no Pipelines section, no New card button and no Floor link:
+A guest's board has no Background tasks section, no New card button and no Floor link:
 that side belongs to the owner of the machine, and the API answers 403.
 
-## Pipelines: board layout
+## Background tasks: board layout
 
-Everything from here down is the v0.1 pipeline board, unchanged since 0.2.0.
-It sits below the Terminals lane.
+Everything from here down is the v0.1 card runtime. Each card runs separately
+from the interactive terminal conversations, in its own git worktree. It sits
+below the Terminals lane.
 
 The top bar (`src/board/index.html`) has, left to right: the Baton brand, an
 SSE connection dot and text (`connecting` / `live` / `reconnecting…`), a
 scheduler status line, a **New card** button, a **Floor** link, and a
-**Settings** disclosure holding the **API token** field (only needed when
-the server is bound off loopback; see
-[configuration.md](configuration.md#network-exposure)).
+**Settings** disclosure holding the new-terminal handoff order and **API
+token** field (the token is only needed when the server is bound off loopback;
+see [configuration.md](configuration.md#network-exposure)).
 
 Below that: an empty-state message with its own **New card** button when
-there are no cards yet ("No pipeline cards. Terminals above are the main way
-in; a card runs an agent chain headless.", the lower half of
-`docs/screenshots/terminals-1280.png`; `board-empty.png` still shows the
-older v0.1 wording), or the column board.
+there are no cards yet. It explains that terminals are live conversations and
+a Build-only background card stops without merging its worktree changes.
+Otherwise the column board appears.
 
 ## Columns
 
@@ -281,16 +293,19 @@ The dialog opened by **New card** (`src/board/index.html`):
 |-------|-------|
 | Repo path | required; an absolute path to a git repository |
 | Task | required; the prompt every leg gets |
-| Pipeline | `factory`, `build`, `build-land`, or `custom JSON` (reveals a textarea for a station array) |
-| Chain | one row per adapter: adapter select, mode select (populated from that adapter's allowed modes), an approve checkbox, a max-turns number, a fake-mode text field; **Add chain row** appends another |
-| Leases | comma-separated path globs |
+| First agent | required; real agents appear here and Claude is preferred when installed |
+| Run now | checked by default; unchecking saves the card as a draft in `backlog` |
+| Workflow (Advanced) | Build only stops unmerged in the worktree; Build-land runs test then land; Factory runs plan, build, review, test, and land; custom JSON reveals a station-array textarea |
+| First-agent controls (Advanced) | allowed permission mode, approval gate, max turns, and scripted behavior when the test/demo override is selected |
+| Fallback agents (Advanced) | one understandable row per later adapter, tried in displayed order only if the previous agent cannot continue |
+| Scripted first agent (Advanced) | explicitly test/demo only; keeps fake adapters out of the normal first-agent default |
+| File leases (Advanced) | comma-separated path globs to reserve so overlapping cards wait |
 | Trunk branch | default `main` |
-| Land mode | `ff` or `pr` |
+| Merge method | `ff` or `pr`; relevant to a workflow with a land station |
 | Test command | overrides the land station's auto-detected command |
 | Title | optional; defaults to the task's first 80 characters |
-| Queue immediately | checked by default; unchecking leaves the card in `backlog` |
 
-**Cancel** closes without creating a card; **Create** posts it and closes on
+**Cancel** closes without creating a card; **Create card** posts it and closes on
 success (errors show inline above the form).
 
 ## Buttons

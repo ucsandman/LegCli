@@ -225,6 +225,7 @@
       <div class="stack">
         <h2 id="two-h">A second session gets its own worktree. Nothing merges.</h2>
         <p>Start <code>baton codex</code> in a checkout where <code>baton claude</code> is already live and the new session gets its own git worktree, <code>.baton-worktrees/&lt;id&gt;</code> on branch <code>baton/&lt;id&gt;</code>, cut from the branch the checkout has out. The terminal prints one line saying where it is.</p>
+        <p>The board's second lane is for background cards: work an agent does with no interactive terminal, each in its own worktree. Build stops with the changes sitting in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. You pick the first agent, and the fallback agents under Advanced options are the same handoff order.</p>
         <p>Its card has a <b>Land</b> button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the card says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of the output, <code>dirty-trunk</code> when the checkout has local changes the landing would overwrite. Nothing is ever pushed.</p>
       </div>
       <figure class="recreated">
@@ -236,7 +237,7 @@
             <div class="chips"><span class="chip">own worktree · from main</span><span class="chip hot">README.md</span></div>
             <div class="flag bad">⚠ claude (claude-a3f8) is changing README.md in another checkout; whoever lands second rebases</div>
             <div class="flag ok">✓ landed on main · 98f8880 · 1 file +1/-0</div>
-            <div class="btns"><span>Land</span><span>Hand off now</span><span class="end">End</span></div>
+            <div class="btns"><span>Land</span><span>Hand off now</span><span>Change order</span><span class="end">End</span></div>
           </div>
           <div class="card overlap">
             <div class="card-head"><span class="tag claude">claude</span><span class="tag run">running</span><span class="age">59s</span></div>
@@ -245,7 +246,7 @@
             <div class="chips"><span class="chip">own worktree · from main</span><span class="chip hot">README.md</span></div>
             <div class="flag bad">⚠ claude (claude-ae85) is changing README.md in another checkout; whoever lands second rebases</div>
             <div class="flag bad">✗ bounced (rebase-conflict): rebase onto main conflicted in: README.md</div>
-            <div class="btns"><span>Land</span><span>Hand off now</span><span class="end">End</span></div>
+            <div class="btns"><span>Land</span><span>Hand off now</span><span>Change order</span><span class="end">End</span></div>
           </div>
         </div>
         <figcaption>From a live run on 11 September 2026: three claude sessions in a throwaway repo, the second and third in their own worktrees. Land on the second ran the tests and fast-forwarded main; Land on the third bounced and kept its commit on its branch.</figcaption>
@@ -260,13 +261,13 @@
     <div class="steps" style="margin-top: 40px">
       <div class="step warn"><code>85%</code><p>The card turns amber and the terminal bell rings once. Get to a stopping point, or keep typing.</p></div>
       <div class="step bad"><code>limit</code><p>Baton saves the bundle it has been refreshing every two minutes: the task, the last messages, <code>git diff --stat</code>, dirty files, recent commits, and why it stopped.</p></div>
-      <div class="step"><code>stop</code><p>The agent process is stopped and the terminal is restored. The next option starts in it: another login of the same agent if you added one, otherwise the next agent in order.</p></div>
+      <div class="step"><code>stop</code><p>The agent process is stopped and the terminal is put back the way it was, down to the mouse modes and scroll margins a killed agent leaves behind, so the next agent starts on a clean line under your history. The next option starts in it: another login of the same agent if you added one, otherwise the next agent in your order.</p></div>
       <div class="step ok"><code>first turn</code><p>The new agent reads <code>.baton/RESUME.md</code>, checks <code>git status</code> and <code>git diff</code>, and carries on with the same task.</p></div>
     </div>
     <div class="cols" style="margin-top: 56px">
       <div class="stack-tight">
         <h3>The order</h3>
-        <p class="muted">Other logins of the same agent first, then the remaining agents in order, each tried once. From claude: <code>claude/work → codex → agy</code>. From codex: <code>agy → claude</code>. An option whose wall has not reset is skipped.</p>
+        <p class="muted">You set it. Other logins of the same agent come first, then the other agents in the order you saved, each tried once. It is a priority list, not a rotation: put agy at the bottom and agy is the last option from a claude terminal and from a codex terminal alike. Settings holds the default new terminals copy, and <b>Change order</b> on a card changes that one terminal while it runs. An option whose CLI is missing or whose wall has not reset is skipped.</p>
       </div>
       <div class="stack-tight">
         <h3>When every option is out</h3>
@@ -359,7 +360,7 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
       <div class="cmd"><code>cd &lt;any repo&gt; &amp;&amp; baton claude</code><button class="copy" type="button" data-copy="baton claude">Copy</button></div>
     </div>
-    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 367 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
+    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 402 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
     <div class="links">
       <a href="https://www.npmjs.com/package/baton-agents">README and changelog on npm</a>
       <a href="license">License agreement</a>

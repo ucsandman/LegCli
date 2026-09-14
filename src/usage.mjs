@@ -145,14 +145,15 @@ export function hottest(u) {
 }
 
 // The chain after (agent, account): other accounts of the same agent first,
-// then the next agents in order, wrapping so every option is tried once.
+// then every other agent in the saved order. The order is an absolute priority
+// list, not a rotation anchored on the current agent: an agent parked last
+// stays last whichever agent the terminal started on (codex → claude → agy
+// hands claude to codex, never to agy first).
 // accounts: { claude: ['default', 'work'], codex: ['default'], agy: ['default'] }
 export function candidates({ agent, account = 'default', accounts, order = AGENTS }) {
   const out = []
   for (const a of accounts[agent] ?? ['default']) if (a !== account) out.push({ agent, account: a })
-  const i = order.indexOf(agent)
-  const rest = i === -1 ? order : [...order.slice(i + 1), ...order.slice(0, i)]
-  for (const ag of rest) for (const a of accounts[ag] ?? ['default']) out.push({ agent: ag, account: a })
+  for (const ag of order) if (ag !== agent) for (const a of accounts[ag] ?? ['default']) out.push({ agent: ag, account: a })
   return out
 }
 

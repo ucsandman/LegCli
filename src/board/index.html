@@ -20,8 +20,17 @@
   <a href="/floor">Floor</a>
   <details class="settings">
     <summary>Settings</summary>
-    <label for="token-input">API token</label>
-    <input type="text" id="token-input" autocomplete="off" spellcheck="false">
+    <div class="settings-panel">
+      <label for="token-input">API token</label>
+      <input type="text" id="token-input" autocomplete="off" spellcheck="false">
+      <fieldset class="default-order" id="default-order" hidden>
+        <legend>New terminal handoff order</legend>
+        <p class="field-help">Used by terminals started after you save.</p>
+        <div id="default-order-list"></div>
+        <button type="button" id="default-order-save">Save default</button>
+        <span class="field-status" id="default-order-status" aria-live="polite"></span>
+      </fieldset>
+    </div>
   </details>
 </header>
 
@@ -41,11 +50,11 @@
 
 <main id="board">
   <div class="pipelines-head">
-    <h2>Pipelines</h2>
-    <span class="hint">optional extras: cards Baton runs headless in their own worktree</span>
+    <h2>Background tasks</h2>
+    <span class="hint">optional work an agent does in a separate working copy, independent of your terminal conversation</span>
   </div>
   <div class="empty-state" id="empty-state" hidden>
-    <p>No pipeline cards. Terminals above are the main way in; a card runs an agent chain headless.</p>
+    <p>No background tasks. The terminals above are your live conversations. A Build-only card works separately and stops without merging its changes.</p>
     <button type="button" id="empty-new-card-btn">New card</button>
   </div>
   <div class="columns" id="columns"></div>
@@ -59,75 +68,101 @@
 </aside>
 
 <dialog id="new-card-dialog" aria-label="New card">
-  <h2>New card</h2>
+  <h2>New background card</h2>
+  <p class="dialog-intro">An agent works without an interactive terminal in a separate git worktree. The default Build workflow stops with changes in that worktree and does not merge them.</p>
   <form id="new-card-form">
     <div class="form-error" id="new-card-error" hidden></div>
 
     <div class="form-row">
       <label for="nc-repo">Repo path</label>
-      <input type="text" id="nc-repo" required>
+      <input type="text" id="nc-repo" required autocomplete="off">
     </div>
 
     <div class="form-row">
       <label for="nc-task">Task</label>
+      <span class="field-help">Describe one concrete outcome the agent can finish.</span>
       <textarea id="nc-task" rows="3" required></textarea>
     </div>
 
     <div class="form-row">
-      <label for="nc-pipeline">Pipeline</label>
-      <select id="nc-pipeline">
-        <option value="factory">factory</option>
-        <option value="build" selected>build</option>
-        <option value="build-land">build-land</option>
-        <option value="custom">custom JSON</option>
-      </select>
-      <textarea id="nc-custom-pipeline" rows="4" hidden aria-label="Custom pipeline JSON" placeholder='[{"name":"build","kind":"agent"}]'></textarea>
-    </div>
-
-    <div class="form-row">
-      <label>Chain</label>
-      <div id="nc-chain-rows"></div>
-      <button type="button" id="nc-add-row">Add chain row</button>
-    </div>
-
-    <div class="form-row">
-      <label for="nc-leases">Leases (comma separated)</label>
-      <input type="text" id="nc-leases">
-    </div>
-
-    <div class="form-row">
-      <label for="nc-trunk">Trunk branch</label>
-      <input type="text" id="nc-trunk" value="main">
-    </div>
-
-    <div class="form-row">
-      <label for="nc-land-mode">Land mode</label>
-      <select id="nc-land-mode">
-        <option value="ff" selected>ff</option>
-        <option value="pr">pr</option>
-      </select>
-    </div>
-
-    <div class="form-row">
-      <label for="nc-test-command">Test command</label>
-      <input type="text" id="nc-test-command">
-    </div>
-
-    <div class="form-row">
-      <label for="nc-title">Title</label>
-      <input type="text" id="nc-title">
+      <label for="nc-first-agent">First agent</label>
+      <select id="nc-first-agent" required></select>
+      <span class="field-help" id="nc-fallback-summary">If it cannot continue, Baton tries the fallback agents shown under Advanced options.</span>
     </div>
 
     <div class="form-row">
       <label for="nc-queue">
         <input type="checkbox" id="nc-queue" checked>
-        Queue immediately
+        Run now
       </label>
+      <span class="field-help">Turn this off to save a draft in Backlog.</span>
     </div>
+
+    <details class="advanced-options">
+      <summary>Advanced options</summary>
+
+      <div class="form-row">
+        <label for="nc-pipeline">Workflow</label>
+        <select id="nc-pipeline">
+          <option value="build" selected>Build only — stop with worktree changes</option>
+          <option value="build-land">Build, test, and merge automatically</option>
+          <option value="factory">Plan, build, review, test, and merge automatically</option>
+          <option value="custom">Custom workflow JSON</option>
+        </select>
+        <textarea id="nc-custom-pipeline" rows="4" hidden aria-label="Custom workflow JSON" placeholder='[{"name":"build","kind":"agent"}]'></textarea>
+      </div>
+
+      <div class="form-row">
+        <label>First-agent permissions and limits</label>
+        <div id="nc-first-controls"></div>
+      </div>
+
+      <div class="form-row">
+        <label>Fallback agents</label>
+        <span class="field-help">Baton tries each row in order only when the agent before it cannot continue.</span>
+        <div id="nc-chain-rows"></div>
+        <button type="button" id="nc-add-row">Add fallback agent</button>
+      </div>
+
+      <div class="form-row">
+        <label for="nc-test-adapter">Scripted first agent (test/demo only)</label>
+        <select id="nc-test-adapter"><option value="">Use the real first agent above</option></select>
+      </div>
+
+      <div class="form-row">
+        <label for="nc-leases">File leases</label>
+        <span class="field-help">Comma-separated paths to reserve so another overlapping card waits.</span>
+        <input type="text" id="nc-leases">
+      </div>
+
+      <div class="form-row">
+        <label for="nc-trunk">Trunk branch</label>
+        <input type="text" id="nc-trunk" value="main">
+      </div>
+
+      <div class="form-row">
+        <label for="nc-land-mode">Merge method</label>
+        <select id="nc-land-mode">
+          <option value="ff" selected>Fast-forward trunk</option>
+          <option value="pr">Open a pull request</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label for="nc-test-command">Test command</label>
+        <input type="text" id="nc-test-command">
+      </div>
+
+      <div class="form-row">
+        <label for="nc-title">Card title</label>
+        <span class="field-help">Optional. Baton derives one from the task when blank.</span>
+        <input type="text" id="nc-title">
+      </div>
+    </details>
 
     <div class="dialog-actions">
       <button type="button" id="nc-cancel">Cancel</button>
-      <button type="submit">Create</button>
+      <button type="submit">Create card</button>
     </div>
   </form>
 </dialog>
