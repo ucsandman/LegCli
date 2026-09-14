@@ -6,11 +6,17 @@ this directory.
 **Why subscription CLIs only, never a per-token API?**
 Baton spawns each CLI's own logged-in session (`claude`, `codex`, `agy`).
 Every child process has `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
-`ANTHROPIC_BASE_URL` and `OPENAI_API_KEY` stripped out (`src/env.mjs`), so a
-stray API key in your shell cannot silently take over billing or shadow the
-subscription login. If stderr ever says "another auth source is set", that
-leg is classified `auth_failed`, a failed launch, and does not count as a
-usage limit.
+`ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`, `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, `OPENAI_API_BASE`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
+`GOOGLE_GEMINI_BASE_URL`, `GOOGLE_GENAI_USE_VERTEXAI`,
+`GOOGLE_GENAI_USE_ENTERPRISE`, `GOOGLE_CLOUD_PROJECT`,
+`GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLAUDECODE`,
+`CLAUDE_CODE_*`, `CLAUDE_EFFORT`, and `CLAUDE_PLUGIN_DATA` stripped out
+(`src/env.mjs`), then gets `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for a
+detached Claude print session. A stray API key in your shell cannot silently
+take over billing or shadow the subscription login. If stderr ever says
+"another auth source is set", that leg is classified `auth_failed`, a failed
+launch, and does not count as a usage limit.
 
 **Why does Baton poll an endpoint for claude's usage instead of reading the
 status line?**

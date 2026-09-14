@@ -45,9 +45,16 @@ The first `baton <agent>` starts the board on http://127.0.0.1:4747 and opens
 it once in your browser. Later sessions reuse the same board. Set
 `BATON_NO_OPEN=1` to skip the browser.
 
-Baton strips `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`
-and `OPENAI_API_KEY` from the agent's environment, so the subscription login is
-always what runs. Nothing in `~/.claude`, `~/.codex` or agy's home is edited.
+Baton strips `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+`ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`, `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, `OPENAI_API_BASE`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
+`GOOGLE_GEMINI_BASE_URL`, `GOOGLE_GENAI_USE_VERTEXAI`,
+`GOOGLE_GENAI_USE_ENTERPRISE`, `GOOGLE_CLOUD_PROJECT`,
+`GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLAUDECODE`,
+`CLAUDE_CODE_*`, `CLAUDE_EFFORT`, and `CLAUDE_PLUGIN_DATA` from the agent's
+environment, then sets `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for a detached
+Claude print session. The subscription login is always what runs. Nothing in
+`~/.claude`, `~/.codex` or agy's home is edited.
 
 ## 4. What you get while it runs
 

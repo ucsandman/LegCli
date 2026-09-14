@@ -1,17 +1,18 @@
 # Configuration
 
-Every environment variable Baton reads, and the card-level options that
-configure one card instead of the whole install. For a developer who needs
-to change a default or point Baton at a non-default binary.
+The user-facing settings Baton reads, the seller settings for its checkout
+site, and the card-level options that configure one card instead of the whole
+install. For a developer who needs to change a default or point Baton at a
+non-default binary.
 
 ## `.env`
 
 `npm start` and `npm run dev` run
-`node --env-file-if-exists=.env bin/baton.mjs up`: variables come from a
-`.env` file in the repo root, read only through that flag, never from a
-shell export picked up by other means. Copy `.env.example` to `.env` and
-edit it; `.env` is gitignored. Running `node bin/baton.mjs` directly (not
-through `npm start`/`npm run dev`) does not read `.env`; export the
+`node --env-file-if-exists=.env bin/baton.mjs up`: `npm start` and `npm run
+dev` automatically load a `.env` file in the repo root through that Node flag.
+Inherited shell values are still honored and take precedence. Copy
+`.env.example` to `.env` and edit it; `.env` is gitignored. Running `node
+bin/baton.mjs` directly does not automatically load `.env`; export the
 variables yourself in that case.
 
 ## Interactive sessions
@@ -72,6 +73,23 @@ Off unless explicitly enabled; a sync failure never blocks or fails a card
 | `BATON_SYNC_DASHCLAW` | `0` | set to `1` (with the two variables below) to record every ledger event as a DashClaw action | `src/sync/dashclaw.mjs` |
 | `DASHCLAW_URL` | (none) | DashClaw API base URL | `src/sync/dashclaw.mjs` |
 | `DASHCLAW_API_KEY` | (none) | DashClaw API key, sent as `x-api-key` | `src/sync/dashclaw.mjs` |
+
+## Seller and checkout site
+
+These are for the checkout/key-delivery site and its deployment helpers, not
+normal Baton CLI use.
+
+| variable | meaning | read in |
+|----------|---------|---------|
+| `BATON_SITE` | buyer-site origin used by the CLI for its purchase link; defaults to `https://baton-agents.vercel.app` | `src/license.mjs` |
+| `BATON_SITE_ORIGIN` | site origin included in checkout and email links; defaults to `https://baton-agents.vercel.app` | `site/api/_lib.js`, `scripts/vercel-env.mjs` |
+| `STRIPE_SECRET_KEY`, `STRIPE_TEST_SECRET_KEY` | live or test Stripe secret key supplied to the deployment helper | `scripts/vercel-env.mjs` |
+| `STRIPE_TEST_WEBHOOK_SECRET`, `STRIPE_LIVE_WEBHOOK_SECRET` | test or live webhook input selected by the deployment helper and deployed as `STRIPE_WEBHOOK_SECRET` | `scripts/vercel-env.mjs` |
+| `STRIPE_WEBHOOK_SECRET` | deployed webhook verification secret used by the webhook handler | `site/api/webhook.js` |
+| `RESEND_API_KEY` | Resend key used to email a paid license key | `site/api/_lib.js` |
+| `BATON_MAIL_FROM`, `BATON_MAIL_REPLY_TO` | runtime site API sender and reply-to overrides; `scripts/vercel-env.mjs` currently deploys its own fixed sender and reply-to values | `site/api/_lib.js`, `scripts/vercel-env.mjs` |
+| `BATON_LICENSE_PRIVATE_KEY` | private signing key for license issuance; never commit it | `site/api/key.js`, `scripts/vercel-env.mjs` |
+| `NPM_TOKEN` | external npm publishing automation only; repository scripts do not read it | (none) |
 
 ## Adapter binary overrides
 

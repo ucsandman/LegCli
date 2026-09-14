@@ -2,10 +2,11 @@
 
 ## 0.4.0 (2026-09-11)
 
-Baton is a paid product from this release: a 14-day trial, then a Personal
+Baton is a prepared, unpublished paid product as of 14 September 2026: a 14-day trial, then a Personal
 license ($79 once, 12 months of releases) or Team ($12 per seat per month,
 adds `baton share`). The license is the Baton License Agreement (commercial, source readable);
-0.2.0 and 0.3.0 (MIT, no downloads) were withdrawn from npm.
+0.2.0 and 0.3.0 remain published under MIT and are not deprecated; npm's latest
+release remains 0.3.0.
 
 - **License gate.** `src/license.mjs`: Ed25519-signed keys checked offline
   against the embedded public key; a Personal key is a window over release

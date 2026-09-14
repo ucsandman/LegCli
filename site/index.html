@@ -305,7 +305,7 @@
       <div>
         <h3>Stripped and scrubbed</h3>
         <ul>
-          <li><code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_BASE_URL</code>, <code>OPENAI_API_KEY</code> are removed from every agent's environment</li>
+          <li><code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>, <code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>, <code>OPENAI_API_BASE</code>, <code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>, <code>GOOGLE_GEMINI_BASE_URL</code>, <code>GOOGLE_GENAI_USE_VERTEXAI</code>, <code>GOOGLE_GENAI_USE_ENTERPRISE</code>, <code>GOOGLE_CLOUD_PROJECT</code>, <code>GOOGLE_CLOUD_LOCATION</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code>, <code>CLAUDECODE</code>, <code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code> and <code>CLAUDE_PLUGIN_DATA</code> are removed from every agent's environment; <code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS</code> is set to <code>0</code> for a detached Claude print session</li>
           <li>Claude Code's stored login is read for the usage numbers and sent only to <code>api.anthropic.com</code>; it is never written or printed</li>
           <li>the ledger scrubs bearer tokens and key shapes from every line</li>
           <li>the board binds <code>127.0.0.1</code>; <code>baton share on</code> is the one way to listen elsewhere, with a token per human</li>
@@ -359,7 +359,7 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
       <div class="cmd"><code>cd &lt;any repo&gt; &amp;&amp; baton claude</code><button class="copy" type="button" data-copy="baton claude">Copy</button></div>
     </div>
-    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 350 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
+    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 367 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
     <div class="links">
       <a href="https://www.npmjs.com/package/baton-agents">README and changelog on npm</a>
       <a href="license">License agreement</a>

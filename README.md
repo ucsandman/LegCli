@@ -33,10 +33,17 @@ settings file and never edits yours. `baton claude --model opus` is
    When every option is out, it tells you which resets first and when, waits
    for that reset with a countdown, and starts that agent from the bundle.
 
-Subscription logins only: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
-`ANTHROPIC_BASE_URL` and `OPENAI_API_KEY` are stripped before any agent
-starts. Baton never edits `~/.claude/settings.json`, `~/.codex/config.toml`
-or any other file of yours; `baton uninstall` removes only `~/.baton`.
+Subscription logins only: Baton strips `ANTHROPIC_API_KEY`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`,
+`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `GEMINI_API_KEY`,
+`GOOGLE_API_KEY`, `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_GENAI_USE_VERTEXAI`,
+`GOOGLE_GENAI_USE_ENTERPRISE`, `GOOGLE_CLOUD_PROJECT`,
+`GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLAUDECODE`,
+`CLAUDE_CODE_*`, `CLAUDE_EFFORT`, and `CLAUDE_PLUGIN_DATA` before any agent
+starts. It then sets `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for a detached
+Claude print session. Baton never edits `~/.claude/settings.json`,
+`~/.codex/config.toml` or any other file of yours; `baton uninstall` removes
+only `~/.baton`.
 
 ## Contents
 
@@ -286,9 +293,15 @@ happens after you run `baton accounts add`; that is your call.
   session's worktree), all added to `.git/info/exclude`, plus the
   `baton/<session-id>` branch of a session with its own worktree. Landing
   fast-forwards your branch; nothing is ever pushed.
-- **Stripped from every agent's environment**: the four API-key variables above,
-  plus `CLAUDECODE` and `CLAUDE_CODE_*` markers a parent Claude session would
-  leak (they make a nested Claude refuse to start).
+- **Stripped from every agent's environment**: `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`,
+  `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `GEMINI_API_KEY`,
+  `GOOGLE_API_KEY`, `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_GENAI_USE_VERTEXAI`,
+  `GOOGLE_GENAI_USE_ENTERPRISE`, `GOOGLE_CLOUD_PROJECT`,
+  `GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLAUDECODE`,
+  `CLAUDE_CODE_*`, `CLAUDE_EFFORT`, and `CLAUDE_PLUGIN_DATA`. `CLAUDE_CODE_*`
+  does not include `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`: Baton sets that one
+  to `0` for a detached Claude print session.
 - **Read but never written or printed**: Claude Code's stored login, sent only
   to `api.anthropic.com` for the usage numbers. The ledger scrubs bearer tokens
   and key shapes from every line regardless.
@@ -433,7 +446,9 @@ Baton is commercial software under the [Baton License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-with no downloads and were withdrawn from npm when 0.4.0 shipped.
+with no downloads. Version 0.4.0 is prepared but unpublished as of 14
+September 2026; npm's latest release remains 0.3.0, and 0.2.0 and 0.3.0 are
+not deprecated.
 
 Using it: a 14-day trial starts the first time you type `baton <agent>`,
 every feature on, no card. After that a license: **Personal, $79 once**, one
