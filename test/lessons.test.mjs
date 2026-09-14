@@ -205,7 +205,10 @@ test('msys-no-pathconv: every git spawn in src/ sets MSYS_NO_PATHCONV=1 (and non
 // reads fixtures/limits at load time and `files` did not ship it. The
 // tarball must carry every directory the runtime reads.
 test('the npm tarball ships what src reads at runtime, and never an env file', () => {
-  const npmCli = join(process.env.APPDATA || '', 'npm', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  const npmCli = process.env.npm_execpath || [
+    join(dirname(process.execPath), 'node_modules', 'npm'),
+    join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm'),
+  ].map((pkgDir) => resolveNpmCliEntry('npm', 'npm', { pkgDir })).find(Boolean) || resolveNpmCliEntry('npm', 'npm')
   const out = execFileSync(process.execPath, [npmCli, 'pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
   const files = JSON.parse(out)[0].files.map((f) => f.path)
   for (const need of ['src/limits.mjs', 'src/license.mjs', 'bin/baton.mjs', 'LICENSE', 'fixtures/limits/', 'fixtures/live/', 'docs/faq.md']) {
