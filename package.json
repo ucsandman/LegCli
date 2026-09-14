@@ -38,7 +38,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env bin/baton.mjs up",
-    "test": "node --test && node scripts/privacy-check.mjs",
+    "test": "node --test --test-concurrency=1 && node scripts/privacy-check.mjs",
     "lint": "eslint .",
     "privacy": "node scripts/privacy-check.mjs",
     "dev": "node --env-file-if-exists=.env bin/baton.mjs up --no-open",
