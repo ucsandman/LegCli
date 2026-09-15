@@ -3,6 +3,38 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-15: Land could not run the tests on macOS
+
+**Fixed in `src/adapters/resolve.mjs`.**
+
+The first CI run with `macos-latest` in the matrix failed where Linux and
+Windows passed: `cannot resolve npm's JS entry` from `resolveCommand`
+(`src/commands.mjs:22`), taking down `runTests` and with it `landNow` and the
+merge queue. On a Mac, Land could never have run a repo whose test command
+starts with `npm` or `npx`.
+
+`resolveNpmCliEntry` looked in three places: `%APPDATA%\npm\node_modules`,
+`/usr/local/lib/node_modules` and `/usr/lib/node_modules`. All three are
+guesses at where someone else put node. The GitHub macOS runner keeps it in
+`~/hostedtoolcache`, so none of them existed and the lookup returned null.
+Linux passed only because `/usr/local/lib/node_modules` happens to exist
+there — the same latent bug, hidden by a coincidence of layout. Homebrew,
+nvm and asdf would all have failed the same way on a real machine.
+
+The fix derives the prefix from the running binary instead of guessing:
+POSIX installs put node at `<prefix>/bin/node` and global packages at
+`<prefix>/lib/node_modules`, so `dirname(process.execPath)/../lib/node_modules`
+finds it wherever node actually lives. `execPath` is now an injectable option
+so the layout can be tested without one.
+
+The lesson is about the class, not the path: a hardcoded absolute path is a
+guess about someone else's machine, and a test matrix that omits a platform
+does not tell you the code works there — it tells you nothing about it. This
+was latent for as long as the matrix was two platforms wide.
+
+Covered by `npm-entry-from-execpath` in `test/lessons.test.mjs`, checked in
+both directions: it fails with the fix reverted and passes with it.
+
 ## 2026-09-15: share-security failed once in the full suite and has not repeated
 
 **Not fixed. Recorded so a second occurrence is countable.**

@@ -120,6 +120,31 @@ test('no-cmd-shim: resolveNpmCliEntry never returns a .cmd/.ps1 path', () => {
   }
 })
 
+test('npm-entry-from-execpath: a POSIX prefix that is not under /usr still resolves (macOS, Homebrew, nvm)', () => {
+  // The macOS runner keeps node in ~/hostedtoolcache, so neither
+  // /usr/local/lib/node_modules nor /usr/lib/node_modules exists and `npm test`
+  // during a Land died with "cannot resolve npm's JS entry". The prefix has to
+  // come from the running binary: <prefix>/bin/node -> <prefix>/lib/node_modules.
+  // A name that exists only inside the fake prefix, so this asserts the
+  // execPath-derived candidate and not whatever npm this machine has installed
+  // (on Windows the real one under APPDATA is found first and would mask it).
+  const NAME = 'baton-fake-cli'
+  const prefix = mkdtempSync(join(tmpdir(), 'nodeprefix-'))
+  const pkgDir = join(prefix, 'lib', 'node_modules', NAME)
+  mkdirSync(join(pkgDir, 'bin'), { recursive: true })
+  mkdirSync(join(prefix, 'bin'), { recursive: true })
+  writeFileSync(join(pkgDir, 'package.json'), JSON.stringify({ name: NAME, bin: { [NAME]: 'bin/cli.js' } }))
+  writeFileSync(join(pkgDir, 'bin', 'cli.js'), '')
+
+  const entry = resolveNpmCliEntry(NAME, NAME, { execPath: join(prefix, 'bin', 'node') })
+  assert.equal(entry, join(pkgDir, 'bin', 'cli.js'))
+
+  // and the check fails when the layout is absent, so it is really looking
+  const empty = mkdtempSync(join(tmpdir(), 'nodeprefix-'))
+  mkdirSync(join(empty, 'bin'), { recursive: true })
+  assert.equal(resolveNpmCliEntry('definitely-not-a-package', 'x', { execPath: join(empty, 'bin', 'node') }), null)
+})
+
 test('no-global-fetch: Node code under src/ never calls global fetch (Node 24 on Windows crashes at exit); the browser board is exempt', () => {
   const nodeFiles = walk(SRC).filter((f) => !f.includes(`${sep}board${sep}`))
   assert.ok(nodeFiles.length > 10)
