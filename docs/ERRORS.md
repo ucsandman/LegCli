@@ -179,3 +179,21 @@ occurrence has to be written down or a repeat is never countable.
   trap in different clothes: an absence of failure that is not a success. After
   a deploy, load the page and confirm the change is on it — the deploy
   platform's own tick is not evidence that anything shipped.
+
+## 2026-09-15: the new OG card was live and every share still showed the old one
+
+- **Symptom.** The site had deployed the dark OG card, and a link shared in a
+  messaging app still previewed the blue one — with a tag line naming MIT, which
+  had been corrected days earlier.
+- **Root cause.** Nothing was wrong with the deploy: fetching
+  `/og.png` returned the new image. Link-preview caches (Telegram, Slack,
+  iMessage, X) key on the image URL and most never re-fetch a URL they already
+  hold. `og.png` never changed, so every client that had ever crawled the page
+  kept its first copy indefinitely.
+- **Fix.** `og:image` and `twitter:image` carry `?v=`, bumped in the same commit
+  that changes `og.png`. Already-cached previews need the platform's own
+  refresh (Telegram: send the URL to `@WebpageBot`).
+- **The lesson that generalises.** "Deployed" and "what people see" are
+  different questions for anything a third party caches by URL. An asset that
+  will ever be revised needs a version in its URL from the first ship, not after
+  someone notices the old one is still going out.
