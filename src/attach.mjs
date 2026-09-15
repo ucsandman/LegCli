@@ -37,10 +37,10 @@ import { readPreferences, normalizeHandoffOrder } from './preferences.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 const SERVER = join(SRC, 'server.mjs')
-const POLL_MS = Number(process.env.BATON_ATTACH_POLL_MS || 2000)
+const POLL_MS = Number(process.env.LEG_ATTACH_POLL_MS || process.env.BATON_ATTACH_POLL_MS || 2000)
 const GIT_EVERY = 3 // polls
-const USAGE_MS = Number(process.env.BATON_USAGE_POLL_MS || 60000)
-const say = (line) => process.stderr.write(`[baton] ${line}\n`)
+const USAGE_MS = Number(process.env.LEG_USAGE_POLL_MS || process.env.BATON_USAGE_POLL_MS || 60000)
+const say = (line) => process.stderr.write(`[leg] ${line}\n`)
 
 async function refreshCodexUsage(account, codexHome, { timeoutMs = 8000, signal = null } = {}) {
   const r = await readCodexUsage({ codexHome, timeoutMs, signal })
@@ -73,10 +73,10 @@ export async function ensureBoard({ open = true } = {}) {
   // with share on the board lives on the shared address, not loopback
   const share = readShare()
   const shared = shareIsOn(share)
-  const port = shared ? share.port : Number(process.env.BATON_PORT || 4747)
+  const port = shared ? share.port : Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747)
   const host = shared ? share.bind : '127.0.0.1'
   const url = `http://${host}:${port}`
-  if (process.env.BATON_NO_BOARD === '1') return { url: null, started: false, skipped: true }
+  if ((process.env.LEG_NO_BOARD || process.env.BATON_NO_BOARD) === '1') return { url: null, started: false, skipped: true }
   if (await health(port, host)) return { url, started: false }
   mkdirSync(home(), { recursive: true })
   const logFd = (await import('node:fs')).openSync(join(home(), 'board.log'), 'a')
@@ -112,7 +112,7 @@ export function gitInfo(cwd) {
     repo: repo.replace(/\//g, process.platform === 'win32' ? '\\' : '/'),
     branch: git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']),
     head: git(cwd, ['rev-parse', 'HEAD']),
-    dirty: (git(cwd, ['status', '--porcelain']) ?? '').split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')).filter((f) => !/^(\.baton|\.context-handoffs|\.dashclaw-local)\//.test(f)),
+    dirty: (git(cwd, ['status', '--porcelain']) ?? '').split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')).filter((f) => !/^(\.leg|\.baton|\.context-handoffs|\.dashclaw-local)\//.test(f)),
   }
 }
 
@@ -203,7 +203,7 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }
     argv.push(...args, '--log-file', log)
     if (prompt) argv.push('-i', prompt)
   }
-  const env = { ...sanitizeEnv(process.env, { interactive: true }), ...envFor(agent, account), BATON_SESSION: sessionId }
+  const env = { ...sanitizeEnv(process.env, { interactive: true }), ...envFor(agent, account), LEG_SESSION: sessionId, BATON_SESSION: sessionId }
   return { bin: viaNode ? process.execPath : bin, args: argv, env, cwd }
 }
 
@@ -270,7 +270,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
     pollUsage().catch(() => {})
     usageTimer = setInterval(() => pollUsage().catch(() => {}), USAGE_MS)
     usageTimer.unref?.()
-  } else if (agent === 'codex' && !process.env.BATON_CODEX_BIN) {
+  } else if (agent === 'codex' && !(process.env.LEG_CODEX_BIN || process.env.BATON_CODEX_BIN)) {
     const pollUsage = async () => {
       const r = await refreshCodexUsage(account, spec.env.CODEX_HOME || LAYOUT.codex.home(), { signal: usageAbort.signal })
       const s = readSession(sid)
@@ -378,7 +378,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
       }
       // a stale warning patch can overwrite status:'limit' from the hook, but the
       // limit OBJECT survives the clobber — hand off on either signal
-      if ((next.status === 'limit' || next.limit) && process.env.BATON_NO_HANDOFF !== '1') {
+      if ((next.status === 'limit' || next.limit) && (process.env.LEG_NO_HANDOFF || process.env.BATON_NO_HANDOFF) !== '1') {
         clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'limit', code: null })
       }
     } catch (err) {
@@ -403,10 +403,10 @@ async function waitInTerminal({ sid, label, resetsAt }) {
   const tty = Boolean(process.stderr.isTTY)
   let lastLine = 0
   const r = await waitForReset({
-    resetsAt, signal: ac.signal, tickMs: Number(process.env.BATON_WAIT_TICK_MS || 1000),
+    resetsAt, signal: ac.signal, tickMs: Number(process.env.LEG_WAIT_TICK_MS || process.env.BATON_WAIT_TICK_MS || 1000),
     isCancelled: () => { const c = takeControl(sid); if (c?.end) return true; if (c?.handoff) appendEvent(sid, { type: 'status', summary: 'hand-off requested while waiting; every option is still out' }); return false },
     onTick: (remaining) => {
-      const line = `[baton] waiting for ${label} · ${fmtCountdown(remaining)} to the reset (${new Date(resetsAt * 1000).toLocaleTimeString()}) · Ctrl-C to quit`
+      const line = `[leg] waiting for ${label} · ${fmtCountdown(remaining)} to the reset (${new Date(resetsAt * 1000).toLocaleTimeString()}) · Ctrl-C to quit`
       if (tty) process.stderr.write(`\r\x1b[2K${line}`)
       else if (Date.now() - lastLine >= 60000) { lastLine = Date.now(); process.stderr.write(line + '\n') }
     },
@@ -469,7 +469,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
   let accounts = readAccounts()
   const installed = await installedAgents()
   const handoffOrder = readPreferences().handoff_order
-  let account = process.env.BATON_ACCOUNT || 'default'
+  let account = process.env.LEG_ACCOUNT || process.env.BATON_ACCOUNT || 'default'
   if (!accounts[agent].includes(account)) { say(`no ${agent} account "${account}"; using default`); account = 'default' }
   // A persisted wall is only a cache. Ask Codex's read-only account endpoint
   // before using it to skip this login; an explicit true can clear an older
@@ -523,7 +523,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
     try { bundle = saveSessionBundle(cur, { messages: messagesFor(agent, cur), why: whyStopped }); say(`bundle saved: ${bundle.path}`) } catch (err) { say(`bundle save failed: ${err.message}`) }
     // saveSessionBundle writes the notes file before it shells out to chb, so
     // even when chb is missing and the save throws, the context is on disk
-    const notesFile = join(workRoot(cur) ?? cur.cwd, '.baton', `session-${sid}.md`)
+    const notesFile = join(workRoot(cur) ?? cur.cwd, '.leg', `session-${sid}.md`)
     let claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason })
     let choice = claim.choice
     let cancelled = false
@@ -555,7 +555,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
     // bound the number of hand-offs in one terminal so a chain that limits
     // instantly can never loop forever; stopping is explicit, not a silent exit 0
     if (leg >= 11) {
-      say(`reached the 12-leg hand-off limit for one session; stopping. Run baton again in this directory to continue from the bundle.`)
+      say(`reached the 12-leg hand-off limit for one session; stopping. Run leg again in this directory to continue from the bundle.`)
       updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: 3 }, { event: { type: 'ended', summary: 'reached the 12-leg hand-off limit; stopped (exit 3)' } })
       exit = 3
       break

@@ -39,7 +39,7 @@ const VERSION = JSON.parse(readFileSync(join(dirname(SELF), '..', 'package.json'
 const DEFAULT_ORDER = ['plan', 'build', 'review', 'test', 'land']
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' }
 
-const log = (msg) => { if (process.env.BATON_QUIET !== '1') process.stdout.write(`[board] ${new Date().toISOString()} ${msg}\n`) }
+const log = (msg) => { const q = process.env.LEG_QUIET ?? process.env.BATON_QUIET; if (q !== '1') process.stdout.write(`[board] ${new Date().toISOString()} ${msg}\n`) }
 
 // ---- read models ----
 function lastEventOf(id) {
@@ -455,7 +455,7 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => 
 }
 
 // ---- the server ----
-export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN || '', scheduler = process.env.BATON_NO_SCHEDULER !== '1', share, usagePolling = false, usageReader = readCodexUsage } = {}) {
+export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN || process.env.BATON_TOKEN || '', scheduler = (process.env.LEG_NO_SCHEDULER || process.env.BATON_NO_SCHEDULER) !== '1', share, usagePolling = false, usageReader = readCodexUsage } = {}) {
   // An explicit `share` (tests) is fixed; the real server passes none and reads
   // share.json from disk, re-reading it per request (mtime-cached) so `baton
   // share add|rotate|rm` takes effect on a live board — a new link works at
@@ -464,8 +464,8 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
   const initialShare = explicitShare ? share : readShare()
   const shared0 = shareIsOn(initialShare)
   // with share on, the board's address and port come from share.json
-  bind = bind ?? (shared0 ? initialShare.bind : (process.env.BATON_BIND || '127.0.0.1'))
-  port = port ?? (shared0 ? initialShare.port : Number(process.env.BATON_PORT || 4747))
+  bind = bind ?? (shared0 ? initialShare.bind : (process.env.LEG_BIND || process.env.BATON_BIND || '127.0.0.1'))
+  port = port ?? (shared0 ? initialShare.port : Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747))
   checkBind({ bind, token, share: initialShare })
   let shareSnapshot = initialShare
   let shareMtime = -1
@@ -503,7 +503,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
   let usageController = null
   let usageInFlight = null
   const refreshCodexAccounts = () => {
-    if (!usagePolling || (process.env.BATON_CODEX_BIN && usageReader === readCodexUsage) || usageInFlight) return usageInFlight
+    if (!usagePolling || ((process.env.LEG_CODEX_BIN || process.env.BATON_CODEX_BIN) && usageReader === readCodexUsage) || usageInFlight) return usageInFlight
     usageController = new AbortController()
     const signal = usageController.signal
     usageInFlight = Promise.all((readAccounts().codex ?? ['default']).map(async (account) => {
@@ -545,7 +545,7 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
       // and neither is a stale tab polling the one token it was given
       const presented = presentedToken(req, url)
       if (presented) limiter.failure(ip, presented)
-      return send(res, 401, { error: shared ? 'unauthorized: open the board with your own link (baton share)' : 'unauthorized: set Authorization: Bearer <BATON_TOKEN>' })
+      return send(res, 401, { error: shared ? 'unauthorized: open the board with your own link (leg share)' : 'unauthorized: set Authorization: Bearer <LEG_TOKEN>' })
     }
     const viewer = auth.person ? { name: auth.person.name, role: auth.person.role } : { name: auth.subject ?? 'local', role: 'owner' }
     // a name is a bucket only when it names a human: 'local' and 'token' are

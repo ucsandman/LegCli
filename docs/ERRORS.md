@@ -9,7 +9,7 @@ occurrence has to be written down or a repeat is never countable.
 
 `initRepo` and `makeHome` returned the path from `mkdtempSync(join(tmpdir(),
 ...))` verbatim. On macOS, `tmpdir()` returns `/var/folders/…` but `/var` is a
-symlink to `/private/var`. Baton stores paths through `canonPath` (which calls
+symlink to `/private/var`. Leg stores paths through `canonPath` (which calls
 `realpathSync`), so `s.cwd` was `/private/var/…` while the test's `repo` was
 `/var/…`. Two `attach-e2e` assertions failed: `assert.equal(codex.cwd, repo)`
 and the `.find(s => s.cwd === repo)` that guards the "End from board" test.
@@ -37,7 +37,7 @@ starts with `npm` or `npx`.
 guesses at where someone else put node. The GitHub macOS runner keeps it in
 `~/hostedtoolcache`, so none of them existed and the lookup returned null.
 Linux passed only because `/usr/local/lib/node_modules` happens to exist
-there — the same latent bug, hidden by a coincidence of layout. Homebrew,
+there, the same latent bug, hidden by a coincidence of layout. Homebrew,
 nvm and asdf would all have failed the same way on a real machine.
 
 The fix derives the prefix from the running binary instead of guessing:
@@ -48,7 +48,7 @@ so the layout can be tested without one.
 
 The lesson is about the class, not the path: a hardcoded absolute path is a
 guess about someone else's machine, and a test matrix that omits a platform
-does not tell you the code works there — it tells you nothing about it. This
+does not tell you the code works there, it tells you nothing about it. This
 was latent for as long as the matrix was two platforms wide.
 
 Covered by `npm-entry-from-execpath` in `test/lessons.test.mjs`, checked in
@@ -67,7 +67,7 @@ What the evidence rules out: parallel contention, because `npm test` runs
 `--test-concurrency=1`. What it points at: the file failed at the top level
 rather than in a named test, and far faster than its healthy 6.5 s, so it died
 during setup, not in an assertion. The file binds several loopback boards on
-ephemeral ports and exercises a rate-limit lockout, and a Baton board was live
+ephemeral ports and exercises a rate-limit lockout, and a Leg board was live
 on 4747 for 161 minutes when the failing run started.
 
 The cost of the bad reading was real even though the test was fine: the suite
@@ -107,7 +107,7 @@ it), and check whether a board was listening on 4747 at the time.
   not move. The same applies to focus, scroll position, an open disclosure and a
   text selection.
 
-## 2026-09-15: Baton silently reversed a user's refusal to trust a folder
+## 2026-09-15: Leg silently reversed a user's refusal to trust a folder
 
 - **Symptom.** None visible. That is the point: it wrote to a file the user owns
   and printed a line that read like a first-time record.
@@ -162,7 +162,7 @@ it), and check whether a board was listening on 4747 at the time.
 ## 2026-09-15: the OG card advertised a commercial product as MIT
 
 - **Symptom.** `site/og.html` printed `Claude Code · Codex · agy · local · MIT`
-  on the card every shared link renders. Baton ships under the Baton License
+  on the card every shared link renders. Leg ships under the Leg License
   Agreement, all rights reserved; the only MIT in the repo is in `NOTICE`, about
   a borrowed component explicitly re-licensed.
 - **Fix.** The tag line names the price instead. The first correction was longer
@@ -183,9 +183,9 @@ it), and check whether a board was listening on 4747 at the time.
   mostly `lost` and `ended` terminals with long absolute temp paths, and none of
   them matched the selector, so the measurement was taken on the minority of rows
   the change actually touched.
-- **Fix.** `scratchpad/seed-wes.mjs` seeds a board with the real shape — 4 live,
-  3 lost, 2 ended, long temp paths, an image tag in a prompt — served on an
-  isolated port with a throwaway `BATON_HOME`. Run against it, the *pre-change*
+- **Fix.** `scratchpad/seed-wes.mjs` seeds a board with the real shape, 4 live,
+  3 lost, 2 ended, long temp paths, an image tag in a prompt, served on an
+  isolated port with a throwaway `LEG_HOME`. Run against it, the *pre-change*
   board reproduced the defect exactly: 3,302px page and 180-277px rows at 1280,
   6,530px and 307-585px at 400. That is the check being observed failing before
   it was trusted.
@@ -230,7 +230,7 @@ it), and check whether a board was listening on 4747 at the time.
   `realPath()` and returns the root in the caller's own spelling; two spellings
   of one checkout are reconciled by `canonPath()` where they are compared.
 - **The lesson that generalises.** `cancelled` on a CI matrix leg is not a pass
-  and not a failure — it is no information, and it stays that way for as long as
+  and not a failure, it is no information, and it stays that way for as long as
   a sibling keeps failing. Read the per-job conclusions, not the run's, and treat
   a leg that has not completed since a feature landed as unmeasured. Locally,
   `npm test` does not run `npm run lint` here: both are needed before a push.
@@ -238,8 +238,8 @@ it), and check whether a board was listening on 4747 at the time.
 ## 2026-09-15: the site did not deploy, and the repo said it had
 
 - **Symptom.** `main` was fast-forwarded with the board and site redesign, every
-  check was green, and `baton-agents.vercel.app` still served the old blue page.
-  GitHub showed `Vercel — Canceled by Ignored Build Step` with a green tick,
+  check was green, and `legcli.com` still served the old blue page.
+  GitHub showed `Vercel, Canceled by Ignored Build Step` with a green tick,
   which reads like a pass.
 - **Root cause.** `site/vercel.json` carried
   `ignoreCommand: git diff --quiet HEAD^ HEAD .`, and with Root Directory `site`
@@ -254,13 +254,13 @@ it), and check whether a board was listening on 4747 at the time.
 - **The lesson that generalises.** A skipped step reports as a green tick.
   "Canceled by Ignored Build Step" and a cancelled CI matrix leg are the same
   trap in different clothes: an absence of failure that is not a success. After
-  a deploy, load the page and confirm the change is on it — the deploy
+  a deploy, load the page and confirm the change is on it, the deploy
   platform's own tick is not evidence that anything shipped.
 
 ## 2026-09-15: the new OG card was live and every share still showed the old one
 
 - **Symptom.** The site had deployed the dark OG card, and a link shared in a
-  messaging app still previewed the blue one — with a tag line naming MIT, which
+  messaging app still previewed the blue one, with a tag line naming MIT, which
   had been corrected days earlier.
 - **Root cause.** Nothing was wrong with the deploy: fetching
   `/og.png` returned the new image. Link-preview caches (Telegram, Slack,
@@ -281,7 +281,7 @@ it), and check whether a board was listening on 4747 at the time.
   rendering as unstyled markup: the card title unreadable, chips welded to the
   text beside them, the four-column layout stacked into blocks. The rest of the
   board had been redesigned on 2026-09-15 and looked right.
-- **Root cause.** `.r1` `.r2` `.r3` `.r4` — the card row's whole layout — had no
+- **Root cause.** `.r1` `.r2` `.r3` `.r4`, the card row's whole layout, had no
   rule in `board.css`. `.row-title` had a rule, but it set only `font-size` and
   `color`, never resetting the native button, so the browser's own
   `rgb(240,240,240)` fill sat under the board's near-white text. Two separate
@@ -296,7 +296,7 @@ it), and check whether a board was listening on 4747 at the time.
   natural signal for the region nobody opened. CSS has no undefined-variable
   error: an unstyled class renders, it just renders wrong, and it renders wrong
   only where someone looks. The check that would have caught it is cheap and
-  mechanical — every class the code emits must resolve to a rule — and it should
+  mechanical, every class the code emits must resolve to a rule, and it should
   exist before the redesign starts, not after the screenshots expose it.
 
 ## Removing the trial turned the test suite red in three unrelated files (2026-09-15)
@@ -308,16 +308,16 @@ it), and check whether a board was listening on 4747 at the time.
   passing the licence check without ever declaring they needed to. Removing it
   made the suite's dependence on it visible all at once.
 - **Fix.** `testEnv()` writes a Team key into each throwaway home, signed by a
-  pair generated per run, with `BATON_PUBLIC_KEY_B64` pointing the spawned CLI
-  at its public half. `BATON_UNLICENSED=1` opts a test back into the refusal.
+  pair generated per run, with `LEG_PUBLIC_KEY_B64` pointing the spawned CLI
+  at its public half. `LEG_UNLICENSED=1` opts a test back into the refusal.
 - **A second bug inside the fix.** The first version imported `src/license.mjs`
   from `test/helpers.mjs` to reuse `signLicense`. That pulls in `store.mjs`,
-  which reads `BATON_HOME` once at import time, and `helpers.mjs` is imported by
-  every test file *before* it sets `BATON_HOME` — so the ledger was pinned to
+  which reads `LEG_HOME` once at import time, and `helpers.mjs` is imported by
+  every test file *before* it sets `LEG_HOME`, so the ledger was pinned to
   whatever home happened to be set, which on a developer machine is the real
-  `~/.baton`. Caught because `server.test.mjs` started failing on a card it had
+  `~/.leg`. Caught because `server.test.mjs` started failing on a card it had
   just written. The key format is now reproduced in `helpers.mjs` instead.
-  Checked `~/.baton` afterwards: no test cards, no `license.json`, nothing
+  Checked `~/.leg` afterwards: no test cards, no `license.json`, nothing
   written.
 - **The lesson that generalises.** A permissive default in test setup is load
   bearing and invisible; you find out how much only when you remove it. And a

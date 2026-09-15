@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Baton changelog</title>
-<meta name="description" content="Every released version of Baton and what changed in it.">
-<link rel="canonical" href="https://baton-agents.vercel.app/docs/changelog">
+<title>Leg changelog</title>
+<meta name="description" content="Every released version of Leg and what changed in it.">
+<link rel="canonical" href="https://legcli.com/docs/changelog">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://baton-agents.vercel.app/docs/changelog">
-<meta property="og:site_name" content="Baton">
-<meta property="og:title" content="Baton changelog">
-<meta property="og:description" content="Every released version of Baton and what changed in it.">
-<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta property="og:url" content="https://legcli.com/docs/changelog">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="Leg changelog">
+<meta property="og:description" content="Every released version of Leg and what changed in it.">
+<meta property="og:image" content="https://legcli.com/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Baton changelog">
-<meta name="twitter:description" content="Every released version of Baton and what changed in it.">
-<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:title" content="Leg changelog">
+<meta name="twitter:description" content="Every released version of Leg and what changed in it.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=2">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -51,8 +51,22 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
 <h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
+<h2 id="070-2026-09-15"><a class="anchor" href="#070-2026-09-15">0.7.0 (2026-09-15)</a></h2>
+<ul>
+<li><strong>Rebranded to Leg.</strong> Package is now <code>legcli</code> on npm, binary command is <code>leg</code>,
+and site domain is <code>https://legcli.com</code>.</li>
+<li><strong>Clean break on the binary:</strong> The <code>baton</code> CLI binary is removed; use <code>leg</code>.</li>
+<li><strong>State migration and fallback:</strong> Leg stores its state in <code>~/.leg</code> (or
+repo-local <code>.leg/</code>), and reads from <code>~/.baton</code> (or <code>.baton/</code>) as fallback.
+Environment variables now use the <code>LEG_</code> prefix (<code>LEG_PUBLIC_KEY_B64</code>,
+<code>LEG_TRUST</code>, <code>LEG_SITE</code>, <code>LEG_CHB_BIN</code>, <code>LEG_SYNC_DASHCLAW</code>) with automatic
+fallback to <code>BATON_*</code>.</li>
+<li><strong>License keys:</strong> Newly issued licenses carry the <code>LEG-</code> prefix. The CLI
+accepts both <code>LEG-</code> and legacy <code>BATON-</code> keys indefinitely. Activations normalize
+and store the <code>LEG-</code> form.</li>
+</ul>
 <h2 id="061-2026-09-15"><a class="anchor" href="#061-2026-09-15">0.6.1 (2026-09-15)</a></h2>
 <ul>
 <li><strong>The documentation is on the web.</strong> The repository is private and stays
@@ -603,7 +617,7 @@ checks; docs/VOCABULARY.md.</li>
 </ul>
 
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>

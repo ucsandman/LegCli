@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 (2026-09-15)
+
+- **Rebranded to Leg.** Package is now `legcli` on npm, binary command is `leg`,
+  and site domain is `https://legcli.com`.
+- **Clean break on the binary:** The `baton` CLI binary is removed; use `leg`.
+- **State migration and fallback:** Leg stores its state in `~/.leg` (or
+  repo-local `.leg/`), and reads from `~/.baton` (or `.baton/`) as fallback.
+  Environment variables now use the `LEG_` prefix (`LEG_PUBLIC_KEY_B64`,
+  `LEG_TRUST`, `LEG_SITE`, `LEG_CHB_BIN`, `LEG_SYNC_DASHCLAW`) with automatic
+  fallback to `BATON_*`.
+- **License keys:** Newly issued licenses carry the `LEG-` prefix. The CLI
+  accepts both `LEG-` and legacy `BATON-` keys indefinitely. Activations normalize
+  and store the `LEG-` form.
+
 ## 0.6.1 (2026-09-15)
 
 - **The documentation is on the web.** The repository is private and stays

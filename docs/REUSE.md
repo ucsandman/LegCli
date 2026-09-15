@@ -1,8 +1,8 @@
-# REUSE, what Baton ports from the private team tooling, and what it drops
+# REUSE, what Leg ports from the private team tooling, and what it drops
 
 Source: a private ucsandman repository (team tooling for a two-agent protocol
 with a detached Claude Code launcher, a JSONL task ledger, a git snapshot tool,
-and a governed capability runner). Read in full on 2026-09-10 before any Baton
+and a governed capability runner). Read in full on 2026-09-10 before any Leg
 code was designed. Every ported shape change is one row in `DEVIATIONS.md`.
 NOTICE carries the attribution. No path, id, or chat identifier from the source
 appears anywhere in this tree; `scripts/privacy-check.mjs` enforces that.
@@ -24,7 +24,7 @@ reason. **Why** = the judgment.
   via `ledgerSafe` (a ledger failure never crashes the supervisor), stderr tail
   scrubbed of secrets before it is logged (`SECRET_RES`, `scrub`, `errTail`).
 - `killTree`: `taskkill /PID <pid> /T /F` on Windows, process-group SIGKILL
-  elsewhere; the `HANDOFF_SKIP_KILL` test seam becomes `BATON_SKIP_KILL`.
+  elsewhere; the `HANDOFF_SKIP_KILL` test seam becomes `LEG_SKIP_KILL`.
 - `sweep`: orphan detection (record says running, supervisor pid dead →
   `orphaned` + ledger error + ORPHANED line naming the child pid).
 - `pidAlive`, `parseArgs`, `need`, `die`, exit codes 0 / 2 / 3 / 11 / 12 / 13.
@@ -36,7 +36,7 @@ reason. **Why** = the judgment.
   a Claude Code session leaks a session key" lesson) → one exported
   `sanitizeEnv(env)` that every adapter calls; the deleted-key set grows (see
   DEVIATIONS).
-- The timer seam (`HANDOFF_TIMERS_MS` → `BATON_TIMERS_MS`, same
+- The timer seam (`HANDOFF_TIMERS_MS` → `LEG_TIMERS_MS`, same
   `notify,kill,kill-verify` shape and defaults).
 
 **Dropped:**
@@ -44,14 +44,14 @@ reason. **Why** = the judgment.
   string, and the sweep's delivery canary, Telegram delivery and chat ids
   (privacy rule). The notify timer becomes a ledger `status` event only.
 - `LEAD_ALLOWED_TOOLS`, a hard-coded allowlist naming the team bin scripts and
-  two MCPs. Baton passes only the permission mode the chain entry names and
+  two MCPs. Leg passes only the permission mode the chain entry names and
   never disallows the Agent tool.
 - `findReportEvent`, decided "completed" by scanning the lead's ledger for a
-  `done` event. Baton uses one CLI-agnostic completion contract (`.baton/DONE`
+  `done` event. Leg uses one CLI-agnostic completion contract (`.leg/DONE`
   in the worktree), phase 5.
 - `--model` / `--effort` / `--safe-mode` argv and the `origin` lookup, model
   and effort move into the chain entry; there is no origin surface.
-- `WORKDIR = ROOT/../..` (the lead ran in the private repo's root), Baton runs
+- `WORKDIR = ROOT/../..` (the lead ran in the private repo's root), Leg runs
   every leg in the card's worktree.
 
 **Why:** the supervise/kill/sweep logic is paid-for behaviour with tests that
@@ -91,7 +91,7 @@ one CLI.
 
 **Why:** the stub-agent approach (a per-test `.mjs` that plays the CLI) is the
 right seam for a runner that must never touch a real CLI under test; it becomes
-Baton's fake adapter, which phase 4 extends with limit / stall / auth-failure
+Leg's fake adapter, which phase 4 extends with limit / stall / auth-failure
 modes.
 
 ## team-ledger.mjs
@@ -114,7 +114,7 @@ modes.
   replaced by a validated `actor` object plus `card_id`, `station`, `leg`
   (amendment 2 §4).
 - `ORIGINS`, `lead`, `stop_condition`, `max_exchanges`,
-  `openclaw_session_key`, two-agent protocol fields with no Baton meaning.
+  `openclaw_session_key`, two-agent protocol fields with no Leg meaning.
 - The `team-` id prefix and `tasks/` directory (→ `card-`, `cards/`).
 - The DashClaw endpoint paths `/api/team-tasks…`, phase 9 wires the real
   target through config; the transport code stays.
@@ -146,7 +146,7 @@ for. Only the vocabulary changes.
 **Dropped:** none. Assertions on `from`/`to`/`origin`/`lead` become assertions
 on `actor`/`card_id`/`station`/`leg`.
 
-**Why:** all thirteen encode behaviour Baton keeps.
+**Why:** all thirteen encode behaviour Leg keeps.
 
 ## git-snapshot.mjs
 
@@ -180,10 +180,10 @@ asserts on a machine path that must not exist in this tree.
 **Ported** (as patterns, not code → `src/sync/dashclaw.mjs` in phase 9):
 - The argv-builder shape: a registry entry owns an `argv(input)` function that
   returns a plain array, and `--dry-run` prints the exact command without
-  touching anything. Baton's `pr` land mode (`gh pr create` argv, stub-tested
+  touching anything. Leg's `pr` land mode (`gh pr create` argv, stub-tested
   only) and the DashClaw action recorder use this shape.
 - Fail-closed: no config → do nothing and say so; a 4xx/5xx or a timeout never
-  turns into "executed". Baton's optional syncs are off by default and a sync
+  turns into "executed". Leg's optional syncs are off by default and a sync
   failure never changes a card's state.
 
 **Dropped:** the capability registry (`post-to-x`, `send-email`), the
@@ -192,7 +192,7 @@ and the global `fetch` client (LESSONS 07-12: Node 24 on Windows can crash at
 exit after global fetch; the ledger already uses native `http`/`https`).
 
 **Why:** exactly the verdict the plan expected: nothing to port but the two
-shapes. Baton records actions; it does not gate external capabilities.
+shapes. Leg records actions; it does not gate external capabilities.
 
 ## LESSONS.md
 
@@ -200,7 +200,7 @@ Each applicable line becomes a named test in `test/lessons.test.mjs` (phase 4).
 Lines that only concern X/OAuth, the OpenClaw gateway, Vercel, or the weekly
 drill do not apply and are omitted.
 
-| lesson | Baton test name |
+| lesson | Leg test name |
 |--------|-----------------|
 | 07-09 MSYS mangles leading-slash args | `lessons: every git spawn carries MSYS_NO_PATHCONV=1 and never a shell` |
 | 07-10 `claude -p --output-format json` prints nothing until the end | `lessons: stall detector reads out/err file mtime, never waits on stdout` |
@@ -228,7 +228,7 @@ station):
   refuses to launch). Blast radius: `-C <narrowest dir>` = the card's worktree.
   Network off by default: `-c sandbox_workspace_write.network_access=false`.
 - Git workflow: snapshot before a leg, snapshot `--diff-since` after; the
-  `worktree` recommendation is Baton's only mode (one worktree per card,
+  `worktree` recommendation is Leg's only mode (one worktree per card,
   branch `baton/<card-id>`); the diff, never prose, is what review and landing
   trust.
 - Failure rules that carry over: exit 11 means a supervisor is already running,
@@ -236,28 +236,28 @@ station):
   on; slow, dead, or runaway legs are the supervisor's job (30 m notify, 90 m
   kill); no secrets in any ledger field.
 - Model routing: a `claude -p` call that omits `--model` inherits the
-  interactive default. Baton lets the chain entry name the model and passes it
+  interactive default. Leg lets the chain entry name the model and passes it
   when present; the default is documented per CLI in `cli-contracts.md` rather
   than hard-coded.
 
 **Dropped:** the two-agent classifier, lead/specialist roles, envelopes, the
-exchange cap, Telegram transport, DashClaw tiers and approvals (Baton's
+exchange cap, Telegram transport, DashClaw tiers and approvals (Leg's
 approvals are buttons on the board; DashClaw is an optional recorder), the
 `openclaw agent` transport.
 
 **Why:** the containment rules for Codex and the snapshot-then-diff workflow
 were written after real incidents and transfer unchanged. The protocol's
-coordination layer is what Baton replaces with a board.
+coordination layer is what Leg replaces with a board.
 
 ## context-handoff-bundle (the handoff format)
 
 **Reused as-is** (argv subprocess, never re-implemented): `save --title --slug
 --notes <file> --tag --repo-local [--update]`, `load [query] [--json]`,
-`validate <dir>`, `list`, `show`. The `--notes` file is the input Baton
+`validate <dir>`, `list`, `show`. The `--notes` file is the input Leg
 writes; its parser reads `## Scope`, `## Projects mentioned`, `## Findings`,
 `## Opportunities`, `## Open questions`, `## Evidence anchors` (bullets under
-each). Baton's mapping: Scope = the task and the leg that stopped; Findings =
-what was done (from `.baton/PROGRESS.md` and the diff); Open questions = why
+each). Leg's mapping: Scope = the task and the leg that stopped; Findings =
+what was done (from `.leg/PROGRESS.md` and the diff); Open questions = why
 the leg stopped and what is unverified (a failing test lands here on a
 bounce); Evidence anchors = the changed files, so drift checks flag them.
 Bundles are saved `--repo-local` inside the worktree so the next agent finds
@@ -282,7 +282,7 @@ context-handoff-bundle` still works. Live-verified in phase 5: `save
 
 ## project-launch-button-policy
 
-Adopted whole as phase 8's spec: `npm start` = `baton up`; boots, health-checks,
+Adopted whole as phase 8's spec: `npm start` = `leg up`; boots, health-checks,
 opens the board, prefixed unified logs, Ctrl+C teardown, `--dry` and `down`
 modes, argv subprocesses only, secret redaction on stdout, refuses dangerous
 misconfiguration (a YOLO flag in a chain entry, a bind address off loopback

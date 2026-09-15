@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Baton FAQ: what it edits, what it sends, how the license works</title>
-<meta name="description" content="What Baton edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.">
-<link rel="canonical" href="https://baton-agents.vercel.app/docs/faq">
+<title>Leg FAQ: what it edits, what it sends, how the license works</title>
+<meta name="description" content="What Leg edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.">
+<link rel="canonical" href="https://legcli.com/docs/faq">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://baton-agents.vercel.app/docs/faq">
-<meta property="og:site_name" content="Baton">
-<meta property="og:title" content="Baton FAQ: what it edits, what it sends, how the license works">
-<meta property="og:description" content="What Baton edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.">
-<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta property="og:url" content="https://legcli.com/docs/faq">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="Leg FAQ: what it edits, what it sends, how the license works">
+<meta property="og:description" content="What Leg edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.">
+<meta property="og:image" content="https://legcli.com/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Baton FAQ: what it edits, what it sends, how the license works">
-<meta name="twitter:description" content="What Baton edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.">
-<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:title" content="Leg FAQ: what it edits, what it sends, how the license works">
+<meta name="twitter:description" content="What Leg edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=2">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -56,7 +56,7 @@
 <p>Real questions, short answers, sourced from the code and the other docs in
 this directory.</p>
 <p><strong>Why subscription CLIs only, never a per-token API?</strong>
-Baton spawns each CLI&#39;s own logged-in session (<code>claude</code>, <code>codex</code>, <code>agy</code>).
+Leg spawns each CLI&#39;s own logged-in session (<code>claude</code>, <code>codex</code>, <code>agy</code>).
 Every child process has <code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>,
 <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>, <code>OPENAI_API_KEY</code>,
 <code>OPENAI_BASE_URL</code>, <code>OPENAI_API_BASE</code>, <code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>,
@@ -69,30 +69,30 @@ detached Claude print session. A stray API key in your shell cannot silently
 take over billing or shadow the subscription login. If stderr ever says
 &quot;another auth source is set&quot;, that leg is classified <code>auth_failed</code>, a failed
 launch, and does not count as a usage limit.</p>
-<p><strong>Why does Baton poll an endpoint for claude&#39;s usage instead of reading the
+<p><strong>Why does Leg poll an endpoint for claude&#39;s usage instead of reading the
 status line?</strong>
 Because Claude Code 2.1.268 did not run a custom status line from a settings
-file Baton controls when this was tried on 2026-09-11 (recorded in
-<a href="https://www.npmjs.com/package/baton-agents">DEVIATIONS.md</a>); hooks from the same <code>--settings</code> file did
+file Leg controls when this was tried on 2026-09-11 (recorded in
+<a href="https://www.npmjs.com/package/legcli">DEVIATIONS.md</a>); hooks from the same <code>--settings</code> file did
 fire. So the numbers come from
 <code>GET api.anthropic.com/api/oauth/usage</code> with the login Claude Code already
-stored, which is the same data <code>/usage</code> shows. Baton still writes the
+stored, which is the same data <code>/usage</code> shows. Leg still writes the
 <code>statusLine</code> entry, so the endpoint poll becomes a fallback the moment a build
 honours it, and your own status-line command is chained first either way. See
 <a href="/docs/adapters#claude">adapters.md</a> and <code>src/taps/claude-usage.mjs</code>.</p>
 <p><strong>Why does codex get no hook when claude does?</strong>
 Because injecting one would put a prompt in your way. codex asks you to review
-new hooks before it runs them, so a hook per Baton session would mean a
-review prompt per Baton session. It is not needed: an interactive codex writes
+new hooks before it runs them, so a hook per Leg session would mean a
+review prompt per Leg session. It is not needed: an interactive codex writes
 the whole thread to a rollout file under <code>~/.codex/sessions/YYYY/MM/DD/</code>, and
-flushes it per event. Baton finds the rollout whose <code>session_meta</code> cwd is the
+flushes it per event. Leg finds the rollout whose <code>session_meta</code> cwd is the
 session&#39;s directory and tails it for the rate limits, the prompts and the
 edited files.</p>
 <p><strong>Why does agy show no percentage?</strong>
 Because agy exposes none. agy 1.2.0 is a closed Go binary; its own status line
 fetches a quota summary from the backend and writes it nowhere on disk. The
 board shows &quot;no % from agy&quot; rather than an empty bar. The wall itself is still
-caught: Baton passes <code>--log-file</code> per session and watches for
+caught: Leg passes <code>--log-file</code> per session and watches for
 <code>RESOURCE_EXHAUSTED</code>, &quot;it resets in …&quot; and &quot;out of quota&quot;. Those strings are
 present in <code>agy.exe</code>. A real <code>RESOURCE_EXHAUSTED</code> wall was caught live on
 2026-09-11 and handed the session off; the fixture in <code>fixtures/limits/agy/</code>
@@ -100,23 +100,23 @@ is still tagged docs-only in <a href="/docs/cli-contracts#agy-tap">cli-contracts
 because the payload itself was never captured to <code>fixtures/live/agy/</code>.</p>
 <p><strong>Am I allowed to add a second account?</strong>
 That is your call, and the terms are quoted in full in the README under
-&quot;Second accounts, and what the terms say&quot; (<code>baton accounts terms</code> prints the
+&quot;Second accounts, and what the terms say&quot; (<code>leg accounts terms</code> prints the
 same summary). The short version: owning two paid subscriptions is not named
 as prohibited by Anthropic or OpenAI, but rotating to a second account of the
 same vendor because the first is rate-limited sits close to OpenAI&#39;s
 &quot;circumvent any rate limits&quot; wording and Anthropic&#39;s &quot;circumvent product
-guardrails&quot;. Baton&#39;s default chain switches vendors (claude, codex, agy),
+guardrails&quot;. Leg&#39;s default chain switches vendors (claude, codex, agy),
 which is plainly fine. Same-vendor rotation only happens after you run
-<code>baton accounts add</code>.</p>
-<p><strong>What does <code>baton uninstall</code> remove?</strong>
-<code>~/.baton</code> and nothing else: sessions, usage files, the extra account
+<code>leg accounts add</code>.</p>
+<p><strong>What does <code>leg uninstall</code> remove?</strong>
+<code>~/.leg</code> and nothing else: sessions, usage files, the extra account
 directories with their junctions, the v0.1 cards and runs, and the board
 pidfile. It removes the junctions as links, never following them into your
 real <code>~/.claude</code> or <code>~/.codex</code>. It does not touch any file of yours, any repo,
-or the agent CLIs themselves. Run <code>baton uninstall</code> with no flag to print what
-would go, <code>--yes</code> to do it; then <code>npm rm -g baton-agents</code> if you want the
+or the agent CLIs themselves. Run <code>leg uninstall</code> with no flag to print what
+would go, <code>--yes</code> to do it; then <code>npm rm -g legcli</code> if you want the
 package gone too.</p>
-<p><strong>Can I run <code>baton claude</code> inside a Claude Code shell?</strong>
+<p><strong>Can I run <code>leg claude</code> inside a Claude Code shell?</strong>
 Yes. A parent Claude Code session exports <code>CLAUDECODE</code> and <code>CLAUDE_CODE_*</code>
 markers that make a nested Claude refuse to start; <code>sanitizeEnv</code>
 (<code>src/env.mjs</code>) strips them along with the API-key variables, so the child
@@ -133,7 +133,7 @@ ever runs with permission checks off.</p>
 <p><strong>What actually happens when a pipeline leg hits a usage limit?</strong>
 (For an interactive session, see <a href="/docs/concepts#handoff-interactive">concepts.md</a>.)
 <code>src/limits.mjs</code> classifies the leg&#39;s exit code, output and diff evidence as
-<code>limit</code>. Baton writes a handoff bundle in the same worktree (task, done so
+<code>limit</code>. Leg writes a handoff bundle in the same worktree (task, done so
 far, the diff, open findings) via <code>context-handoff-bundle</code>, then starts the
 next adapter in that station&#39;s chain from the bundle&#39;s resume text. If the
 chain has no next adapter, the card fails. See
@@ -146,44 +146,44 @@ default lease is <code>**</code> (the whole repo), so two cards with no leases s
 always serialize. The overlap check is a deliberate approximation biased
 toward false positives: an unnecessary serialization costs minutes, a
 wrongly parallel card can corrupt a merge.</p>
-<p>For terminals: a second <code>baton &lt;agent&gt;</code> in a checkout that already has a live
+<p>For terminals: a second <code>leg &lt;agent&gt;</code> in a checkout that already has a live
 session gets its own worktree and branch, so the two never write over each
 other&#39;s files. Whoever presses Land first fast-forwards trunk; the second one
 rebases onto it, or bounces with the conflicting files named on the card.
 <code>--no-worktree</code> shares the checkout when that is what you want.</p>
 <p><strong>Can someone else watch my board?</strong>
-Only if you run <code>baton share on</code>, which is off by default. It binds your
-Tailscale or LAN address and prints one link per human (<code>baton share add &lt;name&gt;</code>), each with its own token. A guest sees the terminals lane read-only
+Only if you run <code>leg share on</code>, which is off by default. It binds your
+Tailscale or LAN address and prints one link per human (<code>leg share add &lt;name&gt;</code>), each with its own token. A guest sees the terminals lane read-only
 and nothing a terminal has said, read or written: no prompt, no file names, no
 paths, no bundle, no events, no logs, and none of the pipeline side. The
 limit line keeps only the reason and the reset time, never the raw limit
 text. The one thing they can do on your terminal is ask for a hand-off, which
-you approve or dismiss on the card. <code>baton share off</code> ends it and every link
+you approve or dismiss on the card. <code>leg share off</code> ends it and every link
 stops working. There is no TLS, so keep it on Tailscale or a network you trust.</p>
 <p><strong>What if the CLI I want isn&#39;t installed?</strong>
-<code>node bin/baton.mjs up --dry</code> prints a preflight table with <code>ok</code>/<code>missing</code>
+<code>node bin/leg.mjs up --dry</code> prints a preflight table with <code>ok</code>/<code>missing</code>
 per adapter. A missing adapter only matters if a card&#39;s chain names it: that
 leg fails to launch (<code>launch_failed</code>), which does not advance the chain,
 install and log in, then press Rerun. A chain only needs the adapters it
 names; leave a missing one out.</p>
 <p><strong>How do I resume after a reboot or a crash?</strong>
-Every run&#39;s <code>run.json</code> under <code>$BATON_HOME/cards/&lt;id&gt;/runs/&lt;n&gt;/</code> is the
-source of truth, not process memory. <code>baton down</code> kills active agents but
-each run&#39;s supervisor still writes its final verdict; the next <code>baton up</code>
+Every run&#39;s <code>run.json</code> under <code>$LEG_HOME/cards/&lt;id&gt;/runs/&lt;n&gt;/</code> is the
+source of truth, not process memory. <code>leg down</code> kills active agents but
+each run&#39;s supervisor still writes its final verdict; the next <code>leg up</code>
 (or the scheduler) finds any unsettled run with no live driver and
 re-attaches to apply that verdict, logging a <code>re-attached to run N</code> event.
-Nothing manual to do beyond starting Baton again.</p>
-<p><strong>Does Baton push to GitHub, or open pull requests?</strong>
+Nothing manual to do beyond starting Leg again.</p>
+<p><strong>Does Leg push to GitHub, or open pull requests?</strong>
 No. The default <code>land_mode: ff</code> only rebases and fast-forwards the local
 trunk branch inside the repo you gave it; there is no remote write anywhere
 in <code>src/worktree.mjs</code> or <code>src/mergequeue.mjs</code>. <code>land_mode: pr</code> builds a real
 <code>gh pr create</code> argv but is stub-only: it refuses to run unless
-<code>BATON_GH_BIN</code> points at a real <code>gh</code> (or a test stub), and even then it
+<code>LEG_GH_BIN</code> points at a real <code>gh</code> (or a test stub), and even then it
 never pushes or creates a remote for you, that is out of scope for this
 build.</p>
-<p><strong>Is there a hosted version of Baton?</strong>
-No. Baton is local-first: the board binds <code>127.0.0.1</code> by default, every
-card&#39;s state lives in files under <code>BATON_HOME</code>, and there is no service to
+<p><strong>Is there a hosted version of Leg?</strong>
+No. Leg is local-first: the board binds <code>127.0.0.1</code> by default, every
+card&#39;s state lives in files under <code>LEG_HOME</code>, and there is no service to
 sign into. See <a href="/docs/configuration#network-exposure">configuration.md</a> for
 what changes if you deliberately bind it to a shared address.</p>
 <p><strong>How are secrets handled?</strong>
@@ -195,19 +195,19 @@ or body matches a secret pattern at all. Every adapter&#39;s <code>env()</code> 
 API-key/base-URL variables from the child process. <code>npm test</code> and the
 pre-commit hook both run <code>scripts/privacy-check.mjs</code>, which additionally
 scans the whole tree for a short list of strings specific to the private
-codebase Baton&#39;s runner/ledger were ported from.</p>
+codebase Leg&#39;s runner/ledger were ported from.</p>
 <p><strong>What happens if I close the terminal instead of Ctrl-C?</strong>
 The board server and any running agents keep running as detached processes.
-Run <code>node bin/baton.mjs down</code> (or <code>npm run stop</code>) from another terminal to
-stop them cleanly, or just start <code>baton up</code> again later: it re-attaches to
+Run <code>node bin/leg.mjs down</code> (or <code>npm run stop</code>) from another terminal to
+stop them cleanly, or just start <code>leg up</code> again later: it re-attaches to
 any run left in progress rather than launching a duplicate.</p>
 <p><strong>Can I run a card without the board?</strong>
-Yes: <code>node bin/baton.mjs card run &lt;card-id&gt;</code> drives one card through the
+Yes: <code>node bin/leg.mjs card run &lt;card-id&gt;</code> drives one card through the
 orchestrator directly and exits when it reaches a waiting or terminal
-state, printing the final status. <code>node bin/baton.mjs card show &lt;id&gt;</code> and
+state, printing the final status. <code>node bin/leg.mjs card show &lt;id&gt;</code> and
 <code>card events &lt;id&gt;</code> work without the server running too, since they read the
 same on-disk ledger the board reads.</p>
-<p><strong>What does <code>BATON_NO_SCHEDULER=1</code> do, and why would I set it?</strong>
+<p><strong>What does <code>LEG_NO_SCHEDULER=1</code> do, and why would I set it?</strong>
 It boots the board server without its embedded scheduler, so no queued card
 starts automatically, useful when you want to drive every card by hand
 with <code>card run</code> (for example, inside a test) while still watching it on the
@@ -216,7 +216,7 @@ board.</p>
 take?</strong>
 No fixed limit; the chain array can be as long as you like. A card fails
 only when a leg&#39;s outcome needs to hand off and the chain has no next entry
-left, or (separately) after <code>BATON_MAX_LAND_ATTEMPTS</code> test/land bounces.</p>
+left, or (separately) after <code>LEG_MAX_LAND_ATTEMPTS</code> test/land bounces.</p>
 <p><strong>Windows vs macOS/Linux: what&#39;s actually verified?</strong>
 Built and tested on Windows (every worktree, git and taskkill path in the
 source has Windows-specific handling: <code>MSYS_NO_PATHCONV=1</code>, <code>taskkill /T /F</code>, native <code>.exe</code> resolution). CI (<code>.github/workflows/ci.yml</code>) runs the
@@ -226,14 +226,14 @@ and pull request.</p>
 Open a GitHub issue using the bug report template
 (<code>.github/ISSUE_TEMPLATE/bug_report.md</code>). For a security vulnerability, do
 not open a public issue, see <a href="/support#security">SECURITY.md</a> instead.</p>
-<p><strong>Where do I find the exact word Baton uses for a given status, event, or
+<p><strong>Where do I find the exact word Leg uses for a given status, event, or
 button?</strong>
 <a href="/docs/vocabulary">VOCABULARY.md</a>: one table per category (statuses, outcomes,
 station kinds, event types, actor types, human actions, bounce reasons),
 pulled straight from the source identifiers.</p>
 
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>

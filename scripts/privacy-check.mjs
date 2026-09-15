@@ -18,7 +18,7 @@ export const PATTERNS = [
 
 const SELF = fileURLToPath(import.meta.url)
 const ROOT = resolve(dirname(SELF), '..')
-const SKIP_DIRS = new Set(['node_modules', '.git', '.supergoal', '.baton', '.baton-worktrees', '.context-handoffs'])
+const SKIP_DIRS = new Set(['node_modules', '.git', '.supergoal', '.leg', '.leg-worktrees', '.baton', '.baton-worktrees', '.context-handoffs'])
 // plain entries in .gitignore (no globs) are never shipped, so they are not scanned
 let GITIGNORED = new Set()
 try { GITIGNORED = new Set(readFileSync(resolve(ROOT, '.gitignore'), 'utf8').split(/\r?\n/).map((l) => l.trim().replace(/\/$/, '')).filter((l) => l && !l.startsWith('#') && !/[*?[]/.test(l))) } catch {}

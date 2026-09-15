@@ -12,7 +12,7 @@ const key = live ? process.env.STRIPE_SECRET_KEY : process.env.STRIPE_TEST_SECRE
 if (!key) { console.error(live ? 'STRIPE_SECRET_KEY missing' : 'STRIPE_TEST_SECRET_KEY missing'); process.exit(2) }
 if (live && !key.startsWith('sk_live')) { console.error('--live but the key is not sk_live'); process.exit(2) }
 if (!live && !key.startsWith('sk_test')) { console.error('test run but the key is not sk_test'); process.exit(2) }
-const SITE = args.site || 'https://baton-agents.vercel.app'
+const SITE = args.site || 'https://legcli.com'
 
 function form(obj, prefix = '') {
   const out = []
@@ -67,7 +67,7 @@ async function ensureWebhook() {
   const existing = await stripe('/webhook_endpoints', { query: { limit: 100 } })
   const have = existing.data.find((w) => w.url === url && w.status === 'enabled')
   if (have) return { endpoint: have, secret: null, created: false }
-  const endpoint = await stripe('/webhook_endpoints', { method: 'POST', body: { url, enabled_events: ['checkout.session.completed', 'invoice.paid'], description: 'Baton license delivery' } })
+  const endpoint = await stripe('/webhook_endpoints', { method: 'POST', body: { url, enabled_events: ['checkout.session.completed', 'invoice.paid'], description: 'Leg license delivery' } })
   return { endpoint, secret: endpoint.secret, created: true }
 }
 
@@ -86,8 +86,8 @@ const acctName = acct.settings?.dashboard?.display_name || acct.business_profile
 if (!/practical systems/i.test(acctName)) { console.error(`this key belongs to "${acctName}", not Practical Systems; pin the right one with creds mint STRIPE_SECRET_KEY`); process.exit(3) }
 console.log(`account: ${acctName} (${live ? 'live' : 'test'})`)
 
-const personal = await ensurePlan({ name: 'Baton Personal', description: 'One machine or several, one human. Every Baton release for 12 months; the version you have keeps working after that.', lookup: 'baton_personal', unit_amount: 7900, statement: 'BATON PERSONAL' })
-const team = await ensurePlan({ name: 'Baton Team', description: 'Per seat, per month. Everything in Personal plus the shared board (baton share) and Land for more than one human.', lookup: 'baton_team', unit_amount: 1200, recurring: { interval: 'month' }, statement: 'BATON TEAM' })
+const personal = await ensurePlan({ name: 'Leg Personal', description: 'One machine or several, one human. Every Leg release for 12 months; the version you have keeps working after that.', lookup: 'leg_personal', unit_amount: 7900, statement: 'LEG PERSONAL' })
+const team = await ensurePlan({ name: 'Leg Team', description: 'Per seat, per month. Everything in Personal plus the shared board (leg share) and Land for more than one human.', lookup: 'leg_team', unit_amount: 1200, recurring: { interval: 'month' }, statement: 'LEG TEAM' })
 const lp = await ensureLink(personal.price, { adjustable: false, mode: 'payment' })
 const lt = await ensureLink(team.price, { adjustable: true, mode: 'subscription' })
 const wh = await ensureWebhook()

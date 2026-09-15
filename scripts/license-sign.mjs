@@ -10,7 +10,7 @@ import { signLicense, emailHash } from '../src/license.mjs'
 const args = {}
 const argv = process.argv.slice(2)
 for (let i = 0; i < argv.length; i++) if (argv[i].startsWith('--')) { args[argv[i].slice(2)] = argv[i + 1]; i++ }
-const priv = process.env.BATON_LICENSE_PRIVATE_KEY
+const priv = (process.env.LEG_LICENSE_PRIVATE_KEY || process.env.BATON_LICENSE_PRIVATE_KEY)
 if (!priv) { process.stderr.write('BATON_LICENSE_PRIVATE_KEY is not set\n'); process.exit(2) }
 const plan = args.plan === 'team' ? 'team' : 'personal'
 const issued = args.issued || new Date().toISOString().slice(0, 10)

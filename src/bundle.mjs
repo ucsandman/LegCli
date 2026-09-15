@@ -10,7 +10,7 @@ import { scrub } from './redact.mjs'
 import { updateSession, workRoot } from './sessions.mjs'
 import { perSessionFile, writeHandoffPointer } from './resume.mjs'
 
-const BATON_DIRS = /^(\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
+const LEG_DIRS = /^(\.leg|\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
 const bullets = (items) => items.filter(Boolean).map((x) => `- ${String(x).replace(/\r?\n/g, ' ').trim()}`)
 
 function git(cwd, args) {
@@ -19,13 +19,13 @@ function git(cwd, args) {
   return r.status === 0 ? r.stdout.trimEnd() : ''
 }
 
-export function slugFor(session) { return `baton-${session.session_id}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80) }
+export function slugFor(session) { return `leg-${session.session_id}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80) }
 
 // Notes in the CLI's section vocabulary; see src/handoff.mjs buildNotes.
 export function sessionNotes(session, { messages = [], why = 'handoff' } = {}) {
   const cwd = workRoot(session)
   const stat = git(cwd, ['diff', '--stat'])
-  const dirty = git(cwd, ['status', '--porcelain']).split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')).filter((f) => !BATON_DIRS.test(f)).slice(0, 60)
+  const dirty = git(cwd, ['status', '--porcelain']).split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')).filter((f) => !LEG_DIRS.test(f)).slice(0, 60)
   const recent = git(cwd, ['log', '--oneline', '-5'])
   const lines = [
     '## Scope', '',
@@ -54,14 +54,14 @@ export function sessionNotes(session, { messages = [], why = 'handoff' } = {}) {
 export function saveSessionBundle(session, { messages = [], why = 'checkpoint' } = {}) {
   // a session in its own worktree keeps its bundle and RESUME.md there, where the next agent starts
   const cwd = workRoot(session)
-  const batonDir = join(cwd, '.baton')
-  mkdirSync(batonDir, { recursive: true })
-  if (session.repo) for (const pat of ['.baton/', '.context-handoffs/']) ensureExcluded(session.repo, pat)
-  const notesPath = join(batonDir, `session-${session.session_id}.md`)
+  const legDir = join(cwd, '.leg')
+  mkdirSync(legDir, { recursive: true })
+  if (session.repo) for (const pat of ['.leg/', '.baton/', '.context-handoffs/']) ensureExcluded(session.repo, pat)
+  const notesPath = join(legDir, `session-${session.session_id}.md`)
   writeFileSync(notesPath, sessionNotes(session, { messages, why }))
   const slug = slugFor(session)
-  const title = `baton ${session.agent} session ${session.session_id}`
-  const base = ['save', '--repo-local', '--title', title, '--slug', slug, '--notes', notesPath, '--tag', 'baton', '--tag', session.agent]
+  const title = `leg ${session.agent} session ${session.session_id}`
+  const base = ['save', '--repo-local', '--title', title, '--slug', slug, '--notes', notesPath, '--tag', 'leg', '--tag', session.agent]
   let r = session.bundle?.id ? chb([...base, '--update', slug], { cwd }) : { status: 1 }
   if (r.status !== 0) r = chb(base, { cwd })
   if (r.status !== 0) throw new Error(`context-handoff-bundle save failed (exit ${r.status}): ${scrub(r.stderr || r.stdout).slice(0, 400)}`)
@@ -81,7 +81,7 @@ export function resumePrompt(session, bundle, next) {
     const r = chb(['load', bundle.id], { cwd })
     if (r.status === 0) loaded = r.stdout
   } catch {}
-  const header = `# Baton handoff\n\nPrevious agent: ${session.agent} (${session.account}). Reason: ${session.limit?.reason ?? session.handoff?.reason ?? 'handoff requested'}${session.limit?.detail ? ` — ${session.limit.detail}` : ''}.\nNext agent: ${next.agent} (${next.account}).\nBundle: ${bundle.path}\n\n`
+  const header = `# Leg handoff\n\nPrevious agent: ${session.agent} (${session.account}). Reason: ${session.limit?.reason ?? session.handoff?.reason ?? 'handoff requested'}${session.limit?.detail ? `, ${session.limit.detail}` : ''}.\nNext agent: ${next.agent} (${next.account}).\nBundle: ${bundle.path}\n\n`
   const body = header + (loaded || readFileSync(bundle.notes, 'utf8'))
   // src/resume.mjs owns both files: the per-session one so two sessions sharing
   // one checkout (--no-worktree, or two started in the same instant) never

@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for Baton
+about: Suggest an idea for Leg
 title: ''
 labels: enhancement
 assignees: ''
@@ -8,11 +8,11 @@ assignees: ''
 
 ## What problem does this solve
 
-What you are trying to do that Baton does not support today.
+What you are trying to do that Leg does not support today.
 
 ## Proposed solution
 
-What you would like Baton to do instead.
+What you would like Leg to do instead.
 
 ## Alternatives considered
 

@@ -17,8 +17,8 @@ import { classify } from './limits.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const LEDGER = join(dirname(SELF), 'ledger.mjs')
-const ROOT = process.env.BATON_HOME || join(homedir(), '.baton')
-const [NOTIFY_MS, KILL_MS, KILL_VERIFY_RAW] = (process.env.BATON_TIMERS_MS || '1800000,5400000')
+const ROOT = process.env.LEG_HOME || process.env.BATON_HOME || (existsSync(join(homedir(), '.leg')) ? join(homedir(), '.leg') : existsSync(join(homedir(), '.baton')) ? join(homedir(), '.baton') : join(homedir(), '.leg'))
+const [NOTIFY_MS, KILL_MS, KILL_VERIFY_RAW] = ((process.env.LEG_TIMERS_MS || process.env.BATON_TIMERS_MS) || '1800000,5400000')
   .split(',').map(Number)
 const KILL_VERIFY_MS = Number.isFinite(KILL_VERIFY_RAW) ? KILL_VERIFY_RAW : 30000
 const BATON_ACTOR = JSON.stringify({ type: 'baton' })
@@ -128,7 +128,7 @@ function errTail(path, lines = 10) {
 }
 
 function killTree(pid, log) {
-  if (process.env.BATON_SKIP_KILL === '1') { // test seam: unkillable agent
+  if ((process.env.LEG_SKIP_KILL || process.env.BATON_SKIP_KILL) === '1') { // test seam: unkillable agent
     log('BATON_SKIP_KILL=1: killTree skipped')
     return
   }
@@ -301,6 +301,7 @@ async function main() {
     }
     const childEnv = adapter.env({ ...process.env, ...(opts.extraEnv ?? {}) })
     // A stale DONE marker from an earlier leg must not count for this one.
+    rmSync(join(cwd, '.leg', 'DONE'), { force: true })
     rmSync(join(cwd, '.baton', 'DONE'), { force: true })
     const headAtStart = gitHead(cwd)
     const fsAtStart = headAtStart === null ? fsSnapshot(cwd) : null
@@ -375,7 +376,7 @@ async function main() {
         ledgerSafe(['update', '--card', id, '--session-id', sessionId], log)
       }
       const current = readRun(id, n)
-      const doneMarker = existsSync(join(cwd, '.baton', 'DONE'))
+      const doneMarker = existsSync(join(cwd, '.leg', 'DONE')) || existsSync(join(cwd, '.baton', 'DONE'))
       const diff = fsAtStart ? fsDiff(cwd, fsAtStart) : gitDiff(cwd, headAtStart)
       const verdict = classify({
         adapter: adapter.emulates ?? adapterName, exitCode: code, stdout, stderr, result: parsed?.raw ?? null,

@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Baton board, panel by panel</title>
-<meta name="description" content="Every card, gauge, button and drawer on the Baton board, what each number means, and where the reading behind it came from.">
-<link rel="canonical" href="https://baton-agents.vercel.app/docs/board-guide">
+<title>The Leg board, panel by panel</title>
+<meta name="description" content="Every card, gauge, button and drawer on the Leg board, what each number means, and where the reading behind it came from.">
+<link rel="canonical" href="https://legcli.com/docs/board-guide">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://baton-agents.vercel.app/docs/board-guide">
-<meta property="og:site_name" content="Baton">
-<meta property="og:title" content="The Baton board, panel by panel">
-<meta property="og:description" content="Every card, gauge, button and drawer on the Baton board, what each number means, and where the reading behind it came from.">
-<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta property="og:url" content="https://legcli.com/docs/board-guide">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="The Leg board, panel by panel">
+<meta property="og:description" content="Every card, gauge, button and drawer on the Leg board, what each number means, and where the reading behind it came from.">
+<meta property="og:image" content="https://legcli.com/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="The Baton board, panel by panel">
-<meta name="twitter:description" content="Every card, gauge, button and drawer on the Baton board, what each number means, and where the reading behind it came from.">
-<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:title" content="The Leg board, panel by panel">
+<meta name="twitter:description" content="Every card, gauge, button and drawer on the Leg board, what each number means, and where the reading behind it came from.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=2">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -53,12 +53,12 @@
   <main id="doc" class="docs-body">
 <nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#screenshots">Screenshots</a></li><li><a href="#the-verdict-and-the-logins">The verdict and the logins</a></li><li><a href="#terminals">Terminals</a></li><li><a href="#the-ledger">The ledger</a></li><li><a href="#a-shared-board-more-than-one-human">A shared board (more than one human)</a></li><li><a href="#background-tasks-page-layout">Background tasks: page layout</a></li><li><a href="#order">Order</a></li><li><a href="#card-row">Card row</a></li><li><a href="#card-expansion">Card expansion</a></li><li><a href="#new-card-form">New card form</a></li><li><a href="#buttons">Buttons</a></li><li><a href="#what-a-state-looks-like">What a state looks like</a></li><li><a href="#floor-view">Floor view</a></li><li><a href="#keyboard-and-accessibility">Keyboard and accessibility</a></li><li><a href="#see-also">See also</a></li></ul></nav>
 <h1 id="board-guide"><a class="anchor" href="#board-guide">Board guide</a></h1>
-<p>For anyone using the Baton board day to day: what every element means and when
+<p>For anyone using the Leg board day to day: what every element means and when
 it shows up. The board is one page, read top to bottom: <strong>the verdict</strong> (one
 sentence saying what to do next), <strong>the logins</strong> (one panel each), <strong>Terminals</strong>
 (one row each), <strong>the ledger</strong> (finished terminals, what landed, background
 tasks, as three counts that open), then <strong>Settings</strong>. Start a session
-(<code>baton claude</code>) or the background-task board (<code>npm start</code>), see
+(<code>leg claude</code>) or the background-task board (<code>npm start</code>), see
 <a href="/docs/getting-started">getting-started.md</a>, then use this as a reference.</p>
 <p>The visual system, and why it is what it is, is <code>DESIGN.md</code> at the repo root.</p>
 <h2 id="screenshots"><a class="anchor" href="#screenshots">Screenshots</a></h2>
@@ -85,7 +85,7 @@ demo-3-handoff-bundle.png  the row expanded: bundle path, run signal, timeline
 demo-4-codex-running.png   leg 2 running on fake-codex
 demo-5-done.png            done, both legs on the chain
 </code></pre>
-<p>The five <code>demo-*.png</code> are one run of the sequence in <a href="https://www.npmjs.com/package/baton-agents">DEMO.md</a>, all at
+<p>The five <code>demo-*.png</code> are one run of the sequence in <a href="https://www.npmjs.com/package/legcli">DEMO.md</a>, all at
 1280 px.</p>
 <p>To retake one, seed a board with the shape a real one has and drive it to the
 state the shot needs:</p>
@@ -93,8 +93,8 @@ state the shot needs:</p>
 node scripts/seed-floor-board.mjs   # cards in every floor lane, plus a landing
 node scripts/board-shots.mjs &lt;port&gt; &lt;tag&gt;   # shoot 1280 and 400, print the numbers
 </code></pre>
-<p>Each seeder writes a throwaway <code>BATON_HOME</code> under the OS temp dir; serve it on a
-spare port with <code>BATON_TRUST=never</code>. <strong>Never use port 4747</strong> — that is the live
+<p>Each seeder writes a throwaway <code>LEG_HOME</code> under the OS temp dir; serve it on a
+spare port with <code>LEG_TRUST=never</code>. <strong>Never use port 4747</strong>, that is the live
 board, with real sessions on it.</p>
 <p>Measure against those seeds and never against a board of healthy terminals:
 styling scoped to live rows and measured on a clean board reported 40px terminal
@@ -130,14 +130,14 @@ smaller numeral, so which one to read is not a question.</li>
 reading, then the fact. A walled login reads <code>At the wall</code> and
 <code>Back Saturday 10:11 PM. Nothing runs on codex until then.</code></li>
 <li>A login that publishes no figure draws no instrument at all. agy&#39;s panel says
-<code>agy publishes no usage figure, ever. Baton shows its terminals and their elapsed time instead.</code> An empty track reads as a measurement of zero to anyone
+<code>agy publishes no usage figure, ever. Leg shows its terminals and their elapsed time instead.</code> An empty track reads as a measurement of zero to anyone
 glancing at it, so none is drawn.</li>
 </ul>
 <p><strong>The gauge</strong> is a track, a fill and a numeral. The fill runs in the login&#39;s own
 identity colour up to 85 percent and in the over colour past it, and a 2px notch
 is cut through the bar at 85 at all times, including at zero fill: you can see
 the reserve before you reach it. A window that has never been read draws no fill
-and prints <code>no reading</code>, because a zero is a reading and Baton does not print
+and prints <code>no reading</code>, because a zero is a reading and Leg does not print
 one it does not have.</p>
 <p>Nothing here is on hover. A screen reader gets the whole answer from each
 track&#39;s <code>aria-valuetext</code>, including the reset, the source and the staleness; a
@@ -145,13 +145,13 @@ window with no value is not a <code>meter</code> at all and carries the same sen
 its label. The caption under the logins reads <code>Times are local.</code></p>
 <p>For Codex, the board reads the app-server&#39;s read-only
 <code>account/rateLimits/read</code> response every 60 seconds and maps its 300- and
-10080-minute windows to 5h and 7d. The active <code>baton codex</code> attach also polls
-that response. A percentage alone does not clear a limit wall: Baton waits for
+10080-minute windows to 5h and 7d. The active <code>leg codex</code> attach also polls
+that response. A percentage alone does not clear a limit wall: Leg waits for
 an explicit available answer from the backend.</p>
 <h2 id="terminals"><a class="anchor" href="#terminals">Terminals</a></h2>
 <p><code>src/board/sessions.js</code> renders the region from <code>GET /api/sessions</code>, refreshed
 by the server-sent <code>sessions</code> event, re-sorted every 15 s, with the elapsed
-clocks ticking every second. With no sessions it prints <code>No terminal is running. Start one in any repo: baton claude, baton codex or baton agy. It appears here within a second of the agent&#39;s first turn.</code></p>
+clocks ticking every second. With no sessions it prints <code>No terminal is running. Start one in any repo: leg claude, leg codex or leg agy. It appears here within a second of the agent&#39;s first turn.</code></p>
 <p>The region head carries one verdict with its volume: <code>3 running, 2 waiting on you</code>, or <code>3 running, nothing is waiting on you</code>, or <code>nothing is running</code>, with
 <code>, last landed 11:02 PM</code> appended when a terminal on the page has landed.</p>
 <h3 id="terminal-row"><a class="anchor" href="#terminal-row">Terminal row</a></h3>
@@ -163,8 +163,8 @@ the state is never carried by colour or position alone.</p>
 been at it, and what you can do about it.</p>
 <ul>
 <li><strong>The register</strong>, one line of the smallest type on the board: the status word
-with its dot, then where the work is (<code>baton on main</code>, or the folder when it
-is not a repo), then anything unusual about this terminal as plain words — the
+with its dot, then where the work is (<code>leg on main</code>, or the folder when it
+is not a repo), then anything unusual about this terminal as plain words, the
 account when it is not <code>default</code>, the owner on a shared board, <code>from &lt;agent&gt;</code>
 when it was handed off, <code>own worktree, from main</code> when it cut its own.</li>
 <li><strong>The prompt</strong>, as a button: the first prompt of the session, carried in full
@@ -185,7 +185,7 @@ short id. The id used to print as <code>claude-7f3a</code> immediately after the
 <code>claude</code>; the prefix is the agent name twice and it is gone.</li>
 <li><strong>The buttons</strong>, in a fixed 2x2 grid so every row&#39;s controls sit in the same
 place: Land, Hand off now, Details, End. Land is the primary action only when
-it can actually run — when it is blocked the accent moves to Hand off now,
+it can actually run, when it is blocked the accent moves to Hand off now,
 because a disabled control should not wear the one accent colour in the
 design. When Land is disabled its reason is printed, never left in a tooltip.</li>
 </ul>
@@ -327,7 +327,7 @@ availability: a button that does not apply is omitted, never moved.</p>
 <tbody><tr>
 <td>Land</td>
 <td>always, disabled with the reason printed under it when the session has no worktree of its own, while it is landing, or when the worktree is gone</td>
-<td><code>POST /api/sessions/:id/land</code> (202): commits what the agent left on <code>baton/&lt;id&gt;</code>, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the panel&#39;s sentence shows the result</td>
+<td><code>POST /api/sessions/:id/land</code> (202): commits what the agent left on <code>leg/&lt;id&gt;</code>, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the panel&#39;s sentence shows the result</td>
 </tr>
 <tr>
 <td>Request handoff</td>
@@ -367,7 +367,7 @@ availability: a button that does not apply is omitted, never moved.</p>
 <tr>
 <td>Remove record</td>
 <td>the session is not active and has an own worktree</td>
-<td><code>DELETE /api/sessions/:id?force=1&amp;keep_worktree=1</code>: removes only Baton&#39;s record and keeps the worktree, branch, unmerged commits, and dirty files</td>
+<td><code>DELETE /api/sessions/:id?force=1&amp;keep_worktree=1</code>: removes only Leg&#39;s record and keeps the worktree, branch, unmerged commits, and dirty files</td>
 </tr>
 </tbody></table>
 <p>End, Remove and Remove record confirm first: the button row is replaced in place
@@ -385,7 +385,7 @@ from the right, and the page keeps one scroll container
 thing the agent said, then <code>path</code>, <code>branch</code>, <code>cut from</code>, <code>transcript</code> and
 <code>head</code> in full, never shortened. <code>usage unknown (&lt;why&gt;); the limit still hands off</code> sits here when the endpoint had no numbers for this login: no
 login in that config directory, a 404, a 429, a body that is not JSON, or a
-shape Baton does not recognise.</li>
+shape Leg does not recognise.</li>
 <li><strong>Task</strong>: the prompt in full.</li>
 <li><strong>Conversation</strong>: the last 8 turns, newest first, headed <code>showing 8 of 34 turns</code>; <strong>show 40 more</strong> raises the cap.</li>
 <li><strong>Files</strong>: every file changed, with <code>uncommitted</code>, <code>+&lt;adds&gt;</code>, <code>-&lt;dels&gt;</code>, or
@@ -394,7 +394,7 @@ to that file&#39;s diff, capped at 400 lines.</li>
 <li><strong>Timeline</strong>: the last 40 events, newest first.</li>
 <li><strong>What happens next</strong>: <code>now: claude, then codex, then agy</code>, which fallback is
 preferred and which is eligible now, the line <code>Used after a usage limit or Hand off now. A normal exit ends this terminal.</code>, the <strong>Change order</strong>
-editor, the current bundle id, and whether <code>.baton/RESUME.md</code> still describes
+editor, the current bundle id, and whether <code>.leg/RESUME.md</code> still describes
 the repository (recomputed from git on every poll).</li>
 </ol>
 <p>It refetches every 3 seconds while it is open, and stops on <strong>Pause updates</strong>,
@@ -412,23 +412,23 @@ before saving.</p>
 raised surface here would compete with the terminals that are live. Each is a
 heading, a line of detail and a button that opens the detail below the row.</p>
 <ul>
-<li><strong>N finished</strong> — the terminals that have ended or been lost, <code>4 lost, 2 ended, in baton, costclaw, declick</code>. <strong>View all N</strong> opens them as full rows. On a real
+<li><strong>N finished</strong>, the terminals that have ended or been lost, <code>4 lost, 2 ended, in leg, costclaw, declick</code>. <strong>View all N</strong> opens them as full rows. On a real
 board after a day&#39;s work this is most of the list, which is exactly why it is a
 count and not the list.</li>
-<li><strong>N landed</strong> — what has landed on trunk across every repo the board can see,
-<code>newest 38 minutes ago, on baton@main, recruiting-tool@main</code>. <strong>View N
+<li><strong>N landed</strong>, what has landed on trunk across every repo the board can see,
+<code>newest 38 minutes ago, on leg@main, recruiting-tool@main</code>. <strong>View N
 commits</strong> opens them grouped by repo, newest first: the subject and, for a
 commit a Land put there, <code>3 hours ago, by claude</code>, read from
-<code>~/.baton/landings.jsonl</code>, which outlives the session; any other commit shows
+<code>~/.leg/landings.jsonl</code>, which outlives the session; any other commit shows
 its git author. Shown in full it was eighteen rows of <code>git log</code> at the same
 visual weight as the live terminals, so the loudest thing on the page was a
 commit from eleven days ago. With nothing landed it reads <code>Nothing landed yet</code>
 and explains what Land does.</li>
-<li><strong>N background tasks</strong> — the card runtime below, as a count with <strong>View N
-cards</strong>, plus <strong>New card</strong>. With none it reads <code>Nothing is queued. Baton starts the next login only when a terminal hands off.</code></li>
+<li><strong>N background tasks</strong>, the card runtime below, as a count with <strong>View N
+cards</strong>, plus <strong>New card</strong>. With none it reads <code>Nothing is queued. Leg starts the next login only when a terminal hands off.</code></li>
 </ul>
 <h2 id="a-shared-board-more-than-one-human"><a class="anchor" href="#a-shared-board-more-than-one-human">A shared board (more than one human)</a></h2>
-<p>With <code>baton share</code> on (off by default), the Terminals region head carries a chip
+<p>With <code>leg share</code> on (off by default), the Terminals region head carries a chip
 reading <code>you are wes, 2 on this board</code>, with <code>, a guest</code> after the name for
 anyone who is not the owner, and every row carries an owner word in its
 register: <code>wes, you</code> on yours, <code>wes</code> on someone else&#39;s. There is no colour
@@ -443,7 +443,7 @@ link: that side belongs to the owner of the machine, and the API answers 403.</p
 <p>Everything from here down is the v0.1 card runtime. Each card runs separately
 from the interactive terminal conversations, in its own git worktree. It is the
 third ledger cell, and its rows open in a drawer under the ledger.</p>
-<p>The masthead (<code>src/board/index.html</code>) has the Baton wordmark on the left and, on
+<p>The masthead (<code>src/board/index.html</code>) has the Leg wordmark on the left and, on
 the right, the connection word (<code>connecting</code> / <code>live</code> / <code>reconnecting…</code>) with its
 dot, the scheduler status (<code>scheduler running, 2 max</code>), and the <strong>Floor</strong> link.
 <strong>New card</strong> is in the ledger cell, not the masthead, and <strong>Settings</strong> is the
@@ -816,7 +816,7 @@ is fixed: Approve, Run, Resume, Pause, Hand off now, Rerun, Reassign, Kill.</p>
 <p><code>/floor</code> (<code>docs/screenshots/floor.png</code>) is the scheduler-eye view across every
 card. It carries the same instrument head as the board, then polls <code>/api/floor</code>
 and <code>/api/trunk?since=1h</code> every 2 seconds and refreshes on the same server-sent
-events as the board. Its top bar has the Baton floor brand, the same connection
+events as the board. Its top bar has the Leg floor brand, the same connection
 word and 24 px rule, a repos list, the scheduler status, running/queued/waiting/
 done counts, then a spacer and the <strong>Board</strong> link. Five tables:</p>
 <table>
@@ -878,12 +878,12 @@ transition on the page are disabled for readers who ask for it.</li>
 <ul>
 <li><a href="/docs/concepts">concepts.md</a>: what each status and outcome means underneath
 the board.</li>
-<li><a href="/docs/configuration">configuration.md</a>: <code>BATON_BIND</code> / <code>BATON_TOKEN</code> (the
-Settings token field), <code>BATON_PORT</code>.</li>
+<li><a href="/docs/configuration">configuration.md</a>: <code>LEG_BIND</code> / <code>LEG_TOKEN</code> (the
+Settings token field), <code>LEG_PORT</code>.</li>
 </ul>
 
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>

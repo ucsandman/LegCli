@@ -19,7 +19,7 @@ import { runCommandAsync } from './commands.mjs'
 import { canonPath, withFileLock, writeJsonAtomic } from './fsx.mjs'
 import { home } from './store.mjs'
 
-const TEST_TIMEOUT_MS = Number(process.env.BATON_LAND_TEST_TIMEOUT_MS || 600000)
+const TEST_TIMEOUT_MS = Number((process.env.LEG_LAND_TEST_TIMEOUT_MS || process.env.BATON_LAND_TEST_TIMEOUT_MS) || 600000)
 const queues = new Map() // canonical repo root → tail promise
 // A turn covers the commit, the rebase and the repo's whole test run, so a
 // claim is only stale once its holder died: the test budget plus the git work
@@ -64,7 +64,7 @@ export function commitWorktree(worktree, message) {
   const dirty = git(worktree, ['status', '--porcelain']).stdout.split(/\r?\n/).filter(Boolean)
   if (!dirty.length) return { committed: false }
   git(worktree, ['add', '-A'])
-  const verify = process.env.BATON_COMMIT_VERIFY === '1' ? [] : ['--no-verify']
+  const verify = (process.env.LEG_COMMIT_VERIFY || process.env.BATON_COMMIT_VERIFY) === '1' ? [] : ['--no-verify']
   git(worktree, ['-c', 'user.email=baton@localhost', '-c', 'user.name=baton', 'commit', '-q', ...verify, '-m', message])
   return { committed: true, files: dirty.length }
 }

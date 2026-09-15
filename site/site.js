@@ -1,4 +1,4 @@
-/* Baton site: copy buttons and the live handoff terminal. The transcript is
+/* Leg site: copy buttons and the live handoff terminal. The transcript is
    real text in the DOM at all times; this file only reveals it line by line. */
 (function () {
   'use strict';
@@ -83,7 +83,7 @@
         at(t, function () { ln.classList.remove('caret'); });
       } else {
         at(t, function () { ln.hidden = false; });
-        t += ln.classList.contains('gap') ? 120 : (ln.classList.contains('baton') ? 700 : 520);
+        t += ln.classList.contains('gap') ? 120 : ((ln.classList.contains('leg') || ln.classList.contains('baton')) ? 700 : 520);
       }
       if (ln.getAttribute('data-warn')) {
         at(t - 200, function () { setBar(bar5, 85, 'warn'); bell.setAttribute('data-on', '1'); });

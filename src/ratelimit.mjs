@@ -9,8 +9,8 @@ const WINDOW_MS = 60000
 
 export function createLimiter({
   windowMs = WINDOW_MS,
-  max = Number(process.env.BATON_RATE_MAX || 600),
-  maxFailures = Number(process.env.BATON_RATE_MAX_FAILURES || 20),
+  max = Number((process.env.LEG_RATE_MAX || process.env.BATON_RATE_MAX) || 600),
+  maxFailures = Number((process.env.LEG_RATE_MAX_FAILURES || process.env.BATON_RATE_MAX_FAILURES) || 20),
 } = {}) {
   const hits = new Map()
   const fails = new Map()

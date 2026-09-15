@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Push the site's secrets from .env to the Vercel project without printing
 // them: each value goes to `vercel env add NAME production` on stdin.
-//   node --env-file=.env scripts/vercel-env.mjs --mode test|live --site https://batonagents.com
+//   node --env-file=.env scripts/vercel-env.mjs --mode test|live --site https://legcli.com
 import { spawnSync } from 'node:child_process'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => a.startsWith('--') ? [a.slice(2), all[i + 1]] : []).filter((x) => x.length))
@@ -14,10 +14,14 @@ const vars = {
   STRIPE_SECRET_KEY: live ? process.env.STRIPE_SECRET_KEY : process.env.STRIPE_TEST_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: live ? process.env.STRIPE_LIVE_WEBHOOK_SECRET : process.env.STRIPE_TEST_WEBHOOK_SECRET,
   RESEND_API_KEY: process.env.RESEND_API_KEY,
-  BATON_LICENSE_PRIVATE_KEY: process.env.BATON_LICENSE_PRIVATE_KEY,
-  BATON_SITE_ORIGIN: args.site || 'https://baton-agents.vercel.app',
-  BATON_MAIL_FROM: 'Baton <baton@practicalsystems.io>',
-  BATON_MAIL_REPLY_TO: 'wes@practicalsystems.io',
+  LEG_LICENSE_PRIVATE_KEY: process.env.LEG_LICENSE_PRIVATE_KEY || process.env.BATON_LICENSE_PRIVATE_KEY,
+  BATON_LICENSE_PRIVATE_KEY: process.env.LEG_LICENSE_PRIVATE_KEY || process.env.BATON_LICENSE_PRIVATE_KEY,
+  LEG_SITE_ORIGIN: args.site || 'https://legcli.com',
+  BATON_SITE_ORIGIN: args.site || 'https://legcli.com',
+  LEG_MAIL_FROM: 'Leg <legcli@practicalsystems.io>',
+  BATON_MAIL_FROM: 'Leg <legcli@practicalsystems.io>',
+  LEG_MAIL_REPLY_TO: 'legcli@practicalsystems.io',
+  BATON_MAIL_REPLY_TO: 'legcli@practicalsystems.io',
 }
 const missing = Object.entries(vars).filter(([, v]) => !v).map(([k]) => k)
 if (missing.length) { console.error('missing in .env: ' + missing.join(', ')); process.exit(2) }

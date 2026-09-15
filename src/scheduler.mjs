@@ -10,7 +10,7 @@ import { canonPath } from './fsx.mjs'
 import { runCard, orphanedRun, unsettledRun, driverAlive } from './orchestrator.mjs'
 import { listCards, ledgerAppend, ledgerLog, home, sleep } from './store.mjs'
 
-export const MAX_CONCURRENT = Math.max(1, parseInt(process.env.BATON_MAX_CONCURRENT || '2', 10) || 2)
+export const MAX_CONCURRENT = Math.max(1, parseInt((process.env.LEG_MAX_CONCURRENT || process.env.BATON_MAX_CONCURRENT) || '2', 10) || 2)
 const ACTIVE = ['running', 'handing_off']
 
 // Two cards on one repo compare by the canonical path, so two spellings of a

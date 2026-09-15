@@ -16,7 +16,7 @@ export const VERBS = {
   done: (card) => ['done', card.card_id],
 }
 
-export function workboardEnabled(env = process.env) { return env.BATON_SYNC_WORKBOARD === '1' }
+export function workboardEnabled(env = process.env) { return (env.LEG_SYNC_WORKBOARD || env.BATON_SYNC_WORKBOARD) === '1' }
 
 export function resolveOpenclaw(env = process.env) {
   if (env.OPENCLAW_BIN && /\.(mjs|cjs|js)$/.test(env.OPENCLAW_BIN)) return { bin: process.execPath, prefix: [env.OPENCLAW_BIN] }

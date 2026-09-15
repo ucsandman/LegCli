@@ -30,8 +30,8 @@ jobs:
 
       - name: Configure git identity (tests init git repos and commit)
         run: |
-          git config --global user.email "baton-ci@example.com"
-          git config --global user.name "baton-ci"
+          git config --global user.email "leg-ci@example.com"
+          git config --global user.name "leg-ci"
 
       - name: Disable autocrlf on Windows
         if: runner.os == 'Windows'
@@ -110,8 +110,8 @@ jobs:
           const root = lock.packages?.['']
           ;(async () => {
             const fail = (message) => { throw new Error(message) }
-            const expectedRepository = 'https://github.com/ucsandman/baton.git'
-            if (!root || pkg.name !== 'baton-agents' || root.name !== pkg.name || root.version !== pkg.version || lock.version !== pkg.version) {
+            const expectedRepository = 'https://github.com/ucsandman/legcli.git'
+            if (!root || pkg.name !== 'legcli' || root.name !== pkg.name || root.version !== pkg.version || lock.version !== pkg.version) {
               fail('package.json and package-lock.json root metadata do not match')
             }
             if (pkg.repository?.url !== expectedRepository || root.repository?.url !== expectedRepository) {
@@ -137,9 +137,14 @@ jobs:
             if (response.status === 404) {
               let packageResponse
               try {
-                packageResponse = await fetch('https://registry.npmjs.org/baton-agents', { headers: { Accept: 'application/json' } })
+                packageResponse = await fetch('https://registry.npmjs.org/legcli', { headers: { Accept: 'application/json' } })
               } catch (error) {
                 fail(`npm package metadata request failed: ${error.message}`)
+              }
+              if (packageResponse.status === 404) {
+                fs.appendFileSync(process.env.GITHUB_OUTPUT, 'published=false\n')
+                console.log(`${pkg.name}@${pkg.version} is missing (package not yet on npm); publication is required`)
+                return
               }
               if (packageResponse.status !== 200) {
                 fail(`npm package metadata returned unexpected status ${packageResponse.status}`)
@@ -178,6 +183,6 @@ jobs:
           })
           NODE
 
-      - name: Publish baton-agents to npm
+      - name: Publish legcli to npm
         if: steps.registry.outputs.published == 'false'
         run: npm publish --access public --provenance=false

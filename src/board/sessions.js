@@ -36,7 +36,7 @@
   const lastTone = new Map()
   const defaultEditor = { order: null, dirty: false, saving: false, status: '', statusClass: '' }
 
-  function getToken() { return localStorage.getItem('batonToken') || '' }
+  function getToken() { return localStorage.getItem('legToken') || localStorage.getItem('batonToken') || '' }
   async function api(path, opts = {}) {
     const headers = { 'Content-Type': 'application/json' }
     const token = getToken()
@@ -57,7 +57,7 @@
   // as window.batonMessage. A result that belongs to a terminal is written into
   // that terminal's sentence slot instead; only what belongs to no object at all
   // comes through here. This file no longer writes into #toast itself.
-  function sysMessage(text, tone) { if (typeof window.batonMessage === 'function') window.batonMessage(text, tone) }
+  function sysMessage(text, tone) { const fn = window.legMessage || window.batonMessage; if (typeof fn === 'function') fn(text, tone) }
 
   // ---- times. The head prints `Times are local.` once, so no row repeats it ----
   // THIS FILE OWNS THE TIME GRAMMAR FOR THE WHOLE BOARD. ago(), clockAt(),
@@ -170,7 +170,7 @@
     else if (state === 'loading') parts.push(`No reading for the ${words} window has come back from /api/sessions yet.`)
     else if (state === 'noreading') {
       parts.push(a.agent === 'agy'
-        ? `agy publishes no usage percentage for the ${words} window. Baton sees the wall when agy hits it.`
+        ? `agy publishes no usage percentage for the ${words} window. Leg sees the wall when agy hits it.`
         : `No reading for the ${words} window yet.`)
     } else {
       parts.push(`${Math.round(w.pct)} percent of the ${words} window used.`)
@@ -289,7 +289,7 @@
     if (!a.five_hour && !a.seven_day) {
       panel.appendChild(gauge(a, null, '5h'))
       panel.appendChild(el('p', { class: 'reading-sub reading-sub--lead' }, [a.agent === 'agy'
-        ? 'agy publishes no usage figure, ever. Baton shows its terminals and their elapsed time instead.'
+        ? 'agy publishes no usage figure, ever. Leg shows its terminals and their elapsed time instead.'
         : `No reading has come back from ${accountLabel(a)} yet.`]))
       return panel
     }
@@ -658,7 +658,7 @@
         sysMessage(r.worktree ? (r.worktree.removed ? (r.worktree.branchDeleted === false ? 'removed the terminal and its worktree; the branch is kept' : 'removed the terminal, its worktree and its branch') : `removed the terminal; the worktree is kept: ${r.worktree.reason}`) : 'removed the terminal', 'ok')
       } else if (action === 'remove-record') {
         await api(`/api/sessions/${encodeURIComponent(id)}?force=1&keep_worktree=1`, { method: 'DELETE' })
-        sysMessage('removed the Baton record; the worktree and the branch are kept', 'ok')
+        sysMessage('removed the Leg record; the worktree and the branch are kept', 'ok')
       } else {
         await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
         if (action === 'handoff') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: 'hand-off requested; this terminal switches agents in a few seconds' })
@@ -687,7 +687,7 @@
     const preferred = optionLabel(s.preferred_next)
     const eligible = optionLabel(s.eligible_next)
     if (!s.handoff_availability_known) wrap.appendChild(el('p', { class: 'sentence tone-muted' }, [`preferred: ${preferred}, and current eligibility is unavailable for this older terminal`]))
-    else if (!s.eligible_next) wrap.appendChild(el('p', { class: 'sentence tone-warn' }, [`preferred: ${preferred}. No fallback is eligible now; Baton waits if every account is at its limit.`]))
+    else if (!s.eligible_next) wrap.appendChild(el('p', { class: 'sentence tone-warn' }, [`preferred: ${preferred}. No fallback is eligible now; Leg waits if every account is at its limit.`]))
     else if (eligible !== preferred) wrap.appendChild(el('p', { class: 'sentence tone-muted' }, [`preferred: ${preferred}, first eligible now: ${eligible}`]))
     else wrap.appendChild(el('p', { class: 'sentence tone-muted' }, [`first eligible now: ${eligible}`]))
     wrap.appendChild(el('p', { class: 'blocker' }, ['Used after a usage limit or Hand off now. A normal exit ends this terminal.']))
@@ -884,11 +884,11 @@
       const r = el('button', { type: 'button', class: 'btn btn-danger', 'data-focus-key': `remove:${s.session_id}` }, ['Remove'])
       r.addEventListener('click', ask(s.worktree
         ? `Remove this terminal? Its worktree at ${s.worktree.path} and its branch ${s.worktree.branch} go with it.`
-        : 'Remove this terminal? Baton\'s record of it is deleted.', 'Remove', 'remove'))
+        : 'Remove this terminal? Leg\'s record of it is deleted.', 'Remove', 'remove'))
       actions.appendChild(r)
       if (s.worktree) {
         const keep = el('button', { type: 'button', class: 'btn btn-danger', 'data-focus-key': `remove-record:${s.session_id}` }, ['Remove record'])
-        keep.addEventListener('click', ask(`Remove only the Baton record for ${s.session_id}? The worktree at ${s.worktree.path} and the branch ${s.worktree.branch} stay, with every commit.`, 'Remove record', 'remove-record'))
+        keep.addEventListener('click', ask(`Remove only the Leg record for ${s.session_id}? The worktree at ${s.worktree.path} and the branch ${s.worktree.branch} stay, with every commit.`, 'Remove record', 'remove-record'))
         actions.appendChild(keep)
       }
     }
@@ -1075,9 +1075,9 @@
       : v.state === 'missing'
         ? 'no RESUME.md in this checkout yet; one is written at the first hand-off'
         : v.state === 'unstamped'
-          ? 'RESUME.md carries no Baton stamp, so its freshness cannot be checked'
+          ? 'RESUME.md carries no Leg stamp, so its freshness cannot be checked'
           : `RESUME.md is stale: ${v.reasons.join('; ')}`
-    return el('p', { class: cls, title: 'freshness is recomputed from git on every poll; baton resume --check' }, [text])
+    return el('p', { class: cls, title: 'freshness is recomputed from git on every poll; leg resume --check' }, [text])
   }
 
   function section(title, note, body) {
@@ -1271,7 +1271,7 @@
     box.textContent = ''
     if (!finished.length) {
       head.textContent = 'No finished terminals'
-      meta.textContent = 'Every terminal Baton knows about is still live.'
+      meta.textContent = 'Every terminal Leg knows about is still live.'
       panel.hidden = true
       return
     }
@@ -1432,7 +1432,8 @@
     try { render(await api('/api/sessions')) } catch (err) { sysMessage(err.message, 'danger') }
   }
 
-  window.addEventListener('baton:sessions', (e) => render(e.detail))
+  window.addEventListener('leg:sessions', (e) => render(e.detail));
+  window.addEventListener('baton:sessions', (e) => render(e.detail));
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return
     if (pendingConfirm) { pendingConfirm = null; if (view) renderSessions(view); return }

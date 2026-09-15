@@ -1,6 +1,6 @@
 # Vocabulary
 
-One page of the words Baton uses for state, events and actions, pulled
+One page of the words Leg uses for state, events and actions, pulled
 straight from the source (not invented). Each table lists the exact
 identifiers the code uses; UI copy is allowed to be more readable ("Hand off
 now" for `handoff_now`) but must not use a different word for the same thing.
@@ -9,7 +9,7 @@ changes.
 
 ## Session statuses
 
-One interactive terminal under `baton claude|codex|agy`. Source:
+One interactive terminal under `leg claude|codex|agy`. Source:
 `src/sessions.mjs` `SESSION_STATUSES`; board labels from `STATUS` in
 `src/board/sessions.js`.
 
@@ -17,7 +17,7 @@ One interactive terminal under `baton claude|codex|agy`. Source:
 |--------|-------------|---------|---------|
 | `starting` | starting | yes | the runner registered the session; the agent has not reported in yet |
 | `running` | running | yes | the agent is up and taking turns |
-| `warning` | near limit | yes | a usage window crossed `BATON_WARN_PCT` (default 85) |
+| `warning` | near limit | yes | a usage window crossed `LEG_WARN_PCT` (default 85) |
 | `limit` | limit hit | yes | the agent reported its usage limit; the account is walled |
 | `handing_off` | handing off | yes | the bundle is being saved and the next option chosen |
 | `waiting` | waiting for reset | yes | every option is walled; the terminal counts down to the first reset (`session.waiting`) and then starts that agent from the bundle |
@@ -32,7 +32,7 @@ overlap flags and for the accounts strip's live dot.
 
 Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 `src/sessions.mjs`, `src/taps/claude.mjs` and `src/server.mjs`; written to
-`$BATON_HOME/sessions/<id>/events.jsonl`.
+`$LEG_HOME/sessions/<id>/events.jsonl`.
 
 | type | meaning |
 |------|---------|
@@ -42,8 +42,8 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `turn` | a human prompt was submitted; carries the turn number and the first 120 characters |
 | `turn_done` | the agent's reply for that turn, first 160 characters |
 | `warning` | a usage window crossed the warning threshold; names the window, the percentage and the next option |
-| `limit` | a usage limit was detected; carries the agent's own wording, `(simulated)` when `baton sessions simulate-limit` produced it |
-| `handoff_requested` | someone pressed Hand off now, ran `baton sessions handoff`, or (on a shared board) asked for or approved a hand-off; `by` names the human (a dismissed request logs as `status` instead) |
+| `limit` | a usage limit was detected; carries the agent's own wording, `(simulated)` when `leg sessions simulate-limit` produced it |
+| `handoff_requested` | someone pressed Hand off now, ran `leg sessions handoff`, or (on a shared board) asked for or approved a hand-off; `by` names the human (a dismissed request logs as `status` instead) |
 | `handoff` | the switch happened: from, to, reason, bundle id |
 | `all_out` | every option is walled; the resets are printed and the terminal waits for the first one (`ended` with "quit while waiting" if Ctrl-C or End cuts the wait short, exit 3) |
 | `agent_exit` | the agent process exited, with its code |
@@ -60,7 +60,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 
 ## Land states (terminal cards)
 
-`$BATON_HOME/sessions/<id>/land.json`, written by the board server only
+`$LEG_HOME/sessions/<id>/land.json`, written by the board server only
 (`src/land.mjs`); the runner never touches it.
 
 | state | card line | meaning |
@@ -73,7 +73,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 
 ## Share roles (more than one human)
 
-`$BATON_HOME/share.json`, written by `baton share` (`src/share.mjs`).
+`$LEG_HOME/share.json`, written by `leg share` (`src/share.mjs`).
 
 | role | the terminals lane | the pipeline side | their own terminals |
 |------|--------------------|-------------------|---------------------|
@@ -93,7 +93,7 @@ Source: `src/chain.mjs` `TERMINAL` + `NON_TERMINAL`.
 | `backlog` | no | card created, not yet queued |
 | `queued` | no | waiting for the scheduler to start a leg under its leases |
 | `running` | no | a leg (agent/test/land station) is executing |
-| `handing_off` | no | the leg ended (limit/incomplete/no_progress/stalled/failed) and Baton is writing the handoff bundle |
+| `handing_off` | no | the leg ended (limit/incomplete/no_progress/stalled/failed) and Leg is writing the handoff bundle |
 | `waiting_human` | no | parked at a `human` station for a button press |
 | `needs_approval` | no | next chain entry has `approve: true`; parked for Approve |
 | `paused` | no | human paused it; child killed, bundle written |
@@ -107,7 +107,7 @@ Source: `src/limits.mjs` `OUTCOMES` (`classify()`'s return value).
 
 | outcome | meaning |
 |---------|---------|
-| `completed` | exit 0 and `.baton/DONE` present |
+| `completed` | exit 0 and `.leg/DONE` present |
 | `incomplete` | exit 0 with changes but no DONE marker |
 | `no_progress` | exit 0, no DONE marker, no changes |
 | `limit` | an adapter-specific or generic usage-limit signal fired |
@@ -175,7 +175,7 @@ Source: `src/ledger.mjs` (`parseActor`/`actorKey`).
 |------|---------|
 | `agent` | an adapter CLI acting on a leg; carries `adapter` (and optionally `model`) |
 | `human` | a person acting through the board or CLI; carries `id` |
-| `baton` | Baton itself (scheduler, orchestrator) acting with no human or agent behind it |
+| `leg` | Leg itself (scheduler, orchestrator) acting with no human or agent behind it |
 
 ## Human actions and board buttons
 
@@ -222,7 +222,7 @@ the four words above, it is a different failure path through the same
 ## Cross-check against visible strings
 
 Checked against `src/board/board.js`, `src/board/floor.js`,
-`src/board/index.html`, `src/board/floor.html`, `bin/baton.mjs`'s usage text
+`src/board/index.html`, `src/board/floor.html`, `bin/leg.mjs`'s usage text
 and `README.md`.
 
 - Board button labels (`ACTION_LABELS`, `WAIT_LABELS`) match README's "Board
@@ -233,7 +233,7 @@ and `README.md`.
   README's drawer description.
 - Station kinds shown in the drawer (`${name} (${kind})`) and README's
   "Station kinds" list both use `agent`/`human`/`test`/`land`.
-- CLI human-action verbs in `bin/baton.mjs` (`pause`, `resume`, `kill`,
+- CLI human-action verbs in `bin/leg.mjs` (`pause`, `resume`, `kill`,
   `approve`, `handoff-now`, `rerun`, `reassign`) are the same 7 words as
   `HUMAN_ACTIONS`, spelled with hyphens instead of underscores on the CLI
   surface (`handoff-now` vs `handoff_now`), a deliberate, consistent

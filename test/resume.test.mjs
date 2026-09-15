@@ -54,7 +54,7 @@ test('every resume file carries a stamp of the git state it was written against'
   assert.ok(text.includes('the previous agent said things.'), 'the body survives the stamp')
   assert.equal(body, text, 'writeHandoffPointer returns exactly what it wrote')
 
-  const perSession = join(repo, '.baton', 'RESUME-s-stamp-1.md')
+  const perSession = resume.perSessionFile(repo, 's-stamp-1')
   assert.ok(existsSync(perSession), 'the per-session file is written too')
   assert.ok(readFileSync(perSession, 'utf8').startsWith(resume.STAMP_PREFIX), 'and it is stamped as well')
 
@@ -148,9 +148,10 @@ test('Baton\'s own files moving does not make a pointer stale', () => {
   const repo = initRepo('resume-selfdirty-')
   const s = liveSession('s-self-1', repo)
   resume.writeHandoffPointer(s, 'body\n', { bundle: { id: 'b-1' }, why: 'claude usage limit' })
-  // writing the pointer itself dirties .baton/; a reader must not see that as drift
-  writeFileSync(join(repo, '.baton', 'session-s-self-1.md'), 'notes\n')
-  assert.equal(resume.resumeVerdict(repo).state, 'fresh', 'the .baton directory is excluded from the fingerprint')
+  // writing the pointer itself dirties .leg/ or .baton/; a reader must not see that as drift
+  const legDir = existsSync(join(repo, '.leg')) ? join(repo, '.leg') : join(repo, '.baton')
+  writeFileSync(join(legDir, 'session-s-self-1.md'), 'notes\n')
+  assert.equal(resume.resumeVerdict(repo).state, 'fresh', 'the .leg/.baton directory is excluded from the fingerprint')
 })
 
 test('a handoff pointer whose terminal is no longer live reads stale', () => {

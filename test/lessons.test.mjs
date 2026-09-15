@@ -236,7 +236,7 @@ test('the npm tarball ships what src reads at runtime, and never an env file', (
   ].map((pkgDir) => resolveNpmCliEntry('npm', 'npm', { pkgDir })).find(Boolean) || resolveNpmCliEntry('npm', 'npm')
   const out = execFileSync(process.execPath, [npmCli, 'pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
   const files = JSON.parse(out)[0].files.map((f) => f.path)
-  for (const need of ['src/limits.mjs', 'src/license.mjs', 'bin/baton.mjs', 'LICENSE', 'fixtures/limits/', 'fixtures/live/', 'docs/faq.md']) {
+  for (const need of ['src/limits.mjs', 'src/license.mjs', 'bin/leg.mjs', 'LICENSE', 'fixtures/limits/', 'fixtures/live/', 'docs/faq.md']) {
     assert.ok(files.some((f) => f.startsWith(need)), `tarball is missing ${need}`)
   }
   assert.deepEqual(files.filter((f) => /(^|\/)\.env(\.|$)/.test(f) && !f.endsWith('.env.example')), [], 'an env file is in the tarball')

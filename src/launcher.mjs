@@ -1,4 +1,4 @@
-// launcher — the one command. `baton up` runs preflight, spawns the board
+// launcher — the one command. `leg up` runs preflight, spawns the board
 // server (scheduler + merge queue run inside it) as an argv child, waits for
 // /api/health, opens the board, streams prefixed redacted logs, and tears
 // everything down on Ctrl-C. `up --dry` prints what would run. `down`,
@@ -16,16 +16,16 @@ import { schedulerStatus, MAX_CONCURRENT } from './scheduler.mjs'
 import { enabledSyncs } from './sync/index.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
-const SERVER = process.env.BATON_SERVER_SCRIPT || join(SRC, 'server.mjs')
+const SERVER = process.env.LEG_SERVER_SCRIPT || process.env.BATON_SERVER_SCRIPT || join(SRC, 'server.mjs')
 const VERSION = JSON.parse(readFileSync(join(SRC, '..', 'package.json'), 'utf8')).version
-const HEALTH_TIMEOUT_MS = Number(process.env.BATON_HEALTH_TIMEOUT_MS || 20000)
+const HEALTH_TIMEOUT_MS = Number(process.env.LEG_HEALTH_TIMEOUT_MS || process.env.BATON_HEALTH_TIMEOUT_MS || 20000)
 
 // Every launcher line goes through here: one prefix, one redaction pass.
 export function out(prefix, line, stream = process.stdout) {
   stream.write(`[${prefix}] ${redact(String(line)).replace(/\r?\n$/, '')}\n`)
 }
 
-export function pidfile() { return join(home(), 'baton.pid') }
+export function pidfile() { const leg = join(home(), 'leg.pid'); const baton = join(home(), 'baton.pid'); if (existsSync(leg)) return leg; if (existsSync(baton)) return baton; return leg; }
 
 function readPidfile() {
   try { return JSON.parse(readFileSync(pidfile(), 'utf8')) } catch { return null }
@@ -71,7 +71,7 @@ export function printPreflight({ rows }) {
   for (const [name, status, detail] of rows) out('preflight', `${name.padEnd(w)}  ${status.padEnd(7)}  ${detail}`)
 }
 
-export function plannedProcesses({ port = Number(process.env.BATON_PORT || 4747), bind = process.env.BATON_BIND || '127.0.0.1' } = {}) {
+export function plannedProcesses({ port = Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747), bind = process.env.LEG_BIND || process.env.BATON_BIND || '127.0.0.1' } = {}) {
   const procs = [{
     prefix: 'server', bin: process.execPath, argv: [SERVER], env: { BATON_PORT: String(port), BATON_BIND: bind },
     note: 'board + API + scheduler + merge queue',
@@ -158,7 +158,7 @@ function killActiveAgents() {
   return n
 }
 
-export async function up({ dry = false, open = true, port = Number(process.env.BATON_PORT || 4747), bind = process.env.BATON_BIND || '127.0.0.1' } = {}) {
+export async function up({ dry = false, open = true, port = Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747), bind = process.env.LEG_BIND || process.env.BATON_BIND || '127.0.0.1' } = {}) {
   out('baton', `baton ${VERSION} — home ${home()}`)
   const pf = await preflight()
   printPreflight(pf)
@@ -179,7 +179,7 @@ export async function up({ dry = false, open = true, port = Number(process.env.B
   if (existing) { try { rmSync(pidfile(), { force: true }) } catch {} }
   mkdirSync(home(), { recursive: true })
   const [p] = plan.procs
-  const child = spawn(p.bin, p.argv, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...p.env, BATON_QUIET: '0' } })
+  const child = spawn(p.bin, p.argv, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...p.env, LEG_QUIET: '0', BATON_QUIET: '0' } })
   let actualPort = port
   const lastLines = []
   const remember = (line) => { lastLines.push(line); if (lastLines.length > 12) lastLines.shift(); const m = /listening on http:\/\/[^:]+:(\d+)/.exec(line); if (m) actualPort = Number(m[1]) }

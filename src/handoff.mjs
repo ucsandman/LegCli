@@ -15,8 +15,9 @@ let resolved = null
 // Windows, a script elsewhere), else `python -m context_handoff_bundle`.
 export function resolveChb() {
   if (resolved) return resolved
-  if (process.env.BATON_CHB_BIN) {
-    resolved = { bin: process.env.BATON_CHB_BIN, prefix: [] }
+  const chbEnv = process.env.LEG_CHB_BIN || process.env.BATON_CHB_BIN;
+  if (chbEnv) {
+    resolved = { bin: chbEnv, prefix: [] }
     return resolved
   }
   const direct = spawnSync('context-handoff-bundle', ['--help'], { windowsHide: true, encoding: 'utf8', timeout: 20000 })
@@ -97,7 +98,7 @@ export function buildNotes({ card, station, leg, entry, run, progress = '', last
     '## Opportunities',
     '',
     ...bullets([
-      'Next agent: read .baton/PROGRESS.md and .baton/CONTRACT.md, continue from the last done step, then write .baton/DONE.',
+      'Next agent: read .leg/PROGRESS.md and .leg/CONTRACT.md, continue from the last done step, then write .leg/DONE.',
       progressLines.length ? null : 'Next agent: the previous run left no progress notes; check the diff first.',
     ]),
     '',
@@ -112,7 +113,7 @@ export function buildNotes({ card, station, leg, entry, run, progress = '', last
     '## Evidence anchors',
     '',
     ...bullets(changedFiles.slice(0, 50)),
-    ...bullets(['.baton/PROGRESS.md', '.baton/CONTRACT.md']),
+    ...bullets(['.leg/PROGRESS.md', '.leg/CONTRACT.md']),
     '',
   ]
   return scrub(lines.join('\n'))
@@ -134,7 +135,8 @@ export function ensureExcluded(repo, pattern) {
 // Writes the notes, saves the bundle repo-local in the worktree, validates it.
 // Returns { bundle_id, path, notes_path, quality, score } (throws on failure).
 export function writeHandoff({ card, station, leg, entry, run, worktree, runDir, extra = [], changedFiles = [], diffStat = '' }) {
-  const progress = existsSync(join(worktree, '.baton', 'PROGRESS.md')) ? readFileSync(join(worktree, '.baton', 'PROGRESS.md'), 'utf8') : ''
+  const pPath = existsSync(join(worktree, '.leg', 'PROGRESS.md')) ? join(worktree, '.leg', 'PROGRESS.md') : join(worktree, '.baton', 'PROGRESS.md');
+  const progress = existsSync(pPath) ? readFileSync(pPath, 'utf8') : '';
   let lastMessage = null
   if (runDir && existsSync(join(runDir, 'last.md'))) lastMessage = readFileSync(join(runDir, 'last.md'), 'utf8')
   if (!lastMessage && run?.last_message) lastMessage = run.last_message
@@ -143,9 +145,9 @@ export function writeHandoff({ card, station, leg, entry, run, worktree, runDir,
     card, station, leg, entry, run, progress, lastMessage, diff: run?.diff ?? null, diffStat, changedFiles,
     extra: [...extra, stderrTail && run?.exit_code !== 0 ? `stderr tail: ${scrub(stderrTail).slice(0, 800)}` : null].filter(Boolean),
   })
-  const batonDir = join(worktree, '.baton')
-  mkdirSync(batonDir, { recursive: true })
-  const notesPath = join(batonDir, `handoff-${station.name}-leg${leg}.md`)
+  const legDir = join(worktree, '.leg')
+  mkdirSync(legDir, { recursive: true })
+  const notesPath = join(legDir, `handoff-${station.name}-leg${leg}.md`)
   writeFileSync(notesPath, notes)
   if (card.repo) ensureExcluded(card.repo, '.context-handoffs/')
   const slug = `baton-${card.card_id}-${station.name}-leg${leg}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80)

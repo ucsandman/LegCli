@@ -137,19 +137,19 @@ test('card add refuses a subdirectory of a git repo (root must be the repo itsel
   assert.match(bad.stderr, /repo is not the repository root: .*\(root is .*\)/)
 })
 
-test('card add refuses a repo path equal to BATON_HOME', () => {
+test('card add refuses a repo path equal to LEG_HOME/BATON_HOME', () => {
   const repo = initRepo()
   const env = testEnv(repo)
   const bad = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'fake'], env)
   assert.equal(bad.status, 2)
-  assert.match(bad.stderr, /repo cannot contain BATON_HOME/)
+  assert.match(bad.stderr, /repo cannot contain (LEG|BATON)_HOME/)
 })
 
-test('card add refuses a repo path that is a parent of BATON_HOME', () => {
+test('card add refuses a repo path that is a parent of LEG_HOME/BATON_HOME', () => {
   const repo = initRepo()
-  const home = join(repo, 'nested', '.baton-home')
+  const home = join(repo, 'nested', '.leg-home')
   const env = testEnv(home)
   const bad = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'fake'], env)
   assert.equal(bad.status, 2)
-  assert.match(bad.stderr, /repo cannot contain BATON_HOME/)
+  assert.match(bad.stderr, /repo cannot contain (LEG|BATON)_HOME/)
 })

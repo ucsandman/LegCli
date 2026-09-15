@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { LAYOUT } from '../accounts.mjs'
 
-export const USAGE_URL = process.env.BATON_CLAUDE_USAGE_URL || 'https://api.anthropic.com/api/oauth/usage'
+export const USAGE_URL = (process.env.LEG_CLAUDE_USAGE_URL || process.env.BATON_CLAUDE_USAGE_URL) || 'https://api.anthropic.com/api/oauth/usage'
 
 function readToken(configDir) {
   const f = join(configDir, '.credentials.json')
@@ -58,7 +58,7 @@ function getJson(url, headers, timeoutMs) {
 export async function fetchClaudeUsage({ configDir = LAYOUT.claude.home(), timeoutMs = 8000, url = USAGE_URL } = {}) {
   const t = readToken(configDir)
   if (!t) return { ok: false, limits: null, error: 'no claude.ai login found in ' + configDir }
-  const r = await getJson(url, { Authorization: `Bearer ${t.token}`, 'anthropic-beta': 'oauth-2025-04-20', Accept: 'application/json', 'User-Agent': 'agent-baton' }, timeoutMs)
+  const r = await getJson(url, { Authorization: `Bearer ${t.token}`, 'anthropic-beta': 'oauth-2025-04-20', Accept: 'application/json', 'User-Agent': 'legcli' }, timeoutMs)
   if (r.error) return { ok: false, limits: null, status: 0, error: r.error }
   if (r.status !== 200) return { ok: false, limits: null, status: r.status, expired: t.expired, error: `usage endpoint ${r.status}: ${r.text.slice(0, 120)}` }
   let j

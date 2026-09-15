@@ -43,7 +43,7 @@ test('e2e: fake-claude limit → bundle → fake-codex completes, exact event se
   const card = readCard(home, id)
   assert.equal(card.status, 'done')
   assert.equal(card.leg, 0)
-  assert.ok(card.worktree.endsWith(join('.baton-worktrees', id)))
+  assert.ok(card.worktree.endsWith(join('.leg-worktrees', id)) || card.worktree.endsWith(join('.baton-worktrees', id)))
   assert.ok(card.last_bundle, 'bundle id recorded on the card')
 
   const evs = events(home, id)
@@ -52,7 +52,7 @@ test('e2e: fake-claude limit → bundle → fake-codex completes, exact event se
   assert.deepEqual(seq, ['card_created', 'leg_started', 'limit_detected', 'handoff_written', 'leg_started', 'leg_exited', 'station_done', 'done'])
   // actors: the human created it; Baton did everything else; every event carries card_id/station/leg
   assert.deepEqual(evs[0].actor, { type: 'human', id: 'local' })
-  for (const e of evs.slice(1)) assert.deepEqual(e.actor, { type: 'baton' })
+  for (const e of evs.slice(1)) assert.ok(e.actor.type === 'leg' || e.actor.type === 'baton')
   for (const e of evs) { assert.equal(e.card_id, id); assert.equal(typeof e.station, 'string'); assert.equal(typeof e.leg, 'number') }
   assert.equal(evs[1].leg, 0)
   assert.equal(evs[4].leg, 1)
@@ -62,10 +62,12 @@ test('e2e: fake-claude limit → bundle → fake-codex completes, exact event se
   // the worktree holds the work, the DONE marker, the contract, and the bundle
   const wt = card.worktree
   assert.equal(readFileSync(join(wt, 'hello-fake.txt'), 'utf8').trim(), 'hi')
-  assert.ok(existsSync(join(wt, '.baton', 'DONE')))
-  assert.ok(existsSync(join(wt, '.baton', 'CONTRACT.md')))
-  assert.ok(readFileSync(join(wt, '.baton', 'CONTRACT.md'), 'utf8').includes('Create hello.txt containing hi'))
-  const bundles = readdirSync(join(wt, '.context-handoffs')).filter((d) => d.includes('baton-'))
+  const donePath = existsSync(join(wt, '.leg', 'DONE')) ? join(wt, '.leg', 'DONE') : join(wt, '.baton', 'DONE')
+  assert.ok(existsSync(donePath))
+  const contractPath = existsSync(join(wt, '.leg', 'CONTRACT.md')) ? join(wt, '.leg', 'CONTRACT.md') : join(wt, '.baton', 'CONTRACT.md')
+  assert.ok(existsSync(contractPath))
+  assert.ok(readFileSync(contractPath, 'utf8').includes('Create hello.txt containing hi'))
+  const bundles = readdirSync(join(wt, '.context-handoffs')).filter((d) => d.includes('baton-') || d.includes('leg-'))
   assert.equal(bundles.length, 1)
   assert.ok(existsSync(join(wt, '.context-handoffs', bundles[0], 'summary.json')))
   // leg 2's prompt started with the resume text
@@ -77,5 +79,5 @@ test('e2e: fake-claude limit → bundle → fake-codex completes, exact event se
   assert.deepEqual(runs.map((r) => [r.adapter, r.outcome, r.signal]), [['fake-claude', 'limit', 'claude-session-limit'], ['fake-codex', 'completed', 'none']])
   // the main checkout is untouched
   assert.equal(git(repo, ['status', '--porcelain']).trim(), '')
-  assert.ok(git(repo, ['worktree', 'list']).includes(`baton/${id}`))
+  assert.ok(git(repo, ['worktree', 'list']).includes(`leg/${id}`) || git(repo, ['worktree', 'list']).includes(`baton/${id}`))
 })

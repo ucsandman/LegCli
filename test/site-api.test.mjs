@@ -11,13 +11,15 @@ const webhookHandler = require('../site/api/webhook.js')
 
 const originalFetch = globalThis.fetch
 const originalEnv = {
+  LEG_LICENSE_PRIVATE_KEY: process.env.LEG_LICENSE_PRIVATE_KEY,
   BATON_LICENSE_PRIVATE_KEY: process.env.BATON_LICENSE_PRIVATE_KEY,
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET
 }
 const pair = generateKeyPairSync('ed25519')
-process.env.BATON_LICENSE_PRIVATE_KEY = pair.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64')
+process.env.LEG_LICENSE_PRIVATE_KEY = pair.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64')
+process.env.BATON_LICENSE_PRIVATE_KEY = process.env.LEG_LICENSE_PRIVATE_KEY
 process.env.STRIPE_SECRET_KEY = 'sk_test_site_api'
 
 after(() => {
@@ -89,7 +91,7 @@ async function captureErrors(run) {
 async function rejects400(run) {
   await assert.rejects(run, (error) => {
     assert.equal(error.status, 400)
-    assert.match(error.message, /not for a Baton plan/)
+    assert.match(error.message, /not for a (Leg|Baton) plan/)
     return true
   })
 }
@@ -97,12 +99,14 @@ async function rejects400(run) {
 function throws400(run) {
   assert.throws(run, (error) => {
     assert.equal(error.status, 400)
-    assert.equal(error.message, 'this subscription is not for a Baton Team plan')
+    assert.match(error.message, /this subscription is not for a (Leg|Baton) Team plan/)
     return true
   })
 }
 
-test('planOf accepts only the two exact Baton lookup keys', () => {
+test('planOf accepts both leg and legacy baton lookup keys', () => {
+  assert.equal(lib.planOf({ lookup_key: 'leg_team' }), 'team')
+  assert.equal(lib.planOf({ lookup_key: 'leg_personal' }), 'personal')
   assert.equal(lib.planOf({ lookup_key: 'baton_team' }), 'team')
   assert.equal(lib.planOf({ lookup_key: 'baton_personal' }), 'personal')
   assert.equal(lib.planOf({ lookup_key: 'unrelated_team' }), null)
@@ -112,7 +116,8 @@ test('planOf accepts only the two exact Baton lookup keys', () => {
 })
 
 test('an unrelated subscription is rejected with 400 before license signing', async () => {
-  const privateKey = process.env.BATON_LICENSE_PRIVATE_KEY
+  const privateKey = process.env.LEG_LICENSE_PRIVATE_KEY || process.env.BATON_LICENSE_PRIVATE_KEY
+  delete process.env.LEG_LICENSE_PRIVATE_KEY
   delete process.env.BATON_LICENSE_PRIVATE_KEY
   try {
     throws400(() => lib.licenseFromSubscription(teamSubscription({
@@ -120,6 +125,7 @@ test('an unrelated subscription is rejected with 400 before license signing', as
       items: { data: [{ price: { lookup_key: 'unrelated_team', metadata: { plan: 'team' } }, quantity: 99, current_period_end: 1791763200 }] }
     })))
   } finally {
+    process.env.LEG_LICENSE_PRIVATE_KEY = privateKey
     process.env.BATON_LICENSE_PRIVATE_KEY = privateKey
   }
 })
@@ -167,13 +173,13 @@ test('a subscription-mode Personal checkout is rejected without issuing or email
   const res = response()
   await webhookHandler(req, res)
   assert.equal(res.statusCode, 200)
-  assert.equal(JSON.parse(res.body).error, 'this checkout is not for a Baton plan')
+  assert.equal(JSON.parse(res.body).error, 'this checkout is not for a Leg plan')
   assert.equal(calls.filter((url) => url.includes('api.resend.com')).length, 0)
 })
 
 test('a valid Baton Team subscription signs the expected plan and seats', () => {
   const { key, payload } = lib.licenseFromSubscription(teamSubscription())
-  assert.match(key, /^BATON-[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+  assert.match(key, /^(LEG|BATON)-[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
   assert.equal(payload.plan, 'team')
   assert.equal(payload.seats, 4)
 })
@@ -189,7 +195,7 @@ test('a valid paid Baton Personal checkout signs a personal license', async () =
     line_items: { data: [{ price: { lookup_key: 'baton_personal' }, quantity: 1 }] }
   })
   const { key, payload } = await lib.licenseFromSession('cs_test_personal')
-  assert.match(key, /^BATON-[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+  assert.match(key, /^(LEG|BATON)-[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
   assert.equal(payload.plan, 'personal')
   assert.equal(payload.seats, 1)
   const res = response()
@@ -212,8 +218,8 @@ test('/api/key requires a signed Team key before looking up a subscription', asy
   assert.equal(missing.statusCode, 403)
 
   const genuine = teamProof('sub_forged')
-  const [payload, signature] = genuine.slice(6).split('.')
-  const forged = await callKeyRefresh({ key: `BATON-${payload}.${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}` })
+  const [payload, signature] = genuine.replace(/^(LEG|BATON)-/, '').split('.')
+  const forged = await callKeyRefresh({ key: `LEG-${payload}.${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}` })
   assert.equal(forged.statusCode, 403)
 
   const personal = await callKeyRefresh({ key: lib.signLicense({ v: 1, id: 'lic_personal', plan: 'personal', seats: 1, issued: '2025-01-01', updates_until: '2027-01-01' }) })
@@ -230,7 +236,7 @@ test('/api/key refreshes an expired signed Team key while the subscription is ac
   globalThis.fetch = async (url) => { calls.push(String(url)); return jsonResponse(sub) }
   const res = await callKeyRefresh({ key: teamProof(sub.id) })
   assert.equal(res.statusCode, 200)
-  assert.match(JSON.parse(res.body).key, /^BATON-/)
+  assert.match(JSON.parse(res.body).key, /^(LEG|BATON)-/)
   assert.equal(calls.length, 1)
   assert.match(calls[0], /\/subscriptions\/sub_expiredproof$/)
 })
@@ -252,7 +258,7 @@ test('/api/key cannot refresh an unrelated subscription into a Team license', as
   globalThis.fetch = async () => jsonResponse(sub)
   const res = await callKeyRefresh({ key: teamProof(sub.id) })
   assert.equal(res.statusCode, 400)
-  assert.equal(JSON.parse(res.body).error, 'this subscription is not for a Baton Team plan')
+  assert.equal(JSON.parse(res.body).error, 'this subscription is not for a Leg Team plan')
   assert.equal(JSON.parse(res.body).key, undefined)
 })
 
@@ -281,7 +287,7 @@ test('an unrelated subscription-cycle invoice is acknowledged without sending em
   const res = response()
   await webhookHandler(req, res)
   assert.equal(res.statusCode, 200)
-  assert.equal(JSON.parse(res.body).error, 'this subscription is not for a Baton Team plan')
+  assert.equal(JSON.parse(res.body).error, 'this subscription is not for a Leg Team plan')
   assert.equal(calls.filter((url) => url.includes('api.resend.com')).length, 0)
 })
 
@@ -304,7 +310,7 @@ test('missing Resend configuration is a retryable visible failure with redacted 
   const logs = await captureErrors(async () => { res = await callWebhook({ type: 'checkout.session.completed', data: { object: session } }, secret) })
   assert.equal(res.statusCode, 500)
   assert.deepEqual(JSON.parse(res.body), { received: true, delivery: { status: 'failed', reason: 'missing_resend_api_key', retryable: true } })
-  assert.deepEqual(logs, ['Baton license delivery failed: reason=missing_resend_api_key retryable=true'])
+  assert.deepEqual(logs, ['Leg license delivery failed: reason=missing_resend_api_key retryable=true'])
   assert.doesNotMatch(logs.join('\n'), /sensitive-recipient|TEST_LICENSE_KEY|Authorization|customer_details/)
 })
 
@@ -321,7 +327,7 @@ test('missing recipient is a terminal visible failure with redacted logs', async
   const logs = await captureErrors(async () => { res = await callWebhook(event, secret) })
   assert.equal(res.statusCode, 200)
   assert.deepEqual(JSON.parse(res.body), { received: true, delivery: { status: 'failed', reason: 'missing_recipient', retryable: false } })
-  assert.deepEqual(logs, ['Baton license delivery failed: reason=missing_recipient retryable=false'])
+  assert.deepEqual(logs, ['Leg license delivery failed: reason=missing_recipient retryable=false'])
   assert.doesNotMatch(logs.join('\n'), /sub_sensitive_customer|TEST_LICENSE_KEY|Authorization|customer/)
 })
 

@@ -12,9 +12,9 @@ The site is read at a desk, in a terminal-adjacent browser tab, usually right af
 
 ## Product Purpose
 
-Baton is a local CLI wrapper: `baton claude|codex|agy` instead of the bare command. The same interactive agent runs, with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the limit hits. A second session in one repo gets its own worktree and a Land button that rebases, tests and fast-forwards. Local-first, zero runtime dependencies, leaves the user's settings files alone; the one thing it writes outside its own directory is the folder-trust answer each agent CLI would otherwise stop and ask for, so a handoff at 3am does not stall on a prompt (`BATON_TRUST=never` turns that off). Commercial license, source readable in the package; no trial, a Personal license at $79 once or Team at $12 per seat per month, and a 30-day money-back guarantee as the risk reversal.
+Leg is a local CLI wrapper: `leg claude|codex|agy` instead of the bare command. The same interactive agent runs, with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the limit hits. A second session in one repo gets its own worktree and a Land button that rebases, tests and fast-forwards. Local-first, zero runtime dependencies, leaves the user's settings files alone; the one thing it writes outside its own directory is the folder-trust answer each agent CLI would otherwise stop and ask for, so a handoff at 3am does not stall on a prompt (`LEG_TRUST=never` turns that off). Commercial license, source readable in the package; no trial, a Personal license at $79 once or Team at $12 per seat per month, and a 30-day money-back guarantee as the risk reversal.
 
-The site exists to get a developer from "I just hit the wall again" to `npm install -g baton-agents` in under a minute, and to let them verify every claim against the docs before they do. The source repository is private, so the site's own docs are the only thing a stranger can check the claims against: they carry the same text as the README and `docs/`, and the source itself is readable in the installed package. Success is a copied install command and a visit to the docs, in that order.
+The site exists to get a developer from "I just hit the wall again" to `npm install -g legcli` in under a minute, and to let them verify every claim against the docs before they do. The source repository is private, so the site's own docs are the only thing a stranger can check the claims against: they carry the same text as the README and `docs/`, and the source itself is readable in the installed package. Success is a copied install command and a visit to the docs, in that order.
 
 ## Brand Personality
 
@@ -23,8 +23,8 @@ Exact, unhurried, mechanical. Voice of a well-written hardware manual: every sen
 ## Anti-references
 
 - The generic AI-agent-platform landing page: dark near-black body, purple or cyan glow, gradient text, three icon cards, "supercharge your workflow", a logo row of companies that have not heard of it.
-- declick.dev, a sibling product by the same author: dark `#0f1115`, Archivo + Spline Sans Mono, amber accent. Baton must not read as the same family.
-- Editorial-typographic restraint (display serif italic, small mono labels, ruled columns). Baton is a tool, not a magazine.
+- declick.dev, a sibling product by the same author: dark `#0f1115`, Archivo + Spline Sans Mono, amber accent. Leg must not read as the same family.
+- Editorial-typographic restraint (display serif italic, small mono labels, ruled columns). Leg is a tool, not a magazine.
 - Cream/paper "warm minimalism". The warmth in this brand comes from the claude terracotta inside product visuals, never from the page background.
 - Any page whose hero is a stock illustration of robots, hands, or a baton.
 
@@ -34,7 +34,7 @@ Exact, unhurried, mechanical. Voice of a well-written hardware manual: every sen
 2. **One idea per fold.** The page is a long scroll with deliberate pacing; each fold carries one sentence a stranger could repeat.
 3. **Motion tells the handoff.** The single story worth animating is: the wall, the bundle, the next agent continuing in the same terminal. Everything else is still.
 4. **Every claim is checkable.** Numbers, versions, file paths and dates appear exactly as in the README, and the README is one click away.
-5. **Say what is never touched.** Trust is built by naming the files Baton does not edit and the keys it strips, as prominently as what it does.
+5. **Say what is never touched.** Trust is built by naming the files Leg does not edit and the keys it strips, as prominently as what it does.
 
 ## Accessibility & Inclusion
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// baton — headless CLI. The board (phase 6) is the human surface; this is the
+// leg, headless CLI. The board (phase 6) is the human surface; this is the
 // agent/script surface and the test seam. Output via process.stdout only.
-//   baton card add --repo <p> --task "<t>" --chain claude,codex [--pipeline preset|file] …
-//   baton card ls [--json] | show <id> | run <id> | rm <id> [--delete-branch] | events <id>
-//   baton card <pause|resume|kill|approve|handoff-now|rerun> <id> | reassign <id> --adapter a [--mode m]
-//   baton scheduler start [--ticks N] [--interval-ms N] | status | stop
+//   leg card add --repo <p> --task "<t>" --chain claude,codex [--pipeline preset|file] …
+//   leg card ls [--json] | show <id> | run <id> | rm <id> [--delete-branch] | events <id>
+//   leg card <pause|resume|kill|approve|handoff-now|rerun> <id> | reassign <id> --adapter a [--mode m]
+//   leg scheduler start [--ticks N] [--interval-ms N] | status | stop
 import { rmSync, appendFileSync, readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -68,27 +68,27 @@ async function cardAdd(args) {
 // runner then does what it does for a real limit: bundle, stop the agent,
 // start the next option in the same terminal. The payload is marked
 // simulated: it is never kept as live evidence, and the wall it records
-// clears after two minutes. codex has no Baton-owned input, so it is refused.
+// clears after two minutes. codex has no Leg-owned input, so it is refused.
 function simulateLimit(s) {
   if (!isActive(s)) die(3, `session ${s.session_id} is not active`)
   if (['limit', 'handing_off'].includes(s.status)) die(3, `session ${s.session_id} is already ${s.status}`)
   if (s.agent === 'claude') {
     const payload = {
       hook_event_name: 'StopFailure', error: 'rate_limit', session_id: s.agent_session_id ?? undefined, transcript_path: s.transcript_path ?? undefined,
-      last_assistant_message: 'API Error: Rate limit reached (simulated by baton sessions simulate-limit)', baton_simulated: true,
+      last_assistant_message: 'API Error: Rate limit reached (simulated by leg sessions simulate-limit)', leg_simulated: true, baton_simulated: true,
     }
     const r = spawnSync(process.execPath, [join(SRC, 'hook.mjs'), 'claude-hook', '--session', s.session_id], { input: JSON.stringify(payload), windowsHide: true, encoding: 'utf8', timeout: 15000 })
     if (r.status !== 0) die(1, `hook exited ${r.status}: ${(r.stderr || '').slice(0, 300)}`)
     const after = readSession(s.session_id)
     if (after?.status !== 'limit') die(1, `hook ran but the session is ${after?.status ?? 'gone'}, not limit`)
-    return out(`simulated: StopFailure rate_limit sent through src/hook.mjs; ${s.session_id} is at limit (wall clears in 2 min); the runner hands off within ${process.env.BATON_ATTACH_POLL_MS || 2000} ms to ${after.chain?.[0]?.agent ?? 'nothing'}`)
+    return out(`simulated: StopFailure rate_limit sent through src/hook.mjs; ${s.session_id} is at limit (wall clears in 2 min); the runner hands off within ${(process.env.LEG_ATTACH_POLL_MS || process.env.BATON_ATTACH_POLL_MS) || 2000} ms to ${after.chain?.[0]?.agent ?? 'nothing'}`)
   }
   if (s.agent === 'agy') {
-    appendFileSync(join(sessionDir(s.session_id), 'agy.log'), '\nrpc error: code = ResourceExhausted desc = RESOURCE_EXHAUSTED quota (simulated by baton sessions simulate-limit)\n')
+    appendFileSync(join(sessionDir(s.session_id), 'agy.log'), '\nrpc error: code = ResourceExhausted desc = RESOURCE_EXHAUSTED quota (simulated by leg sessions simulate-limit)\n')
     appendEvent(s.session_id, { type: 'status', summary: 'simulated RESOURCE_EXHAUSTED appended to the session log' })
     return out(`simulated: RESOURCE_EXHAUSTED appended to ${join(sessionDir(s.session_id), 'agy.log')}; the runner reads it within ${process.env.BATON_ATTACH_POLL_MS || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
   }
-  die(2, `simulate-limit drives the claude hook path (and the agy log); codex's wall comes from its own rollout file, which Baton never writes. Use "baton sessions handoff ${s.session_id}" to force the switch.`)
+  die(2, `simulate-limit drives the claude hook path (and the agy log); codex's wall comes from its own rollout file, which Baton never writes. Use "leg sessions handoff ${s.session_id}" to force the switch.`)
 }
 
 function fmtCard(c) {
@@ -97,14 +97,14 @@ function fmtCard(c) {
   return `${c.card_id}  [${c.status}]  ${c.station}${leg}  leases=${(c.leases?.length ? c.leases : ['**']).join(',')}  ${String(c.title ?? c.task).slice(0, 60)}`
 }
 
-const TERMS = `Terms check (fetched 2026-09-11): Anthropic Consumer Terms forbid sharing account credentials and "bypassing any of our systems or protective measures"; the Anthropic Usage Policy forbids coordinating across multiple accounts to circumvent product guardrails; OpenAI's Terms of Use forbid sharing credentials and "circumvent any rate limits or restrictions". Two paid logins you own are not banned by name, but rotating to a second account of the same vendor because the first is rate-limited is close to that wording. Baton's default chain switches vendors (claude -> codex -> agy); a second account of one vendor is your call.`
+const TERMS = `Terms check (fetched 2026-09-11): Anthropic Consumer Terms forbid sharing account credentials and "bypassing any of our systems or protective measures"; the Anthropic Usage Policy forbids coordinating across multiple accounts to circumvent product guardrails; OpenAI's Terms of Use forbid sharing credentials and "circumvent any rate limits or restrictions". Two paid logins you own are not banned by name, but rotating to a second account of the same vendor because the first is rate-limited is close to that wording. Leg's default chain switches vendors (claude -> codex -> agy); a second account of one vendor is your call.`
 
 async function main() {
   const [group, cmd, ...rest] = process.argv.slice(2)
   const args = parseArgs(rest)
   if (group === '--version' || group === '-v') return out(VERSION)
   if (AGENTS.includes(group)) {
-    // baton claude|codex|agy [agent args...]: everything after the agent name
+    // leg claude|codex|agy [agent args...]: everything after the agent name
     // goes straight through.
     const code = await attach(group, [cmd, ...rest].filter((x) => x !== undefined), { open: process.env.BATON_NO_OPEN !== '1' })
     process.exit(code)
@@ -117,7 +117,7 @@ async function main() {
       for (const s of list) out(`${s.session_id}  [${s.status}]  ${s.agent}${s.account !== 'default' ? '/' + s.account : ''}  ${s.repo_name ?? s.cwd}${s.branch ? '@' + s.branch : ''}  turns=${s.turns}  ${s.limits ? `5h ${s.limits.five_hour?.pct ?? '-'}% 7d ${s.limits.seven_day?.pct ?? '-'}%` : ''}  ${String(s.task ?? '').slice(0, 50)}`)
       return
     }
-    const id = args._[0] || die(2, `usage: baton sessions ${cmd} <session-id>`)
+    const id = args._[0] || die(2, `usage: leg sessions ${cmd} <session-id>`)
     const s = readSession(id) || die(3, `session not found: ${id}`)
     if (cmd === 'show') return out(JSON.stringify({ session: s, events: readSessionEvents(id) }, null, 2))
     if (cmd === 'events') { for (const e of readSessionEvents(id)) out(`${e.ts}  ${String(e.type).padEnd(18)}  ${e.summary}`); return }
@@ -189,41 +189,41 @@ async function main() {
     if (!cmd || cmd === 'ls' || cmd === 'status') {
       if (!share.on || !share.people.length) {
         out('share is off: the board is on 127.0.0.1 and only this machine can reach it.')
-        out('Turn it on: baton share on            (the Tailscale address; --bind lan, or --bind <address>)')
+        out('Turn it on: leg share on            (the Tailscale address; --bind lan, or --bind <address>)')
         return
       }
       out(`share is on: http://${share.bind}:${share.port} (${share.bind_kind})`)
       for (const p of share.people) out(`  ${p.name.padEnd(16)} ${p.role.padEnd(6)} added ${String(p.created_at).slice(0, 10)}${p.last_seen ? `  last seen ${String(p.last_seen).slice(0, 16).replace('T', ' ')}` : ''}`)
       out('')
-      out('A token is shown once. Lost one? baton share rotate <name>. Everyone out: baton share off')
+      out('A token is shown once. Lost one? leg share rotate <name>. Everyone out: leg share off')
       return
     }
     if (cmd === 'on') {
       const a = parseArgs(rest)
       // more than one human is the Team plan
       const ent = entitlement()
-      if (!allows(ent, 'share')) die(2, ent.ok ? `baton share is part of the Team plan (per seat); this machine has a ${ent.plan} license. ${BUY_URL}` : describeLicense(ent))
+      if (!allows(ent, 'share')) die(2, ent.ok ? `leg share is part of the Team plan (per seat); this machine has a ${ent.plan} license. ${BUY_URL}` : describeLicense(ent))
       try {
         const r = await turnOn({ bind: a.bind ?? 'tailscale', port: a.port ? parseInt(a.port, 10) : undefined, owner: a.owner })
         await restartBoard()
         out(`share is on: the board is at http://${r.share.bind}:${r.share.port} (${r.share.bind_kind})`)
         if (r.token) showLink(r.owner, r.token, r.share)
-        out('Add someone: baton share add <name>')
+        out('Add someone: leg share add <name>')
         out('No TLS: keep this on Tailscale or a network you trust. Anyone with a link sees that your terminals exist and how much usage is left.')
       } catch (err) { die(2, err.message) }
       return
     }
     if (cmd === 'add') {
-      const name = args._[0] || die(2, 'usage: baton share add <name> [--role owner|guest]')
+      const name = args._[0] || die(2, 'usage: leg share add <name> [--role owner|guest]')
       try {
         const r = addPerson(name, { role: args.role === 'owner' ? 'owner' : 'guest', share })
         showLink(r.person, r.token, r.share)
-        if (!r.share.on) out('share is still off: baton share on')
+        if (!r.share.on) out('share is still off: leg share on')
       } catch (err) { die(2, err.message) }
       return
     }
     if (cmd === 'rotate') {
-      const name = args._[0] || die(2, 'usage: baton share rotate <name>')
+      const name = args._[0] || die(2, 'usage: leg share rotate <name>')
       try {
         const r = rotateToken(name, share)
         out(`${name}'s old link stopped working.`)
@@ -232,7 +232,7 @@ async function main() {
       return
     }
     if (cmd === 'rm') {
-      const name = args._[0] || die(2, 'usage: baton share rm <name>')
+      const name = args._[0] || die(2, 'usage: leg share rm <name>')
       if (!personNamed(share, name)) die(3, `no one called "${name}" on this board`)
       try { removePerson(name, share) } catch (err) { die(2, err.message) }
       return out(`${name} is off the board; their link stopped working.`)
@@ -250,7 +250,7 @@ async function main() {
   if (group === 'accounts') {
     if (cmd === 'add') {
       const [agent, name] = args._
-      if (!agent || !name) die(2, 'usage: baton accounts add <claude|codex> <name>')
+      if (!agent || !name) die(2, 'usage: leg accounts add <claude|codex> <name>')
       try {
         const r = addAccount(agent, name)
         out(`${agent} account "${name}" at ${r.dir}`)
@@ -266,7 +266,7 @@ async function main() {
     }
     if (cmd === 'rm') {
       const [agent, name] = args._
-      if (!agent || !name || name === 'default') die(2, 'usage: baton accounts rm <claude|codex> <name>')
+      if (!agent || !name || name === 'default') die(2, 'usage: leg accounts rm <claude|codex> <name>')
       removeAccount(agent, name)
       return out(`removed ${agent} account "${name}" (your real ${LAYOUT[agent]?.home() ?? 'home'} was not touched)`)
     }
@@ -289,11 +289,11 @@ async function main() {
       const ent = entitlement()
       out(describeLicense(ent))
       if (ent.source === 'license') out(`stored at ${licensePath()}`)
-      if (!ent.ok) out(`Buy: ${BUY_URL}   then: baton license activate <key>`)
+      if (!ent.ok) out(`Buy: ${BUY_URL}   then: leg license activate <key>`)
       return
     }
     if (cmd === 'activate') {
-      const key = args._[0] || die(2, 'usage: baton license activate <key>')
+      const key = args._[0] || die(2, 'usage: leg license activate <key>')
       try {
         const p = activateLicense(key)
         out(describeLicense(entitlement()))
@@ -301,7 +301,7 @@ async function main() {
       } catch (err) { die(2, err.message) }
       return
     }
-    if (cmd === 'deactivate') return out(deactivateLicense() ? `removed ${licensePath()}; Baton needs a key again before it will run` : 'no license was stored')
+    if (cmd === 'deactivate') return out(deactivateLicense() ? `removed ${licensePath()}; Leg needs a key again before it will run` : 'no license was stored')
     if (cmd === 'refresh') {
       try { const p = await refreshLicense(); out(`renewed ${p.plan} license ${p.id}, valid through ${p.expires}`) } catch (err) { die(2, err.message) }
       return
@@ -309,18 +309,18 @@ async function main() {
     die(2, `unknown license command "${cmd}" (status|activate <key>|deactivate|refresh)`)
   }
   if (group === 'uninstall') {
-    // Baton never edits ~/.claude or ~/.codex; everything it added lives under
+    // Leg never edits ~/.claude or ~/.codex; everything it added lives under
     // $BATON_HOME (sessions, usage, extra-account dirs, cards).
     const dir = home()
     if (!args.yes) {
-      out(`baton uninstall removes ${dir} (sessions, usage, extra-account dirs, cards, board pidfile) and nothing else.`)
+      out(`leg uninstall removes ${dir} (sessions, usage, extra-account dirs, cards, board pidfile) and nothing else.`)
       out('Your real ~/.claude, ~/.codex and agy homes are never touched. Re-run with --yes to do it.')
       return
     }
     for (const r of listAccountRows()) if (r.name !== 'default') removeAccount(r.agent, r.name)
     await down()
     rmSync(dir, { recursive: true, force: true })
-    return out(`removed ${dir}; now: npm rm -g baton-agents`)
+    return out(`removed ${dir}; now: npm rm -g legcli`)
   }
   if (group === 'card') {
     if (cmd === 'add') return cardAdd(args)
@@ -331,7 +331,7 @@ async function main() {
       for (const c of cards) out(fmtCard(c))
       return
     }
-    const id = args._[0] || die(2, `usage: baton card ${cmd} <card-id>`)
+    const id = args._[0] || die(2, `usage: leg card ${cmd} <card-id>`)
     const card = readCard(id) || die(3, `card not found: ${id}`)
     if (cmd === 'show') {
       if (args.json) return out(JSON.stringify({ card, runs: readRuns(id) }, null, 2))
@@ -356,7 +356,7 @@ async function main() {
     if (cmd === 'rm') {
       try {
         const r = removeWorktree(card.repo, id, { deleteBranch: Boolean(args['delete-branch']), force: Boolean(args.force) })
-        if (args['delete-branch'] && r.branchUnmerged && !r.branchDeleted) out(`kept branch baton/${id}: it has commits not on its base (rerun with --force to discard them)`)
+        if (args['delete-branch'] && r.branchUnmerged && !r.branchDeleted) out(`kept branch leg/${id}: it has commits not on its base (rerun with --force to discard them)`)
       } catch (err) { die(3, `worktree: ${err.message}`) }
       rmSync(cardDir(id), { recursive: true, force: true })
       return out(`removed ${id}`)
@@ -373,7 +373,7 @@ async function main() {
     if (cmd === 'start') {
       const ticks = args.ticks ? parseInt(args.ticks, 10) : Infinity
       const running = schedulerStatus()
-      if (running.running) die(3, `scheduler already running (pid ${running.pid}); two schedulers would drive the same cards. baton scheduler stop first`)
+      if (running.running) die(3, `scheduler already running (pid ${running.pid}); two schedulers would drive the same cards. leg scheduler stop first`)
       const s = createScheduler({ intervalMs: args['interval-ms'] ? parseInt(args['interval-ms'], 10) : 1000 })
       process.on('SIGINT', () => { s.stop() })
       out(`scheduler: max ${MAX_CONCURRENT} concurrent, pidfile ${pidfile()}${Number.isFinite(ticks) ? `, ${ticks} tick(s)` : ''}`)
@@ -402,13 +402,13 @@ async function main() {
   if (group === 'down') process.exit(await down())
   if (group === 'status') process.exit(await status())
   if (group === 'open') {
-    const port = process.env.BATON_PORT || 4747
+    const port = (process.env.LEG_PORT || process.env.BATON_PORT) || 4747
     const url = `http://127.0.0.1:${port}`
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
   if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|resume|accounts|share|up|down|status|open|card|scheduler|uninstall)`)
-  out(`baton ${VERSION} — your coding agents, with a board alongside and a handoff when one hits its limit
+  out(`leg ${VERSION}, your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                a second live session in one checkout gets its own worktree (--no-worktree to share)
@@ -420,7 +420,7 @@ async function main() {
   share status|on|add <name>|rotate <name>|rm <name>|off
                                 more than one human on the board, off by default
   down | status | open          the board
-  uninstall [--yes]             removes only what Baton added (~/.baton)
+  uninstall [--yes]             removes only what Leg added (~/.leg, and legacy ~/.baton)
   extras (v0.1 pipelines): up, card ..., scheduler ...   presets: ${PRESET_NAMES.join(', ')}`)
 }
 

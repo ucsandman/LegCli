@@ -4,7 +4,7 @@
 A second live session in one checkout gets its own worktree and branch, and
 **Land** on its card sends that branch through the merge queue (rebase, tests,
 fast-forward, or a bounce with the reason), with the landed-on-trunk list
-naming the terminal that landed each commit. `baton share` puts more than one
+naming the terminal that landed each commit. `leg share` puts more than one
 human on the board, off by default: a token and a name per human, per-human
 actor ids on every event, another human's terminal read-only with everything it
 said or touched left out, a **Request handoff** the owner approves, and rate
@@ -12,7 +12,7 @@ limits on the API. Still open from item 1: TLS (there is none, so the board
 belongs on Tailscale or a trusted LAN), token scopes finer than owner and
 guest, and an audit view.
 
-**0.2.0 (2026-09-11) shipped the terminal-first entry**: `baton claude|codex|agy`
+**0.2.0 (2026-09-11) shipped the terminal-first entry**: `leg claude|codex|agy`
 runs the real interactive agent with a board, usage tracking and a hand-off
 alongside it. Against the list below, it delivers the hand-off-on-demand half
 of the "hand off now to \<adapter>" item (a button on every terminal card,
@@ -33,7 +33,7 @@ event names its actor, a board that reads only the ledger, and an auth/bind seam
 
 ## Next
 
-1. **Multi-human network access** — shipped in 0.3.0 as `baton share` (a token
+1. **Multi-human network access**, shipped in 0.3.0 as `leg share` (a token
    and a name per human, per-human actor ids on every event, rate limits, a
    guest's read-only redacted board). What is left: TLS termination, token
    scopes finer than owner and guest, and an audit view of who did what across

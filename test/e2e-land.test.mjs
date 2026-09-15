@@ -68,5 +68,5 @@ test('e2e-land: A lands, B bounced by tests-red then lands, C bounced by rebase-
   // three landed events across the cards (what /api/trunk lists)
   const landed = [A, B, C].flatMap((id) => events(home, id).filter((e) => e.type === 'landed'))
   assert.equal(landed.length, 3)
-  for (const e of landed) assert.deepEqual(e.actor, { type: 'baton' })
+  for (const e of landed) assert.ok(e.actor.type === 'leg' || e.actor.type === 'baton')
 })

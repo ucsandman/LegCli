@@ -192,14 +192,14 @@ test('bundle: the resume prompt names the absolute RESUME file, not a path relat
   const { resumePrompt } = await import('../src/bundle.mjs')
   // started in a subdirectory (`cd repo/src && baton claude`): the bundle and
   // the notes go to the repo root, the next agent is spawned in the subdirectory
-  const repo = mkdtempSync(join(tmpdir(), 'baton-resume-'))
-  mkdirSync(join(repo, '.baton'), { recursive: true })
+  const repo = mkdtempSync(join(tmpdir(), 'leg-resume-'))
+  mkdirSync(join(repo, '.leg'), { recursive: true })
   mkdirSync(join(repo, 'src'), { recursive: true })
-  const notes = join(repo, '.baton', 'session-s-resume.md')
+  const notes = join(repo, '.leg', 'session-s-resume.md')
   writeFileSync(notes, '## Scope\n\nTask: keep going\n')
   const session = { session_id: 's-resume', agent: 'claude', account: 'default', cwd: join(repo, 'src'), repo, task: 'keep going' }
   const prompt = resumePrompt(session, { id: 'b-1', path: join(repo, '.context-handoffs', 'b-1'), notes }, { agent: 'codex', account: 'default' })
-  const perSession = join(repo, '.baton', 'RESUME-s-resume.md')
+  const perSession = join(repo, '.leg', 'RESUME-s-resume.md')
   assert.equal(existsSync(perSession), true, 'the per-session resume file is written at the work root')
   assert.ok(prompt.includes(perSession), `the prompt points at ${perSession}; got: ${prompt.slice(0, 220)}`)
 })

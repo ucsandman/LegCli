@@ -7,10 +7,11 @@ import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-export const BATON = join(ROOT, 'bin', 'baton.mjs')
+export const LEG = join(ROOT, 'bin', 'leg.mjs')
+export const BATON = LEG
 
 export function makeHome() {
-  return realpathSync(mkdtempSync(join(tmpdir(), 'baton-home-')))
+  return realpathSync(mkdtempSync(join(tmpdir(), 'leg-home-')))
 }
 
 // Baton is a licensed product with no trial, so an unlicensed throwaway home
@@ -36,7 +37,7 @@ export function signTestLicense(payload = {}) {
   const body = Buffer.from(JSON.stringify(full), 'utf8')
   const key = createPrivateKey({ key: Buffer.from(TEST_PRIVATE_KEY_B64, 'base64'), format: 'der', type: 'pkcs8' })
   const b64u = (b) => Buffer.from(b).toString('base64url')
-  return `BATON-${b64u(body)}.${b64u(cryptoSign(null, body, key))}`
+  return `LEG-${b64u(body)}.${b64u(cryptoSign(null, body, key))}`
 }
 
 export function licenseHome(home, payload = {}) {
@@ -52,7 +53,12 @@ export function testEnv(home, extra = {}) {
   // this the suite would write a trust record for every one of them into the
   // developer's own ~/.claude.json, ~/.codex/config.toml and ~/.gemini.
   const { BATON_UNLICENSED, ...rest } = extra
-  const base = { BATON_HOME: home, BATON_TIMERS_MS: '60000,120000', BATON_POLL_MS: '250', BATON_QUIET: '1', BATON_TRUST: 'never', BATON_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64 }
+  if (rest.BATON_QUIET !== undefined && rest.LEG_QUIET === undefined) rest.LEG_QUIET = rest.BATON_QUIET
+  if (rest.BATON_PORT !== undefined && rest.LEG_PORT === undefined) rest.LEG_PORT = rest.BATON_PORT
+  if (rest.BATON_BIND !== undefined && rest.LEG_BIND === undefined) rest.LEG_BIND = rest.BATON_BIND
+  if (rest.BATON_MAX_CONCURRENT !== undefined && rest.LEG_MAX_CONCURRENT === undefined) rest.LEG_MAX_CONCURRENT = rest.BATON_MAX_CONCURRENT
+  if (rest.BATON_LIVE_DIR !== undefined && rest.LEG_LIVE_DIR === undefined) rest.LEG_LIVE_DIR = rest.BATON_LIVE_DIR
+  const base = { LEG_HOME: home, BATON_HOME: home, LEG_TIMERS_MS: '60000,120000', BATON_TIMERS_MS: '60000,120000', LEG_POLL_MS: '250', BATON_POLL_MS: '250', LEG_QUIET: '1', BATON_QUIET: '1', LEG_TRUST: 'never', BATON_TRUST: 'never', LEG_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64, BATON_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64 }
   const env = Object.assign({}, process.env, base, rest)
   if (BATON_UNLICENSED !== '1') licenseHome(home)
   delete env.DASHCLAW_URL
@@ -76,21 +82,27 @@ export function initRepo(prefix = 'toy-') {
   return repo
 }
 
-export function baton(args, env) {
-  return execFileSync(process.execPath, [BATON, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+export function leg(args, env) {
+  return execFileSync(process.execPath, [LEG, ...args], { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
-export function batonFail(args, env) {
+export const baton = leg
+
+export function legFail(args, env) {
   try {
-    return { status: 0, stdout: baton(args, env), stderr: '' }
+    return { status: 0, stdout: leg(args, env), stderr: '' }
   } catch (err) {
     return { status: err.status, stdout: err.stdout?.toString() ?? '', stderr: err.stderr?.toString() ?? '' }
   }
 }
 
-export function batonSpawn(args, env, { cwd } = {}) {
-  return spawn(process.execPath, [BATON, ...args], { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+export const batonFail = legFail
+
+export function legSpawn(args, env, { cwd } = {}) {
+  return spawn(process.execPath, [LEG, ...args], { env, cwd, stdio: ['ignore', 'pipe', 'pipe'] })
 }
+
+export const batonSpawn = legSpawn
 
 export function readCard(home, id) {
   const file = join(home, 'cards', id, 'card.json')
@@ -105,7 +117,7 @@ export function readCard(home, id) {
 export function events(home, id) {
   const dir = join(home, 'cards', id)
   const out = []
-  for (const f of ['events-human-local.jsonl', 'events-baton.jsonl']) {
+  for (const f of ['events-human-local.jsonl', 'events-leg.jsonl', 'events-baton.jsonl']) {
     if (existsSync(join(dir, f))) out.push(...readFileSync(join(dir, f), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse))
   }
   return out.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0))

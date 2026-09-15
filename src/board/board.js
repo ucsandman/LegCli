@@ -1,4 +1,4 @@
-// Baton board: vanilla JS, no build step. Talks to /api/* (see src/server.mjs)
+// Leg board: vanilla JS, no build step. Talks to /api/* (see src/server.mjs)
 // and /api/events (SSE). Keeps one row per card_id, so a live push patches one
 // row instead of re-rendering the list. Design: .design/BOARD-DESIGN.md. Ids,
 // class names and source shapes: .design/BUILD-CONTRACT.md section 6.2. Three
@@ -113,13 +113,13 @@
   try {
     const fromLink = new URL(location.href).searchParams.get('token')
     if (fromLink) {
-      localStorage.setItem('batonToken', fromLink)
+      localStorage.setItem('legToken', fromLink)
       const clean = new URL(location.href)
       clean.searchParams.delete('token')
       history.replaceState(null, '', clean.pathname + clean.search + clean.hash)
     }
   } catch {}
-  function getToken() { return localStorage.getItem('batonToken') || '' }
+  function getToken() { return localStorage.getItem('legToken') || localStorage.getItem('batonToken') || '' }
 
   async function api(path, opts = {}) {
     const headers = { 'Content-Type': 'application/json' }
@@ -189,7 +189,8 @@
     message.node = item
     message.text = text
   }
-  if (typeof window !== 'undefined') window.batonMessage = toast
+  if (typeof window !== 'undefined') window.legMessage = toast;
+  if (typeof window !== 'undefined') window.batonMessage = toast;
 
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -287,8 +288,8 @@
     banner.hidden = s === 'live'
     if (banner.hidden) return
     banner.textContent = s === 'reconnecting' && state.lastHello
-      ? `Reconnecting to Baton. Last reading ${clock(state.lastHello)}.`
-      : `${s === 'reconnecting' ? 'Reconnecting' : 'Connecting'} to Baton on ${state.bind}.`
+      ? `Reconnecting to Leg. Last reading ${clock(state.lastHello)}.`
+      : `${s === 'reconnecting' ? 'Reconnecting' : 'Connecting'} to Leg on ${state.bind}.`
   }
 
   function connectSse() {
@@ -311,9 +312,9 @@
       // nothing between the drop and this hello was replayed: an open detail
       // region is as old as the gap
       scheduleDrawerRefresh()
-      if (data.sessions) window.dispatchEvent(new CustomEvent('baton:sessions', { detail: data.sessions }))
+      if (data.sessions) window.dispatchEvent(new CustomEvent('leg:sessions', { detail: data.sessions })); window.dispatchEvent(new CustomEvent('baton:sessions', { detail: data.sessions }));
     })
-    es.addEventListener('sessions', (e) => { if (state.es === es && request === state.sseRequest) window.dispatchEvent(new CustomEvent('baton:sessions', { detail: JSON.parse(e.data) })) })
+    es.addEventListener('sessions', (e) => { if (state.es === es && request === state.sseRequest) window.dispatchEvent(new CustomEvent('leg:sessions', { detail: JSON.parse(e.data) })); window.dispatchEvent(new CustomEvent('baton:sessions', { detail: JSON.parse(e.data) })); })
     es.addEventListener('card', (e) => { if (state.es === es && request === state.sseRequest) upsertCard(JSON.parse(e.data)) })
     es.addEventListener('removed', (e) => { if (state.es === es && request === state.sseRequest) dropCard(JSON.parse(e.data).card_id) })
     es.addEventListener('event', (e) => { if (state.es === es && request === state.sseRequest) onLedgerEvent(JSON.parse(e.data)) })
@@ -447,7 +448,7 @@
     const head = document.getElementById('cards-head')
     const slot = document.querySelector('#board .ledger-actions')
     const total = state.cards.size
-    if (meta) meta.textContent = total ? cardsMeta() : 'Nothing is queued. Baton starts the next login only when a terminal hands off.'
+    if (meta) meta.textContent = total ? cardsMeta() : 'Nothing is queued. Leg starts the next login only when a terminal hands off.'
     if (head) head.textContent = total ? `${total} background task${total === 1 ? '' : 's'}` : 'No background tasks'
     if (!slot) return
     const existing = document.getElementById('cards-toggle')
@@ -611,7 +612,7 @@
   function shortWorktree(card) {
     if (!card.worktree) return ''
     const parts = String(card.worktree).split(/[\\/]/).filter(Boolean)
-    const i = parts.lastIndexOf('.baton-worktrees')
+    let i = parts.lastIndexOf('.leg-worktrees'); if (i === -1) i = parts.lastIndexOf('.baton-worktrees');
     return i > 0 ? parts.slice(i - 1).join('/') : parts.slice(-2).join('/')
   }
 
@@ -1082,7 +1083,7 @@
   function refreshFallbackSummary(ui) {
     const names = [...ui.chainRows.children].filter((row) => row.fields).map((row) => row.fields.adapterSelect.value)
     ui.fallbackSummary.textContent = names.length
-      ? `If the first agent cannot continue, Baton tries ${names.join(', then ')} in this order.`
+      ? `If the first agent cannot continue, Leg tries ${names.join(', then ')} in this order.`
       : 'No fallback agent is set. Add one under Advanced options if another agent should take over.'
   }
 
@@ -1230,7 +1231,7 @@
     const share = you.share || { on: false, people: 0 }
     const sched = health.scheduler
     const lines = [
-      `baton ${health.version}, bound to ${state.bind}`,
+      `leg ${health.version}, bound to ${state.bind}`,
       `signed in as ${you.name || 'local'}, ${you.role || 'owner'}`,
       share.on ? `share on, ${share.people === 1 ? '1 person' : `${share.people} people`}` : 'share off, nobody invited',
     ]
@@ -1246,8 +1247,8 @@
     input.value = getToken()
     input.addEventListener('change', async () => {
       const v = input.value.trim()
-      if (v) localStorage.setItem('batonToken', v)
-      else localStorage.removeItem('batonToken')
+      if (v) { localStorage.setItem('legToken', v); localStorage.setItem('batonToken', v); }
+      else { localStorage.removeItem('legToken'); localStorage.removeItem('batonToken'); }
       renderTokenMeta()
       state.boardRevision += 1
       state.cardsRequest += 1

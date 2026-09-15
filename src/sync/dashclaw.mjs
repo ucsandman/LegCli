@@ -8,7 +8,7 @@ import http from 'node:http'
 import https from 'node:https'
 
 export function dashclawConfig(env = process.env) {
-  if (env.BATON_SYNC_DASHCLAW !== '1') return null
+  if ((env.LEG_SYNC_DASHCLAW || env.BATON_SYNC_DASHCLAW) !== '1') return null
   const url = env.DASHCLAW_URL
   const key = env.DASHCLAW_API_KEY
   if (!url || !key) return null

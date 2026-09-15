@@ -1,6 +1,6 @@
 {
-  "name": "baton-site",
+  "name": "legcli-site",
   "private": true,
   "type": "commonjs",
-  "description": "The Baton marketing site and its two Vercel functions (api/key, api/webhook). No dependencies."
+  "description": "The Leg marketing site and its two Vercel functions (api/key, api/webhook). No dependencies."
 }

@@ -14,7 +14,7 @@ install.
 
 Node 22 or newer, git, and Python 3 with pip are the only external
 requirements. You do not need any coding-agent CLI installed to develop or
-test Baton: the `fake` adapter (`bin/fake-agent.mjs`) stands in for a real
+test Leg: the `fake` adapter (`bin/fake-agent.mjs`) stands in for a real
 one everywhere the test suite needs an agent.
 
 ## Running the checks
@@ -29,7 +29,7 @@ npm run privacy
   `scripts/privacy-check.mjs` (so a leaked private-source string fails the
   test run, not just the commit hook).
 - `npm run lint` runs `eslint .` (config: `eslint.config.js`; it ignores
-  `docs/**`, `fixtures/**`, `.baton/**` and `.baton-worktrees/**`).
+  `docs/**`, `fixtures/**`, `.leg/**` and `.leg-worktrees/**`).
 - `npm run privacy` runs the same check `npm test` runs, standalone.
 
 Prove a clean clone actually works before opening a PR that touches
@@ -40,15 +40,15 @@ bash scripts/clean-clone-check.sh <scratch-dir>
 ```
 
 It clones the repo into `<scratch-dir>`, runs `npm ci`, `npm test`,
-`npm run lint`, and `node bin/baton.mjs up --dry`, and prints
+`npm run lint`, and `node bin/leg.mjs up --dry`, and prints
 `CLEAN-CLONE PASS tests=<n>` or `CLEAN-CLONE FAIL step=<step>`.
 
 ## How tests are laid out
 
-- `test/helpers.mjs`: shared setup, a throwaway `BATON_HOME`
+- `test/helpers.mjs`: shared setup, a throwaway `LEG_HOME`
   (`makeHome()`), a throwaway git repo with one commit (`initRepo()`), and
-  wrappers to run the `baton` CLI as a child process (`baton()`,
-  `batonFail()`, `batonSpawn()`). Most test files import from here instead
+  wrappers to run the `leg` CLI as a child process (`leg()`,
+  `legFail()`, `legSpawn()`). Most test files import from here instead
   of duplicating setup.
 - One test file roughly per source module (`chain.test.mjs` for
   `src/chain.mjs`, `leases.test.mjs` for `src/leases.mjs`, and so on).
@@ -62,7 +62,7 @@ It clones the repo into `<scratch-dir>`, runs `npm ci`, `npm test`,
 - `board-a11y.test.mjs`: accessibility assertions against the board's
   rendered output (focus handling, `aria-label`s, reduced-motion CSS).
 - `lessons.test.mjs`: regression tests for specific incidents recorded
-  while building Baton (see the file's own comments for what each one
+  while building Leg (see the file's own comments for what each one
   guards against).
 
 ## Rules
@@ -87,7 +87,7 @@ It clones the repo into `<scratch-dir>`, runs `npm ci`, `npm test`,
 - **A shape change gets a `DEVIATIONS.md` row.** If you change how a
   ported piece (`src/runner.mjs`, `src/ledger.mjs`, `src/git-snapshot.mjs`,
   see [docs/REUSE.md](docs/REUSE.md)) behaves compared to its original
-  shape, or change an already-documented Baton shape in a way future
+  shape, or change an already-documented Leg shape in a way future
   readers would want explained, append one row to
   [docs/DEVIATIONS.md](docs/DEVIATIONS.md) (append-only, newest at the
   bottom): date, file, the old shape, the new shape, why.
@@ -101,7 +101,7 @@ It clones the repo into `<scratch-dir>`, runs `npm ci`, `npm test`,
   subscription login is a test that cannot run in CI or on a contributor's
   machine.
 - **A real agent session started by hand to test tooling runs on the cheapest
-  model.** `baton claude --model haiku` (or `--model sonnet`); for another
+  model.** `leg claude --model haiku` (or `--model sonnet`); for another
   agent, whatever its own cheapest-model flag is.
   Verifying that a hook fires or that a tap reads the right file costs one
   turn; there is no reason for that turn to come out of an expensive model's
@@ -109,17 +109,17 @@ It clones the repo into `<scratch-dir>`, runs `npm ci`, `npm test`,
 
 ## Commit message style
 
-Every commit in this repo's history starts with `baton: ` followed by a
+Every commit in this repo's history starts with `leg: ` followed by a
 short, lowercase, present-tense-ish summary (`git log --oneline`):
 
 ```
-e1ddc42 baton: station kind modules (audit fix 1)
-9e9ad04 baton: polish and harden
-c7459d3 baton: land station, merge queue, pr mode stub, 3-card landing e2e
-dbceacd baton: scheduler with path leases + concurrency test
+e1ddc42 leg: station kind modules (audit fix 1)
+9e9ad04 leg: polish and harden
+c7459d3 leg: land station, merge queue, pr mode stub, 3-card landing e2e
+dbceacd leg: scheduler with path leases + concurrency test
 ```
 
-Follow that shape: `baton: <what changed>`, no period, no issue number
+Follow that shape: `leg: <what changed>`, no period, no issue number
 required.
 
 ## PR checklist

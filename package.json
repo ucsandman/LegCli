@@ -1,17 +1,17 @@
 {
-  "name": "baton-agents",
-  "version": "0.6.1",
-  "description": "Claude Code and Codex usage limit monitor with an automatic handoff. Type baton claude|codex|agy and get the same interactive agent with a board alongside, usage tracking per agent and account, a live context handoff bundle, and at the limit the next agent continuing in the same terminal. $79 once, 30-day money-back guarantee.",
+  "name": "legcli",
+  "version": "0.7.0",
+  "description": "Claude Code and Codex usage limit monitor with an automatic handoff. Type leg claude|codex|agy and get the same interactive agent with a board alongside, usage tracking per agent and account, a live context handoff bundle, and at the limit the next agent continuing in the same terminal. $79 once, 30-day money-back guarantee.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
-  "homepage": "https://baton-agents.vercel.app",
+  "homepage": "https://legcli.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ucsandman/baton.git"
+    "url": "https://github.com/ucsandman/legcli.git"
   },
   "bugs": {
-    "url": "https://baton-agents.vercel.app/support",
-    "email": "baton@practicalsystems.io"
+    "url": "https://legcli.com/support",
+    "email": "legcli@practicalsystems.io"
   },
   "keywords": [
     "claude-usage-limit",
@@ -30,7 +30,7 @@
   ],
   "author": "Wes Sander",
   "bin": {
-    "baton": "bin/baton.mjs"
+    "leg": "bin/leg.mjs"
   },
   "files": [
     "bin",
@@ -49,15 +49,15 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=.env bin/baton.mjs up",
+    "start": "node --env-file-if-exists=.env bin/leg.mjs up",
     "test": "node --test --test-concurrency=1 && node scripts/privacy-check.mjs && node scripts/check-claims.mjs",
     "lint": "eslint .",
     "privacy": "node scripts/privacy-check.mjs",
     "claims": "node scripts/check-claims.mjs",
     "claims:drift": "node scripts/check-claims.mjs --strict",
     "docs": "node scripts/build-docs-site.mjs",
-    "dev": "node --env-file-if-exists=.env bin/baton.mjs up --no-open",
-    "stop": "node bin/baton.mjs down"
+    "dev": "node --env-file-if-exists=.env bin/leg.mjs up --no-open",
+    "stop": "node bin/leg.mjs down"
   },
   "devDependencies": {
     "@eslint/js": "^9",

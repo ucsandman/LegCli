@@ -8,8 +8,8 @@ events; home paths scrubbed to `~`).
 ## Command
 
 ```
-node bin/baton.mjs card add --repo <toy-real> --chain claude,codex --max-turns claude=2 --mode codex=workspace-write --pipeline build --title "calc module (real run)" --task "Create src/calc.mjs exporting add, sub, mul and div (div throws on division by zero). Create test/calc.test.mjs using node:test covering all four functions including the divide-by-zero case. Run node --test and fix until green. Then write .baton/DONE."
-node bin/baton.mjs card run card-20260911-0232-real-calc
+node bin/leg.mjs card add --repo <toy-real> --chain claude,codex --max-turns claude=2 --mode codex=workspace-write --pipeline build --title "calc module (real run)" --task "Create src/calc.mjs exporting add, sub, mul and div (div throws on division by zero). Create test/calc.test.mjs using node:test covering all four functions including the divide-by-zero case. Run node --test and fix until green. Then write .leg/DONE."
+node bin/leg.mjs card run card-20260911-0232-real-calc
 ```
 
 `--max-turns claude=2` is the handoff trigger: the task needs more than two
@@ -38,10 +38,10 @@ was docs-only until this run and is now observed-live:
 {"type":"result","subtype":"error_max_turns","is_error":true,"stop_reason":"tool_use","terminal_reason":"max_turns","num_turns":3, …}
 ```
 
-Exit code 1, empty stderr, no `.baton/DONE`; the diff evidence saw one changed
+Exit code 1, empty stderr, no `.leg/DONE`; the diff evidence saw one changed
 path (`.dashclaw-local/`, written by the machine's Claude Code hooks, not the
 task). Classification: `budget` signal `claude-max-turns` + non-zero exit →
-`failed`, handoff. (A budget cap is Baton's own setting, not a usage limit; it
+`failed`, handoff. (A budget cap is Leg's own setting, not a usage limit; it
 still hands off.)
 
 ## The bundle
@@ -49,7 +49,7 @@ still hands off.)
 `fixtures/real-run/bundle-show.txt`: Findings carry "Done so far", "Diff since
 leg start", the touched path; Open questions carry the outcome and exit code.
 Leg 2 picked the handoff up: its first message is "Proceeding from the last
-agent state" and its second tool call reads `.baton/CONTRACT.md` and the
+agent state" and its second tool call reads `.leg/CONTRACT.md` and the
 handoff file (`fixtures/real-run/leg2/out.excerpt.log`, items 1-3).
 
 ## Leg 2 (codex)
@@ -57,7 +57,7 @@ handoff file (`fixtures/real-run/leg2/out.excerpt.log`, items 1-3).
 `fixtures/real-run/leg2/out.excerpt.log` (JSONL): codex read the resume,
 wrote `src/calc.mjs` and `test/calc.test.mjs`, ran the tests itself (its
 sandbox allowed `node --test` here; LESSONS 07-13 recorded a policy block on a
-different machine setup), wrote `.baton/PROGRESS.md` and `.baton/DONE`, and
+different machine setup), wrote `.leg/PROGRESS.md` and `.leg/DONE`, and
 printed a summary. Verified inside leg 2
 (`fixtures/real-run/leg2/out.excerpt.log`, item 20), which ran the repo's
 `npm test` -> `node --test` in the worktree:
@@ -67,7 +67,7 @@ tests 5  pass 5  fail 0
 ```
 
 The worktree holds `src/calc.mjs`, `test/calc.test.mjs` and
-`.baton/{CONTRACT.md, DONE, PROGRESS.md, handoff-build-leg0.md}`.
+`.leg/{CONTRACT.md, DONE, PROGRESS.md, handoff-build-leg0.md}`.
 
 ## What this proves
 

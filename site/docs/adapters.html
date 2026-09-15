@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Baton agent adapters for Claude Code, Codex and agy</title>
+<title>Leg agent adapters for Claude Code, Codex and agy</title>
 <meta name="description" content="How each agent adapter spawns its CLI, what it strips from the environment, and how to tell whether a tap is live or docs-only.">
-<link rel="canonical" href="https://baton-agents.vercel.app/docs/adapters">
+<link rel="canonical" href="https://legcli.com/docs/adapters">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://baton-agents.vercel.app/docs/adapters">
-<meta property="og:site_name" content="Baton">
-<meta property="og:title" content="Baton agent adapters for Claude Code, Codex and agy">
+<meta property="og:url" content="https://legcli.com/docs/adapters">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="Leg agent adapters for Claude Code, Codex and agy">
 <meta property="og:description" content="How each agent adapter spawns its CLI, what it strips from the environment, and how to tell whether a tap is live or docs-only.">
-<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta property="og:image" content="https://legcli.com/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Baton agent adapters for Claude Code, Codex and agy">
+<meta name="twitter:title" content="Leg agent adapters for Claude Code, Codex and agy">
 <meta name="twitter:description" content="How each agent adapter spawns its CLI, what it strips from the environment, and how to tell whether a tap is live or docs-only.">
-<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=2">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -51,10 +51,10 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-baton-reads-from-each-agent">What Baton reads from each agent</a></li><li><a href="#headless-adapters-the-v01-pipeline">Headless adapters (the v0.1 pipeline)</a></li><li><a href="#how-to-add-an-adapter">How to add an adapter</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></li><li><a href="#headless-adapters-the-v01-pipeline">Headless adapters (the v0.1 pipeline)</a></li><li><a href="#how-to-add-an-adapter">How to add an adapter</a></li><li><a href="#see-also">See also</a></li></ul></nav>
 <h1 id="adapters"><a class="anchor" href="#adapters">Adapters</a></h1>
-<p>Two things per agent: what Baton reads from an interactive session
-(<code>baton claude|codex|agy</code>), and the headless argv the v0.1 pipeline spawns.
+<p>Two things per agent: what Leg reads from an interactive session
+(<code>leg claude|codex|agy</code>), and the headless argv the v0.1 pipeline spawns.
 Every fact here was written against <code>src/taps/*.mjs</code>, <code>src/attach.mjs</code> and
 <code>src/adapters/*.mjs</code>; the evidence trail, including which lines an artifact
 backs, is <a href="/docs/cli-contracts">cli-contracts.md</a>.</p>
@@ -63,7 +63,7 @@ backs, is <a href="/docs/cli-contracts">cli-contracts.md</a>.</p>
 headless legs are <code>spawn(spec.bin, spec.args, …)</code> (<code>src/runner.mjs</code>). Both
 strip the API-key and base-URL variables and the Claude Code nested-session
 markers from the child environment (<code>src/env.mjs</code> <code>sanitizeEnv</code>).</p>
-<h2 id="what-baton-reads-from-each-agent"><a class="anchor" href="#what-baton-reads-from-each-agent">What Baton reads from each agent</a></h2>
+<h2 id="what-leg-reads-from-each-agent"><a class="anchor" href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></h2>
 <p>Nothing is screen-scraped. Each tap was read from the CLI&#39;s own source or
 documentation, then checked on a real machine on 2026-09-11 (Claude Code
 2.1.268, codex-cli 0.153.4, agy 1.2.0). Lines that a live run or a fixture
@@ -71,38 +71,38 @@ backs say observed-live; lines read only from a CLI&#39;s source or
 documentation say docs-only.</p>
 <h3 id="claude"><a class="anchor" href="#claude">claude</a></h3>
 <ul>
-<li><strong>How Baton attaches</strong>: one extra settings file per session, passed as
-<code>claude &lt;your args&gt; --settings &lt;~/.baton/sessions/&lt;id&gt;/claude-settings.json&gt;</code>
+<li><strong>How Leg attaches</strong>: one extra settings file per session, passed as
+<code>claude &lt;your args&gt; --settings &lt;~/.leg/sessions/&lt;id&gt;/claude-settings.json&gt;</code>
 (<code>src/taps/claude.mjs</code> <code>settingsFor</code>). Hooks from <code>--settings</code> merge with
-yours rather than replacing them. Observed live: a Baton session ran with
+yours rather than replacing them. Observed live: a Leg session ran with
 every user hook still firing.</li>
 <li><strong>Hooks wired</strong>: <code>SessionStart</code>, <code>UserPromptSubmit</code>,
 <code>PostToolUse</code> (matcher <code>Edit|Write|MultiEdit|NotebookEdit</code>), <code>Stop</code>,
 <code>StopFailure</code>, <code>SessionEnd</code>, each running
 <code>node src/hook.mjs claude-hook --session &lt;id&gt;</code>. Observed live.</li>
 <li><strong><code>autoContinueAtUsageLimit</code> is set to <code>false</code></strong> in that settings file,
-because Baton owns what happens at the limit.</li>
+because Leg owns what happens at the limit.</li>
 <li><strong>Usage percentages</strong>: <code>GET https://api.anthropic.com/api/oauth/usage</code>
-(<code>BATON_CLAUDE_USAGE_URL</code> overrides), with the <code>accessToken</code> Claude Code
+(<code>LEG_CLAUDE_USAGE_URL</code> overrides), with the <code>accessToken</code> Claude Code
 stored in <code>&lt;CLAUDE_CONFIG_DIR&gt;/.credentials.json</code> under <code>claudeAiOauth</code>, and
 the header <code>anthropic-beta: oauth-2025-04-20</code>. The response carries
 <code>five_hour</code> and <code>seven_day</code>, each <code>{ utilization, resets_at }</code>. Polled every
-60 s (<code>BATON_USAGE_POLL_MS</code>). Observed live: real percentages come back
-and land in <code>&lt;BATON_HOME&gt;/usage/claude--default.json</code> with
+60 s (<code>LEG_USAGE_POLL_MS</code>). Observed live: real percentages come back
+and land in <code>&lt;LEG_HOME&gt;/usage/claude--default.json</code> with
 <code>source: claude usage endpoint</code>; a 7-day window at 93 % raised the amber
 warning on 2026-09-11.</li>
 <li><strong>The wall</strong>: the <code>StopFailure</code> hook fires with <code>error: rate_limit</code>
 (<a href="https://code.claude.com/docs/en/hooks#stopfailure">docs</a>). Status:
 <strong>observed-live 2026-09-11</strong> <!-- live:claude/rate_limit -->. A real
-<code>StopFailure</code> arrived on 2026-09-11 at 07:46:37Z — a 429 <code>rate_limit_error</code>
-from the API — and is kept, secrets scrubbed, as
+<code>StopFailure</code> arrived on 2026-09-11 at 07:46:37Z, a 429 <code>rate_limit_error</code>
+from the API, and is kept, secrets scrubbed, as
 <code>fixtures/live/claude/limit-rate_limit.json</code> (<code>src/live-capture.mjs</code>); a
-payload <code>baton sessions simulate-limit &lt;id&gt;</code> produces is marked and never
+payload <code>leg sessions simulate-limit &lt;id&gt;</code> produces is marked and never
 kept (<code>src/live-capture.mjs</code> <code>isSimulated</code>). The path is also covered by
 the hook contract test and can be driven end to end with
-<code>baton sessions simulate-limit &lt;id&gt;</code>, which sends the same payload through
+<code>leg sessions simulate-limit &lt;id&gt;</code>, which sends the same payload through
 <code>src/hook.mjs</code>.</li>
-<li><strong>Why not the status line.</strong> Baton writes a <code>statusLine</code> entry into the same
+<li><strong>Why not the status line.</strong> Leg writes a <code>statusLine</code> entry into the same
 settings file that would record <code>rate_limits.five_hour.used_percentage</code> and
 <code>resets_at</code>, and chains your own <code>statusLine</code> command first. Claude Code
 2.1.268 did not run it when it was tried on this machine: an <code>echo</code> command
@@ -118,7 +118,7 @@ bearer tokens from every line regardless (<code>src/redact.mjs</code>).</li>
 </ul>
 <h3 id="codex"><a class="anchor" href="#codex">codex</a></h3>
 <ul>
-<li><strong>How Baton attaches</strong>: nothing is injected. <code>baton codex</code> runs <code>codex</code> with
+<li><strong>How Leg attaches</strong>: nothing is injected. <code>leg codex</code> runs <code>codex</code> with
 your arguments, then finds and tails that session&#39;s rollout file. A hook
 would have to be trusted by codex on first use, which is why this tap
 reads instead.</li>
@@ -128,12 +128,12 @@ reads instead.</li>
 time or mtime at or after the spawn, with five seconds of slack
 (<code>src/taps/codex.mjs</code> <code>findRollout</code>). Observed live: the tap found the
 right rollout for a real hand-off. On Windows the file&#39;s mtime lags its
-contents — across six rollouts from 2026-09-11 the mtime was 7 s to 9 min
-behind the last line&#39;s timestamp — so <code>findRollout</code> matches on cwd and
+contents, across six rollouts from 2026-09-11 the mtime was 7 s to 9 min
+behind the last line&#39;s timestamp, so <code>findRollout</code> matches on cwd and
 accepts a birth time or mtime at or after the spawn rather than relying on
 the two agreeing.</li>
 <li><strong>Usage percentages</strong>: the read-only app-server <code>account/rateLimits/read</code>
-response. Baton identifies the returned windows by duration rather than by
+response. Leg identifies the returned windows by duration rather than by
 field name: 300 minutes is 5h and 10080 minutes is 7d. The board and active
 attach poll it every 60 seconds; neither sends a model turn nor assumes a
 quota. Only an explicit available response clears a prior wall.</li>
@@ -142,7 +142,7 @@ quota. Only an explicit available response clears a prior wall.</li>
 usage limit … try again at &lt;date&gt;&quot;. The wording comes from
 <code>codex-rs/protocol/src/error.rs</code> (<code>UsageLimitReachedError</code>); the event shape
 was read from local rollouts. The error itself:
-<strong>observed-live 2026-09-15</strong> <!-- live:codex/usage_limit_exceeded --> — a
+<strong>observed-live 2026-09-15</strong> <!-- live:codex/usage_limit_exceeded -->, a
 real <code>task_complete.error</code> with <code>codex_error_info: usage_limit_exceeded</code>
 walled a codex leg at 07:56:24Z and handed the session to agy. No payload
 was kept: the capture call in <code>src/attach.mjs</code> was added while that
@@ -158,7 +158,7 @@ live.</li>
 </ul>
 <h3 id="agy"><a class="anchor" href="#agy">agy</a></h3>
 <ul>
-<li><strong>How Baton attaches</strong>: <code>agy &lt;your args&gt; --log-file &lt;~/.baton/sessions/&lt;id&gt;/agy.log&gt;</code>. agy 1.2.0 is a closed Go binary with no
+<li><strong>How Leg attaches</strong>: <code>agy &lt;your args&gt; --log-file &lt;~/.leg/sessions/&lt;id&gt;/agy.log&gt;</code>. agy 1.2.0 is a closed Go binary with no
 hook surface.</li>
 <li><strong>Usage percentages</strong>: none. agy exposes no percentage anywhere on disk; its
 own status line fetches a quota summary from the backend and writes it
@@ -178,7 +178,7 @@ for the next one.</li>
 one <code>{ display, timestamp, workspace, conversationId }</code> per prompt. Observed
 live.</li>
 <li><strong>One account only</strong>: agy 1.2.0 has no config-directory override, so
-<code>baton accounts add agy …</code> is refused.</li>
+<code>leg accounts add agy …</code> is refused.</li>
 </ul>
 <h3 id="resume-prompt-per-agent"><a class="anchor" href="#resume-prompt-per-agent">Resume prompt per agent</a></h3>
 <p>After a hand-off the next agent starts in the same terminal with the pointer
@@ -188,7 +188,7 @@ prompt as its first positional argument: <code>claude &quot;&lt;prompt&gt;&quot;
 <p>These are what a pipeline card&#39;s chain spawns. Unchanged since 0.2.0.</p>
 <h3 id="claude-headless"><a class="anchor" href="#claude-headless">claude (headless)</a></h3>
 <ul>
-<li><strong>Binary</strong>: <code>BATON_CLAUDE_BIN</code>, else <code>~/.local/bin/claude.exe</code> (Windows)
+<li><strong>Binary</strong>: <code>LEG_CLAUDE_BIN</code>, else <code>~/.local/bin/claude.exe</code> (Windows)
 or <code>~/.local/bin/claude</code>, else <code>claude</code> on PATH.</li>
 <li><strong>Argv</strong>: <code>claude -p --output-format json --permission-mode &lt;mode&gt;</code>, plus
 <code>--max-turns &lt;n&gt;</code>, <code>--resume &lt;session-id&gt;</code>, <code>--model &lt;name&gt;</code>,
@@ -206,7 +206,7 @@ set&quot; is an <code>auth_failed</code> leg, not a limit: it means an
 </ul>
 <h3 id="codex-headless"><a class="anchor" href="#codex-headless">codex (headless)</a></h3>
 <ul>
-<li><strong>Binary</strong>: <code>BATON_CODEX_BIN</code>, else the <code>@openai/codex</code> npm package&#39;s
+<li><strong>Binary</strong>: <code>LEG_CODEX_BIN</code>, else the <code>@openai/codex</code> npm package&#39;s
 native platform exe (resolved under <code>%APPDATA%\npm\node_modules\@openai\codex\...</code>
 on Windows), else <code>node &lt;bin/codex.js&gt;</code> via <code>resolveNpmCliEntry</code>, else
 <code>codex</code> on PATH.</li>
@@ -224,12 +224,12 @@ run took 28 s).</li>
 <code>--dangerously-bypass-approvals-and-sandbox</code>,
 <code>--dangerously-bypass-hook-trust</code>, <code>--full-auto</code>, <code>--approve-for-me</code>.</li>
 <li><strong>Gotchas</strong>: network access is off unless the chain entry sets
-<code>network: true</code>. If you run <code>codex exec</code> by hand outside Baton, always
+<code>network: true</code>. If you run <code>codex exec</code> by hand outside Leg, always
 pass the prompt as an argument, never on a pipe.</li>
 </ul>
 <h3 id="agy-headless"><a class="anchor" href="#agy-headless">agy (headless)</a></h3>
 <ul>
-<li><strong>Binary</strong>: <code>BATON_AGY_BIN</code>, else <code>%LOCALAPPDATA%\agy\bin\agy.exe</code>, else
+<li><strong>Binary</strong>: <code>LEG_AGY_BIN</code>, else <code>%LOCALAPPDATA%\agy\bin\agy.exe</code>, else
 <code>agy</code> on PATH.</li>
 <li><strong>Argv</strong>: <code>agy -p &quot;&lt;working-directory preamble&gt;\n\n&lt;prompt&gt;&quot; --output-format json --mode &lt;mode&gt; --add-dir &lt;cwd&gt; --print-timeout &lt;duration&gt;</code>, plus <code>--model &lt;model&gt;</code>, <code>--conversation &lt;session-id&gt;</code>. The
 duration is the card&#39;s kill timer converted to Go syntax, for example <code>90m</code>.</li>
@@ -238,10 +238,10 @@ duration is the card&#39;s kill timer converted to Go syntax, for example <code>
 <li><strong>Forbidden flags</strong>: <code>--dangerously-skip-permissions</code>.</li>
 <li><strong>Gotchas</strong>: agy does not act in the process cwd by default: with no
 <code>--add-dir</code> it writes into its own scratch workspace
-(<code>~/.gemini/antigravity-cli/scratch/</code>, observed live). Baton always passes
+(<code>~/.gemini/antigravity-cli/scratch/</code>, observed live). Leg always passes
 <code>--add-dir &lt;worktree&gt;</code> and prefixes the prompt with &quot;Working directory:
 <code>&lt;worktree&gt;</code>&quot; so the agent writes where the card expects. <code>--print-timeout</code>
-defaults to 5 minutes in the CLI itself; Baton always sets it explicitly
+defaults to 5 minutes in the CLI itself; Leg always sets it explicitly
 from the leg&#39;s kill timer so the supervisor, not agy, decides what a
 runaway is.</li>
 </ul>
@@ -267,7 +267,7 @@ fixtures to it and a demo chain reads like a real fallback.</li>
 </ul>
 <h3 id="grok-built-not-registered"><a class="anchor" href="#grok-built-not-registered">grok (built, not registered)</a></h3>
 <ul>
-<li><strong>Binary</strong>: <code>BATON_GROK_BIN</code>, else <code>~/.grok/bin/grok.exe</code>, else <code>grok</code> on
+<li><strong>Binary</strong>: <code>LEG_GROK_BIN</code>, else <code>~/.grok/bin/grok.exe</code>, else <code>grok</code> on
 PATH.</li>
 <li><strong>Argv</strong>: <code>grok -p &quot;&lt;prompt&gt;&quot; --output-format json --permission-mode &lt;mode&gt;</code>, plus <code>-m &lt;model&gt;</code>, <code>-r &lt;session-id&gt;</code>.</li>
 <li><strong>Stdin</strong>: <code>ignore</code>.</li>
@@ -313,7 +313,7 @@ the existing ones for the JSON shape <code>src/limits.mjs</code> expects: <code>
 <li><p>Run the probe script against a real login before trusting it:</p>
 <pre><code>node scripts/probe.mjs --adapter &lt;name&gt; --repo &lt;existing-git-repo&gt; [--mode &lt;m&gt;] [--timeout-s 300]
 </code></pre>
-<p>It runs one real tiny task (write a file, write <code>.baton/DONE</code>) through
+<p>It runs one real tiny task (write a file, write <code>.leg/DONE</code>) through
 the same runner a card uses, and prints <code>probe &lt;name&gt;: exit=&lt;code&gt; file=&lt;yes|no&gt; done=&lt;yes|no&gt; auth_source=&lt;yes|no&gt; seconds=&lt;n&gt;</code>. Keep the
 evidence it produces under <code>fixtures/live/&lt;name&gt;/</code> and cite it in
 <a href="/docs/cli-contracts">cli-contracts.md</a>, the way every existing adapter&#39;s
@@ -329,14 +329,14 @@ files) and a branch in <code>src/attach.mjs</code> <code>spawnSpec</code>.</p>
 <li><a href="/docs/cli-contracts">cli-contracts.md</a>: the full evidence trail, exit
 codes, the interactive tap sources, and every limit-signal fixture, tagged
 observed-live or docs-only.</li>
-<li><a href="/docs/configuration">configuration.md</a>: the <code>BATON_&lt;ADAPTER&gt;_BIN</code>
+<li><a href="/docs/configuration">configuration.md</a>: the <code>LEG_&lt;ADAPTER&gt;_BIN</code>
 overrides and the accounts layout.</li>
 <li><a href="/docs/concepts">concepts.md</a>: sessions, usage windows, the interactive
 hand-off, and how a headless leg&#39;s outcome is classified.</li>
 </ul>
 
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>

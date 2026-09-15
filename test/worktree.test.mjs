@@ -24,7 +24,7 @@ function initRepo() {
   return resolve(repo)
 }
 
-test('ensure creates the worktree on branch baton/<id> and updates .git/info/exclude', () => {
+test('ensure creates the worktree on branch leg/<id> and updates .git/info/exclude', () => {
   const repo = initRepo()
   const result = ensure(repo, 'card-1')
   assert.equal(result.created, true)
@@ -32,8 +32,8 @@ test('ensure creates the worktree on branch baton/<id> and updates .git/info/exc
   assert.equal(result.path, worktreePath(repo, 'card-1'))
   assert.ok(existsSync(result.path))
   const exclude = readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8')
-  assert.match(exclude, /^\.baton-worktrees\/$/m)
-  assert.match(exclude, /^\.baton\/$/m)
+  assert.match(exclude, /^\.leg-worktrees\/$/m)
+  assert.match(exclude, /^\.leg\/$/m)
   assert.match(exclude, /^\.context-handoffs\/$/m, 'bundles never ride along in a landing')
   assert.match(exclude, /^\.dashclaw-local\/$/m, 'hook state never rides along in a landing')
 })
@@ -65,7 +65,7 @@ test('list shows the worktree with its branch', () => {
   const entries = list(repo)
   const wt = entries.find((e) => e.path === worktreePath(repo, 'card-4'))
   assert.ok(wt, 'worktree entry present in list()')
-  assert.equal(wt.branch, 'baton/card-4')
+  assert.equal(wt.branch, 'leg/card-4')
   assert.match(wt.head, /^[0-9a-f]{7,}$/)
 })
 
@@ -76,16 +76,16 @@ test('remove deletes the worktree; deleteBranch also drops the branch', () => {
   assert.equal(result.removed, true)
   assert.equal(result.branchDeleted, true)
   assert.equal(existsSync(created.path), false)
-  const branches = git(repo, ['branch', '--list', 'baton/card-5']).trim()
+  const branches = git(repo, ['branch', '--list', 'leg/card-5']).trim()
   assert.equal(branches, '')
 })
 
-test('remove refuses a path outside .baton-worktrees', () => {
+test('remove refuses a path outside .leg-worktrees', () => {
   const repo = initRepo()
-  assert.throws(() => remove(repo, '../../escape'), /refusing to remove a path outside \.baton-worktrees/)
+  assert.throws(() => remove(repo, '../../escape'), /refusing to remove a path outside \.leg-worktrees/)
 })
 
-test('validateRepo refuses a non-directory, a non-repo dir, an empty repo, and BATON_HOME', () => {
+test('validateRepo refuses a non-directory, a non-repo dir, an empty repo, and LEG_HOME', () => {
   const notADir = join(mkdtempSync(join(tmpdir(), 'baton-wt-')), 'does-not-exist')
   assert.throws(() => validateRepo(notADir), (err) => /^not a directory:/.test(err.message))
 
@@ -99,13 +99,17 @@ test('validateRepo refuses a non-directory, a non-repo dir, an empty repo, and B
   assert.throws(() => validateRepo(emptyRepo), (err) => /^repo has no commits:/.test(err.message))
 
   const savedBatonHome = process.env.BATON_HOME
-  const fakeHome = mkdtempSync(join(tmpdir(), 'baton-home-'))
+  const savedLegHome = process.env.LEG_HOME
+  const fakeHome = mkdtempSync(join(tmpdir(), 'leg-home-'))
+  process.env.LEG_HOME = fakeHome
   process.env.BATON_HOME = fakeHome
   try {
-    assert.throws(() => validateRepo(fakeHome), (err) => /^refusing to use BATON_HOME as a repo:/.test(err.message))
+    assert.throws(() => validateRepo(fakeHome), (err) => /^refusing to use (LEG|BATON)_HOME as a repo:/.test(err.message))
   } finally {
     if (savedBatonHome === undefined) delete process.env.BATON_HOME
     else process.env.BATON_HOME = savedBatonHome
+    if (savedLegHome === undefined) delete process.env.LEG_HOME
+    else process.env.LEG_HOME = savedLegHome
   }
 })
 

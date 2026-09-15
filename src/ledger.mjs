@@ -70,6 +70,7 @@ export function parseActor(raw) {
     if (typeof a.id !== 'string' || !NAME_RE.test(a.id)) return null
     return { type: 'human', id: a.id }
   }
+  if (a.type === 'leg') return { type: 'leg' }
   if (a.type === 'baton') return { type: 'baton' }
   return null
 }
@@ -77,10 +78,11 @@ export function parseActor(raw) {
 export function actorKey(actor) {
   if (actor.type === 'agent') return `agent-${actor.adapter.toLowerCase()}`
   if (actor.type === 'human') return `human-${actor.id.toLowerCase()}`
+  if (actor.type === 'leg') return 'leg'
   return 'baton'
 }
 
-const ACTOR_HELP = 'invalid --actor (expected JSON {"type":"agent","adapter":"<name>"} | {"type":"human","id":"<id>"} | {"type":"baton"})'
+const ACTOR_HELP = 'invalid --actor (expected JSON {"type":"agent","adapter":"<name>"} | {"type":"human","id":"<id>"} | {"type":"leg"} | {"type":"baton"})'
 
 function cardDir(id) {
   const dir = join(ROOT, 'cards', id)

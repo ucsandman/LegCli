@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something in Baton did not behave as documented
+about: Something in Leg did not behave as documented
 title: ''
 labels: bug
 assignees: ''
@@ -24,7 +24,7 @@ What you expected to happen instead.
 
 - OS: (Windows / macOS / Linux, and version)
 - Node version: `node --version`
-- Baton version: `node bin/baton.mjs up --dry` (first line)
+- Leg version: `node bin/leg.mjs up --dry` (first line)
 - Adapters involved (or `fake` if you can reproduce it without a real CLI)
 
 ## Relevant output

@@ -42,13 +42,13 @@ test('isLoopback / tokenMatches / authorize units', () => {
   assert.throws(() => checkBind({ bind: '100.1.2.3', token: '', share: { ...share, people: [] } }), BindRefused)
 })
 
-test('non-loopback bind without BATON_TOKEN refuses to start (module) and exits 3 (process) with the named error', () => {
-  assert.throws(() => checkBind({ bind: '0.0.0.0', token: '' }), (e) => e instanceof BindRefused && /refusing to bind 0\.0\.0\.0 without BATON_TOKEN; see README "Network exposure"/.test(e.message))
+test('non-loopback bind without LEG_TOKEN/BATON_TOKEN refuses to start (module) and exits 3 (process) with the named error', () => {
+  assert.throws(() => checkBind({ bind: '0.0.0.0', token: '' }), (e) => e instanceof BindRefused && /refusing to bind 0\.0\.0\.0 without (LEG|BATON)_TOKEN; see README "Network exposure"/.test(e.message))
   assert.throws(() => createBoardServer({ bind: '192.168.1.5', port: 0, token: '', scheduler: false }), BindRefused)
   assert.doesNotThrow(() => checkBind({ bind: '0.0.0.0', token: 'secret' }))
   const r = spawnSync(process.execPath, [join(ROOT, 'src', 'server.mjs')], { env: { ...process.env, BATON_BIND: '0.0.0.0', BATON_TOKEN: '', BATON_PORT: '0', BATON_NO_SCHEDULER: '1' }, encoding: 'utf8', timeout: 20000 })
   assert.equal(r.status, 3)
-  assert.match(r.stderr, /refusing to bind 0\.0\.0\.0 without BATON_TOKEN/)
+  assert.match(r.stderr, /refusing to bind 0\.0\.0\.0 without (LEG|BATON)_TOKEN/)
 })
 
 test('with a token: 401 without the header, 401 with a wrong token, 200 with the right one, SSE via ?token=', async () => {

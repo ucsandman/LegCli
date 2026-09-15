@@ -25,24 +25,24 @@ function isUnder(child, parent) {
 
 function isNestedWorktreePath(resolved) {
   const segments = resolved.split(sep)
-  return segments.some((s) => process.platform === 'win32' ? s.toLowerCase() === '.baton-worktrees' : s === '.baton-worktrees')
+  return segments.some((s) => { const l = process.platform === 'win32' ? s.toLowerCase() : s; return l === '.leg-worktrees' || l === '.baton-worktrees'; })
 }
 
 export function worktreePath(repo, cardId) {
   // long real path: git reports worktrees that way, and the short 8.3 form a
   // caller may pass must never become the stored worktree path
-  return join(realPath(repo), '.baton-worktrees', cardId)
+  const root = realPath(repo); const oldPath = join(root, '.baton-worktrees', cardId); if (existsSync(oldPath)) return oldPath; return join(root, '.leg-worktrees', cardId);
 }
 
 export function branchName(cardId) {
-  return `baton/${cardId}`
+  return `leg/${cardId}`
 }
 
 export function validateRepo(repo) {
   const resolved = realPath(repo)
-  const batonHome = resolve(process.env.BATON_HOME || join(homedir(), '.baton'))
-  if (samePath(resolved, batonHome)) {
-    throw new Error(`refusing to use BATON_HOME as a repo: ${resolved}`)
+  const legHome = resolve(process.env.LEG_HOME || process.env.BATON_HOME || (existsSync(join(homedir(), '.leg')) ? join(homedir(), '.leg') : existsSync(join(homedir(), '.baton')) ? join(homedir(), '.baton') : join(homedir(), '.leg')))
+  if (samePath(resolved, legHome)) {
+    throw new Error(`refusing to use LEG_HOME as a repo: ${resolved}`)
   }
   if (isNestedWorktreePath(resolved)) {
     throw new Error('refusing a nested worktree path as a repo')
@@ -99,7 +99,7 @@ export function ensureExcludeEntries(repo) {
   // worktree; the placeholder files are re-included, since `.env.*` otherwise
   // swallows the .env.example an agent was asked to update (an exclude entry
   // has no effect on a file the repo already tracks)
-  const needed = ['.baton-worktrees/', '.baton/', '.context-handoffs/', '.dashclaw-local/', '.env', '.env.*', '!.env.example', '!.env.sample']
+  const needed = ['.leg-worktrees/', '.leg/', '.baton-worktrees/', '.baton/', '.context-handoffs/', '.dashclaw-local/', '.env', '.env.*', '!.env.example', '!.env.sample']
   const content = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : ''
   const lines = content.split(/\r?\n/)
   const missing = needed.filter((n) => !lines.includes(n))
@@ -161,10 +161,7 @@ export function ensure(repo, cardId, { trunk = 'main' } = {}) {
 export function remove(repo, cardId, { deleteBranch = false, force = false } = {}) {
   const resolvedRepo = resolve(repo)
   const wtPath = worktreePath(resolvedRepo, cardId)
-  const worktreesDir = join(resolvedRepo, '.baton-worktrees')
-  if (!isUnder(wtPath, worktreesDir)) {
-    throw new Error(`refusing to remove a path outside .baton-worktrees: ${wtPath}`)
-  }
+  const legWt = join(resolvedRepo, '.leg-worktrees'); const batonWt = join(resolvedRepo, '.baton-worktrees'); if (!isUnder(wtPath, legWt) && !isUnder(wtPath, batonWt)) { throw new Error(`refusing to remove a path outside .leg-worktrees: ${wtPath}`); }
 
   const branch = branchName(cardId)
   const already = list(resolvedRepo).find((w) => samePath(w.path, wtPath))

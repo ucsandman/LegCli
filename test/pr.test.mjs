@@ -21,7 +21,7 @@ test('pr mode builds the gh pr create argv and runs it only through BATON_GH_BIN
     assert.equal(r.ok, true, JSON.stringify(r))
     assert.equal(r.url, 'https://example.invalid/org/repo/pull/42')
     const argv = JSON.parse(readFileSync(log, 'utf8'))
-    assert.deepEqual(argv.slice(0, 6), ['pr', 'create', '--base', 'main', '--head', 'baton/card-1'])
+    assert.deepEqual(argv.slice(0, 6), ['pr', 'create', '--base', 'main', '--head', 'leg/card-1'])
     assert.equal(argv[argv.indexOf('--title') + 1], 'Rename greet')
     const body = readFileSync(argv[argv.indexOf('--body-file') + 1], 'utf8')
     assert.ok(body.includes('Rename greet() to hello()'))
@@ -43,6 +43,6 @@ test('pr mode without BATON_GH_BIN refuses (stub-only build) instead of finding 
   } finally {
     if (prev !== undefined) process.env.BATON_GH_BIN = prev
   }
-  assert.deepEqual(prArgv({ card, bodyFile: 'b.md' }), ['pr', 'create', '--base', 'main', '--head', 'baton/card-1', '--title', 'Rename greet', '--body-file', 'b.md'])
+  assert.deepEqual(prArgv({ card, bodyFile: 'b.md' }), ['pr', 'create', '--base', 'main', '--head', 'leg/card-1', '--title', 'Rename greet', '--body-file', 'b.md'])
   assert.match(prBody(card), /## Task/)
 })

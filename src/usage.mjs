@@ -12,7 +12,7 @@ import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { AGENTS } from './sessions.mjs'
 
-export const WARN_PCT = Number(process.env.BATON_WARN_PCT || 85)
+export const WARN_PCT = Number((process.env.LEG_WARN_PCT || process.env.BATON_WARN_PCT) || 85)
 // A limit hit with no reset time from the agent: assume the 5-hour window.
 const DEFAULT_LIMIT_S = 5 * 3600
 

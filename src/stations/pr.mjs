@@ -13,12 +13,12 @@ export function prArgv({ card, bodyFile }) {
 }
 
 export function prBody(card, bundleSummary = '') {
-  return `## Task\n\n${card.task}\n\n## Baton\n\ncard ${card.card_id}, pipeline ${card.pipeline.map((s) => s.name).join(' → ')}\n\n${bundleSummary ? `## Handoff summary\n\n${bundleSummary}\n` : ''}`
+  return `## Task\n\n${card.task}\n\n## Leg\n\ncard ${card.card_id}, pipeline ${card.pipeline.map((s) => s.name).join(' → ')}\n\n${bundleSummary ? `## Handoff summary\n\n${bundleSummary}\n` : ''}`
 }
 
 export function openPr({ card, runDir, bundleSummary = '' }) {
-  const bin = process.env.BATON_GH_BIN
-  if (!bin) return { ok: false, error: 'BATON_GH_BIN is not set; pr land mode is stub-only in this build (no live gh)' }
+  const bin = (process.env.LEG_GH_BIN || process.env.BATON_GH_BIN)
+  if (!bin) return { ok: false, error: 'LEG_GH_BIN or BATON_GH_BIN is not set; pr land mode is stub-only in this build (no live gh)' }
   mkdirSync(runDir, { recursive: true })
   const bodyFile = join(runDir, 'pr-body.md')
   writeFileSync(bodyFile, prBody(card, bundleSummary))

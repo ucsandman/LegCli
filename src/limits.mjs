@@ -79,7 +79,7 @@ export function classify(input) {
   if (auth) return out('auth_failed', false, `auth signal: ${auth.id}`, auth.id)
   if (i.killedByHuman) return out('killed', false, 'killed from the board')
   if (i.killedByTimer) return out('stalled', true, 'kill timer fired before the leg finished')
-  if (i.exitCode === 0 && i.doneMarker) return out('completed', false, 'exit 0 and .baton/DONE present')
+  if (i.exitCode === 0 && i.doneMarker) return out('completed', false, 'exit 0 and .leg/DONE present')
   const limit = firstMatch(i, 'limit')
   if (limit) return out('limit', true, `${limit.source} limit signal: ${limit.id}`, limit.id)
   const launch = firstMatch(i, 'launch')

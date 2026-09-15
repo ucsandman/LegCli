@@ -94,8 +94,9 @@ test('limit → every option out → waits for the first reset → starts codex 
   assert.equal(codex.cwd.toLowerCase(), repo.toLowerCase())
   // the hand-off keeps its own per-session file; RESUME.md is Baton's, and the
   // session ending rewrote it so nothing is left describing a live terminal
-  assert.ok(existsSync(join(repo, '.baton', `RESUME-${s.session_id}.md`)), 'the per-session handoff is written for the next agent')
-  const pointer = readFileSync(join(repo, '.baton', 'RESUME.md'), 'utf8')
+  assert.ok(existsSync(join(repo, '.leg', `RESUME-${s.session_id}.md`)) || existsSync(join(repo, '.baton', `RESUME-${s.session_id}.md`)), 'the per-session handoff is written for the next agent')
+  const pointerPath = existsSync(join(repo, '.leg', 'RESUME.md')) ? join(repo, '.leg', 'RESUME.md') : join(repo, '.baton', 'RESUME.md')
+  const pointer = readFileSync(pointerPath, 'utf8')
   assert.match(pointer, /nothing in flight/i, `the ended session rewrote the pointer:
 ${pointer.slice(0, 400)}`)
   assert.equal(resumeVerdict(repo).state, 'fresh', 'and it is not stale the moment it is written')
@@ -155,11 +156,11 @@ test('a second live session in one checkout gets its own worktree and branch; --
   const b = start([])
   const sb = await waitFor((s) => mine(s) && s.session_id !== sa.session_id && s.pid, 'the second session')
   assert.ok(sb.worktree, `the second session got a worktree; stderr: ${b.err}`)
-  assert.equal(sb.worktree.branch, `baton/${sb.session_id}`)
+  assert.equal(sb.worktree.branch, `leg/${sb.session_id}`)
   assert.equal(sb.worktree.base, 'main')
-  assert.equal(canonPath(sb.cwd), canonPath(join(repo, '.baton-worktrees', sb.session_id)))
-  assert.match(git(repo, ['worktree', 'list', '--porcelain']), new RegExp(`branch refs/heads/baton/${sb.session_id}`))
-  assert.match(b.err, /another session is live in this checkout \(claude [0-9a-f]{4}\): this one works in .*\.baton-worktrees.* on baton\/s-/)
+  assert.equal(canonPath(sb.cwd), canonPath(join(repo, '.leg-worktrees', sb.session_id)))
+  assert.match(git(repo, ['worktree', 'list', '--porcelain']), new RegExp(`branch refs/heads/leg/${sb.session_id}`))
+  assert.match(b.err, /another session is live in this checkout \(claude [0-9a-f]{4}\): this one works in .*\.leg-worktrees.* on leg\/s-/)
   const c = start(['--no-worktree', '--model', 'haiku'])
   const sc = await waitFor((s) => mine(s) && ![sa.session_id, sb.session_id].includes(s.session_id) && s.pid, 'the third session')
   assert.equal(sc.worktree, null)

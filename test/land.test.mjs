@@ -46,9 +46,10 @@ test('build-land: a red test bounces the card to build with the failure in the b
   assert.match(bounced.body, /tests-red/)
   // the bounce bundle's notes carry the failure under Open findings
   const wt = card.worktree
-  const notes = readdirSync(join(wt, '.baton')).filter((f) => f.startsWith('handoff-land'))
+  const notesDir = existsSync(join(wt, '.leg')) ? join(wt, '.leg') : join(wt, '.baton')
+  const notes = readdirSync(notesDir).filter((f) => f.startsWith('handoff-land'))
   assert.equal(notes.length, 1)
-  const text = readFileSync(join(wt, '.baton', notes[0]), 'utf8')
+  const text = readFileSync(join(notesDir, notes[0]), 'utf8')
   assert.ok(text.includes('Open findings: land failure: tests-red'), text)
   assert.ok(text.includes('fail 1'), 'test tail present')
   // the second build run's prompt starts with the resume that names the failure

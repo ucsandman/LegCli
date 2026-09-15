@@ -15,8 +15,11 @@ async function requestBody(req) {
 
 function refreshSubscription(key) {
   const value = String(key || '').trim();
-  if (!value.startsWith('BATON-')) throw Object.assign(new Error('a signed Team key is required'), { status: 403 });
-  const [encoded, encodedSignature, extra] = value.slice(6).split('.');
+  let rest;
+  if (value.startsWith('LEG-')) rest = value.slice(4);
+  else if (value.startsWith('BATON-')) rest = value.slice(6);
+  else throw Object.assign(new Error('a signed Team key is required'), { status: 403 });
+  const [encoded, encodedSignature, extra] = rest.split('.');
   if (!encoded || !encodedSignature || extra !== undefined) throw Object.assign(new Error('a signed Team key is required'), { status: 403 });
   let body; let signature; let payload;
   try {
@@ -26,7 +29,7 @@ function refreshSubscription(key) {
   } catch {
     throw Object.assign(new Error('a signed Team key is required'), { status: 403 });
   }
-  const privateKey = process.env.BATON_LICENSE_PRIVATE_KEY;
+  const privateKey = process.env.LEG_LICENSE_PRIVATE_KEY || process.env.BATON_LICENSE_PRIVATE_KEY;
   if (!privateKey) throw new Error('BATON_LICENSE_PRIVATE_KEY is not set');
   let valid = false;
   try {

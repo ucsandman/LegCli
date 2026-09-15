@@ -18,7 +18,7 @@ const adapter = {
   },
   forbiddenFlags: ['danger-full-access', '--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust', '--full-auto', '--approve-for-me'],
   resolve() {
-    if (process.env.BATON_CODEX_BIN) {
+    if ((process.env.LEG_CODEX_BIN || process.env.BATON_CODEX_BIN)) {
       const bin = process.env.BATON_CODEX_BIN
       return { bin, viaNode: /\.(mjs|cjs|js)$/.test(bin), entry: null }
     }

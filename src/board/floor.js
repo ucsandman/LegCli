@@ -1,4 +1,4 @@
-// Baton floor — the scheduler-eye view: what's running, waiting, queued, and
+// Leg floor, the scheduler-eye view: what's running, waiting, queued, and
 // which leases block whom. Polls /api/floor, /api/trunk and /api/sessions
 // (for the instrument head's account rails) and refreshes on SSE.
 (function () {
@@ -19,7 +19,7 @@
   // source text, which is why the module object keeps the name.
   const state = { es: null, retryMs: 1000, timers: [], stopped: false, sseRequest: 0, floorRequest: 0, trunkRequest: 0, headRequest: 0, lastReadingAt: null, bind: (typeof location !== 'undefined' && location.host) || '127.0.0.1:4747', pendingFloor: null }
 
-  function getToken() { return localStorage.getItem('batonToken') || '' }
+  function getToken() { return localStorage.getItem('legToken') || localStorage.getItem('batonToken') || '' }
 
   async function api(path, opts = {}) {
     const headers = { 'Content-Type': 'application/json' }
@@ -208,7 +208,7 @@
     else if (state === 'loading') parts.push(`No reading for the ${words} window has come back from /api/sessions yet.`)
     else if (state === 'noreading') {
       parts.push(a.agent === 'agy'
-        ? `agy publishes no usage percentage for the ${words} window. Baton sees the wall when agy hits it.`
+        ? `agy publishes no usage percentage for the ${words} window. Leg sees the wall when agy hits it.`
         : `No reading for the ${words} window yet.`)
     } else {
       parts.push(`${Math.round(w.pct)} percent of the ${words} window used.`)
@@ -327,7 +327,7 @@
     if (!a.five_hour && !a.seven_day) {
       panel.appendChild(gauge(a, null, '5h'))
       panel.appendChild(el('p', { class: 'reading-sub reading-sub--lead' }, [a.agent === 'agy'
-        ? 'agy publishes no usage figure, ever. Baton shows its terminals and their elapsed time instead.'
+        ? 'agy publishes no usage figure, ever. Leg shows its terminals and their elapsed time instead.'
         : `No reading has come back from ${accountLabel(a)} yet.`]))
       return panel
     }
@@ -598,7 +598,7 @@
     text.textContent = s === 'live' ? 'live' : s === 'reconnecting' ? `reconnecting, next attempt in ${retrySec}s` : 'connecting'
     banner.hidden = s === 'live'
     if (s === 'reconnecting') {
-      banner.textContent = state.lastReadingAt ? `Reconnecting to Baton. Last reading ${clockAt(state.lastReadingAt.getTime())}.` : `Reconnecting to Baton on ${state.bind}.`
+      banner.textContent = state.lastReadingAt ? `Reconnecting to Leg. Last reading ${clockAt(state.lastReadingAt.getTime())}.` : `Reconnecting to Leg on ${state.bind}.`
     } else if (s === 'connecting') {
       banner.textContent = `Connecting to Baton on ${state.bind}.`
     }

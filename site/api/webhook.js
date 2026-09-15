@@ -11,7 +11,7 @@ function emailIdempotencyKey(eventId, deliveryKind) {
 function deliveryOf(result) {
   if (!result?.skipped) return { status: 'accepted' };
   const delivery = { status: 'failed', reason: result.reason, retryable: result.retryable };
-  console.error(`Baton license delivery failed: reason=${delivery.reason} retryable=${delivery.retryable}`);
+  console.error(`Leg license delivery failed: reason=${delivery.reason} retryable=${delivery.retryable}`);
   return delivery;
 }
 
@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
       const subId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id || inv.parent?.subscription_details?.subscription;
       if (subId && inv.billing_reason === 'subscription_cycle') {
         const sub = await stripe(`/subscriptions/${subId}`);
-        if (planOf(sub.items?.data?.[0]?.price) !== 'team') { const e = new Error('this subscription is not for a Baton Team plan'); e.status = 400; throw e; }
+        if (planOf(sub.items?.data?.[0]?.price) !== 'team') { const e = new Error('this subscription is not for a Leg Team plan'); e.status = 400; throw e; }
         const { key, payload } = licenseFromSubscription(sub, { email: inv.customer_email });
         delivery = deliveryOf(await sendKeyEmail({ to: inv.customer_email, key, payload, idempotencyKey: emailIdempotencyKey(event.id, 'invoice.paid') }));
       }

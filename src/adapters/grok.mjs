@@ -17,7 +17,7 @@ const adapter = {
   },
   forbiddenFlags: ['--always-approve', 'bypassPermissions', '--permission-mode=bypassPermissions'],
   resolve() {
-    const bin = process.env.BATON_GROK_BIN || firstExisting([
+    const bin = (process.env.LEG_GROK_BIN || process.env.BATON_GROK_BIN) || firstExisting([
       join(homedir(), '.grok', 'bin', process.platform === 'win32' ? 'grok.exe' : 'grok'),
     ], 'grok')
     return { bin, viaNode: /\.(mjs|cjs|js)$/.test(bin), entry: null }

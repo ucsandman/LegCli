@@ -50,7 +50,7 @@ export function repoRootOf(dir) {
 }
 
 export function trustPolicy(env = process.env) {
-  const raw = String(env.BATON_TRUST ?? 'auto').trim().toLowerCase()
+  const raw = String(env.LEG_TRUST ?? env.BATON_TRUST ?? 'auto').trim().toLowerCase()
   return raw === 'never' || raw === 'off' || raw === '0' ? 'never' : 'auto'
 }
 

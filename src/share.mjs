@@ -71,7 +71,7 @@ export function removePerson(name, share = readShare()) {
   if (!person) throw new Error(`no one called "${name}" on this board`)
   // a shared board with no owner locks this machine's own browser out of it
   if (isOwner(person) && isOn(share) && !share.people.some((p) => isOwner(p) && p !== person)) {
-    throw new Error(`"${name}" is the only owner of this board: baton share add <someone> --role owner first, or baton share off`)
+    throw new Error(`"${name}" is the only owner of this board: leg share add <someone> --role owner first, or leg share off`)
   }
   share.people = share.people.filter((p) => p.name.toLowerCase() !== String(name).toLowerCase())
   if (share.owner && share.owner.toLowerCase() === String(name).toLowerCase()) share.owner = share.people.find((p) => p.role === 'owner')?.name ?? null
@@ -126,12 +126,12 @@ export function linkFor(share, token) { return `http://${share.bind}:${share.por
 
 // Whose terminal this is: BATON_PERSON, else the board's owner, else 'local'.
 export function whoami(share = readShare()) {
-  const named = String(process.env.BATON_PERSON ?? '').trim()
+  const named = String(process.env.LEG_PERSON ?? process.env.BATON_PERSON ?? '').trim()
   if (named && validName(named)) return named
   return share.owner || 'local'
 }
 
-export async function turnOn({ bind = 'tailscale', port = Number(process.env.BATON_PORT || 4747), owner } = {}) {
+export async function turnOn({ bind = 'tailscale', port = Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747), owner } = {}) {
   const share = readShare()
   const address = await resolveBind(bind)
   share.on = true
@@ -144,7 +144,7 @@ export async function turnOn({ bind = 'tailscale', port = Number(process.env.BAT
   const existing = isOwner(named) ? named : share.people.find((p) => isOwner(p)) ?? null
   if (!existing) {
     const name = validName(owner) ? owner : (validName(userInfo().username) ? userInfo().username.toLowerCase() : 'owner')
-    if (personNamed(share, name)) throw new Error(`no one on this board is an owner: baton share add <you> --role owner`)
+    if (personNamed(share, name)) throw new Error(`no one on this board is an owner: leg share add <you> --role owner`)
     share.owner = name
     writeShare(share)
     const added = addPerson(name, { role: 'owner', share })

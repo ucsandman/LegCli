@@ -16,7 +16,7 @@ import { LAYOUT } from '../accounts.mjs'
 import { sanitizeEnv } from '../env.mjs'
 import codexAdapter from '../adapters/codex.mjs'
 
-const BATON_VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version } catch { return 'unknown' } })()
+const LEG_VERSION = (() => { try { return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version } catch { return 'unknown' } })()
 
 export function sessionsRootFor(codexHome = LAYOUT.codex.home()) { return join(codexHome, 'sessions') }
 
@@ -270,7 +270,7 @@ export function readCodexUsage({ codexHome = LAYOUT.codex.home(), timeoutMs = 80
         }
       }
     })
-    try { child.stdin.write(`${JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'baton', version: BATON_VERSION }, capabilities: { experimentalApi: true } } })}\n`) } catch { stop('codex app-server input closed') }
+    try { child.stdin.write(`${JSON.stringify({ id: 1, method: 'initialize', params: { clientInfo: { name: 'leg', version: LEG_VERSION }, capabilities: { experimentalApi: true } } })}\n`) } catch { stop('codex app-server input closed') }
   })
 }
 

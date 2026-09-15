@@ -28,7 +28,7 @@ export function isLoopbackRequest(req) {
 
 export class BindRefused extends Error {
   constructor(bind) {
-    super(`refusing to bind ${bind} without BATON_TOKEN; see README "Network exposure"`)
+    super(`refusing to bind ${bind} without LEG_TOKEN; see README "Network exposure"`)
     this.name = 'BindRefused'
     this.exitCode = 3
   }

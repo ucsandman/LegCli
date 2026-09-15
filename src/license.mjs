@@ -25,18 +25,19 @@ export const PUBLIC_KEY_B64 = 'MCowBQYDK2VwAyEAIpVQymHHJAkIrZHv0u4o0bgfFmtW3Crm7
 // env seam lets a spawned CLI verify against a throwaway pair. It weakens
 // nothing: Baton ships as readable JavaScript, so anyone who would set this
 // could edit the constant above instead.
-const ACTIVE_PUBLIC_KEY = process.env.BATON_PUBLIC_KEY_B64 || PUBLIC_KEY_B64
+const ACTIVE_PUBLIC_KEY = process.env.LEG_PUBLIC_KEY_B64 || process.env.BATON_PUBLIC_KEY_B64 || PUBLIC_KEY_B64
 // The date this release was cut. A personal key activates when this is on or
 // before its updates_until. Bumped with every published version.
 export const RELEASE_DATE = '2026-09-15'
 export const GUARANTEE_DAYS = 30
-export const SITE = process.env.BATON_SITE || 'https://baton-agents.vercel.app'
+export const SITE = process.env.LEG_SITE || process.env.BATON_SITE || 'https://legcli.com'
 export const BUY_URL = `${SITE}/#pricing`
 export const PLANS = {
   personal: { label: 'Personal', gates: ['run'] },
   team: { label: 'Team', gates: ['run', 'share'] },
 }
-const PREFIX = 'BATON-'
+export const PREFIX = 'LEG-'
+export const LEGACY_PREFIX = 'BATON-'
 
 const b64u = (buf) => Buffer.from(buf).toString('base64url')
 const unb64u = (s) => Buffer.from(s, 'base64url')
@@ -51,8 +52,15 @@ export function signLicense(payload, privateKeyB64) {
 
 export function parseLicense(key) {
   const s = String(key ?? '').trim()
-  if (!s.startsWith(PREFIX)) throw new Error('malformed')
-  const [p, sig, extra] = s.slice(PREFIX.length).split('.')
+  let rest
+  if (s.startsWith(PREFIX)) {
+    rest = s.slice(PREFIX.length)
+  } else if (s.startsWith(LEGACY_PREFIX)) {
+    rest = s.slice(LEGACY_PREFIX.length)
+  } else {
+    throw new Error('malformed')
+  }
+  const [p, sig, extra] = rest.split('.')
   if (!p || !sig || extra !== undefined) throw new Error('malformed')
   let payload
   try { payload = JSON.parse(unb64u(p).toString('utf8')) } catch { throw new Error('malformed') }
@@ -93,7 +101,9 @@ export function readLicense() {
 export function activate(key, opts = {}) {
   const v = verifyLicense(key, opts)
   if (!v.ok) { const e = new Error(explain(v.reason, v.payload)); e.reason = v.reason; throw e }
-  writeJson(licensePath(), { key: String(key).trim(), activated_at: new Date().toISOString(), id: v.payload.id, plan: v.payload.plan })
+  const parsed = parseLicense(key)
+  const legKey = `LEG-${b64u(parsed.body)}.${b64u(parsed.sig)}`
+  writeJson(licensePath(), { key: legKey, activated_at: new Date().toISOString(), id: v.payload.id, plan: v.payload.plan })
   return v.payload
 }
 
@@ -120,12 +130,12 @@ export function allows(ent, gate) {
 
 export function explain(reason, payload) {
   switch (reason) {
-    case 'malformed': return 'that is not a Baton license key (expected BATON-<payload>.<signature>)'
+    case 'malformed': return 'that is not a Leg license key (expected LEG-<payload>.<signature>)'
     case 'bad-signature': return 'the key\'s signature does not check out; copy it again from your receipt'
     case 'unknown-plan': return `the key names a plan this version does not know (${payload?.plan})`
     case 'personal-updates-ended': return `this Personal key covers releases up to ${payload?.updates_until}; this release is dated ${RELEASE_DATE}. Keep the version you have, or renew at ${BUY_URL}`
-    case 'team-expired': return `this Team key expired on ${payload?.expires}; run "baton license refresh" (the subscription renews it) or see ${BUY_URL}`
-    case 'no-license': return `Baton needs a license key. Buy one at ${BUY_URL} (${GUARANTEE_DAYS}-day money-back guarantee), then: baton license activate <key>`
+    case 'team-expired': return `this Team key expired on ${payload?.expires}; run "leg license refresh" (the subscription renews it) or see ${BUY_URL}`
+    case 'no-license': return `Leg needs a license key. Buy one at ${BUY_URL} (${GUARANTEE_DAYS}-day money-back guarantee), then: leg license activate <key>`
     default: return String(reason)
   }
 }
@@ -134,14 +144,14 @@ export function describe(ent) {
   if (!ent.ok) return `no license: ${explain(ent.reason)}`
   const p = ent.payload
   const until = p.plan === 'personal' ? `updates through ${p.updates_until}` : `renews; valid through ${p.expires}`
-  return `${PLANS[p.plan].label} license ${p.id}${p.seats > 1 ? ` · ${p.seats} seats` : ''} · ${until}`
+  return `${PLANS[p.plan].label} license ${p.id}${p.seats > 1 ? `, ${p.seats} seats` : ''}, ${until}`
 }
 
 // Team renewal: ask the site for a fresh key for this subscription. Offline
 // or refused, the current key stays in place until it expires.
 export async function refresh({ site = SITE, fetchImpl = globalThis.fetch } = {}) {
   const lic = readLicense()
-  if (!lic) throw new Error('no license to refresh; baton license activate <key>')
+  if (!lic) throw new Error('no license to refresh; leg license activate <key>')
   const { payload } = parseLicense(lic.key)
   if (payload.plan !== 'team') throw new Error('only Team keys renew; a Personal key does not expire')
   const r = await fetchImpl(`${site}/api/key`, {

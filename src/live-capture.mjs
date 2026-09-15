@@ -35,14 +35,14 @@ function redactPaths(s) {
 }
 
 export function liveDir() {
-  if (process.env.BATON_LIVE_DIR) return process.env.BATON_LIVE_DIR
+  if (process.env.LEG_LIVE_DIR || process.env.BATON_LIVE_DIR) return process.env.LEG_LIVE_DIR || process.env.BATON_LIVE_DIR
   if (existsSync(FIXTURES_LIVE) && existsSync(join(ROOT, '.git'))) return FIXTURES_LIVE
   return join(home(), 'live')
 }
 
 export function isSimulated(payload) {
-  if (payload && typeof payload === 'object' && payload.baton_simulated) return true
-  return /simulated by baton/i.test(typeof payload === 'string' ? payload : JSON.stringify(payload ?? ''))
+  if (payload && typeof payload === 'object' && (payload.leg_simulated || payload.baton_simulated)) return true
+  return /simulated by (?:leg|baton)/i.test(typeof payload === 'string' ? payload : JSON.stringify(payload ?? ''))
 }
 
 export function livePath(agent, signal, dir = liveDir()) {

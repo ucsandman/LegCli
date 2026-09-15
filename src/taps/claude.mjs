@@ -118,8 +118,8 @@ export function handleHook(sessionId, p) {
     case 'StopFailure': {
       if (p.error === 'rate_limit') {
         // a simulated wall (baton sessions simulate-limit) clears after two minutes so a test never walls the real login for hours
-        const simulated = Boolean(p.baton_simulated)
-        const u = markLimited('claude', s.account, { reason: 'rate_limit', source: simulated ? 'baton simulate-limit' : 'claude StopFailure', resets_at: simulated ? Math.floor(Date.now() / 1000) + 120 : null })
+        const simulated = Boolean(p.leg_simulated || p.baton_simulated)
+        const u = markLimited('claude', s.account, { reason: 'rate_limit', source: simulated ? 'leg simulate-limit' : 'claude StopFailure', resets_at: simulated ? Math.floor(Date.now() / 1000) + 120 : null })
         updateSession(sessionId, { ...base, status: 'limit', limit: { reason: 'rate_limit', detail: String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 300), resets_at: u.limited_until, at: new Date().toISOString(), simulated } }, { event: { type: 'limit', summary: `claude usage limit${simulated ? ' (simulated)' : ''}: ${String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 160)}` } })
         return 'LIMIT'
       }
@@ -165,6 +165,6 @@ export function handleStatusline(sessionId, p) {
   }, warn && !s.warning ? { event: { type: 'warning', summary: `claude ${hot[0]} window at ${Math.round(hot[1].pct)}%` } } : {})
   const next = s.chain?.[0] ? `${s.chain[0].agent}${s.chain[0].account !== 'default' ? '/' + s.chain[0].account : ''}` : 'nothing'
   const pct = limits ? ` 5h ${limits.five_hour ? Math.round(limits.five_hour.pct) + '%' : '-'} · 7d ${limits.seven_day ? Math.round(limits.seven_day.pct) + '%' : '-'}` : ''
-  const text = warn ? `⚠ baton: ${hot[0]} at ${Math.round(hot[1].pct)}% → next ${next}${pct}` : `baton ·${pct || ' limits pending'} · next ${next} · board ${s.board_url ?? ''}`
+  const text = warn ? `⚠ leg: ${hot[0]} at ${Math.round(hot[1].pct)}% → next ${next}${pct}` : `leg ·${pct || ' limits pending'} · next ${next} · board ${s.board_url ?? ''}`
   return { text, limits, warn }
 }

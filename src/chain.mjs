@@ -158,7 +158,7 @@ export function transition(card, action, payload = {}) {
       // test and land bounces share one counter (land_attempts) and one cap, so a
       // card that never goes green cannot loop forever
       const attempts = (card.land_attempts ?? 0) + 1
-      const max = Math.max(1, parseInt(process.env.BATON_MAX_LAND_ATTEMPTS || '3', 10) || 3)
+      const max = Math.max(1, parseInt((process.env.LEG_MAX_LAND_ATTEMPTS || process.env.BATON_MAX_LAND_ATTEMPTS) || '3', 10) || 3)
       if (!target || attempts >= max) {
         events.push(ev('failed', target ? `test red after ${attempts} attempt(s)` : 'test red and no agent station to bounce to', payload.reason))
         return { card: { ...card, status: 'failed', failure: 'test', land_attempts: attempts }, events }
@@ -181,7 +181,7 @@ export function transition(card, action, payload = {}) {
         return { card: { ...card, status: 'waiting_human', pr_url: payload.url ?? null }, events }
       }
       const attempts = (card.land_attempts ?? 0) + 1
-      const maxAttempts = Math.max(1, parseInt(process.env.BATON_MAX_LAND_ATTEMPTS || '3', 10) || 3)
+      const maxAttempts = Math.max(1, parseInt((process.env.LEG_MAX_LAND_ATTEMPTS || process.env.BATON_MAX_LAND_ATTEMPTS) || '3', 10) || 3)
       const target = payload.bounced ? bounceTarget(card, i) : null
       if (target && attempts < maxAttempts) {
         events.push(ev('bounced', `land bounced (attempt ${attempts}) → ${target.name}`, payload.reason))

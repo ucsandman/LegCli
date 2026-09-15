@@ -4,7 +4,7 @@ Real questions, short answers, sourced from the code and the other docs in
 this directory.
 
 **Why subscription CLIs only, never a per-token API?**
-Baton spawns each CLI's own logged-in session (`claude`, `codex`, `agy`).
+Leg spawns each CLI's own logged-in session (`claude`, `codex`, `agy`).
 Every child process has `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
 `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`, `OPENAI_API_KEY`,
 `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
@@ -18,24 +18,24 @@ take over billing or shadow the subscription login. If stderr ever says
 "another auth source is set", that leg is classified `auth_failed`, a failed
 launch, and does not count as a usage limit.
 
-**Why does Baton poll an endpoint for claude's usage instead of reading the
+**Why does Leg poll an endpoint for claude's usage instead of reading the
 status line?**
 Because Claude Code 2.1.268 did not run a custom status line from a settings
-file Baton controls when this was tried on 2026-09-11 (recorded in
+file Leg controls when this was tried on 2026-09-11 (recorded in
 [DEVIATIONS.md](DEVIATIONS.md)); hooks from the same `--settings` file did
 fire. So the numbers come from
 `GET api.anthropic.com/api/oauth/usage` with the login Claude Code already
-stored, which is the same data `/usage` shows. Baton still writes the
+stored, which is the same data `/usage` shows. Leg still writes the
 `statusLine` entry, so the endpoint poll becomes a fallback the moment a build
 honours it, and your own status-line command is chained first either way. See
 [adapters.md](adapters.md#claude) and `src/taps/claude-usage.mjs`.
 
 **Why does codex get no hook when claude does?**
 Because injecting one would put a prompt in your way. codex asks you to review
-new hooks before it runs them, so a hook per Baton session would mean a
-review prompt per Baton session. It is not needed: an interactive codex writes
+new hooks before it runs them, so a hook per Leg session would mean a
+review prompt per Leg session. It is not needed: an interactive codex writes
 the whole thread to a rollout file under `~/.codex/sessions/YYYY/MM/DD/`, and
-flushes it per event. Baton finds the rollout whose `session_meta` cwd is the
+flushes it per event. Leg finds the rollout whose `session_meta` cwd is the
 session's directory and tails it for the rate limits, the prompts and the
 edited files.
 
@@ -43,7 +43,7 @@ edited files.
 Because agy exposes none. agy 1.2.0 is a closed Go binary; its own status line
 fetches a quota summary from the backend and writes it nowhere on disk. The
 board shows "no % from agy" rather than an empty bar. The wall itself is still
-caught: Baton passes `--log-file` per session and watches for
+caught: Leg passes `--log-file` per session and watches for
 `RESOURCE_EXHAUSTED`, "it resets in …" and "out of quota". Those strings are
 present in `agy.exe`. A real `RESOURCE_EXHAUSTED` wall was caught live on
 2026-09-11 and handed the session off; the fixture in `fixtures/limits/agy/`
@@ -52,25 +52,25 @@ because the payload itself was never captured to `fixtures/live/agy/`.
 
 **Am I allowed to add a second account?**
 That is your call, and the terms are quoted in full in the README under
-"Second accounts, and what the terms say" (`baton accounts terms` prints the
+"Second accounts, and what the terms say" (`leg accounts terms` prints the
 same summary). The short version: owning two paid subscriptions is not named
 as prohibited by Anthropic or OpenAI, but rotating to a second account of the
 same vendor because the first is rate-limited sits close to OpenAI's
 "circumvent any rate limits" wording and Anthropic's "circumvent product
-guardrails". Baton's default chain switches vendors (claude, codex, agy),
+guardrails". Leg's default chain switches vendors (claude, codex, agy),
 which is plainly fine. Same-vendor rotation only happens after you run
-`baton accounts add`.
+`leg accounts add`.
 
-**What does `baton uninstall` remove?**
-`~/.baton` and nothing else: sessions, usage files, the extra account
+**What does `leg uninstall` remove?**
+`~/.leg` and nothing else: sessions, usage files, the extra account
 directories with their junctions, the v0.1 cards and runs, and the board
 pidfile. It removes the junctions as links, never following them into your
 real `~/.claude` or `~/.codex`. It does not touch any file of yours, any repo,
-or the agent CLIs themselves. Run `baton uninstall` with no flag to print what
-would go, `--yes` to do it; then `npm rm -g baton-agents` if you want the
+or the agent CLIs themselves. Run `leg uninstall` with no flag to print what
+would go, `--yes` to do it; then `npm rm -g legcli` if you want the
 package gone too.
 
-**Can I run `baton claude` inside a Claude Code shell?**
+**Can I run `leg claude` inside a Claude Code shell?**
 Yes. A parent Claude Code session exports `CLAUDECODE` and `CLAUDE_CODE_*`
 markers that make a nested Claude refuse to start; `sanitizeEnv`
 (`src/env.mjs`) strips them along with the API-key variables, so the child
@@ -89,7 +89,7 @@ ever runs with permission checks off.
 **What actually happens when a pipeline leg hits a usage limit?**
 (For an interactive session, see [concepts.md](concepts.md#handoff-interactive).)
 `src/limits.mjs` classifies the leg's exit code, output and diff evidence as
-`limit`. Baton writes a handoff bundle in the same worktree (task, done so
+`limit`. Leg writes a handoff bundle in the same worktree (task, done so
 far, the diff, open findings) via `context-handoff-bundle`, then starts the
 next adapter in that station's chain from the bundle's resume text. If the
 chain has no next adapter, the card fails. See
@@ -104,50 +104,50 @@ always serialize. The overlap check is a deliberate approximation biased
 toward false positives: an unnecessary serialization costs minutes, a
 wrongly parallel card can corrupt a merge.
 
-For terminals: a second `baton <agent>` in a checkout that already has a live
+For terminals: a second `leg <agent>` in a checkout that already has a live
 session gets its own worktree and branch, so the two never write over each
 other's files. Whoever presses Land first fast-forwards trunk; the second one
 rebases onto it, or bounces with the conflicting files named on the card.
 `--no-worktree` shares the checkout when that is what you want.
 
 **Can someone else watch my board?**
-Only if you run `baton share on`, which is off by default. It binds your
-Tailscale or LAN address and prints one link per human (`baton share add
+Only if you run `leg share on`, which is off by default. It binds your
+Tailscale or LAN address and prints one link per human (`leg share add
 <name>`), each with its own token. A guest sees the terminals lane read-only
 and nothing a terminal has said, read or written: no prompt, no file names, no
 paths, no bundle, no events, no logs, and none of the pipeline side. The
 limit line keeps only the reason and the reset time, never the raw limit
 text. The one thing they can do on your terminal is ask for a hand-off, which
-you approve or dismiss on the card. `baton share off` ends it and every link
+you approve or dismiss on the card. `leg share off` ends it and every link
 stops working. There is no TLS, so keep it on Tailscale or a network you trust.
 
 **What if the CLI I want isn't installed?**
-`node bin/baton.mjs up --dry` prints a preflight table with `ok`/`missing`
+`node bin/leg.mjs up --dry` prints a preflight table with `ok`/`missing`
 per adapter. A missing adapter only matters if a card's chain names it: that
 leg fails to launch (`launch_failed`), which does not advance the chain,
 install and log in, then press Rerun. A chain only needs the adapters it
 names; leave a missing one out.
 
 **How do I resume after a reboot or a crash?**
-Every run's `run.json` under `$BATON_HOME/cards/<id>/runs/<n>/` is the
-source of truth, not process memory. `baton down` kills active agents but
-each run's supervisor still writes its final verdict; the next `baton up`
+Every run's `run.json` under `$LEG_HOME/cards/<id>/runs/<n>/` is the
+source of truth, not process memory. `leg down` kills active agents but
+each run's supervisor still writes its final verdict; the next `leg up`
 (or the scheduler) finds any unsettled run with no live driver and
 re-attaches to apply that verdict, logging a `re-attached to run N` event.
-Nothing manual to do beyond starting Baton again.
+Nothing manual to do beyond starting Leg again.
 
-**Does Baton push to GitHub, or open pull requests?**
+**Does Leg push to GitHub, or open pull requests?**
 No. The default `land_mode: ff` only rebases and fast-forwards the local
 trunk branch inside the repo you gave it; there is no remote write anywhere
 in `src/worktree.mjs` or `src/mergequeue.mjs`. `land_mode: pr` builds a real
 `gh pr create` argv but is stub-only: it refuses to run unless
-`BATON_GH_BIN` points at a real `gh` (or a test stub), and even then it
+`LEG_GH_BIN` points at a real `gh` (or a test stub), and even then it
 never pushes or creates a remote for you, that is out of scope for this
 build.
 
-**Is there a hosted version of Baton?**
-No. Baton is local-first: the board binds `127.0.0.1` by default, every
-card's state lives in files under `BATON_HOME`, and there is no service to
+**Is there a hosted version of Leg?**
+No. Leg is local-first: the board binds `127.0.0.1` by default, every
+card's state lives in files under `LEG_HOME`, and there is no service to
 sign into. See [configuration.md](configuration.md#network-exposure) for
 what changes if you deliberately bind it to a shared address.
 
@@ -160,22 +160,22 @@ or body matches a secret pattern at all. Every adapter's `env()` strips the
 API-key/base-URL variables from the child process. `npm test` and the
 pre-commit hook both run `scripts/privacy-check.mjs`, which additionally
 scans the whole tree for a short list of strings specific to the private
-codebase Baton's runner/ledger were ported from.
+codebase Leg's runner/ledger were ported from.
 
 **What happens if I close the terminal instead of Ctrl-C?**
 The board server and any running agents keep running as detached processes.
-Run `node bin/baton.mjs down` (or `npm run stop`) from another terminal to
-stop them cleanly, or just start `baton up` again later: it re-attaches to
+Run `node bin/leg.mjs down` (or `npm run stop`) from another terminal to
+stop them cleanly, or just start `leg up` again later: it re-attaches to
 any run left in progress rather than launching a duplicate.
 
 **Can I run a card without the board?**
-Yes: `node bin/baton.mjs card run <card-id>` drives one card through the
+Yes: `node bin/leg.mjs card run <card-id>` drives one card through the
 orchestrator directly and exits when it reaches a waiting or terminal
-state, printing the final status. `node bin/baton.mjs card show <id>` and
+state, printing the final status. `node bin/leg.mjs card show <id>` and
 `card events <id>` work without the server running too, since they read the
 same on-disk ledger the board reads.
 
-**What does `BATON_NO_SCHEDULER=1` do, and why would I set it?**
+**What does `LEG_NO_SCHEDULER=1` do, and why would I set it?**
 It boots the board server without its embedded scheduler, so no queued card
 starts automatically, useful when you want to drive every card by hand
 with `card run` (for example, inside a test) while still watching it on the
@@ -185,7 +185,7 @@ board.
 take?**
 No fixed limit; the chain array can be as long as you like. A card fails
 only when a leg's outcome needs to hand off and the chain has no next entry
-left, or (separately) after `BATON_MAX_LAND_ATTEMPTS` test/land bounces.
+left, or (separately) after `LEG_MAX_LAND_ATTEMPTS` test/land bounces.
 
 **Windows vs macOS/Linux: what's actually verified?**
 Built and tested on Windows (every worktree, git and taskkill path in the
@@ -199,7 +199,7 @@ Open a GitHub issue using the bug report template
 (`.github/ISSUE_TEMPLATE/bug_report.md`). For a security vulnerability, do
 not open a public issue, see [SECURITY.md](../SECURITY.md) instead.
 
-**Where do I find the exact word Baton uses for a given status, event, or
+**Where do I find the exact word Leg uses for a given status, event, or
 button?**
 [VOCABULARY.md](VOCABULARY.md): one table per category (statuses, outcomes,
 station kinds, event types, actor types, human actions, bounce reasons),

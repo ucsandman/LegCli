@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install Baton and monitor your Claude Code usage limit</title>
-<meta name="description" content="Install Baton, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.">
-<link rel="canonical" href="https://baton-agents.vercel.app/docs/getting-started">
+<title>Install Leg and monitor your Claude Code usage limit</title>
+<meta name="description" content="Install Leg, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.">
+<link rel="canonical" href="https://legcli.com/docs/getting-started">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://baton-agents.vercel.app/docs/getting-started">
-<meta property="og:site_name" content="Baton">
-<meta property="og:title" content="Install Baton and monitor your Claude Code usage limit">
-<meta property="og:description" content="Install Baton, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.">
-<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta property="og:url" content="https://legcli.com/docs/getting-started">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="Install Leg and monitor your Claude Code usage limit">
+<meta property="og:description" content="Install Leg, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.">
+<meta property="og:image" content="https://legcli.com/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Install Baton and monitor your Claude Code usage limit">
-<meta name="twitter:description" content="Install Baton, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.">
-<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:title" content="Install Leg and monitor your Claude Code usage limit">
+<meta name="twitter:description" content="Install Leg, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=2">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -53,7 +53,7 @@
   <main id="doc" class="docs-body">
 <nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#1-prerequisites">1. Prerequisites</a></li><li><a href="#2-install">2. Install</a></li><li><a href="#3-run-an-agent">3. Run an agent</a></li><li><a href="#4-what-you-get-while-it-runs">4. What you get while it runs</a></li><li><a href="#is-the-resume-file-still-true">Is the resume file still true?</a></li><li><a href="#5-watching-and-steering-from-the-cli">5. Watching and steering from the CLI</a></li><li><a href="#6-where-files-live">6. Where files live</a></li><li><a href="#7-pipelines-extras">7. Pipelines (extras)</a></li><li><a href="#next">Next</a></li></ul></nav>
 <h1 id="getting-started"><a class="anchor" href="#getting-started">Getting started</a></h1>
-<p>For a developer setting up Baton for the first time on their own machine. The
+<p>For a developer setting up Leg for the first time on their own machine. The
 first four sections get an interactive agent running with the board alongside
 it. The v0.1 pipeline flow is section 7 onward.</p>
 <h2 id="1-prerequisites"><a class="anchor" href="#1-prerequisites">1. Prerequisites</a></h2>
@@ -67,27 +67,27 @@ not need all three. With one installed you get the board and the usage
 tracking; with two or more you also get the hand-off.</li>
 </ul>
 <h2 id="2-install"><a class="anchor" href="#2-install">2. Install</a></h2>
-<pre><code>npm install -g baton-agents
+<pre><code>npm install -g legcli
 pip install -U context-handoff-bundle
 </code></pre>
 <p>The source repository is private, so there is no clone to install from. The
-source you run ships in the package: <code>$(npm root -g)/baton-agents/src</code>, plain
+source you run ships in the package: <code>$(npm root -g)/legcli/src</code>, plain
 <code>.mjs</code>, nothing bundled. Read it before you trust it.</p>
 <h2 id="3-run-an-agent"><a class="anchor" href="#3-run-an-agent">3. Run an agent</a></h2>
 <pre><code>cd &lt;any repo&gt;
-baton claude
+leg claude
 </code></pre>
-<p>That is the whole setup. <code>baton claude</code> runs the real Claude Code in this
+<p>That is the whole setup. <code>leg claude</code> runs the real Claude Code in this
 terminal with your own settings, hooks and skills. Anything after the agent
 name passes straight through:</p>
-<pre><code>baton claude --model haiku
-baton codex -m gpt-5.3-codex-spark
-baton agy
+<pre><code>leg claude --model haiku
+leg codex -m gpt-5.3-codex-spark
+leg agy
 </code></pre>
-<p>The first <code>baton &lt;agent&gt;</code> starts the board on <a href="http://127.0.0.1:4747">http://127.0.0.1:4747</a> and opens
+<p>The first <code>leg &lt;agent&gt;</code> starts the board on <a href="http://127.0.0.1:4747">http://127.0.0.1:4747</a> and opens
 it once in your browser. Later sessions reuse the same board. Set
-<code>BATON_NO_OPEN=1</code> to skip the browser.</p>
-<p>Baton strips <code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>,
+<code>LEG_NO_OPEN=1</code> to skip the browser.</p>
+<p>Leg strips <code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>,
 <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>, <code>OPENAI_API_KEY</code>,
 <code>OPENAI_BASE_URL</code>, <code>OPENAI_API_BASE</code>, <code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>,
 <code>GOOGLE_GEMINI_BASE_URL</code>, <code>GOOGLE_GENAI_USE_VERTEXAI</code>,
@@ -101,29 +101,29 @@ Claude print session. The subscription login is always what runs. Nothing in
 <ul>
 <li>A card on the board for this terminal: agent, account, repo@branch, the first
 prompt, turns, the files being touched, 5h and 7d usage.</li>
-<li>A warning at 85 % of either window (<code>BATON_WARN_PCT</code>): amber card, an event,
+<li>A warning at 85 % of either window (<code>LEG_WARN_PCT</code>): amber card, an event,
 one terminal bell.</li>
 <li>For Codex, the board and active attach poll the read-only app-server
-<code>account/rateLimits/read</code> response every 60 seconds. Baton maps the returned
+<code>account/rateLimits/read</code> response every 60 seconds. Leg maps the returned
 300- and 10080-minute durations to 5h and 7d, shows <code>&lt;n&gt;% used</code>, and labels
 old readings stale. Only an explicit backend available answer clears a prior
 wall; no model turn or hardcoded quota is used.</li>
 <li>A <code>context-handoff-bundle</code> for this session, refreshed every two minutes and
 at every warning, limit and hand-off.</li>
 <li>At the limit: the bundle is saved, the agent is stopped, and the next option
-starts in the same terminal from <code>.baton/RESUME-&lt;session-id&gt;.md</code>, copied to
-<code>.baton/RESUME.md</code>. Order is other logins of
+starts in the same terminal from <code>.leg/RESUME-&lt;session-id&gt;.md</code>, copied to
+<code>.leg/RESUME.md</code>. Order is other logins of
 the same agent first, then the remaining agents (claude, codex, agy). When
-every option is out, Baton prints each reset time, soonest first, waits with
+every option is out, Leg prints each reset time, soonest first, waits with
 a countdown, and starts the first one back from the bundle. Ctrl-C quits.</li>
 </ul>
 <p>Force a hand-off at any time with the <strong>Hand off now</strong> button on the card, or
-<code>baton sessions handoff &lt;id&gt;</code>.</p>
+<code>leg sessions handoff &lt;id&gt;</code>.</p>
 <h2 id="is-the-resume-file-still-true"><a class="anchor" href="#is-the-resume-file-still-true">Is the resume file still true?</a></h2>
-<pre><code class="language-powershell">baton resume --check      # exit 0 current, 1 stale or unstamped, 3 none here
-baton resume              # the same verdict, then the pointer itself
+<pre><code class="language-powershell">leg resume --check      # exit 0 current, 1 stale or unstamped, 3 none here
+leg resume              # the same verdict, then the pointer itself
 </code></pre>
-<p>Baton stamps every resume file with the commit, the working tree and the
+<p>Leg stamps every resume file with the commit, the working tree and the
 terminals it was written against, and recomputes freshness from git when you
 read it. A commit landing, the tree moving, or the terminal it described going
 away all make it stale; the terminal card&#39;s drawer shows the same verdict under
@@ -131,15 +131,15 @@ away all make it stale; the terminal card&#39;s drawer shows the same verdict un
 flight, and the board does the same at start for a terminal that crashed, so
 nothing is left describing work that has moved on.</p>
 <h2 id="5-watching-and-steering-from-the-cli"><a class="anchor" href="#5-watching-and-steering-from-the-cli">5. Watching and steering from the CLI</a></h2>
-<pre><code>baton sessions ls            every session and its usage
-baton sessions show &lt;id&gt;
-baton sessions events &lt;id&gt;
-baton sessions handoff &lt;id&gt;  same as the board button
-baton sessions end &lt;id&gt;
-baton sessions rm &lt;id&gt;       forget an ended session
-baton sessions simulate-limit &lt;id&gt;   drive the real limit path without a real wall (claude, agy)
-baton accounts ls            logins and their 5h/7d usage
-baton open | down | status   the board
+<pre><code>leg sessions ls            every session and its usage
+leg sessions show &lt;id&gt;
+leg sessions events &lt;id&gt;
+leg sessions handoff &lt;id&gt;  same as the board button
+leg sessions end &lt;id&gt;
+leg sessions rm &lt;id&gt;       forget an ended session
+leg sessions simulate-limit &lt;id&gt;   drive the real limit path without a real wall (claude, agy)
+leg accounts ls            logins and their 5h/7d usage
+leg open | down | status   the board
 </code></pre>
 <p>On the board, <strong>Remove</strong> safely prunes an ended session only when its worktree
 is clean and its branch is already merged into the base. For a session that
@@ -147,8 +147,8 @@ needs to be removed from the board while preserving its work, use the visible
 <strong>Remove record</strong> button, read its confirmation, and keep the worktree, branch,
 unmerged commits, and dirty files intact.</p>
 <h2 id="6-where-files-live"><a class="anchor" href="#6-where-files-live">6. Where files live</a></h2>
-<p>Everything Baton writes goes under <code>BATON_HOME</code> (default <code>~/.baton</code>):</p>
-<pre><code>~/.baton/
+<p>Everything Leg writes goes under <code>LEG_HOME</code> (default <code>~/.leg</code>):</p>
+<pre><code>~/.leg/
   sessions/&lt;session-id&gt;/
     session.json           the live record the board renders
     events.jsonl           the timeline
@@ -161,18 +161,18 @@ unmerged commits, and dirty files intact.</p>
   landings.jsonl           every Land, for the landed-on-trunk list
   board.log                the board server&#39;s output
 </code></pre>
-<p>In the repo you run in, Baton writes <code>.baton/</code> (session notes, <code>RESUME.md</code> and
+<p>In the repo you run in, Leg writes <code>.leg/</code> (session notes, <code>RESUME.md</code> and
 one <code>RESUME-&lt;session-id&gt;.md</code> per hand-off) and <code>.context-handoffs/</code> (the
 bundles). Both are added to <code>.git/info/exclude</code>, so they never show up in
 <code>git status</code>.</p>
-<p><code>baton uninstall --yes</code> removes <code>~/.baton</code> and nothing else.</p>
+<p><code>leg uninstall --yes</code> removes <code>~/.leg</code> and nothing else.</p>
 <h2 id="7-pipelines-extras"><a class="anchor" href="#7-pipelines-extras">7. Pipelines (extras)</a></h2>
 <p>Version 0.1 worked the other way round: you dropped a task card on the board
-and Baton ran the agents headless in a git worktree, one per card, with a
+and Leg ran the agents headless in a git worktree, one per card, with a
 fallback chain, path leases, a scheduler and a merge queue. All of that still
 works and lives below the Terminals lane. It is no longer the way in.</p>
 <h3 id="preflight"><a class="anchor" href="#preflight">Preflight</a></h3>
-<pre><code>baton up --dry
+<pre><code>leg up --dry
 </code></pre>
 <p>One row per dependency (node, git, <code>context-handoff-bundle</code>, each registered
 adapter) with <code>ok</code> or <code>missing</code>, then exit without spawning anything. A
@@ -182,7 +182,7 @@ adapter) with <code>ok</code> or <code>missing</code>, then exit without spawnin
 </code></pre>
 <p><code>npm start</code> runs the same preflight, boots the board server on
 <code>http://127.0.0.1:4747</code>, opens it, and streams prefixed, redacted logs. Ctrl-C
-stops the server and any agent it started. From another terminal: <code>npm run stop</code> (which runs <code>baton down</code>).</p>
+stops the server and any agent it started. From another terminal: <code>npm run stop</code> (which runs <code>leg down</code>).</p>
 <h3 id="a-card-from-the-board"><a class="anchor" href="#a-card-from-the-board">A card from the board</a></h3>
 <p>Click <strong>New card</strong>. The form asks for:</p>
 <ul>
@@ -196,28 +196,28 @@ commit).</li>
 <li><strong>Queue immediately</strong>: leave it checked to start the card right away.</li>
 </ul>
 <h3 id="a-card-from-the-cli"><a class="anchor" href="#a-card-from-the-cli">A card from the CLI</a></h3>
-<pre><code>baton card add --repo &lt;path-to-a-git-repo&gt; --task &quot;Add a LICENSE file&quot; --chain claude --queue
+<pre><code>leg card add --repo &lt;path-to-a-git-repo&gt; --task &quot;Add a LICENSE file&quot; --chain claude --queue
 </code></pre>
 <p>Other flags <code>card add</code> accepts: <code>--pipeline &lt;preset|file&gt;</code>, <code>--mode &lt;adapter&gt;=&lt;mode&gt;</code>, <code>--max-turns &lt;adapter&gt;=&lt;n&gt;</code>, <code>--leases &lt;glob,glob&gt;</code>,
 <code>--trunk &lt;branch&gt;</code>, <code>--land-mode ff|pr</code>, <code>--test-command &quot;&lt;cmd&gt;&quot;</code>, <code>--title &quot;&lt;text&gt;&quot;</code>, <code>--slug &lt;id&gt;</code>, <code>--approve &lt;adapter,...&gt;</code>.</p>
 <p>The command prints the new card id. Show it, or run it directly:</p>
-<pre><code>baton card show &lt;card-id&gt;
-baton card run &lt;card-id&gt;
-baton card events &lt;card-id&gt;
+<pre><code>leg card show &lt;card-id&gt;
+leg card run &lt;card-id&gt;
+leg card events &lt;card-id&gt;
 </code></pre>
 <h3 id="try-a-pipeline-with-no-real-agent"><a class="anchor" href="#try-a-pipeline-with-no-real-agent">Try a pipeline with no real agent</a></h3>
 <p>The <code>fake</code> adapter drives <code>bin/fake-agent.mjs</code>, a stand-in CLI, so you can see
 a full run without a subscription login:</p>
-<pre><code>baton card add --repo &lt;path-to-a-git-repo&gt; --task &quot;demo&quot; --chain fake --fake-mode fake=limit --queue
+<pre><code>leg card add --repo &lt;path-to-a-git-repo&gt; --task &quot;demo&quot; --chain fake --fake-mode fake=limit --queue
 </code></pre>
 <p><code>FAKE_MODE</code> (set per adapter with <code>--fake-mode &lt;adapter&gt;=&lt;mode&gt;</code>) picks its
 behaviour: <code>success</code>, <code>incomplete</code>, <code>limit</code>, <code>stall</code>, <code>auth</code>, <code>crash</code>,
 <code>no_progress</code>, and the land-demo modes <code>break-test</code> / <code>fix-test</code> /
 <code>resolve-rebase</code>. A chain of two fake adapters (<code>--chain fake-claude,fake-codex --fake-mode &quot;fake-claude=limit,fake-codex=success&quot;</code>)
-shows a full handoff; see <a href="https://www.npmjs.com/package/baton-agents">DEMO.md</a> for the walkthrough with
+shows a full handoff; see <a href="https://www.npmjs.com/package/legcli">DEMO.md</a> for the walkthrough with
 screenshots.</p>
 <h3 id="where-a-cards-files-live"><a class="anchor" href="#where-a-cards-files-live">Where a card&#39;s files live</a></h3>
-<pre><code>~/.baton/
+<pre><code>~/.leg/
   cards/&lt;card-id&gt;/
     card.json                    the card&#39;s current state
     events-&lt;actor-key&gt;.jsonl     one append-only file per writer
@@ -231,11 +231,11 @@ screenshots.</p>
       supervisor.log             the runner&#39;s own log for this run
   locks/land-&lt;hash&gt;.json         the merge queue&#39;s turn, one per repo root, while a land runs
   ACTIVE.md                      generated summary of open cards
-  baton.pid                      written by `baton up`, removed on stop
-  scheduler.pid                  written by `baton scheduler start`
+  leg.pid                        written by `leg up`, removed on stop
+  scheduler.pid                  written by `leg scheduler start`
 </code></pre>
 <p>A card&#39;s own git worktree lives in the repo it targets, not under
-<code>BATON_HOME</code>: <code>&lt;repo&gt;/.baton-worktrees/&lt;card-id&gt;</code> on branch <code>baton/&lt;card-id&gt;</code>.</p>
+<code>LEG_HOME</code>: <code>&lt;repo&gt;/.leg-worktrees/&lt;card-id&gt;</code> on branch <code>leg/&lt;card-id&gt;</code>.</p>
 <h2 id="next"><a class="anchor" href="#next">Next</a></h2>
 <ul>
 <li><a href="/docs/concepts">concepts.md</a>: sessions, accounts, usage windows, the
@@ -246,7 +246,7 @@ station.</li>
 </ul>
 
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>

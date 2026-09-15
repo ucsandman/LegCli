@@ -1,11 +1,11 @@
 # Board guide
 
-For anyone using the Baton board day to day: what every element means and when
+For anyone using the Leg board day to day: what every element means and when
 it shows up. The board is one page, read top to bottom: **the verdict** (one
 sentence saying what to do next), **the logins** (one panel each), **Terminals**
 (one row each), **the ledger** (finished terminals, what landed, background
 tasks, as three counts that open), then **Settings**. Start a session
-(`baton claude`) or the background-task board (`npm start`), see
+(`leg claude`) or the background-task board (`npm start`), see
 [getting-started.md](getting-started.md), then use this as a reference.
 
 The visual system, and why it is what it is, is `DESIGN.md` at the repo root.
@@ -50,8 +50,8 @@ node scripts/seed-floor-board.mjs   # cards in every floor lane, plus a landing
 node scripts/board-shots.mjs <port> <tag>   # shoot 1280 and 400, print the numbers
 ```
 
-Each seeder writes a throwaway `BATON_HOME` under the OS temp dir; serve it on a
-spare port with `BATON_TRUST=never`. **Never use port 4747** — that is the live
+Each seeder writes a throwaway `LEG_HOME` under the OS temp dir; serve it on a
+spare port with `LEG_TRUST=never`. **Never use port 4747**, that is the live
 board, with real sessions on it.
 
 Measure against those seeds and never against a board of healthy terminals:
@@ -99,7 +99,7 @@ panel gets is the design saying how much it matters:
   reading, then the fact. A walled login reads `At the wall` and
   `Back Saturday 10:11 PM. Nothing runs on codex until then.`
 - A login that publishes no figure draws no instrument at all. agy's panel says
-  `agy publishes no usage figure, ever. Baton shows its terminals and their
+  `agy publishes no usage figure, ever. Leg shows its terminals and their
   elapsed time instead.` An empty track reads as a measurement of zero to anyone
   glancing at it, so none is drawn.
 
@@ -107,7 +107,7 @@ panel gets is the design saying how much it matters:
 identity colour up to 85 percent and in the over colour past it, and a 2px notch
 is cut through the bar at 85 at all times, including at zero fill: you can see
 the reserve before you reach it. A window that has never been read draws no fill
-and prints `no reading`, because a zero is a reading and Baton does not print
+and prints `no reading`, because a zero is a reading and Leg does not print
 one it does not have.
 
 Nothing here is on hover. A screen reader gets the whole answer from each
@@ -117,8 +117,8 @@ its label. The caption under the logins reads `Times are local.`
 
 For Codex, the board reads the app-server's read-only
 `account/rateLimits/read` response every 60 seconds and maps its 300- and
-10080-minute windows to 5h and 7d. The active `baton codex` attach also polls
-that response. A percentage alone does not clear a limit wall: Baton waits for
+10080-minute windows to 5h and 7d. The active `leg codex` attach also polls
+that response. A percentage alone does not clear a limit wall: Leg waits for
 an explicit available answer from the backend.
 
 ## Terminals
@@ -126,7 +126,7 @@ an explicit available answer from the backend.
 `src/board/sessions.js` renders the region from `GET /api/sessions`, refreshed
 by the server-sent `sessions` event, re-sorted every 15 s, with the elapsed
 clocks ticking every second. With no sessions it prints `No terminal is running.
-Start one in any repo: baton claude, baton codex or baton agy. It appears here
+Start one in any repo: leg claude, leg codex or leg agy. It appears here
 within a second of the agent's first turn.`
 
 The region head carries one verdict with its volume: `3 running, 2 waiting on
@@ -144,8 +144,8 @@ Reading across the row: what it is doing, what it is working on, how long it has
 been at it, and what you can do about it.
 
 - **The register**, one line of the smallest type on the board: the status word
-  with its dot, then where the work is (`baton on main`, or the folder when it
-  is not a repo), then anything unusual about this terminal as plain words — the
+  with its dot, then where the work is (`leg on main`, or the folder when it
+  is not a repo), then anything unusual about this terminal as plain words, the
   account when it is not `default`, the owner on a shared board, `from <agent>`
   when it was handed off, `own worktree, from main` when it cut its own.
 - **The prompt**, as a button: the first prompt of the session, carried in full
@@ -166,7 +166,7 @@ been at it, and what you can do about it.
   `claude`; the prefix is the agent name twice and it is gone.
 - **The buttons**, in a fixed 2x2 grid so every row's controls sit in the same
   place: Land, Hand off now, Details, End. Land is the primary action only when
-  it can actually run — when it is blocked the accent moves to Hand off now,
+  it can actually run, when it is blocked the accent moves to Hand off now,
   because a disabled control should not wear the one accent colour in the
   design. When Land is disabled its reason is printed, never left in a tooltip.
 
@@ -248,7 +248,7 @@ availability: a button that does not apply is omitted, never moved.
 
 | button | shown when | what it does |
 |--------|------------|--------------|
-| Land | always, disabled with the reason printed under it when the session has no worktree of its own, while it is landing, or when the worktree is gone | `POST /api/sessions/:id/land` (202): commits what the agent left on `baton/<id>`, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the panel's sentence shows the result |
+| Land | always, disabled with the reason printed under it when the session has no worktree of its own, while it is landing, or when the worktree is gone | `POST /api/sessions/:id/land` (202): commits what the agent left on `leg/<id>`, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the panel's sentence shows the result |
 | Request handoff | the board is shared and this terminal is someone else's | `POST /api/sessions/:id/request-handoff` (202): asks the owner; nothing happens until they approve |
 | Approve `<name>` / Dismiss `<name>` | the board is shared and someone asked for a hand-off on your terminal | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
 | Details | any terminal of yours | `GET /api/sessions/:id/detail`: the transcript, the files changed with their line counts, the timeline and the current bundle; `GET /api/sessions/:id/diff?file=<path>` for one file, capped at 400 lines, refused for any path outside that terminal's own tree |
@@ -256,7 +256,7 @@ availability: a button that does not apply is omitted, never moved.
 | Change order | inside the expansion, while the status is `starting`, `running`, `warning`, `limit` or `waiting` | saves its validated claude/codex/agy priority; an older wrapper instead saves the machine default and says to restart the terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
 | Remove | the session is not active | `DELETE /api/sessions/:id`: safely prunes the session record, worktree, and merged branch only when the worktree is clean and the branch is already on its base; otherwise it leaves them and explains why |
-| Remove record | the session is not active and has an own worktree | `DELETE /api/sessions/:id?force=1&keep_worktree=1`: removes only Baton's record and keeps the worktree, branch, unmerged commits, and dirty files |
+| Remove record | the session is not active and has an own worktree | `DELETE /api/sessions/:id?force=1&keep_worktree=1`: removes only Leg's record and keeps the worktree, branch, unmerged commits, and dirty files |
 
 End, Remove and Remove record confirm first: the button row is replaced in place
 by one sentence and two buttons, focus moves to Cancel, and Escape cancels.
@@ -276,7 +276,7 @@ from the right, and the page keeps one scroll container
    `head` in full, never shortened. `usage unknown (<why>); the limit still
    hands off` sits here when the endpoint had no numbers for this login: no
    login in that config directory, a 404, a 429, a body that is not JSON, or a
-   shape Baton does not recognise.
+   shape Leg does not recognise.
 3. **Task**: the prompt in full.
 4. **Conversation**: the last 8 turns, newest first, headed `showing 8 of 34
    turns`; **show 40 more** raises the cap.
@@ -287,7 +287,7 @@ from the right, and the page keeps one scroll container
 7. **What happens next**: `now: claude, then codex, then agy`, which fallback is
    preferred and which is eligible now, the line `Used after a usage limit or
    Hand off now. A normal exit ends this terminal.`, the **Change order**
-   editor, the current bundle id, and whether `.baton/RESUME.md` still describes
+   editor, the current bundle id, and whether `.leg/RESUME.md` still describes
    the repository (recomputed from git on every poll).
 
 It refetches every 3 seconds while it is open, and stops on **Pause updates**,
@@ -308,26 +308,26 @@ Below the terminals, three counts sitting on the ground with no panel, because a
 raised surface here would compete with the terminals that are live. Each is a
 heading, a line of detail and a button that opens the detail below the row.
 
-- **N finished** — the terminals that have ended or been lost, `4 lost, 2 ended,
-  in baton, costclaw, declick`. **View all N** opens them as full rows. On a real
+- **N finished**, the terminals that have ended or been lost, `4 lost, 2 ended,
+  in leg, costclaw, declick`. **View all N** opens them as full rows. On a real
   board after a day's work this is most of the list, which is exactly why it is a
   count and not the list.
-- **N landed** — what has landed on trunk across every repo the board can see,
-  `newest 38 minutes ago, on baton@main, recruiting-tool@main`. **View N
+- **N landed**, what has landed on trunk across every repo the board can see,
+  `newest 38 minutes ago, on leg@main, recruiting-tool@main`. **View N
   commits** opens them grouped by repo, newest first: the subject and, for a
   commit a Land put there, `3 hours ago, by claude`, read from
-  `~/.baton/landings.jsonl`, which outlives the session; any other commit shows
+  `~/.leg/landings.jsonl`, which outlives the session; any other commit shows
   its git author. Shown in full it was eighteen rows of `git log` at the same
   visual weight as the live terminals, so the loudest thing on the page was a
   commit from eleven days ago. With nothing landed it reads `Nothing landed yet`
   and explains what Land does.
-- **N background tasks** — the card runtime below, as a count with **View N
-  cards**, plus **New card**. With none it reads `Nothing is queued. Baton starts
+- **N background tasks**, the card runtime below, as a count with **View N
+  cards**, plus **New card**. With none it reads `Nothing is queued. Leg starts
   the next login only when a terminal hands off.`
 
 ## A shared board (more than one human)
 
-With `baton share` on (off by default), the Terminals region head carries a chip
+With `leg share` on (off by default), the Terminals region head carries a chip
 reading `you are wes, 2 on this board`, with `, a guest` after the name for
 anyone who is not the owner, and every row carries an owner word in its
 register: `wes, you` on yours, `wes` on someone else's. There is no colour
@@ -350,7 +350,7 @@ Everything from here down is the v0.1 card runtime. Each card runs separately
 from the interactive terminal conversations, in its own git worktree. It is the
 third ledger cell, and its rows open in a drawer under the ledger.
 
-The masthead (`src/board/index.html`) has the Baton wordmark on the left and, on
+The masthead (`src/board/index.html`) has the Leg wordmark on the left and, on
 the right, the connection word (`connecting` / `live` / `reconnecting…`) with its
 dot, the scheduler status (`scheduler running, 2 max`), and the **Floor** link.
 **New card** is in the ledger cell, not the masthead, and **Settings** is the
@@ -529,7 +529,7 @@ is fixed: Approve, Run, Resume, Pause, Hand off now, Rerun, Reassign, Kill.
 `/floor` (`docs/screenshots/floor.png`) is the scheduler-eye view across every
 card. It carries the same instrument head as the board, then polls `/api/floor`
 and `/api/trunk?since=1h` every 2 seconds and refreshes on the same server-sent
-events as the board. Its top bar has the Baton floor brand, the same connection
+events as the board. Its top bar has the Leg floor brand, the same connection
 word and 24 px rule, a repos list, the scheduler status, running/queued/waiting/
 done counts, then a spacer and the **Board** link. Five tables:
 
@@ -575,5 +575,5 @@ running or handing-off card.
 
 - [concepts.md](concepts.md): what each status and outcome means underneath
   the board.
-- [configuration.md](configuration.md): `BATON_BIND` / `BATON_TOKEN` (the
-  Settings token field), `BATON_PORT`.
+- [configuration.md](configuration.md): `LEG_BIND` / `LEG_TOKEN` (the
+  Settings token field), `LEG_PORT`.

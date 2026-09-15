@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>A real run: Claude Code hits its usage limit, Codex continues | Baton</title>
+<title>A real run: Claude Code hits its usage limit, Codex continues | Leg</title>
 <meta name="description" content="One recorded session: Claude Code working, the limit landing, the bundle saved, and Codex picking the work up in the same terminal.">
-<link rel="canonical" href="https://baton-agents.vercel.app/docs/real-run">
+<link rel="canonical" href="https://legcli.com/docs/real-run">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://baton-agents.vercel.app/docs/real-run">
-<meta property="og:site_name" content="Baton">
+<meta property="og:url" content="https://legcli.com/docs/real-run">
+<meta property="og:site_name" content="Leg">
 <meta property="og:title" content="A real run: Claude Code hits its usage limit, Codex continues">
 <meta property="og:description" content="One recorded session: Claude Code working, the limit landing, the bundle saved, and Codex picking the work up in the same terminal.">
-<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta property="og:image" content="https://legcli.com/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="A real run: Claude Code hits its usage limit, Codex continues">
 <meta name="twitter:description" content="One recorded session: Claude Code working, the limit landing, the bundle saved, and Codex picking the work up in the same terminal.">
-<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=2">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -58,8 +58,8 @@ a scratch repo (<code>toy-real</code>: README, package.json with <code>&quot;tes
 one commit). Evidence: <code>fixtures/real-run/</code> (run records, logs, bundle <code>show</code>,
 events; home paths scrubbed to <code>~</code>).</p>
 <h2 id="command"><a class="anchor" href="#command">Command</a></h2>
-<pre><code>node bin/baton.mjs card add --repo &lt;toy-real&gt; --chain claude,codex --max-turns claude=2 --mode codex=workspace-write --pipeline build --title &quot;calc module (real run)&quot; --task &quot;Create src/calc.mjs exporting add, sub, mul and div (div throws on division by zero). Create test/calc.test.mjs using node:test covering all four functions including the divide-by-zero case. Run node --test and fix until green. Then write .baton/DONE.&quot;
-node bin/baton.mjs card run card-20260911-0232-real-calc
+<pre><code>node bin/leg.mjs card add --repo &lt;toy-real&gt; --chain claude,codex --max-turns claude=2 --mode codex=workspace-write --pipeline build --title &quot;calc module (real run)&quot; --task &quot;Create src/calc.mjs exporting add, sub, mul and div (div throws on division by zero). Create test/calc.test.mjs using node:test covering all four functions including the divide-by-zero case. Run node --test and fix until green. Then write .leg/DONE.&quot;
+node bin/leg.mjs card run card-20260911-0232-real-calc
 </code></pre>
 <p><code>--max-turns claude=2</code> is the handoff trigger: the task needs more than two
 turns, so the first leg ends before the DONE marker.</p>
@@ -114,29 +114,29 @@ turns, so the first leg ends before the DONE marker.</p>
 was docs-only until this run and is now observed-live:</p>
 <pre><code>{&quot;type&quot;:&quot;result&quot;,&quot;subtype&quot;:&quot;error_max_turns&quot;,&quot;is_error&quot;:true,&quot;stop_reason&quot;:&quot;tool_use&quot;,&quot;terminal_reason&quot;:&quot;max_turns&quot;,&quot;num_turns&quot;:3, …}
 </code></pre>
-<p>Exit code 1, empty stderr, no <code>.baton/DONE</code>; the diff evidence saw one changed
+<p>Exit code 1, empty stderr, no <code>.leg/DONE</code>; the diff evidence saw one changed
 path (<code>.dashclaw-local/</code>, written by the machine&#39;s Claude Code hooks, not the
 task). Classification: <code>budget</code> signal <code>claude-max-turns</code> + non-zero exit →
-<code>failed</code>, handoff. (A budget cap is Baton&#39;s own setting, not a usage limit; it
+<code>failed</code>, handoff. (A budget cap is Leg&#39;s own setting, not a usage limit; it
 still hands off.)</p>
 <h2 id="the-bundle"><a class="anchor" href="#the-bundle">The bundle</a></h2>
 <p><code>fixtures/real-run/bundle-show.txt</code>: Findings carry &quot;Done so far&quot;, &quot;Diff since
 leg start&quot;, the touched path; Open questions carry the outcome and exit code.
 Leg 2 picked the handoff up: its first message is &quot;Proceeding from the last
-agent state&quot; and its second tool call reads <code>.baton/CONTRACT.md</code> and the
+agent state&quot; and its second tool call reads <code>.leg/CONTRACT.md</code> and the
 handoff file (<code>fixtures/real-run/leg2/out.excerpt.log</code>, items 1-3).</p>
 <h2 id="leg-2-codex"><a class="anchor" href="#leg-2-codex">Leg 2 (codex)</a></h2>
 <p><code>fixtures/real-run/leg2/out.excerpt.log</code> (JSONL): codex read the resume,
 wrote <code>src/calc.mjs</code> and <code>test/calc.test.mjs</code>, ran the tests itself (its
 sandbox allowed <code>node --test</code> here; LESSONS 07-13 recorded a policy block on a
-different machine setup), wrote <code>.baton/PROGRESS.md</code> and <code>.baton/DONE</code>, and
+different machine setup), wrote <code>.leg/PROGRESS.md</code> and <code>.leg/DONE</code>, and
 printed a summary. Verified inside leg 2
 (<code>fixtures/real-run/leg2/out.excerpt.log</code>, item 20), which ran the repo&#39;s
 <code>npm test</code> -&gt; <code>node --test</code> in the worktree:</p>
 <pre><code>tests 5  pass 5  fail 0
 </code></pre>
 <p>The worktree holds <code>src/calc.mjs</code>, <code>test/calc.test.mjs</code> and
-<code>.baton/{CONTRACT.md, DONE, PROGRESS.md, handoff-build-leg0.md}</code>.</p>
+<code>.leg/{CONTRACT.md, DONE, PROGRESS.md, handoff-build-leg0.md}</code>.</p>
 <h2 id="what-this-proves"><a class="anchor" href="#what-this-proves">What this proves</a></h2>
 <ul>
 <li>The subscription logins were used: neither leg&#39;s stderr carries an
@@ -149,7 +149,7 @@ consumed by a Codex leg through the same <code>load</code> + contract prompt.</l
 </ul>
 
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>

@@ -13,7 +13,7 @@ const adapter = {
   },
   forbiddenFlags: ['--dangerously-skip-permissions'],
   resolve() {
-    const bin = process.env.BATON_AGY_BIN || firstExisting([
+    const bin = (process.env.LEG_AGY_BIN || process.env.BATON_AGY_BIN) || firstExisting([
       process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'agy', 'bin', 'agy.exe') : null,
     ], 'agy')
     return { bin, viaNode: /\.(mjs|cjs|js)$/.test(bin), entry: null }

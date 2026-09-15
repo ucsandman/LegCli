@@ -18,7 +18,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 // The one place the domain lives. Friday's custom domain is a single edit here
 // plus the same constant in site/index.html's canonical and og:url.
-const ORIGIN = process.env.BATON_SITE_ORIGIN || 'https://baton-agents.vercel.app'
+const ORIGIN = process.env.LEG_SITE_ORIGIN || process.env.BATON_SITE_ORIGIN || 'https://legcli.com'
 
 // Public docs only. DECISIONS, DEVIATIONS, ERRORS, REUSE, ROADMAP-v2, DEMO and
 // the dated review notes are working files: they name unshipped plans and
@@ -27,57 +27,57 @@ const PAGES = [
   {
     slug: 'index',
     source: null,
-    title: 'Baton docs: usage limits, the board and the handoff',
-    description: 'Every Baton document: install, the concepts, the board, configuration, the CLI contract, the agent adapters and the FAQ.',
+    title: 'Leg docs: usage limits, the board and the handoff',
+    description: 'Every Leg document: install, the concepts, the board, configuration, the CLI contract, the agent adapters and the FAQ.',
   },
   {
     slug: 'getting-started',
     nav: 'Install',
     source: 'docs/getting-started.md',
-    title: 'Install Baton and monitor your Claude Code usage limit',
-    description: 'Install Baton, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.',
+    title: 'Install Leg and monitor your Claude Code usage limit',
+    description: 'Install Leg, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.',
   },
   {
     slug: 'concepts',
     nav: 'How it works',
     source: 'docs/concepts.md',
-    title: 'How Baton works: sessions, bundles and the wall',
-    description: 'The pieces Baton is built from: a session, the usage reading, the handoff bundle, the wall, worktrees and landing work on trunk.',
+    title: 'How Leg works: sessions, bundles and the wall',
+    description: 'The pieces Leg is built from: a session, the usage reading, the handoff bundle, the wall, worktrees and landing work on trunk.',
   },
   {
     slug: 'board-guide',
     nav: 'The board',
     source: 'docs/board-guide.md',
-    title: 'The Baton board, panel by panel',
-    description: 'Every card, gauge, button and drawer on the Baton board, what each number means, and where the reading behind it came from.',
+    title: 'The Leg board, panel by panel',
+    description: 'Every card, gauge, button and drawer on the Leg board, what each number means, and where the reading behind it came from.',
   },
   {
     slug: 'configuration',
     nav: 'Configuration',
     source: 'docs/configuration.md',
-    title: 'Baton configuration and environment variables',
-    description: 'Every Baton environment variable, the config file, network exposure, the token seam and the folder-trust switch.',
+    title: 'Leg configuration and environment variables',
+    description: 'Every Leg environment variable, the config file, network exposure, the token seam and the folder-trust switch.',
   },
   {
     slug: 'cli-contracts',
     nav: 'What it reads',
     source: 'docs/cli-contracts.md',
-    title: 'What Baton reads from Claude Code, Codex and agy',
+    title: 'What Leg reads from Claude Code, Codex and agy',
     description: 'The exact usage endpoints, hooks, log lines and limit strings Baton reads from Claude Code, Codex and agy, each cited to its source.',
   },
   {
     slug: 'adapters',
     nav: 'Adapters',
     source: 'docs/adapters.md',
-    title: 'Baton agent adapters for Claude Code, Codex and agy',
+    title: 'Leg agent adapters for Claude Code, Codex and agy',
     description: 'How each agent adapter spawns its CLI, what it strips from the environment, and how to tell whether a tap is live or docs-only.',
   },
   {
     slug: 'faq',
     nav: 'FAQ',
     source: 'docs/faq.md',
-    title: 'Baton FAQ: what it edits, what it sends, how the license works',
-    description: 'What Baton edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.',
+    title: 'Leg FAQ: what it edits, what it sends, how the license works',
+    description: 'What Leg edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.',
   },
   {
     slug: 'real-run',
@@ -90,22 +90,22 @@ const PAGES = [
     slug: 'vocabulary',
     nav: 'Vocabulary',
     source: 'docs/VOCABULARY.md',
-    title: 'Baton vocabulary',
-    description: 'The words Baton uses on the board and in the CLI, each with the one meaning it carries everywhere.',
+    title: 'Leg vocabulary',
+    description: 'The words Leg uses on the board and in the CLI, each with the one meaning it carries everywhere.',
   },
   {
     slug: 'readme',
     nav: 'README',
     source: 'README.md',
-    title: 'Baton README',
-    description: 'The complete Baton README as shipped in the npm package: what it does, what it reads, what it never touches, and the license.',
+    title: 'Leg README',
+    description: 'The complete Leg README as shipped in the npm package: what it does, what it reads, what it never touches, and the license.',
   },
   {
     slug: 'changelog',
     nav: 'Changelog',
     source: 'CHANGELOG.md',
-    title: 'Baton changelog',
-    description: 'Every released version of Baton and what changed in it.',
+    title: 'Leg changelog',
+    description: 'Every released version of Leg and what changed in it.',
   },
 ]
 
@@ -136,7 +136,7 @@ function rewriteHref (href) {
   // public page: DEMO, REUSE, ROADMAP-v2, DEVIATIONS, NOTICE, the site source.
   // The package is where a reader can actually open it, so point there rather
   // than dangling a 404 at a stranger.
-  return 'https://www.npmjs.com/package/baton-agents'
+  return 'https://www.npmjs.com/package/legcli'
 }
 
 const slugify = (text) => text.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-')
@@ -176,14 +176,14 @@ function page ({ slug, title, description, body, headings }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(/baton/i.test(title) ? title : `${title} | Baton`)}</title>
+<title>${escapeHtml(/leg/i.test(title) ? title : `${title} | Leg`)}</title>
 <meta name="description" content="${escapeHtml(description)}">
 <link rel="canonical" href="${url}">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="${url}">
-<meta property="og:site_name" content="Baton">
+<meta property="og:site_name" content="Leg">
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:image" content="${ORIGIN}/og.png?v=2">
@@ -201,7 +201,7 @@ function page ({ slug, title, description, body, headings }) {
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -216,7 +216,7 @@ ${nav}
 ${onThisPage}
 ${body}
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>
@@ -260,9 +260,9 @@ for (const p of PAGES) {
     const cards = PAGES.filter((x) => x.slug !== 'index')
       .map((x) => `<li><a href="/docs/${x.slug}"><strong>${escapeHtml(x.title.replace(/ \| .*$/, ''))}</strong><span>${escapeHtml(x.description)}</span></a></li>`)
       .join('\n')
-    body = `<h1>Baton documentation</h1>
-<p class="lede">Baton is a local wrapper for coding-agent CLIs: type <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code> and you get the same interactive agent with a board beside it, usage tracking per agent and account, a handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits.</p>
-<p class="lede">The source repository is private. These pages carry the same text as the documentation shipped inside the npm package, so every claim on the site can be checked before you buy, and the source itself is readable at <code>$(npm root -g)/baton-agents/src</code> after you install.</p>
+    body = `<h1>Leg documentation</h1>
+<p class="lede">Leg is a local wrapper for coding-agent CLIs: type <code>leg claude</code>, <code>leg codex</code> or <code>leg agy</code> and you get the same interactive agent with a board beside it, usage tracking per agent and account, a handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits.</p>
+<p class="lede">The source repository is private. These pages carry the same text as the documentation shipped inside the npm package, so every claim on the site can be checked before you buy, and the source itself is readable at <code>$(npm root -g)/legcli/src</code> after you install.</p>
 <ul class="doc-cards">
 ${cards}
 </ul>`

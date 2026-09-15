@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Baton</title>
+<title>Leg</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="board.css">
 </head>
@@ -13,12 +13,12 @@
      hello lands. The markup is static and cannot know the port, so it names
      none: a sentence that says 4747 on a board bound to 4863 is worse than a
      sentence that says nothing about where. -->
-<div class="banner" id="banner" role="status" hidden>Connecting to Baton.</div>
+<div class="banner" id="banner" role="status" hidden>Connecting to Leg.</div>
 
 <div class="wrap">
 
   <header class="masthead">
-    <p class="brand">Baton</p>
+    <p class="brand">Leg</p>
     <div class="masthead-right">
       <div class="sse-status" role="status">
         <span class="sse-word" id="sse-text">connecting</span>
@@ -55,7 +55,7 @@
       <span class="chip" id="whoami" hidden></span>
     </div>
     <div class="panel terms" id="session-grid"></div>
-    <p class="empty-line" hidden>No terminal is running. Start one in any repo: <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code>. It appears here within a second of the agent's first turn.</p>
+    <p class="empty-line" hidden>No terminal is running. Start one in any repo: <code>leg claude</code>, <code>leg codex</code> or <code>leg agy</code>. It appears here within a second of the agent's first turn.</p>
   </section>
 
   <!-- Finished terminals, what landed, and what is queued are all history or
@@ -163,7 +163,7 @@
     <div class="form-row">
       <label for="nc-first-agent">First agent</label>
       <select id="nc-first-agent" required></select>
-      <span class="field-help" id="nc-fallback-summary">If it cannot continue, Baton tries the fallback agents shown under Advanced options.</span>
+      <span class="field-help" id="nc-fallback-summary">If it cannot continue, Leg tries the fallback agents shown under Advanced options.</span>
     </div>
 
     <div class="form-row">
@@ -195,7 +195,7 @@
 
       <div class="form-row">
         <label>Fallback agents</label>
-        <span class="field-help">Baton tries each row in order only when the agent before it cannot continue.</span>
+        <span class="field-help">Leg tries each row in order only when the agent before it cannot continue.</span>
         <div id="nc-chain-rows"></div>
         <button type="button" class="btn btn-secondary" id="nc-add-row">Add fallback agent</button>
       </div>
@@ -231,7 +231,7 @@
 
       <div class="form-row">
         <label for="nc-title">Card title</label>
-        <span class="field-help">Optional. Baton derives one from the task when blank.</span>
+        <span class="field-help">Optional. Leg derives one from the task when blank.</span>
         <input type="text" id="nc-title">
       </div>
     </details>

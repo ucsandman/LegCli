@@ -19,7 +19,7 @@ export async function stationTemplate(name = 'build') {
 export async function renderContract({ card, station, leg, entry, worktree, resumed = false, bounceReason = null }) {
   const t = await stationTemplate(station.prompt ?? station.name)
   const lines = [
-    `# Baton contract — card ${card.card_id}, station ${station.name}, leg ${leg} (${entry?.adapter ?? 'agent'})`,
+    `# Leg contract, card ${card.card_id}, station ${station.name}, leg ${leg} (${entry?.adapter ?? 'agent'})`,
     '',
     '## Task',
     '',
@@ -37,27 +37,27 @@ export async function renderContract({ card, station, leg, entry, worktree, resu
   }
   if (resumed) {
     lines.push('## Continuation', '',
-      'A previous agent already worked on this card in this same directory. Its handoff resume is above this contract; .baton/PROGRESS.md holds its notes. Continue from there; do not start over.', '')
+      'A previous agent already worked on this card in this same directory. Its handoff resume is above this contract; .leg/PROGRESS.md holds its notes. Continue from there; do not start over.', '')
   }
   lines.push(
     '## Rules',
     '',
     `- Work only inside this directory: ${worktree}. It is a git worktree on its own branch; commit as you go or leave changes uncommitted, both are fine.`,
-    '- Keep .baton/PROGRESS.md updated as you go: one line per meaningful step, newest last. It is how the next agent (or a human) picks up if you stop early.',
+    '- Keep .leg/PROGRESS.md updated as you go: one line per meaningful step, newest last. It is how the next agent (or a human) picks up if you stop early.',
     '- Do not push, do not create remotes, do not open pull requests, do not change git config.',
-    '- Do not touch anything under .baton/ except PROGRESS.md and DONE.',
-    '- No interactive prompt will be answered; if you need a permission you do not have, write what you need to .baton/PROGRESS.md and stop.',
+    '- Do not touch anything under .leg/ except PROGRESS.md and DONE.',
+    '- No interactive prompt will be answered; if you need a permission you do not have, write what you need to .leg/PROGRESS.md and stop.',
     '',
     '## Finish',
     '',
-    'When the task is finished and verified, write the file .baton/DONE containing one line that summarizes what you did. Without that file Baton treats the run as unfinished and hands it to the next agent.',
+    'When the task is finished and verified, write the file .leg/DONE containing one line that summarizes what you did. Without that file Leg treats the run as unfinished and hands it to the next agent.',
     '',
   )
   return lines.join('\n')
 }
 
 export function writeContract(worktree, text) {
-  const dir = join(worktree, '.baton')
+  const dir = join(worktree, '.leg')
   mkdirSync(dir, { recursive: true })
   const path = join(dir, 'CONTRACT.md')
   writeFileSync(path, text)
@@ -65,7 +65,7 @@ export function writeContract(worktree, text) {
 }
 
 export function legPrompt({ contractText, resumeText = null }) {
-  const head = 'You are working on a Baton card. The contract below is also saved at .baton/CONTRACT.md.'
+  const head = 'You are working on a Leg card. The contract below is also saved at .leg/CONTRACT.md.'
   if (resumeText) {
     return `${head}\n\n=== HANDOFF RESUME (from the previous agent) ===\n\n${resumeText.trim()}\n\n=== CONTRACT ===\n\n${contractText}`
   }

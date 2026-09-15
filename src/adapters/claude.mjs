@@ -15,7 +15,7 @@ const adapter = {
   },
   forbiddenFlags: ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--permission-mode=bypassPermissions', 'bypassPermissions'],
   resolve() {
-    const bin = process.env.BATON_CLAUDE_BIN || firstExisting([
+    const bin = (process.env.LEG_CLAUDE_BIN || process.env.BATON_CLAUDE_BIN) || firstExisting([
       join(homedir(), '.local', 'bin', process.platform === 'win32' ? 'claude.exe' : 'claude'),
     ], 'claude')
     return { bin, viaNode: /\.(mjs|cjs|js)$/.test(bin), entry: null }

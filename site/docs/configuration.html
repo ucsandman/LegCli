@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Baton configuration and environment variables</title>
-<meta name="description" content="Every Baton environment variable, the config file, network exposure, the token seam and the folder-trust switch.">
-<link rel="canonical" href="https://baton-agents.vercel.app/docs/configuration">
+<title>Leg configuration and environment variables</title>
+<meta name="description" content="Every Leg environment variable, the config file, network exposure, the token seam and the folder-trust switch.">
+<link rel="canonical" href="https://legcli.com/docs/configuration">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://baton-agents.vercel.app/docs/configuration">
-<meta property="og:site_name" content="Baton">
-<meta property="og:title" content="Baton configuration and environment variables">
-<meta property="og:description" content="Every Baton environment variable, the config file, network exposure, the token seam and the folder-trust switch.">
-<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta property="og:url" content="https://legcli.com/docs/configuration">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="Leg configuration and environment variables">
+<meta property="og:description" content="Every Leg environment variable, the config file, network exposure, the token seam and the folder-trust switch.">
+<meta property="og:image" content="https://legcli.com/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Baton configuration and environment variables">
-<meta name="twitter:description" content="Every Baton environment variable, the config file, network exposure, the token seam and the folder-trust switch.">
-<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:title" content="Leg configuration and environment variables">
+<meta name="twitter:description" content="Every Leg environment variable, the config file, network exposure, the token seam and the folder-trust switch.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=2">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -53,18 +53,20 @@
   <main id="doc" class="docs-body">
 <nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#env">.env</a></li><li><a href="#interactive-sessions">Interactive sessions</a></li><li><a href="#core">Core</a></li><li><a href="#optional-syncs">Optional syncs</a></li><li><a href="#seller-and-checkout-site">Seller and checkout site</a></li><li><a href="#adapter-binary-overrides">Adapter binary overrides</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#test-and-development-seams">Test and development seams</a></li><li><a href="#network-exposure">Network exposure</a></li><li><a href="#share-more-than-one-human">Share (more than one human)</a></li><li><a href="#card-level-options">Card-level options</a></li><li><a href="#see-also">See also</a></li></ul></nav>
 <h1 id="configuration"><a class="anchor" href="#configuration">Configuration</a></h1>
-<p>The user-facing settings Baton reads, the seller settings for its checkout
+<p>The user-facing settings Leg reads, the seller settings for its checkout
 site, and the card-level options that configure one card instead of the whole
-install. For a developer who needs to change a default or point Baton at a
+install. For a developer who needs to change a default or point Leg at a
 non-default binary.</p>
+<p>Environment variables use the <code>LEG_</code> prefix with automatic fallback to legacy
+<code>BATON_*</code> variables if set.</p>
 <h2 id="env"><a class="anchor" href="#env"><code>.env</code></a></h2>
 <p><code>npm start</code> and <code>npm run dev</code> run
-<code>node --env-file-if-exists=.env bin/baton.mjs up</code>: <code>npm start</code> and <code>npm run dev</code> automatically load a <code>.env</code> file in the repo root through that Node flag.
+<code>node --env-file-if-exists=.env bin/leg.mjs up</code>: <code>npm start</code> and <code>npm run dev</code> automatically load a <code>.env</code> file in the repo root through that Node flag.
 Inherited shell values are still honored and take precedence. Copy
-<code>.env.example</code> to <code>.env</code> and edit it; <code>.env</code> is gitignored. Running <code>node bin/baton.mjs</code> directly does not automatically load <code>.env</code>; export the
+<code>.env.example</code> to <code>.env</code> and edit it; <code>.env</code> is gitignored. Running <code>node bin/leg.mjs</code> directly does not automatically load <code>.env</code>; export the
 variables yourself in that case.</p>
 <h2 id="interactive-sessions"><a class="anchor" href="#interactive-sessions">Interactive sessions</a></h2>
-<p>These apply to <code>baton claude|codex|agy</code>.</p>
+<p>These apply to <code>leg claude|codex|agy</code>.</p>
 <table>
 <thead>
 <tr>
@@ -75,76 +77,76 @@ variables yourself in that case.</p>
 </tr>
 </thead>
 <tbody><tr>
-<td><code>BATON_ACCOUNT</code></td>
+<td><code>LEG_ACCOUNT</code></td>
 <td><code>default</code></td>
 <td>start the session on a named login instead of the CLI&#39;s own home</td>
 <td><code>src/attach.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_WARN_PCT</code></td>
+<td><code>LEG_WARN_PCT</code></td>
 <td><code>85</code></td>
 <td>the percentage of either usage window that turns the card amber, records a <code>warning</code> event and rings the terminal bell once</td>
 <td><code>src/usage.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_NO_HANDOFF</code></td>
+<td><code>LEG_NO_HANDOFF</code></td>
 <td>(unset, hand-off on)</td>
 <td>set to <code>1</code> to warn and record but never switch agents</td>
 <td><code>src/attach.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_NO_OPEN</code></td>
+<td><code>LEG_NO_OPEN</code></td>
 <td>(unset, opens once)</td>
 <td>set to <code>1</code> to start the board without opening a browser</td>
-<td><code>bin/baton.mjs</code></td>
+<td><code>bin/leg.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_NO_BOARD</code></td>
+<td><code>LEG_NO_BOARD</code></td>
 <td>(unset)</td>
-<td>set to <code>1</code> to run a session with no board at all (the record under <code>$BATON_HOME/sessions/</code> is still kept; the test suite uses this)</td>
+<td>set to <code>1</code> to run a session with no board at all (the record under <code>$LEG_HOME/sessions/</code> is still kept; the test suite uses this)</td>
 <td><code>src/attach.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_WAIT_TICK_MS</code></td>
+<td><code>LEG_WAIT_TICK_MS</code></td>
 <td><code>1000</code></td>
 <td>how often the all-out countdown redraws and re-checks Ctrl-C / End while waiting for the first reset</td>
 <td><code>src/attach.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_USAGE_POLL_MS</code></td>
+<td><code>LEG_USAGE_POLL_MS</code></td>
 <td><code>60000</code></td>
 <td>how often an active attach polls its usage source; Claude uses its usage endpoint and Codex uses read-only app-server rate limits</td>
 <td><code>src/attach.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_ATTACH_POLL_MS</code></td>
+<td><code>LEG_ATTACH_POLL_MS</code></td>
 <td><code>2000</code></td>
 <td>how often the session loop re-reads the taps; git is re-read every third poll</td>
 <td><code>src/attach.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_CLAUDE_USAGE_URL</code></td>
+<td><code>LEG_CLAUDE_USAGE_URL</code></td>
 <td><code>https://api.anthropic.com/api/oauth/usage</code></td>
 <td>the usage endpoint, for a test double</td>
 <td><code>src/taps/claude-usage.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_CLAUDE_ARGS</code>, <code>BATON_CODEX_ARGS</code>, <code>BATON_AGY_ARGS</code></td>
+<td><code>LEG_CLAUDE_ARGS</code>, <code>LEG_CODEX_ARGS</code>, <code>LEG_AGY_ARGS</code></td>
 <td>(none)</td>
-<td>space-separated extra arguments for a leg Baton starts on its own after a hand-off (your own <code>baton &lt;agent&gt; …</code> args never apply to the next agent); e.g. <code>BATON_CODEX_ARGS=&quot;-m gpt-5.3-codex-spark&quot;</code> keeps a test chain on cheap models</td>
+<td>space-separated extra arguments for a leg Leg starts on its own after a hand-off (your own <code>leg &lt;agent&gt; …</code> args never apply to the next agent); e.g. <code>LEG_CODEX_ARGS=&quot;-m gpt-5.3-codex-spark&quot;</code> keeps a test chain on cheap models</td>
 <td><code>src/attach.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_LIVE_DIR</code></td>
-<td><code>fixtures/live/</code> in a dev clone, else <code>~/.baton/live/</code></td>
-<td>where the first real limit payload per agent and signal is kept, secrets scrubbed (<code>src/live-capture.mjs</code>); a <code>baton sessions simulate-limit</code> payload is never kept</td>
+<td><code>LEG_LIVE_DIR</code></td>
+<td><code>fixtures/live/</code> in a dev clone, else <code>~/.leg/live/</code></td>
+<td>where the first real limit payload per agent and signal is kept, secrets scrubbed (<code>src/live-capture.mjs</code>); a <code>leg sessions simulate-limit</code> payload is never kept</td>
 <td><code>src/live-capture.mjs</code>, <code>scripts/live-limits.mjs</code></td>
 </tr>
 </tbody></table>
-<p>| <code>BATON_PERSON</code> | the board&#39;s owner | whose terminal this is when the board is shared (<code>baton share</code>); it is the name on the card and the one that decides who may control it | <code>src/share.mjs</code> <code>whoami</code> |</p>
-<p><code>BATON_SESSION</code> is not an input: Baton sets it in the agent&#39;s environment to
+<p>| <code>LEG_PERSON</code> | the board&#39;s owner | whose terminal this is when the board is shared (<code>leg share</code>); it is the name on the card and the one that decides who may control it | <code>src/share.mjs</code> <code>whoami</code> |</p>
+<p><code>LEG_SESSION</code> is not an input: Leg sets it in the agent&#39;s environment to
 the session id, so a hook or a script inside the session can find its own
-record under <code>$BATON_HOME/sessions/</code>.</p>
+record under <code>$LEG_HOME/sessions/</code>.</p>
 <p><code>CLAUDE_CONFIG_DIR</code> and <code>CODEX_HOME</code> are set for the child when the session
 runs on a named account; see <a href="#accounts">Accounts</a> below.</p>
 <h2 id="core"><a class="anchor" href="#core">Core</a></h2>
@@ -158,81 +160,81 @@ runs on a named account; see <a href="#accounts">Accounts</a> below.</p>
 </tr>
 </thead>
 <tbody><tr>
-<td><code>BATON_HOME</code></td>
-<td><code>~/.baton</code></td>
+<td><code>LEG_HOME</code></td>
+<td><code>~/.leg</code></td>
 <td>where sessions, usage, accounts, cards, runs and the pidfiles live</td>
 <td><code>src/store.mjs</code>, <code>src/ledger.mjs</code>, <code>src/runner.mjs</code>, <code>src/worktree.mjs</code>, <code>src/cards.mjs</code>, <code>src/sessions.mjs</code>, <code>src/usage.mjs</code>, <code>src/accounts.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_PORT</code></td>
+<td><code>LEG_PORT</code></td>
 <td><code>4747</code></td>
 <td>board server port</td>
-<td><code>src/server.mjs</code>, <code>src/launcher.mjs</code>, <code>bin/baton.mjs</code> (<code>open</code>)</td>
+<td><code>src/server.mjs</code>, <code>src/launcher.mjs</code>, <code>bin/leg.mjs</code> (<code>open</code>)</td>
 </tr>
 <tr>
-<td><code>BATON_BIND</code></td>
+<td><code>LEG_BIND</code></td>
 <td><code>127.0.0.1</code></td>
 <td>board server bind address</td>
 <td><code>src/server.mjs</code>, <code>src/launcher.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_TOKEN</code></td>
+<td><code>LEG_TOKEN</code></td>
 <td>(none)</td>
 <td>bearer token required for <code>/api/*</code> and the event stream once set</td>
 <td><code>src/server.mjs</code>, <code>src/auth.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_MAX_CONCURRENT</code></td>
+<td><code>LEG_MAX_CONCURRENT</code></td>
 <td><code>2</code></td>
 <td>how many cards the scheduler runs at once</td>
 <td><code>src/scheduler.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_MAX_LAND_ATTEMPTS</code></td>
+<td><code>LEG_MAX_LAND_ATTEMPTS</code></td>
 <td><code>3</code></td>
 <td>shared cap on test-station and land-station bounces before a card fails</td>
 <td><code>src/chain.mjs</code>, <code>src/mergequeue.mjs</code> (test-run timeout uses a separate variable, below)</td>
 </tr>
 <tr>
-<td><code>BATON_NO_SCHEDULER</code></td>
+<td><code>LEG_NO_SCHEDULER</code></td>
 <td>(unset, scheduler on)</td>
 <td>set to <code>1</code> to boot the board server without its embedded scheduler</td>
 <td><code>src/server.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_QUIET</code></td>
+<td><code>LEG_QUIET</code></td>
 <td>(unset, logs on)</td>
-<td>set to <code>1</code> to silence the <code>[baton]</code>/<code>[board]</code> log lines</td>
-<td><code>src/orchestrator.mjs</code>, <code>src/server.mjs</code> (the launcher always starts its child with <code>BATON_QUIET=0</code> so <code>baton up</code>&#39;s own log stream is not silenced by an inherited <code>1</code>)</td>
+<td>set to <code>1</code> to silence the <code>[leg]</code>/<code>[board]</code> log lines</td>
+<td><code>src/orchestrator.mjs</code>, <code>src/server.mjs</code> (the launcher always starts its child with <code>LEG_QUIET=0</code> so <code>leg up</code>&#39;s own log stream is not silenced by an inherited <code>1</code>)</td>
 </tr>
 <tr>
-<td><code>BATON_POLL_MS</code></td>
+<td><code>LEG_POLL_MS</code></td>
 <td><code>2000</code></td>
 <td>how often the orchestrator polls a run&#39;s <code>run.json</code> while it waits</td>
 <td><code>src/orchestrator.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_TIMERS_MS</code></td>
+<td><code>LEG_TIMERS_MS</code></td>
 <td><code>1800000,5400000</code></td>
 <td><code>&lt;notify-ms&gt;,&lt;kill-ms&gt;[,&lt;kill-verify-ms&gt;]</code>: when the supervisor logs a &quot;still running&quot; notice, when it kills the leg, and how long it waits before retrying/declaring a kill failed (verify defaults to <code>30000</code>)</td>
 <td><code>src/runner.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_COMMIT_VERIFY</code></td>
+<td><code>LEG_COMMIT_VERIFY</code></td>
 <td>(unset, hooks skipped)</td>
 <td>set to <code>1</code> to run the repo&#39;s git hooks when the land station commits the worktree (default passes <code>--no-verify</code>)</td>
 <td><code>src/mergequeue.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_LAND_TEST_TIMEOUT_MS</code></td>
+<td><code>LEG_LAND_TEST_TIMEOUT_MS</code></td>
 <td><code>600000</code></td>
 <td>timeout for the land station&#39;s own test run</td>
 <td><code>src/mergequeue.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_HEALTH_TIMEOUT_MS</code></td>
+<td><code>LEG_HEALTH_TIMEOUT_MS</code></td>
 <td><code>20000</code></td>
-<td>how long <code>baton up</code> waits for <code>/api/health</code> before giving up</td>
+<td>how long <code>leg up</code> waits for <code>/api/health</code> before giving up</td>
 <td><code>src/launcher.mjs</code></td>
 </tr>
 </tbody></table>
@@ -249,7 +251,7 @@ runs on a named account; see <a href="#accounts">Accounts</a> below.</p>
 </tr>
 </thead>
 <tbody><tr>
-<td><code>BATON_SYNC_WORKBOARD</code></td>
+<td><code>LEG_SYNC_WORKBOARD</code></td>
 <td><code>0</code></td>
 <td>set to <code>1</code> to mirror cards to the OpenClaw Workboard CLI</td>
 <td><code>src/sync/workboard.mjs</code></td>
@@ -267,7 +269,7 @@ runs on a named account; see <a href="#accounts">Accounts</a> below.</p>
 <td><code>src/sync/workboard.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_SYNC_DASHCLAW</code></td>
+<td><code>LEG_SYNC_DASHCLAW</code></td>
 <td><code>0</code></td>
 <td>set to <code>1</code> (with the two variables below) to record every ledger event as a DashClaw action</td>
 <td><code>src/sync/dashclaw.mjs</code></td>
@@ -287,7 +289,7 @@ runs on a named account; see <a href="#accounts">Accounts</a> below.</p>
 </tbody></table>
 <h2 id="seller-and-checkout-site"><a class="anchor" href="#seller-and-checkout-site">Seller and checkout site</a></h2>
 <p>These are for the checkout/key-delivery site and its deployment helpers, not
-normal Baton CLI use.</p>
+normal Leg CLI use.</p>
 <table>
 <thead>
 <tr>
@@ -297,13 +299,13 @@ normal Baton CLI use.</p>
 </tr>
 </thead>
 <tbody><tr>
-<td><code>BATON_SITE</code></td>
-<td>buyer-site origin used by the CLI for its purchase link; defaults to <code>https://baton-agents.vercel.app</code></td>
+<td><code>LEG_SITE</code></td>
+<td>buyer-site origin used by the CLI for its purchase link; defaults to <code>https://legcli.com</code></td>
 <td><code>src/license.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_SITE_ORIGIN</code></td>
-<td>site origin included in checkout and email links; defaults to <code>https://baton-agents.vercel.app</code></td>
+<td><code>LEG_SITE_ORIGIN</code></td>
+<td>site origin included in checkout and email links; defaults to <code>https://legcli.com</code></td>
 <td><code>site/api/_lib.js</code>, <code>scripts/vercel-env.mjs</code></td>
 </tr>
 <tr>
@@ -327,12 +329,12 @@ normal Baton CLI use.</p>
 <td><code>site/api/_lib.js</code></td>
 </tr>
 <tr>
-<td><code>BATON_MAIL_FROM</code>, <code>BATON_MAIL_REPLY_TO</code></td>
+<td><code>LEG_MAIL_FROM</code>, <code>LEG_MAIL_REPLY_TO</code></td>
 <td>runtime site API sender and reply-to overrides; <code>scripts/vercel-env.mjs</code> currently deploys its own fixed sender and reply-to values</td>
 <td><code>site/api/_lib.js</code>, <code>scripts/vercel-env.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_LICENSE_PRIVATE_KEY</code></td>
+<td><code>LEG_LICENSE_PRIVATE_KEY</code></td>
 <td>private signing key for license issuance; never commit it</td>
 <td><code>site/api/key.js</code>, <code>scripts/vercel-env.mjs</code></td>
 </tr>
@@ -344,7 +346,7 @@ normal Baton CLI use.</p>
 </tbody></table>
 <h2 id="adapter-binary-overrides"><a class="anchor" href="#adapter-binary-overrides">Adapter binary overrides</a></h2>
 <p>Each points at a specific CLI binary (or, when it ends <code>.mjs</code>/<code>.cjs</code>/<code>.js</code>,
-a Node entry point run via <code>node &lt;entry&gt;</code>), instead of Baton&#39;s own
+a Node entry point run via <code>node &lt;entry&gt;</code>), instead of Leg&#39;s own
 resolution logic. See <a href="/docs/adapters">adapters.md</a> for what each adapter
 resolves to by default.</p>
 <table>
@@ -356,40 +358,40 @@ resolves to by default.</p>
 </tr>
 </thead>
 <tbody><tr>
-<td><code>BATON_CLAUDE_BIN</code></td>
+<td><code>LEG_CLAUDE_BIN</code></td>
 <td>claude</td>
 <td><code>src/adapters/claude.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_CODEX_BIN</code></td>
+<td><code>LEG_CODEX_BIN</code></td>
 <td>codex</td>
 <td><code>src/adapters/codex.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_AGY_BIN</code></td>
+<td><code>LEG_AGY_BIN</code></td>
 <td>agy</td>
 <td><code>src/adapters/agy.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_GROK_BIN</code></td>
+<td><code>LEG_GROK_BIN</code></td>
 <td>grok (not registered by default)</td>
 <td><code>src/adapters/grok.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_GH_BIN</code></td>
+<td><code>LEG_GH_BIN</code></td>
 <td>the <code>pr</code> land-mode stub</td>
 <td><code>src/stations/pr.mjs</code>; unset, <code>land_mode: pr</code> returns an error rather than running a real <code>gh</code></td>
 </tr>
 <tr>
-<td><code>BATON_CHB_BIN</code></td>
+<td><code>LEG_CHB_BIN</code></td>
 <td><code>context-handoff-bundle</code></td>
-<td><code>src/handoff.mjs</code>; unset, Baton tries <code>context-handoff-bundle</code> on PATH, then <code>python -m context_handoff_bundle</code></td>
+<td><code>src/handoff.mjs</code>; unset, Leg tries <code>context-handoff-bundle</code> on PATH, then <code>python -m context_handoff_bundle</code></td>
 </tr>
 </tbody></table>
 <h2 id="accounts"><a class="anchor" href="#accounts">Accounts</a></h2>
-<p>An extra login is a directory under <code>$BATON_HOME</code>, never a change to your real
+<p>An extra login is a directory under <code>$LEG_HOME</code>, never a change to your real
 home. <code>src/accounts.mjs</code> <code>LAYOUT</code> is the whole definition.</p>
-<pre><code>~/.baton/
+<pre><code>~/.leg/
   accounts.json                     the named accounts per agent
   accounts/claude/&lt;name&gt;/
     hooks/ skills/ agents/ commands/ plugins/ rules/ scripts/
@@ -400,7 +402,7 @@ home. <code>src/accounts.mjs</code> <code>LAYOUT</code> is the whole definition.
     .credentials.json               the login, written by claude itself
   accounts/codex/&lt;name&gt;/
     skills/ prompts/ rules/ plugins/ agents/ hooks/ memories/ superpowers/
-                                    junctions back to ~/.codex
+    junctions back to ~/.codex
     config.toml AGENTS.md           copies, refreshed before every launch
 </code></pre>
 <table>
@@ -428,16 +430,16 @@ home. <code>src/accounts.mjs</code> <code>LAYOUT</code> is the whole definition.
 </tr>
 </tbody></table>
 <p>Commands:</p>
-<pre><code>baton accounts ls                      logins and their 5h/7d usage
-baton accounts add &lt;claude|codex&gt; &lt;name&gt;
-baton accounts rm &lt;claude|codex&gt; &lt;name&gt;
-baton accounts terms                   what both vendors&#39; terms say
+<pre><code>leg accounts ls                      logins and their 5h/7d usage
+leg accounts add &lt;claude|codex&gt; &lt;name&gt;
+leg accounts rm &lt;claude|codex&gt; &lt;name&gt;
+leg accounts terms                   what both vendors&#39; terms say
 </code></pre>
 <p><code>add</code> creates the directory, junctions the shared directories in, copies the
 settings files, and prints one line to paste to log in. <code>rm</code> removes the
 junctions as links, never following them, then deletes the directory. Nothing
 under your real home is written at any point. Start a session on a named
-account with <code>BATON_ACCOUNT=&lt;name&gt;</code>, or let a limit hand off to it.</p>
+account with <code>LEG_ACCOUNT=&lt;name&gt;</code>, or let a limit hand off to it.</p>
 <h2 id="test-and-development-seams"><a class="anchor" href="#test-and-development-seams">Test and development seams</a></h2>
 <p>Not meant for normal use; documented for completeness.</p>
 <table>
@@ -449,28 +451,28 @@ account with <code>BATON_ACCOUNT=&lt;name&gt;</code>, or let a limit hand off to
 </tr>
 </thead>
 <tbody><tr>
-<td><code>BATON_SKIP_KILL</code></td>
+<td><code>LEG_SKIP_KILL</code></td>
 <td>set to <code>1</code> to make the supervisor skip actually killing a leg&#39;s process (used by tests that need an &quot;unkillable agent&quot;)</td>
 <td><code>src/runner.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_SERVER_SCRIPT</code></td>
+<td><code>LEG_SERVER_SCRIPT</code></td>
 <td>override the server script path the launcher spawns</td>
 <td><code>src/launcher.mjs</code></td>
 </tr>
 </tbody></table>
 <h2 id="network-exposure"><a class="anchor" href="#network-exposure">Network exposure</a></h2>
-<p>Baton binds <code>127.0.0.1</code> by default: no token is required, and only
-processes on the same machine can reach it. Setting <code>BATON_BIND</code> to any
-other address without also setting <code>BATON_TOKEN</code> makes the server refuse to
+<p>Leg binds <code>127.0.0.1</code> by default: no token is required, and only
+processes on the same machine can reach it. Setting <code>LEG_BIND</code> to any
+other address without also setting <code>LEG_TOKEN</code> makes the server refuse to
 start, exit code <code>3</code> (<code>src/auth.mjs</code> <code>checkBind</code>/<code>BindRefused</code>). With a
 token set, every <code>/api/*</code> request needs an <code>Authorization: Bearer &lt;token&gt;</code>
 header; the event stream (<code>EventSource</code>, which cannot set headers) accepts
 the same token as a <code>?token=</code> query parameter instead. There is no TLS; keep
-<code>BATON_BIND</code> on loopback unless you are using <code>baton share</code>, which gives
+<code>LEG_BIND</code> on loopback unless you are using <code>leg share</code>, which gives
 each human their own token (see <a href="#share-more-than-one-human">Share</a>).</p>
 <h2 id="share-more-than-one-human"><a class="anchor" href="#share-more-than-one-human">Share (more than one human)</a></h2>
-<p>Off until <code>baton share on</code> writes <code>$BATON_HOME/share.json</code>. That file is the
+<p>Off until <code>leg share on</code> writes <code>$LEG_HOME/share.json</code>. That file is the
 switch and the roster; the env variables below only tune the limits.</p>
 <table>
 <thead>
@@ -489,7 +491,7 @@ switch and the roster; the env variables below only tune the limits.</p>
 </tr>
 <tr>
 <td><code>owner</code></td>
-<td>the name a terminal belongs to when nothing else says (<code>BATON_PERSON</code>), and the name a loopback browser is treated as</td>
+<td>the name a terminal belongs to when nothing else says (<code>LEG_PERSON</code>), and the name a loopback browser is treated as</td>
 </tr>
 <tr>
 <td><code>people[]</code></td>
@@ -510,19 +512,19 @@ switch and the roster; the env variables below only tune the limits.</p>
 </tr>
 </thead>
 <tbody><tr>
-<td><code>BATON_RATE_MAX</code></td>
+<td><code>LEG_RATE_MAX</code></td>
 <td><code>600</code></td>
 <td>requests a minute per human (per address for an unnamed one); over it the board answers 429 with <code>Retry-After</code></td>
 <td><code>src/ratelimit.mjs</code></td>
 </tr>
 <tr>
-<td><code>BATON_RATE_MAX_FAILURES</code></td>
+<td><code>LEG_RATE_MAX_FAILURES</code></td>
 <td><code>20</code></td>
 <td>wrong tokens a minute from one address before that address waits the window out; a request with no token at all is not counted</td>
 <td><code>src/ratelimit.mjs</code></td>
 </tr>
 </tbody></table>
-<p><code>BATON_TOKEN</code> is the single-token mode and is ignored while share is on.</p>
+<p><code>LEG_TOKEN</code> is the single-token mode and is ignored while share is on.</p>
 <h2 id="card-level-options"><a class="anchor" href="#card-level-options">Card-level options</a></h2>
 <p>These configure one card, not the whole install (set with <code>card add</code> flags
 or the New card form; see <a href="/docs/getting-started">getting-started.md</a> and
@@ -530,7 +532,7 @@ or the New card form; see <a href="/docs/getting-started">getting-started.md</a>
 <ul>
 <li><strong>leases</strong>: path globs the card claims for scheduling (<code>src/leases.mjs</code>).</li>
 <li><strong>land_mode</strong>: <code>ff</code> (fast-forward, the merge queue) or <code>pr</code> (stub;
-requires <code>BATON_GH_BIN</code>) (<code>src/land.mjs</code>).</li>
+requires <code>LEG_GH_BIN</code>) (<code>src/land.mjs</code>).</li>
 <li><strong>test_command</strong>: overrides the land/test stations&#39; auto-detected command
 (<code>src/mergequeue.mjs</code> <code>resolveTestCommand</code>).</li>
 <li><strong>trunk</strong>: the branch a card&#39;s worktree is based on and lands onto
@@ -542,14 +544,14 @@ requires <code>BATON_GH_BIN</code>) (<code>src/land.mjs</code>).</li>
 </ul>
 <h2 id="see-also"><a class="anchor" href="#see-also">See also</a></h2>
 <ul>
-<li><a href="/docs/adapters">adapters.md</a>: what each <code>BATON_&lt;ADAPTER&gt;_BIN</code> overrides,
+<li><a href="/docs/adapters">adapters.md</a>: what each <code>LEG_&lt;ADAPTER&gt;_BIN</code> overrides,
 and each adapter&#39;s default resolution.</li>
 <li><a href="/docs/concepts">concepts.md</a>: leases, the scheduler, and the land station
 these variables tune.</li>
 </ul>
 
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>

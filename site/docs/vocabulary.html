@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Baton vocabulary</title>
-<meta name="description" content="The words Baton uses on the board and in the CLI, each with the one meaning it carries everywhere.">
-<link rel="canonical" href="https://baton-agents.vercel.app/docs/vocabulary">
+<title>Leg vocabulary</title>
+<meta name="description" content="The words Leg uses on the board and in the CLI, each with the one meaning it carries everywhere.">
+<link rel="canonical" href="https://legcli.com/docs/vocabulary">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://baton-agents.vercel.app/docs/vocabulary">
-<meta property="og:site_name" content="Baton">
-<meta property="og:title" content="Baton vocabulary">
-<meta property="og:description" content="The words Baton uses on the board and in the CLI, each with the one meaning it carries everywhere.">
-<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta property="og:url" content="https://legcli.com/docs/vocabulary">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="Leg vocabulary">
+<meta property="og:description" content="The words Leg uses on the board and in the CLI, each with the one meaning it carries everywhere.">
+<meta property="og:image" content="https://legcli.com/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Baton vocabulary">
-<meta name="twitter:description" content="The words Baton uses on the board and in the CLI, each with the one meaning it carries everywhere.">
-<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:title" content="Leg vocabulary">
+<meta name="twitter:description" content="The words Leg uses on the board and in the CLI, each with the one meaning it carries everywhere.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=2">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Baton</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -53,14 +53,14 @@
   <main id="doc" class="docs-body">
 <nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#session-statuses">Session statuses</a></li><li><a href="#session-event-types">Session event types</a></li><li><a href="#land-states-terminal-cards">Land states (terminal cards)</a></li><li><a href="#share-roles-more-than-one-human">Share roles (more than one human)</a></li><li><a href="#card-statuses">Card statuses</a></li><li><a href="#leg-outcomes">Leg outcomes</a></li><li><a href="#station-kinds">Station kinds</a></li><li><a href="#event-types">Event types</a></li><li><a href="#actor-types">Actor types</a></li><li><a href="#human-actions-and-board-buttons">Human actions and board buttons</a></li><li><a href="#bounce-reasons-land-station">Bounce reasons (land station)</a></li><li><a href="#cross-check-against-visible-strings">Cross-check against visible strings</a></li></ul></nav>
 <h1 id="vocabulary"><a class="anchor" href="#vocabulary">Vocabulary</a></h1>
-<p>One page of the words Baton uses for state, events and actions, pulled
+<p>One page of the words Leg uses for state, events and actions, pulled
 straight from the source (not invented). Each table lists the exact
 identifiers the code uses; UI copy is allowed to be more readable (&quot;Hand off
 now&quot; for <code>handoff_now</code>) but must not use a different word for the same thing.
 Regenerate this by re-running the greps in each section header if the source
 changes.</p>
 <h2 id="session-statuses"><a class="anchor" href="#session-statuses">Session statuses</a></h2>
-<p>One interactive terminal under <code>baton claude|codex|agy</code>. Source:
+<p>One interactive terminal under <code>leg claude|codex|agy</code>. Source:
 <code>src/sessions.mjs</code> <code>SESSION_STATUSES</code>; board labels from <code>STATUS</code> in
 <code>src/board/sessions.js</code>.</p>
 <table>
@@ -88,7 +88,7 @@ changes.</p>
 <td><code>warning</code></td>
 <td>near limit</td>
 <td>yes</td>
-<td>a usage window crossed <code>BATON_WARN_PCT</code> (default 85)</td>
+<td>a usage window crossed <code>LEG_WARN_PCT</code> (default 85)</td>
 </tr>
 <tr>
 <td><code>limit</code></td>
@@ -132,7 +132,7 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 <h2 id="session-event-types"><a class="anchor" href="#session-event-types">Session event types</a></h2>
 <p>Source: the <code>appendEvent</code>/<code>updateSession</code> call sites in <code>src/attach.mjs</code>,
 <code>src/sessions.mjs</code>, <code>src/taps/claude.mjs</code> and <code>src/server.mjs</code>; written to
-<code>$BATON_HOME/sessions/&lt;id&gt;/events.jsonl</code>.</p>
+<code>$LEG_HOME/sessions/&lt;id&gt;/events.jsonl</code>.</p>
 <table>
 <thead>
 <tr>
@@ -166,11 +166,11 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 </tr>
 <tr>
 <td><code>limit</code></td>
-<td>a usage limit was detected; carries the agent&#39;s own wording, <code>(simulated)</code> when <code>baton sessions simulate-limit</code> produced it</td>
+<td>a usage limit was detected; carries the agent&#39;s own wording, <code>(simulated)</code> when <code>leg sessions simulate-limit</code> produced it</td>
 </tr>
 <tr>
 <td><code>handoff_requested</code></td>
-<td>someone pressed Hand off now, ran <code>baton sessions handoff</code>, or (on a shared board) asked for or approved a hand-off; <code>by</code> names the human (a dismissed request logs as <code>status</code> instead)</td>
+<td>someone pressed Hand off now, ran <code>leg sessions handoff</code>, or (on a shared board) asked for or approved a hand-off; <code>by</code> names the human (a dismissed request logs as <code>status</code> instead)</td>
 </tr>
 <tr>
 <td><code>handoff</code></td>
@@ -226,7 +226,7 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 </tr>
 </tbody></table>
 <h2 id="land-states-terminal-cards"><a class="anchor" href="#land-states-terminal-cards">Land states (terminal cards)</a></h2>
-<p><code>$BATON_HOME/sessions/&lt;id&gt;/land.json</code>, written by the board server only
+<p><code>$LEG_HOME/sessions/&lt;id&gt;/land.json</code>, written by the board server only
 (<code>src/land.mjs</code>); the runner never touches it.</p>
 <table>
 <thead>
@@ -263,7 +263,7 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 </tr>
 </tbody></table>
 <h2 id="share-roles-more-than-one-human"><a class="anchor" href="#share-roles-more-than-one-human">Share roles (more than one human)</a></h2>
-<p><code>$BATON_HOME/share.json</code>, written by <code>baton share</code> (<code>src/share.mjs</code>).</p>
+<p><code>$LEG_HOME/share.json</code>, written by <code>leg share</code> (<code>src/share.mjs</code>).</p>
 <table>
 <thead>
 <tr>
@@ -317,7 +317,7 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 <tr>
 <td><code>handing_off</code></td>
 <td>no</td>
-<td>the leg ended (limit/incomplete/no_progress/stalled/failed) and Baton is writing the handoff bundle</td>
+<td>the leg ended (limit/incomplete/no_progress/stalled/failed) and Leg is writing the handoff bundle</td>
 </tr>
 <tr>
 <td><code>waiting_human</code></td>
@@ -361,7 +361,7 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 </thead>
 <tbody><tr>
 <td><code>completed</code></td>
-<td>exit 0 and <code>.baton/DONE</code> present</td>
+<td>exit 0 and <code>.leg/DONE</code> present</td>
 </tr>
 <tr>
 <td><code>incomplete</code></td>
@@ -556,8 +556,8 @@ across <code>src/chain.mjs</code>, <code>src/orchestrator.mjs</code>, <code>src/
 <td>a person acting through the board or CLI; carries <code>id</code></td>
 </tr>
 <tr>
-<td><code>baton</code></td>
-<td>Baton itself (scheduler, orchestrator) acting with no human or agent behind it</td>
+<td><code>leg</code></td>
+<td>Leg itself (scheduler, orchestrator) acting with no human or agent behind it</td>
 </tr>
 </tbody></table>
 <h2 id="human-actions-and-board-buttons"><a class="anchor" href="#human-actions-and-board-buttons">Human actions and board buttons</a></h2>
@@ -652,7 +652,7 @@ the four words above, it is a different failure path through the same
 <code>bounced</code> event type.</p>
 <h2 id="cross-check-against-visible-strings"><a class="anchor" href="#cross-check-against-visible-strings">Cross-check against visible strings</a></h2>
 <p>Checked against <code>src/board/board.js</code>, <code>src/board/floor.js</code>,
-<code>src/board/index.html</code>, <code>src/board/floor.html</code>, <code>bin/baton.mjs</code>&#39;s usage text
+<code>src/board/index.html</code>, <code>src/board/floor.html</code>, <code>bin/leg.mjs</code>&#39;s usage text
 and <code>README.md</code>.</p>
 <ul>
 <li>Board button labels (<code>ACTION_LABELS</code>, <code>WAIT_LABELS</code>) match README&#39;s &quot;Board
@@ -663,7 +663,7 @@ Reassign, Kill, Rerun).</li>
 README&#39;s drawer description.</li>
 <li>Station kinds shown in the drawer (<code>${name} (${kind})</code>) and README&#39;s
 &quot;Station kinds&quot; list both use <code>agent</code>/<code>human</code>/<code>test</code>/<code>land</code>.</li>
-<li>CLI human-action verbs in <code>bin/baton.mjs</code> (<code>pause</code>, <code>resume</code>, <code>kill</code>,
+<li>CLI human-action verbs in <code>bin/leg.mjs</code> (<code>pause</code>, <code>resume</code>, <code>kill</code>,
 <code>approve</code>, <code>handoff-now</code>, <code>rerun</code>, <code>reassign</code>) are the same 7 words as
 <code>HUMAN_ACTIONS</code>, spelled with hyphens instead of underscores on the CLI
 surface (<code>handoff-now</code> vs <code>handoff_now</code>), a deliberate, consistent
@@ -674,7 +674,7 @@ note above now states. Nothing else needed changing in <code>src/board/*</code>.
 </ul>
 
     <hr class="docs-end">
-    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
   </main>
 </div>
 </body>

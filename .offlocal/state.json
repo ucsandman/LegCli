@@ -7,11 +7,29 @@
       "createdAt": "2026-09-11T07:47:13.154Z"
     }
   ],
-  "projects": [],
-  "environments": [],
+  "projects": [
+    {
+      "id": "proj_b8742f34f53d",
+      "workspaceId": "ws_5085201a4923",
+      "name": "legcli",
+      "slug": "legcli",
+      "createdAt": "2026-09-15T21:41:17.872Z"
+    }
+  ],
+  "environments": [
+    {
+      "id": "env_92bfb6f8a211",
+      "projectId": "proj_b8742f34f53d",
+      "name": "production",
+      "kind": "production",
+      "isProduction": true,
+      "createdAt": "2026-09-15T21:41:21.337Z"
+    }
+  ],
   "connections": [],
   "mappings": [],
   "policyRules": [],
   "pendingApprovals": [],
-  "defaultWorkspaceId": "ws_5085201a4923"
+  "defaultWorkspaceId": "ws_5085201a4923",
+  "selectedProjectId": "proj_b8742f34f53d"
 }

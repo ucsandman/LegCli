@@ -6,4 +6,4 @@ Disallow: /thanks
 Disallow: /thanks.html
 Disallow: /api/
 
-Sitemap: https://baton-agents.vercel.app/sitemap.xml
+Sitemap: https://legcli.com/sitemap.xml

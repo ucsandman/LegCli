@@ -1,20 +1,20 @@
 # Concepts
 
-Two halves. The first four sections are the 0.2 way in: `baton claude` runs an
-interactive agent and Baton watches it. The rest is the v0.1 pipeline, which
+Two halves. The first four sections are the 0.2 way in: `leg claude` runs an
+interactive agent and Leg watches it. The rest is the v0.1 pipeline, which
 still works and now sits below the Terminals lane on the board. Read
 [getting-started.md](getting-started.md) first if you have not run anything
 yet.
 
 ## Sessions
 
-A **session** is one terminal running one agent under Baton. `baton claude`,
-`baton codex` and `baton agy` each create one. Baton spawns the real CLI with
+A **session** is one terminal running one agent under Leg. `leg claude`,
+`leg codex` and `leg agy` each create one. Leg spawns the real CLI with
 stdio inherited, so the agent's own TUI, prompts, permissions, hooks and skills
 are what you see; every argument after the agent name is passed through
 unchanged.
 
-Each session gets a directory under `$BATON_HOME/sessions/<id>/`
+Each session gets a directory under `$LEG_HOME/sessions/<id>/`
 (`src/sessions.mjs`):
 
 | file | what it holds |
@@ -40,7 +40,7 @@ finds it down, and opened once. Later sessions reuse it.
 
 An **account** is one login for one agent. `default` is the CLI's own home
 (`~/.claude`, `~/.codex`). An extra account is a directory under
-`$BATON_HOME/accounts/<agent>/<name>/` that the CLI is pointed at with its
+`$LEG_HOME/accounts/<agent>/<name>/` that the CLI is pointed at with its
 config-directory variable: `CLAUDE_CONFIG_DIR` for claude, `CODEX_HOME` for
 codex (`src/accounts.mjs` `LAYOUT`). agy 1.2.0 has no config-directory
 override, so agy stays one account.
@@ -55,17 +55,17 @@ copied fresh before every launch (claude: `settings.json`,
 `statusline-combined.ps1`; codex: `config.toml`, `AGENTS.md`). Only the login
 itself lives in the account directory.
 
-`baton accounts add <claude|codex> <name>` creates one and prints the single
-line to paste to log in. `baton accounts rm` removes the junctions as links,
-never following them, and deletes the directory. `baton accounts terms` prints
+`leg accounts add <claude|codex> <name>` creates one and prints the single
+line to paste to log in. `leg accounts rm` removes the junctions as links,
+never following them, and deletes the directory. `leg accounts terms` prints
 what both vendors' terms say about a second account; the quotes are in the
 README.
 
 ## Usage windows
 
-Every agent exposes two rolling windows: a 5-hour one and a 7-day one. Baton
+Every agent exposes two rolling windows: a 5-hour one and a 7-day one. Leg
 keeps the latest reading per (agent, account) in
-`$BATON_HOME/usage/<agent>--<account>.json` (`src/usage.mjs`):
+`$LEG_HOME/usage/<agent>--<account>.json` (`src/usage.mjs`):
 
 ```
 { five_hour: {pct, resets_at}, seven_day: {pct, resets_at},
@@ -75,7 +75,7 @@ keeps the latest reading per (agent, account) in
 Where each number comes from is per agent, and is in
 [adapters.md](adapters.md). The rules on top of them are shared:
 
-- **Warning** at `WARN_PCT`, default 85, settable with `BATON_WARN_PCT`. The
+- **Warning** at `WARN_PCT`, default 85, settable with `LEG_WARN_PCT`. The
   highest percentage across the known windows is the pressure; the hottest
   window names the warning.
 - **Wall.** `markLimited()` records `limited_until` from the reset time the CLI
@@ -86,7 +86,7 @@ Where each number comes from is per agent, and is in
 
 ## Handoff (interactive)
 
-When a session hits its limit, or you press **Hand off now**, Baton does four
+When a session hits its limit, or you press **Hand off now**, Leg does four
 things in order (`src/attach.mjs`, `src/bundle.mjs`):
 
 1. **Bundle.** `sessionNotes()` writes the six sections
@@ -94,7 +94,7 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    Opportunities, Open questions, Evidence anchors) from the task, the last
    messages in the transcript, `git diff --stat`, the dirty files, the files
    edited this session, recent commits and why it stopped. The CLI is called as
-   `context-handoff-bundle save --repo-local --slug baton-<session id>`, with
+   `context-handoff-bundle save --repo-local --slug leg-<session id>`, with
    `--update <slug>` after the first time, so one bundle per session is updated
    in place. A checkpoint runs about every two minutes while the session has
    turns, and at every warning, limit and hand-off.
@@ -109,13 +109,13 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    copied only when a new terminal starts.
 3. **Switch.** The agent process is stopped and the terminal restored. The
    bundle's `context-handoff-bundle load <id>` output is written to
-   `.baton/RESUME-<session-id>.md` and copied to `.baton/RESUME.md`, and the next
+   `.leg/RESUME-<session-id>.md` and copied to `.leg/RESUME.md`, and the next
    agent starts in the same terminal with a short pointer prompt as its first
    positional argument: `claude "<prompt>"`, `codex "<prompt>"`,
    `agy -i "<prompt>"`. The prompt names the per-session file, and says to check
    `git status` and `git diff`, continue, and not ask the human to restate the
    task.
-4. **All out.** If every option is walled, Baton prints each one with its reset
+4. **All out.** If every option is walled, Leg prints each one with its reset
    time, soonest first, then waits in the terminal with a one-line countdown
    (`src/wait.mjs`) and starts the first option back from the bundle when its
    reset passes; if that option is walled again meanwhile it re-picks and
@@ -125,58 +125,58 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
 
 ## The resume pointer
 
-`.baton/RESUME.md` is the file humans and other agents open by habit, so Baton
+`.leg/RESUME.md` is the file humans and other agents open by habit, so Leg
 owns it and keeps it from describing a picture that is no longer true.
 
 Every resume file starts with a stamp, an HTML comment that renders as nothing:
 
 ```
-<!-- baton-resume {"v":1,"kind":"handoff","session":"s-…","head":"cf27986…",
+<!-- leg-resume {"v":1,"kind":"handoff","session":"s-…","head":"cf27986…",
      "branch":"main","dirty":{"count":12,"hash":"0a4c4f34ee93"},
      "live":[{"id":"s-…","agent":"claude"}],"bundle":"…","written_at":"…"} -->
 ```
 
 The stamp says what was true when the file was written. It is never read as a
-verdict. `baton resume --check` asks git what is true now and reports the
+verdict. `leg resume --check` asks git what is true now and reports the
 difference, so a file cannot lie about HEAD to a reader who re-asks git:
 
 | state | when | exit |
 | --- | --- | --- |
 | current | the repository still matches the stamp, and the terminals it names are the ones that are live | 0 |
 | stale | a commit landed, the working tree moved, the terminal it describes is gone, or another one appeared | 1 |
-| unstamped | no Baton wrote this file, so nothing can be checked | 1 |
-| missing | there is no `.baton/RESUME.md` from here up to the filesystem root | 3 |
+| unstamped | no Leg wrote this file, so nothing can be checked | 1 |
+| missing | there is no `.leg/RESUME.md` from here up to the filesystem root | 3 |
 
 The working-tree fingerprint is a count and a short hash of the sorted paths,
 never the names: a shared board must not leak what someone is working on.
-Baton's own directories (`.baton/`, `.context-handoffs/`) are left out of it, so
-Baton's bookkeeping never reads as the human's work moving on.
+Leg's own directories (`.leg/`, `.context-handoffs/`) are left out of it, so
+Leg's bookkeeping never reads as the human's work moving on.
 
 Two things rewrite `RESUME.md` besides a hand-off. A session ending replaces it
 with a "nothing in flight" pointer naming the last hand-off, its date and the
 per-session file that still holds its full text. The board, at start, does the
 same for any checkout whose pointer describes a terminal that is gone or that no
-Baton stamped — the case where a terminal crashed instead of exiting. A terminal
+Leg stamped, the case where a terminal crashed instead of exiting. A terminal
 that is genuinely still running keeps its own hand-off text; only the terminal
 that owns a pointer may replace it.
 
-`baton resume` prints the body, with a loud banner and a non-zero exit when it
+`leg resume` prints the body, with a loud banner and a non-zero exit when it
 is stale: a stale hand-off still beats nothing when a human chooses to read it,
 and the exit code is what a script or a hook keys on. The terminal drawer's
 "What happens next" section shows the same verdict, recomputed every poll.
 
-`BATON_NO_HANDOFF=1` keeps the warning and the record but never switches.
+`LEG_NO_HANDOFF=1` keeps the warning and the record but never switches.
 
 ## Share (more than one human)
 
-`baton share` is off until you run it (`src/share.mjs`). On, it writes
-`$BATON_HOME/share.json`: where the board listens, who is on it, and one
+`leg share` is off until you run it (`src/share.mjs`). On, it writes
+`$LEG_HOME/share.json`: where the board listens, who is on it, and one
 sha256 hash per person's token (the token itself is printed once). From then
 on:
 
 - Every `/api` request names a human: their token, or a browser on the board's
   own machine, which is the owner.
-- A terminal belongs to the human who started it (`BATON_PERSON`, else the
+- A terminal belongs to the human who started it (`LEG_PERSON`, else the
   owner). Only they, and an owner, can read or control it.
 - Everyone else sees the card without anything the terminal has said, read or
   written, and one button: Request handoff. The request lands in the session's
@@ -184,8 +184,8 @@ on:
   who it was for.
 - The pipeline side of the board is the owner's alone (403 for a guest).
 
-`baton share off` puts the board back on `127.0.0.1` and every link stops
-working; `baton share rotate <name>` replaces one.
+`leg share off` puts the board back on `127.0.0.1` and every link stops
+working; `leg share rotate <name>` replaces one.
 
 ## Cards, stations and pipelines
 
@@ -218,14 +218,14 @@ pipeline may have at most one.
 
 A station's `chain` is an ordered list of adapters: the fallback order for
 that station. Each entry is one **leg**. When a leg ends without finishing
-(a limit, a stall, an incomplete exit, a failure), Baton writes a handoff
+(a limit, a stall, an incomplete exit, a failure), Leg writes a handoff
 bundle and starts the next entry in the chain as the next leg, in the same
 worktree. If the chain is exhausted, the card fails.
 
 ## Adapters and modes
 
 Every adapter spawns its CLI as argv, never a shell, with its own permission
-mode. Baton never passes a bypass/YOLO flag; requesting one throws before
+mode. Leg never passes a bypass/YOLO flag; requesting one throws before
 anything spawns.
 
 | adapter | default mode | allowed modes |
@@ -242,22 +242,22 @@ flags, and gotchas.
 ## The DONE marker contract
 
 Every leg gets the same contract, regardless of which CLI runs it
-(`src/contract.mjs`): a file written to `.baton/CONTRACT.md` in the
+(`src/contract.mjs`): a file written to `.leg/CONTRACT.md` in the
 worktree, stating the task, the station's goal and deliverables, and the
 finish rule:
 
-> When the task is finished and verified, write the file `.baton/DONE`
+> When the task is finished and verified, write the file `.leg/DONE`
 > containing one line that summarizes what you did.
 
-Agents are also asked to keep `.baton/PROGRESS.md` updated as they go, one
-line per step. Without a fresh `.baton/DONE`, Baton treats the leg as
+Agents are also asked to keep `.leg/PROGRESS.md` updated as they go, one
+line per step. Without a fresh `.leg/DONE`, Leg treats the leg as
 unfinished and hands it to the next agent in the chain, no matter what the
 CLI printed.
 
 ## Outcomes and the classifier
 
 `src/limits.mjs` `classify()` turns one leg's raw result (exit code, stdout,
-stderr, the parsed result JSON, whether `.baton/DONE` exists, and the git or
+stderr, the parsed result JSON, whether `.leg/DONE` exists, and the git or
 filesystem diff since the leg started) into one outcome. It checks, in this
 order, stopping at the first match:
 
@@ -266,7 +266,7 @@ order, stopping at the first match:
 3. an adapter-specific or generic `auth` signal → `auth_failed`
 4. killed from the board → `killed`
 5. the kill timer fired → `stalled`
-6. exit 0 and `.baton/DONE` present → `completed`
+6. exit 0 and `.leg/DONE` present → `completed`
 7. an adapter-specific or generic `limit` signal → `limit`
 8. a `launch` signal → `launch_failed`
 9. exit 0, changes present, no DONE marker → `incomplete`
@@ -292,35 +292,35 @@ notes carry six sections in the bundle's own vocabulary:
 - **Scope**: the task, and which card/station/leg/adapter stopped with which
   outcome.
 - **Projects mentioned**: the card id.
-- **Findings**: `.baton/PROGRESS.md`'s lines, the previous agent's last
+- **Findings**: `.leg/PROGRESS.md`'s lines, the previous agent's last
   message, the diff summary, the touched files.
-- **Opportunities**: read `.baton/PROGRESS.md` and `.baton/CONTRACT.md`,
-  continue from the last done step, then write `.baton/DONE`.
+- **Opportunities**: read `.leg/PROGRESS.md` and `.leg/CONTRACT.md`,
+  continue from the last done step, then write `.leg/DONE`.
 - **Open questions**: the outcome, the exit code, any bounce reason.
-- **Evidence anchors**: the touched files, `.baton/PROGRESS.md`,
-  `.baton/CONTRACT.md`.
+- **Evidence anchors**: the touched files, `.leg/PROGRESS.md`,
+  `.leg/CONTRACT.md`.
 
 The next leg's prompt starts with the bundle's `load` output (the resume
 text) followed by the same contract.
 
 ## Worktrees
 
-Every card runs in its own git worktree: `<repo>/.baton-worktrees/<card-id>`
-on branch `baton/<card-id>` (`src/worktree.mjs`). The repo root is never
+Every card runs in its own git worktree: `<repo>/.leg-worktrees/<card-id>`
+on branch `leg/<card-id>` (`src/worktree.mjs`). The repo root is never
 touched by an agent directly. Every git call sets `MSYS_NO_PATHCONV=1` so
-Git Bash on Windows does not rewrite absolute path arguments. Baton never
+Git Bash on Windows does not rewrite absolute path arguments. Leg never
 pushes, opens a remote, or removes a path outside
-`<repo>/.baton-worktrees/`.
+`<repo>/.leg-worktrees/`.
 
-Terminal sessions use the same layout when they would collide. A `baton
+Terminal sessions use the same layout when they would collide. A `leg
 <agent>` started in a checkout where another session is live gets
-`<repo>/.baton-worktrees/<session-id>` on `baton/<session-id>`, cut from the
+`<repo>/.leg-worktrees/<session-id>` on `leg/<session-id>`, cut from the
 branch the checkout has out (`isolate` in `src/attach.mjs`); its `repo` stays
 the checkout, so the board groups it with the others. Its Land button runs the
 same merge queue as a card's land station, with one difference: the checkout
 is a live terminal and may have local changes of its own. Those are left alone,
 and a fast-forward that would overwrite one bounces `dirty-trunk` naming the
-files. `~/.baton/landings.jsonl` records every landing (session, agent, who
+files. `~/.leg/landings.jsonl` records every landing (session, agent, who
 pressed Land, the commits) for the landed-on-trunk list.
 
 ## Leases and the scheduler
@@ -333,7 +333,7 @@ card costs minutes and a wrongly parallel card can corrupt a merge.
 
 `src/scheduler.mjs` ticks once a second by default: it reads every card's
 `card.json` (never in-memory state), starts queued cards whose leases do not
-overlap any running card's leases, up to `BATON_MAX_CONCURRENT` (default 2)
+overlap any running card's leases, up to `LEG_MAX_CONCURRENT` (default 2)
 running at once, and records one `blocked_by` ledger event whenever a
 card's blocker changes.
 
@@ -361,7 +361,7 @@ runs one land at a time per repo root, FIFO, and does, in order:
 
 A bounce sends the card back to the nearest earlier `build` agent station
 (or the first agent station) with the failure written into the next
-handoff bundle's Open questions. `BATON_MAX_LAND_ATTEMPTS` (default 3) is a
+handoff bundle's Open questions. `LEG_MAX_LAND_ATTEMPTS` (default 3) is a
 shared cap: the `test` station's own bounces and the `land` station's
 bounces both increment `land_attempts`, so a card that never goes green
 cannot loop forever.
@@ -369,7 +369,7 @@ cannot loop forever.
 ## The ledger and actors
 
 `src/ledger.mjs` is the only writer of a card's on-disk state
-(`$BATON_HOME/cards/<id>/`). Every event names an **actor**: `{type:
+(`$LEG_HOME/cards/<id>/`). Every event names an **actor**: `{type:
 'agent', adapter}`, `{type: 'human', id}`, or `{type: 'baton'}`. Each actor
 writes to its own `events-<actor-key>.jsonl` file (append-only); reading a
 card's events merges every writer's file, sorted by timestamp. The board and
@@ -423,4 +423,4 @@ stateDiagram-v2
   the board.
 - [adapters.md](adapters.md): the exact CLI shape behind each adapter.
 - [configuration.md](configuration.md): the environment variables named
-  above (`BATON_MAX_CONCURRENT`, `BATON_MAX_LAND_ATTEMPTS`, ...).
+  above (`LEG_MAX_CONCURRENT`, `LEG_MAX_LAND_ATTEMPTS`, ...).

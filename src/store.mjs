@@ -11,10 +11,17 @@ import { readEvents as ledgerReadEvents } from './ledger.mjs'
 const SRC = dirname(fileURLToPath(import.meta.url))
 export const LEDGER = join(SRC, 'ledger.mjs')
 export const RUNNER = join(SRC, 'runner.mjs')
-export const BATON_ACTOR = { type: 'baton' }
+export const LEG_ACTOR = { type: 'leg' }
+export const BATON_ACTOR = LEG_ACTOR
 
 export function home() {
-  return process.env.BATON_HOME || join(homedir(), '.baton')
+  if (process.env.LEG_HOME) return process.env.LEG_HOME
+  if (process.env.BATON_HOME) return process.env.BATON_HOME
+  const leg = join(homedir(), '.leg')
+  const baton = join(homedir(), '.baton')
+  if (existsSync(leg)) return leg
+  if (existsSync(baton)) return baton
+  return leg
 }
 
 export function cardDir(id) { return join(home(), 'cards', id) }

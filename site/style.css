@@ -1,4 +1,4 @@
-/* Baton marketing site. Tokens and rules are documented in ../DESIGN.md. */
+/* Leg marketing site. Tokens and rules are documented in ../DESIGN.md. */
 
 @font-face {
   font-family: "Atkinson Hyperlegible Next";
@@ -294,8 +294,8 @@ p { max-width: 66ch; text-wrap: pretty; }
 .term-body .ln.out { color: var(--on-blue-muted); padding-left: 2ch; }
 .term-body .ln.out .k { display: inline-block; min-width: 7ch; color: var(--on-blue-faint); }
 .term-body .ln.out .fail { color: var(--warn-text); }
-.term-body .ln.baton { color: var(--on-blue); font-weight: 600; }
-.term-body .ln.baton::before { content: "[baton] "; color: var(--warn); font-weight: 700; }
+.term-body .ln.leg, .term-body .ln.baton { color: var(--on-blue); font-weight: 600; }
+.term-body .ln.leg::before, .term-body .ln.baton::before { content: "[leg] "; color: var(--warn); font-weight: 700; }
 .term-body .ln.limit { color: var(--bad-text); }
 .term-body .ln.gap { height: 0.85em; }
 .term-body .caret::after {

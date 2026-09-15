@@ -5,8 +5,8 @@
 const crypto = require('node:crypto');
 
 const STRIPE = 'https://api.stripe.com/v1';
-const SITE = process.env.BATON_SITE_ORIGIN || 'https://baton-agents.vercel.app';
-const FROM = process.env.BATON_MAIL_FROM || 'Baton <baton@practicalsystems.io>';
+const SITE = process.env.LEG_SITE_ORIGIN || process.env.BATON_SITE_ORIGIN || 'https://legcli.com';
+const FROM = process.env.LEG_MAIL_FROM || process.env.BATON_MAIL_FROM || 'Leg <legcli@practicalsystems.io>';
 
 function form(obj, prefix = '') {
   const out = [];
@@ -31,12 +31,12 @@ async function stripe(path, { method = 'GET', body, query } = {}) {
 }
 
 function signLicense(payload) {
-  const priv = process.env.BATON_LICENSE_PRIVATE_KEY;
+  const priv = (process.env.LEG_LICENSE_PRIVATE_KEY || process.env.BATON_LICENSE_PRIVATE_KEY);
   if (!priv) throw new Error('BATON_LICENSE_PRIVATE_KEY is not set');
   const key = crypto.createPrivateKey({ key: Buffer.from(priv, 'base64'), format: 'der', type: 'pkcs8' });
   const body = Buffer.from(JSON.stringify(payload), 'utf8');
   const sig = crypto.sign(null, body, key);
-  return `BATON-${body.toString('base64url')}.${sig.toString('base64url')}`;
+  return `LEG-${body.toString('base64url')}.${sig.toString('base64url')}`;
 }
 
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -49,8 +49,8 @@ function plusDays(unixSeconds, days) { return new Date(unixSeconds * 1000 + days
 // set when the prices were created, so a renamed product cannot change it.
 function planOf(price) {
   const k = price?.lookup_key;
-  if (k === 'baton_team') return 'team';
-  if (k === 'baton_personal') return 'personal';
+  if (k === 'leg_team' || k === 'baton_team') return 'team';
+  if (k === 'leg_personal' || k === 'baton_personal') return 'personal';
   return null;
 }
 
@@ -62,8 +62,8 @@ async function licenseFromSession(sessionId) {
   if (s.payment_status !== 'paid' && !(s.mode === 'subscription' && s.status === 'complete')) { const e = new Error('this checkout is not paid'); e.status = 402; throw e; }
   const item = s.line_items?.data?.[0];
   const plan = planOf(item?.price);
-  if (!plan) { const e = new Error('this checkout is not for a Baton plan'); e.status = 400; throw e; }
-  if (s.mode === 'subscription' && plan !== 'team') { const e = new Error('this checkout is not for a Baton plan'); e.status = 400; throw e; }
+  if (!plan) { const e = new Error('this checkout is not for a Leg plan'); e.status = 400; throw e; }
+  if (s.mode === 'subscription' && plan !== 'team') { const e = new Error('this checkout is not for a Leg plan'); e.status = 400; throw e; }
   const email = s.customer_details?.email || s.customer_email || '';
   if (plan === 'personal') {
     const issued = isoDay(s.created);
@@ -78,7 +78,7 @@ function licenseFromSubscription(sub, { email, seats } = {}) {
   const active = ['active', 'trialing', 'past_due'].includes(sub.status);
   if (!active) { const e = new Error(`the subscription is ${sub.status}`); e.status = 402; throw e; }
   const item = sub.items?.data?.[0];
-  if (planOf(item?.price) !== 'team') { const e = new Error('this subscription is not for a Baton Team plan'); e.status = 400; throw e; }
+  if (planOf(item?.price) !== 'team') { const e = new Error('this subscription is not for a Leg Team plan'); e.status = 400; throw e; }
   const periodEnd = item?.current_period_end || sub.current_period_end;
   const payload = { v: 1, id: 'lic_' + sha(sub.id).slice(0, 20), plan: 'team', seats: seats || item?.quantity || 1, email_hash: emailHash(email || ''), issued: isoDay(sub.created), expires: plusDays(periodEnd, 3), sub: sub.id };
   return { key: signLicense(payload), payload, email: email || '' };
@@ -89,9 +89,9 @@ async function sendKeyEmail({ to, key, payload, idempotencyKey }) {
   if (!apiKey) return { skipped: true, reason: 'missing_resend_api_key', retryable: true };
   if (!to) return { skipped: true, reason: 'missing_recipient', retryable: false };
   const plan = payload.plan === 'team' ? `Team, ${payload.seats} seat${payload.seats === 1 ? '' : 's'}` : 'Personal';
-  const until = payload.plan === 'team' ? `It renews with your subscription and is valid through ${payload.expires}; a renewed key is emailed each period, and "baton license refresh" fetches it.` : `It covers every Baton release dated on or before ${payload.updates_until}. The version you have keeps working after that.`;
-  const text = `Your Baton license (${plan})\n\nKey:\n${key}\n\nActivate it on each machine:\n\n  baton license activate ${key}\n\n${until}\n\nYour receipt is in the email from Stripe. Reply to this email for help.\n\n${SITE}\n`;
-  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json', ...(idempotencyKey && { 'Idempotency-Key': idempotencyKey }) }, body: JSON.stringify({ from: FROM, to: [to], subject: `Your Baton ${payload.plan === 'team' ? 'Team' : 'Personal'} license key`, text, reply_to: process.env.BATON_MAIL_REPLY_TO || undefined }) });
+  const until = payload.plan === 'team' ? `It renews with your subscription and is valid through ${payload.expires}; a renewed key is emailed each period, and "leg license refresh" fetches it.` : `It covers every Leg release dated on or before ${payload.updates_until}. The version you have keeps working after that.`;
+  const text = `Your Leg license (${plan})\n\nKey:\n${key}\n\nActivate it on each machine:\n\n  leg license activate ${key}\n\n${until}\n\nYour receipt is in the email from Stripe. Reply to this email for help.\n\n${SITE}\n`;
+  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json', ...(idempotencyKey && { 'Idempotency-Key': idempotencyKey }) }, body: JSON.stringify({ from: FROM, to: [to], subject: `Your Leg ${payload.plan === 'team' ? 'Team' : 'Personal'} license key`, text, reply_to: (process.env.LEG_MAIL_REPLY_TO || process.env.BATON_MAIL_REPLY_TO) || undefined }) });
   const j = await r.json().catch(() => ({}));
   if (r.status === 409 && j.name === 'invalid_idempotent_request') return { skipped: true, reason: 'idempotency_payload_mismatch', retryable: false };
   if (!r.ok) throw new Error(j.message || `resend ${r.status}`);

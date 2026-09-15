@@ -31,7 +31,7 @@ test('up --dry prints every would-be argv as JSON, creates no process and no pid
   assert.ok(argv[1].endsWith('server.mjs'))
   assert.deepEqual(JSON.parse(m[2]), { BATON_PORT: '4799', BATON_BIND: '127.0.0.1' })
   assert.match(outText, /sync:workboard: off/)
-  assert.ok(!existsSync(join(home, 'baton.pid')))
+  assert.ok(!existsSync(join(home, 'leg.pid')) && !existsSync(join(home, 'baton.pid')))
 })
 
 function get(url) {
@@ -48,9 +48,10 @@ test('up --no-open --port 0: health 200, status running, down closes the port an
   child.stdout.on('data', (d) => { outText += d })
   child.stderr.on('data', (d) => { outText += d })
   const t0 = Date.now()
-  while (!existsSync(join(home, 'baton.pid')) && Date.now() - t0 < 30000) await sleep(200)
-  assert.ok(existsSync(join(home, 'baton.pid')), `pidfile within 30 s; output so far:\n${outText}`)
-  const pf = JSON.parse(readFileSync(join(home, 'baton.pid'), 'utf8'))
+  while (!existsSync(join(home, 'leg.pid')) && !existsSync(join(home, 'baton.pid')) && Date.now() - t0 < 30000) await sleep(200)
+  const pidPath = existsSync(join(home, 'leg.pid')) ? join(home, 'leg.pid') : join(home, 'baton.pid')
+  assert.ok(existsSync(pidPath), `pidfile within 30 s; output so far:\n${outText}`)
+  const pf = JSON.parse(readFileSync(pidPath, 'utf8'))
   assert.equal(pf.pid, child.pid)
   assert.ok(pf.port > 0)
   assert.equal(pf.children.length, 1)
@@ -67,7 +68,7 @@ test('up --no-open --port 0: health 200, status running, down closes the port an
   const dn = baton(['down'], env)
   assert.match(dn, /\[baton\] stopped \(pid/)
   await new Promise((r) => child.on('exit', r))
-  assert.ok(!existsSync(join(home, 'baton.pid')))
+  assert.ok(!existsSync(join(home, 'leg.pid')) && !existsSync(join(home, 'baton.pid')))
   let closed = false
   try { await get(`http://127.0.0.1:${pf.port}/api/health`) } catch { closed = true }
   assert.equal(closed, true, 'port closed after down')
@@ -109,7 +110,7 @@ test('a pidfile whose pid is alive but is not the board: status says stopped and
   const env = testEnv(home, { BATON_HEALTH_TIMEOUT_MS: '30000' })
   // alive, and never listened: what a recycled pid looks like after a reboot
   const squatter = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore' })
-  const pf = join(home, 'baton.pid')
+  const pf = join(home, 'leg.pid')
   const stale = () => writeFileSync(pf, JSON.stringify({ pid: squatter.pid, port: 1, bind: '127.0.0.1', children: [], started_at: new Date().toISOString() }) + '\n')
   stale()
   try {

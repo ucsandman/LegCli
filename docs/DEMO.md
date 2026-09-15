@@ -1,7 +1,7 @@
 # Demo: a usage limit hands the card to the next agent
 
 A background card starts on `fake-claude`, hits a recorded Claude usage limit,
-Baton writes a context handoff bundle, and `fake-codex` resumes in the same
+Leg writes a context handoff bundle, and `fake-codex` resumes in the same
 worktree and finishes the work. The two fake adapters replay the shapes the real
 CLIs print and spend no subscription usage. The same sequence against the real
 CLIs is in [real-run.md](real-run.md).
@@ -57,12 +57,12 @@ a different one only changes the paths the board prints.
 leg runs for 20 seconds, which is enough time to read the row while it is in
 flight.
 
-PowerShell, from the Baton checkout:
+PowerShell, from the Leg checkout:
 
 ```
 cd C:\Projects\baton
-$env:BATON_HOME = 'C:\baton-demo\home'
-$env:BATON_PORT = '4851'
+$env:LEG_HOME = 'C:\baton-demo\home'
+$env:LEG_PORT = '4851'
 $env:FAKE_DELAY_MS = '20000'
 npm start
 ```
@@ -71,7 +71,7 @@ bash:
 
 ```
 cd /path/to/baton
-BATON_HOME=~/baton-demo/home BATON_PORT=4851 FAKE_DELAY_MS=20000 npm start
+LEG_HOME=~/baton-demo/home LEG_PORT=4851 FAKE_DELAY_MS=20000 npm start
 ```
 
 It prints a preflight table, then
@@ -101,7 +101,7 @@ background card**.
    `limit` in that box. **First agent** higher up still names a real agent; the
    scripted adapter takes its place for this card. Set the scripted adapter
    before you type in that row, because changing it rebuilds the row.
-6. Under **Fallback agents** Baton has already filled in the real agents it
+6. Under **Fallback agents** Leg has already filled in the real agents it
    found. Click **Remove** on each of those rows.
 7. Click **Add fallback agent**. In the new `Fallback 1` row set the agent to
    `fake-codex (test/demo)`, type `success` in its `test behavior` box, and tick
@@ -128,7 +128,7 @@ This is `demo-1-claude-running.png`.
 ### 5. The limit, and the bundle
 
 Twenty seconds in, `fake-claude` prints the recorded limit line and exits 1.
-Baton records `limit_detected`, writes the handoff bundle, and stops for the
+Leg records `limit_detected`, writes the handoff bundle, and stops for the
 approval you ticked. Within a second or two the row changes on its own:
 
 - the line beside the region title reads `1 waiting on you`
@@ -141,7 +141,7 @@ approval you ticked. Within a second or two the row changes on its own:
 
 This is `demo-2-limit-hit.png`.
 
-### 6. What Baton wrote
+### 6. What Leg wrote
 
 Click the card title. The detail opens in flow directly under the row, not as an
 overlay, and the row it belongs to stays visible above it. It holds, in order,
@@ -169,7 +169,7 @@ collapse it.
 ### 7. Approve, and leg 2
 
 Click **Approve** on the row. `fake-codex` starts in the same worktree, reading
-the bundle Baton wrote. The status word is `running` again, the run is `run=2`,
+the bundle Leg wrote. The status word is `running` again, the run is `run=2`,
 and the chain reads `fake-claude · handed off · fake-codex · running`. This is
 `demo-4-codex-running.png`.
 
@@ -180,24 +180,24 @@ reads `1 finished`, the status word is `done`, the sentence is
 and **Remove**. This is `demo-5-done.png`.
 
 The worktree named in **Where** now holds the file the fake agent wrote,
-`hello-fake.txt`, and `.baton/DONE`.
+`hello-fake.txt`, and `.leg/DONE`.
 
 ### 8. Stop
 
 Ctrl-C in the terminal running `npm start`. It prints `stopping (SIGINT)` and
-`stopped`, and kills any agent still running. `baton down` from another terminal
+`stopped`, and kills any agent still running. `leg down` from another terminal
 does the same.
 
 ## The same demo headless
 
 `card run` runs the card in the terminal you type it in and exits with its
-status. No board is needed. Run these from the Baton checkout, in a shell with
-`BATON_HOME` set the way step 2 sets it:
+status. No board is needed. Run these from the Leg checkout, in a shell with
+`LEG_HOME` set the way step 2 sets it:
 
 ```
-node bin/baton.mjs card add --repo "C:\baton-demo\toy-demo" --task "Add greeting.txt" --chain fake-claude,fake-codex --fake-mode "fake-claude=limit,fake-codex=success" --fake-target fake-codex=greeting.txt --title "Greeting file"
-node bin/baton.mjs card run <card-id>
-node bin/baton.mjs card events <card-id>
+node bin/leg.mjs card add --repo "C:\baton-demo\toy-demo" --task "Add greeting.txt" --chain fake-claude,fake-codex --fake-mode "fake-claude=limit,fake-codex=success" --fake-target fake-codex=greeting.txt --title "Greeting file"
+node bin/leg.mjs card run <card-id>
+node bin/leg.mjs card events <card-id>
 ```
 
 `card add` prints the card id, `card run` prints `<card-id> done at build`, and

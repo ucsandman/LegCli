@@ -20,12 +20,13 @@ import { dirname, join, resolve } from 'node:path'
 import { canonPath } from './fsx.mjs'
 import { isActive, listSessions, reapLost, workRoot } from './sessions.mjs'
 
-export const STAMP_PREFIX = '<!-- baton-resume '
+export const STAMP_PREFIX = '<!-- leg-resume '
+export const LEGACY_STAMP_PREFIX = '<!-- baton-resume '
 const STAMP_SUFFIX = ' -->'
 const STAMP_VERSION = 1
 // Baton's own directories dirty the tree on every write; a reader must not see
 // Baton's bookkeeping as the human's work moving on.
-const BATON_DIRS = /^(\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
+const LEG_DIRS = /^(\.leg|\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
 const MAX_REASONS = 5
 
 // fresh and its idle twin are the only states a script should keep going on.
@@ -41,7 +42,7 @@ function git(cwd, args) {
 export function dirtyFingerprint(cwd) {
   const lines = git(cwd, ['status', '--porcelain']).split('\n').filter(Boolean)
     .map((l) => l.slice(3).replace(/^"|"$/g, ''))
-    .filter((f) => !BATON_DIRS.test(f))
+    .filter((f) => !LEG_DIRS.test(f))
     .sort()
   if (!lines.length) return { count: 0, hash: null }
   return { count: lines.length, hash: createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 12) }
@@ -64,8 +65,22 @@ function commitsSince(cwd, then) {
   return /^\d+$/.test(n) ? Number(n) : null
 }
 
-export function resumeFile(cwd) { return join(cwd, '.baton', 'RESUME.md') }
-export function perSessionFile(cwd, id) { return join(cwd, '.baton', `RESUME-${id}.md`) }
+export function resumeFile(cwd) {
+  const leg = join(cwd, '.leg', 'RESUME.md')
+  const baton = join(cwd, '.baton', 'RESUME.md')
+  if (existsSync(leg)) return leg
+  if (existsSync(baton)) return baton
+  if (existsSync(join(cwd, '.baton')) && !existsSync(join(cwd, '.leg'))) return baton
+  return leg
+}
+export function perSessionFile(cwd, id) {
+  const leg = join(cwd, '.leg', `RESUME-${id}.md`)
+  const baton = join(cwd, '.baton', `RESUME-${id}.md`)
+  if (existsSync(leg)) return leg
+  if (existsSync(baton)) return baton
+  if (existsSync(join(cwd, '.baton')) && !existsSync(join(cwd, '.leg'))) return baton
+  return leg
+}
 
 // An agent started deeper in the tree still finds its checkout's pointer.
 export function findResume(startDir) {
@@ -92,9 +107,12 @@ export function renderStamp(stamp) { return STAMP_PREFIX + JSON.stringify(stamp)
 
 export function readStamp(text) {
   const line = String(text ?? '').split('\n', 1)[0].trim()
-  if (!line.startsWith(STAMP_PREFIX) || !line.endsWith(STAMP_SUFFIX)) return null
+  let pfx = null;
+  if (line.startsWith(STAMP_PREFIX)) pfx = STAMP_PREFIX;
+  else if (line.startsWith(LEGACY_STAMP_PREFIX)) pfx = LEGACY_STAMP_PREFIX;
+  if (!pfx || !line.endsWith(STAMP_SUFFIX)) return null;
   try {
-    const stamp = JSON.parse(line.slice(STAMP_PREFIX.length, -STAMP_SUFFIX.length))
+    const stamp = JSON.parse(line.slice(pfx.length, -STAMP_SUFFIX.length))
     return stamp && typeof stamp === 'object' ? stamp : null
   } catch { return null }
 }
@@ -134,9 +152,9 @@ function makeStamp({ kind, session, root, why, bundle, live }) {
 // ---- writing the pointer ----
 
 function note(session, others) {
-  const mine = `This file describes Baton terminal ${session.session_id} (${session.agent}); its own copy is .baton/RESUME-${session.session_id}.md.`
+  const mine = `This file describes Leg terminal ${session.session_id} (${session.agent}); its own copy is .leg/RESUME-${session.session_id}.md.`
   if (!others.length) return mine
-  const rest = others.map((o) => `${o.session_id} (${o.agent}), whose own hand-off would be .baton/RESUME-${o.session_id}.md`).join('; ')
+  const rest = others.map((o) => `${o.session_id} (${o.agent}), whose own hand-off would be .leg/RESUME-${o.session_id}.md`).join('; ')
   return `${mine}\nAlso live in this checkout: ${rest}. RESUME.md describes only the terminal named above.`
 }
 
@@ -146,7 +164,8 @@ function note(session, others) {
 export function writeHandoffPointer(session, body, { bundle = null, why = null } = {}) {
   const root = workRoot(session)
   if (!root) return null
-  mkdirSync(join(root, '.baton'), { recursive: true })
+  const dir = existsSync(join(root, '.baton')) && !existsSync(join(root, '.leg')) ? join(root, '.baton') : join(root, '.leg')
+  mkdirSync(dir, { recursive: true })
   const live = liveIn(root)
   const others = live.filter((s) => s.session_id !== session.session_id)
   const stamp = makeStamp({ kind: 'handoff', session, root, why, bundle, live: live.length ? live : [session] })
@@ -176,7 +195,7 @@ export function lastHandoffIn(root, sessions = listSessions()) {
     // a checkpoint bundle is not a hand-off, and only a hand-off leaves a
     // per-session resume file; naming one that was never written is the same
     // class of lie this module exists to stop
-    handed_off: Boolean(s.lineage?.to), file: existsSync(file) ? `.baton/RESUME-${s.session_id}.md` : null,
+    handed_off: Boolean(s.lineage?.to), file: existsSync(file) ? (file.includes('.leg') ? `.leg/RESUME-${s.session_id}.md` : `.baton/RESUME-${s.session_id}.md`) : null,
   }
 }
 
@@ -196,7 +215,7 @@ function idleBody(last, live) {
   } else {
     lines.push('No hand-off has been recorded in this checkout.')
   }
-  lines.push('', 'Before you trust any resume file here, run `baton resume --check`: it recomputes freshness from git at read time and exits non-zero when the file no longer matches the repository.')
+  lines.push('', 'Before you trust any resume file here, run `leg resume --check`: it recomputes freshness from git at read time and exits non-zero when the file no longer matches the repository.')
   lines.push('')
   return lines.join('\n')
 }
@@ -205,7 +224,8 @@ function idleBody(last, live) {
 // create a file in a checkout Baton never handed off in check first.
 export function writeIdlePointer(root, { sessions = listSessions() } = {}) {
   if (!root) return null
-  mkdirSync(join(root, '.baton'), { recursive: true })
+  const dir = existsSync(join(root, '.baton')) && !existsSync(join(root, '.leg')) ? join(root, '.baton') : join(root, '.leg')
+  mkdirSync(dir, { recursive: true })
   const live = liveIn(root, sessions)
   const last = lastHandoffIn(root, sessions)
   const stamp = makeStamp({ kind: 'idle', session: null, root, why: 'session ended', bundle: last?.bundle ? { id: last.bundle } : null, live })

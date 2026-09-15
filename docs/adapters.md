@@ -1,7 +1,7 @@
 # Adapters
 
-Two things per agent: what Baton reads from an interactive session
-(`baton claude|codex|agy`), and the headless argv the v0.1 pipeline spawns.
+Two things per agent: what Leg reads from an interactive session
+(`leg claude|codex|agy`), and the headless argv the v0.1 pipeline spawns.
 Every fact here was written against `src/taps/*.mjs`, `src/attach.mjs` and
 `src/adapters/*.mjs`; the evidence trail, including which lines an artifact
 backs, is [cli-contracts.md](cli-contracts.md).
@@ -12,7 +12,7 @@ headless legs are `spawn(spec.bin, spec.args, …)` (`src/runner.mjs`). Both
 strip the API-key and base-URL variables and the Claude Code nested-session
 markers from the child environment (`src/env.mjs` `sanitizeEnv`).
 
-## What Baton reads from each agent
+## What Leg reads from each agent
 
 Nothing is screen-scraped. Each tap was read from the CLI's own source or
 documentation, then checked on a real machine on 2026-09-11 (Claude Code
@@ -22,38 +22,38 @@ documentation say docs-only.
 
 ### claude
 
-- **How Baton attaches**: one extra settings file per session, passed as
-  `claude <your args> --settings <~/.baton/sessions/<id>/claude-settings.json>`
+- **How Leg attaches**: one extra settings file per session, passed as
+  `claude <your args> --settings <~/.leg/sessions/<id>/claude-settings.json>`
   (`src/taps/claude.mjs` `settingsFor`). Hooks from `--settings` merge with
-  yours rather than replacing them. Observed live: a Baton session ran with
+  yours rather than replacing them. Observed live: a Leg session ran with
   every user hook still firing.
 - **Hooks wired**: `SessionStart`, `UserPromptSubmit`,
   `PostToolUse` (matcher `Edit|Write|MultiEdit|NotebookEdit`), `Stop`,
   `StopFailure`, `SessionEnd`, each running
   `node src/hook.mjs claude-hook --session <id>`. Observed live.
 - **`autoContinueAtUsageLimit` is set to `false`** in that settings file,
-  because Baton owns what happens at the limit.
+  because Leg owns what happens at the limit.
 - **Usage percentages**: `GET https://api.anthropic.com/api/oauth/usage`
-  (`BATON_CLAUDE_USAGE_URL` overrides), with the `accessToken` Claude Code
+  (`LEG_CLAUDE_USAGE_URL` overrides), with the `accessToken` Claude Code
   stored in `<CLAUDE_CONFIG_DIR>/.credentials.json` under `claudeAiOauth`, and
   the header `anthropic-beta: oauth-2025-04-20`. The response carries
   `five_hour` and `seven_day`, each `{ utilization, resets_at }`. Polled every
-  60 s (`BATON_USAGE_POLL_MS`). Observed live: real percentages come back
-  and land in `<BATON_HOME>/usage/claude--default.json` with
+  60 s (`LEG_USAGE_POLL_MS`). Observed live: real percentages come back
+  and land in `<LEG_HOME>/usage/claude--default.json` with
   `source: claude usage endpoint`; a 7-day window at 93 % raised the amber
   warning on 2026-09-11.
 - **The wall**: the `StopFailure` hook fires with `error: rate_limit`
   ([docs](https://code.claude.com/docs/en/hooks#stopfailure)). Status:
   **observed-live 2026-09-11** <!-- live:claude/rate_limit -->. A real
-  `StopFailure` arrived on 2026-09-11 at 07:46:37Z — a 429 `rate_limit_error`
-  from the API — and is kept, secrets scrubbed, as
+  `StopFailure` arrived on 2026-09-11 at 07:46:37Z, a 429 `rate_limit_error`
+  from the API, and is kept, secrets scrubbed, as
   `fixtures/live/claude/limit-rate_limit.json` (`src/live-capture.mjs`); a
-  payload `baton sessions simulate-limit <id>` produces is marked and never
+  payload `leg sessions simulate-limit <id>` produces is marked and never
   kept (`src/live-capture.mjs` `isSimulated`). The path is also covered by
   the hook contract test and can be driven end to end with
-  `baton sessions simulate-limit <id>`, which sends the same payload through
+  `leg sessions simulate-limit <id>`, which sends the same payload through
   `src/hook.mjs`.
-- **Why not the status line.** Baton writes a `statusLine` entry into the same
+- **Why not the status line.** Leg writes a `statusLine` entry into the same
   settings file that would record `rate_limits.five_hour.used_percentage` and
   `resets_at`, and chains your own `statusLine` command first. Claude Code
   2.1.268 did not run it when it was tried on this machine: an `echo` command
@@ -69,7 +69,7 @@ documentation say docs-only.
 
 ### codex
 
-- **How Baton attaches**: nothing is injected. `baton codex` runs `codex` with
+- **How Leg attaches**: nothing is injected. `leg codex` runs `codex` with
   your arguments, then finds and tails that session's rollout file. A hook
   would have to be trusted by codex on first use, which is why this tap
   reads instead.
@@ -79,12 +79,12 @@ documentation say docs-only.
   time or mtime at or after the spawn, with five seconds of slack
   (`src/taps/codex.mjs` `findRollout`). Observed live: the tap found the
   right rollout for a real hand-off. On Windows the file's mtime lags its
-  contents — across six rollouts from 2026-09-11 the mtime was 7 s to 9 min
-  behind the last line's timestamp — so `findRollout` matches on cwd and
+  contents, across six rollouts from 2026-09-11 the mtime was 7 s to 9 min
+  behind the last line's timestamp, so `findRollout` matches on cwd and
   accepts a birth time or mtime at or after the spawn rather than relying on
   the two agreeing.
 - **Usage percentages**: the read-only app-server `account/rateLimits/read`
-  response. Baton identifies the returned windows by duration rather than by
+  response. Leg identifies the returned windows by duration rather than by
   field name: 300 minutes is 5h and 10080 minutes is 7d. The board and active
   attach poll it every 60 seconds; neither sends a model turn nor assumes a
   quota. Only an explicit available response clears a prior wall.
@@ -93,7 +93,7 @@ documentation say docs-only.
   usage limit … try again at \<date>". The wording comes from
   `codex-rs/protocol/src/error.rs` (`UsageLimitReachedError`); the event shape
   was read from local rollouts. The error itself:
-  **observed-live 2026-09-15** <!-- live:codex/usage_limit_exceeded --> — a
+  **observed-live 2026-09-15** <!-- live:codex/usage_limit_exceeded -->, a
   real `task_complete.error` with `codex_error_info: usage_limit_exceeded`
   walled a codex leg at 07:56:24Z and handed the session to agy. No payload
   was kept: the capture call in `src/attach.mjs` was added while that
@@ -109,8 +109,8 @@ documentation say docs-only.
 
 ### agy
 
-- **How Baton attaches**: `agy <your args> --log-file
-  <~/.baton/sessions/<id>/agy.log>`. agy 1.2.0 is a closed Go binary with no
+- **How Leg attaches**: `agy <your args> --log-file
+  <~/.leg/sessions/<id>/agy.log>`. agy 1.2.0 is a closed Go binary with no
   hook surface.
 - **Usage percentages**: none. agy exposes no percentage anywhere on disk; its
   own status line fetches a quota summary from the backend and writes it
@@ -131,7 +131,7 @@ documentation say docs-only.
   one `{ display, timestamp, workspace, conversationId }` per prompt. Observed
   live.
 - **One account only**: agy 1.2.0 has no config-directory override, so
-  `baton accounts add agy …` is refused.
+  `leg accounts add agy …` is refused.
 
 ### Resume prompt per agent
 
@@ -145,7 +145,7 @@ These are what a pipeline card's chain spawns. Unchanged since 0.2.0.
 
 ### claude (headless)
 
-- **Binary**: `BATON_CLAUDE_BIN`, else `~/.local/bin/claude.exe` (Windows)
+- **Binary**: `LEG_CLAUDE_BIN`, else `~/.local/bin/claude.exe` (Windows)
   or `~/.local/bin/claude`, else `claude` on PATH.
 - **Argv**: `claude -p --output-format json --permission-mode <mode>`, plus
   `--max-turns <n>`, `--resume <session-id>`, `--model <name>`,
@@ -163,7 +163,7 @@ These are what a pipeline card's chain spawns. Unchanged since 0.2.0.
 
 ### codex (headless)
 
-- **Binary**: `BATON_CODEX_BIN`, else the `@openai/codex` npm package's
+- **Binary**: `LEG_CODEX_BIN`, else the `@openai/codex` npm package's
   native platform exe (resolved under `%APPDATA%\npm\node_modules\@openai\codex\...`
   on Windows), else `node <bin/codex.js>` via `resolveNpmCliEntry`, else
   `codex` on PATH.
@@ -182,12 +182,12 @@ These are what a pipeline card's chain spawns. Unchanged since 0.2.0.
   `--dangerously-bypass-approvals-and-sandbox`,
   `--dangerously-bypass-hook-trust`, `--full-auto`, `--approve-for-me`.
 - **Gotchas**: network access is off unless the chain entry sets
-  `network: true`. If you run `codex exec` by hand outside Baton, always
+  `network: true`. If you run `codex exec` by hand outside Leg, always
   pass the prompt as an argument, never on a pipe.
 
 ### agy (headless)
 
-- **Binary**: `BATON_AGY_BIN`, else `%LOCALAPPDATA%\agy\bin\agy.exe`, else
+- **Binary**: `LEG_AGY_BIN`, else `%LOCALAPPDATA%\agy\bin\agy.exe`, else
   `agy` on PATH.
 - **Argv**: `agy -p "<working-directory preamble>\n\n<prompt>"
   --output-format json --mode <mode> --add-dir <cwd> --print-timeout
@@ -198,10 +198,10 @@ These are what a pipeline card's chain spawns. Unchanged since 0.2.0.
 - **Forbidden flags**: `--dangerously-skip-permissions`.
 - **Gotchas**: agy does not act in the process cwd by default: with no
   `--add-dir` it writes into its own scratch workspace
-  (`~/.gemini/antigravity-cli/scratch/`, observed live). Baton always passes
+  (`~/.gemini/antigravity-cli/scratch/`, observed live). Leg always passes
   `--add-dir <worktree>` and prefixes the prompt with "Working directory:
   `<worktree>`" so the agent writes where the card expects. `--print-timeout`
-  defaults to 5 minutes in the CLI itself; Baton always sets it explicitly
+  defaults to 5 minutes in the CLI itself; Leg always sets it explicitly
   from the leg's kill timer so the supervisor, not agy, decides what a
   runaway is.
 
@@ -227,7 +227,7 @@ These are what a pipeline card's chain spawns. Unchanged since 0.2.0.
 
 ### grok (built, not registered)
 
-- **Binary**: `BATON_GROK_BIN`, else `~/.grok/bin/grok.exe`, else `grok` on
+- **Binary**: `LEG_GROK_BIN`, else `~/.grok/bin/grok.exe`, else `grok` on
   PATH.
 - **Argv**: `grok -p "<prompt>" --output-format json --permission-mode
   <mode>`, plus `-m <model>`, `-r <session-id>`.
@@ -277,7 +277,7 @@ helpers, `src/adapters/fake.mjs` for the simplest full example):
    node scripts/probe.mjs --adapter <name> --repo <existing-git-repo> [--mode <m>] [--timeout-s 300]
    ```
 
-   It runs one real tiny task (write a file, write `.baton/DONE`) through
+   It runs one real tiny task (write a file, write `.leg/DONE`) through
    the same runner a card uses, and prints `probe <name>: exit=<code>
    file=<yes|no> done=<yes|no> auth_source=<yes|no> seconds=<n>`. Keep the
    evidence it produces under `fixtures/live/<name>/` and cite it in
@@ -294,7 +294,7 @@ files) and a branch in `src/attach.mjs` `spawnSpec`.
 - [cli-contracts.md](cli-contracts.md): the full evidence trail, exit
   codes, the interactive tap sources, and every limit-signal fixture, tagged
   observed-live or docs-only.
-- [configuration.md](configuration.md): the `BATON_<ADAPTER>_BIN`
+- [configuration.md](configuration.md): the `LEG_<ADAPTER>_BIN`
   overrides and the accounts layout.
 - [concepts.md](concepts.md): sessions, usage windows, the interactive
   hand-off, and how a headless leg's outcome is classified.

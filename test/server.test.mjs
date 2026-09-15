@@ -367,11 +367,11 @@ test('Land: a worktree session lands through the merge queue, a clashing one bou
   updateSession('s-land-codex', { status: 'ended' })
   r = await api('/api/sessions/s-land-claude', { method: 'DELETE' })
   assert.equal(r.json.worktree.removed, true)
-  assert.equal(existsSync(join(lrepo, '.baton-worktrees', 's-land-claude')), false)
+  assert.equal(existsSync(join(lrepo, '.leg-worktrees', 's-land-claude')) || existsSync(join(lrepo, '.baton-worktrees', 's-land-claude')), false)
   r = await api('/api/sessions/s-land-codex', { method: 'DELETE' })
   assert.equal(r.json.worktree.removed, false)
   assert.match(r.json.worktree.reason, /commits that are not on main/)
-  assert.equal(existsSync(join(lrepo, '.baton-worktrees', 's-land-codex')), true)
+  assert.equal(existsSync(join(lrepo, '.leg-worktrees', 's-land-codex')) || existsSync(join(lrepo, '.baton-worktrees', 's-land-codex')), true)
 })
 
 test('/api/health asks each adapter where its binary is, so a CLI the runner can start is never reported missing', async () => {

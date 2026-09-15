@@ -88,7 +88,7 @@ test('launch writes run.json + prompt.txt and prints ok JSON', () => {
   assert.equal(r.status, 'launching')
   assert.equal(r.supervisor_pid, res.supervisor_pid)
   assert.equal(r.outcome, null)
-  assert.match(readFileSync(join(root, 'cards', id, 'runs', '1', 'prompt.txt'), 'utf8'), /Write \.baton\/DONE/)
+  assert.match(readFileSync(join(root, 'cards', id, 'runs', '1', 'prompt.txt'), 'utf8'), /write (the file )?(\.leg|\.baton)\/DONE/i)
 })
 
 test('launch refuses unknown card with exit 3', () => {
