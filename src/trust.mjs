@@ -56,8 +56,17 @@ export function trustPolicy(env = process.env) {
 
 // ---- claude ----
 
+// A path like `C:\cfg` is absolute on Windows and a plain relative filename
+// everywhere else, so `resolve()` on a POSIX host prepends the process's own
+// cwd and invents a directory that was never named. These functions describe a
+// Windows agent's config, and they have to say the same thing whatever host
+// they are asked on, so a drive-letter path is taken as already absolute.
+const DRIVE_ABS = /^[A-Za-z]:[\\/]/
+
+function absolutely(p) { return DRIVE_ABS.test(p) ? p : resolve(p) }
+
 export function claudeConfigFile(env = process.env) {
-  const dir = env.CLAUDE_CONFIG_DIR ? resolve(env.CLAUDE_CONFIG_DIR) : homedir()
+  const dir = env.CLAUDE_CONFIG_DIR ? absolutely(env.CLAUDE_CONFIG_DIR) : homedir()
   return join(dir, '.claude.json')
 }
 
@@ -68,7 +77,13 @@ export function claudeConfigFile(env = process.env) {
 // also appear in the new form. Write the wrong spelling and the entry is simply
 // ignored: the flag is on file, the prompt still appears, and nothing says why.
 export function claudeProjectKey(repo) {
-  let p = realPath(repo).replace(/\\/g, '/')
+  // realPath() resolves symlinks and 8.3 names against the host filesystem,
+  // which is the right thing for a path that lives on it and meaningless for a
+  // drive-letter path on a POSIX host: there it silently becomes cwd + the
+  // literal. A drive-letter path is already the canonical spelling, so it is
+  // normalized directly.
+  const raw = String(repo)
+  let p = (DRIVE_ABS.test(raw) ? raw : realPath(raw)).replace(/\\/g, '/')
   if (/^[a-z]:/.test(p)) p = p[0].toUpperCase() + p.slice(1)
   return p.length > 3 ? p.replace(/\/+$/, '') : p
 }
@@ -81,6 +96,15 @@ export function projectKeys(repo, existing = {}) {
   const out = [key]
   for (const v of [key.normalize('NFC'), realPath(repo), resolve(repo)]) {
     if (!out.includes(v) && Object.prototype.hasOwnProperty.call(existing, v)) out.push(v)
+  }
+  // The older spelling is the same path written with Windows separators, so it
+  // is recognised by its spelling rather than by asking the host to resolve it:
+  // matching on the exact string only worked on a host where a backslash is a
+  // separator, and the entry Baton was meant to correct was left stale
+  // anywhere else. Nothing is created here — an entry is only ever brought up
+  // to date when it is already in the file.
+  for (const k of Object.keys(existing)) {
+    if (!out.includes(k) && k.includes('\\') && claudeProjectKey(k.replace(/\\/g, '/')) === key) out.push(k)
   }
   return out
 }
