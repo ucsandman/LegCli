@@ -25,6 +25,7 @@ import { addAccount, removeAccount, listAccountRows, LAYOUT } from '../src/accou
 import { listUsage, fmtReset } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
 import { entitlement, allows, describe as describeLicense, activate as activateLicense, deactivate as deactivateLicense, refresh as refreshLicense, licensePath, BUY_URL } from '../src/license.mjs'
+import { resumeVerdict, bodyOf, ago } from '../src/resume.mjs'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 // one source of truth for the version, so the help text cannot drift from the package
@@ -141,6 +142,37 @@ async function main() {
     }
     if (cmd === 'simulate-limit') return simulateLimit(s)
     die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm|simulate-limit)`)
+  }
+  if (group === 'resume') {
+    // The read side of the pointer. Freshness is never read out of the file:
+    // it is recomputed from git here, now, so a resume file cannot describe a
+    // picture that is no longer true to whoever is standing in the repo.
+    const a = parseArgs([cmd, ...rest].filter((x) => x !== undefined))
+    const where = typeof a.path === 'string' ? resolve(a.path) : process.cwd()
+    const v = resumeVerdict(where)
+    if (a.json) { out(JSON.stringify(v, null, 2)); process.exit(v.exit_code) }
+    if (v.state === 'missing') {
+      out(`no resume pointer in this checkout (looked for .baton/RESUME.md from ${where} upward).`)
+      out('Baton writes one when a terminal hands off; `baton claude` in this directory starts one.')
+      process.exit(v.exit_code)
+    }
+    const head = v.head?.now ? `${v.head.now.slice(0, 7)}${v.head.branch ? ` on ${v.head.branch}` : ''}` : 'no commit'
+    const line = v.state === 'fresh'
+      ? `${v.file} is current: written ${v.written_at ? ago(v.age_ms) : 'at an unrecorded time'}, and the repository is still at ${head}.`
+      : v.state === 'unstamped'
+        ? `${v.file} is UNSTAMPED: ${v.reasons[0]}. Baton did not write it, or an older Baton did.`
+        : `${v.file} is STALE: ${v.reasons.join('; ')}.`
+    if (a.check) {
+      out(line)
+      if (v.state !== 'fresh') out('Read it as history, not as the current picture: check `git status` and `git diff` before acting on it.')
+      process.exit(v.exit_code)
+    }
+    // Printed even when stale: a stale hand-off still beats nothing when the
+    // human chooses to read it. The banner and the exit code are what say so.
+    out(v.state === 'fresh' ? `# ${line}` : `# !!! ${line}`)
+    out('')
+    out(bodyOf(readFileSync(v.file, 'utf8')).trimEnd())
+    process.exit(v.exit_code)
   }
   if (group === 'share') {
     // Multiplayer, off by default: the board binds a shared address only once
@@ -375,12 +407,15 @@ async function main() {
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|accounts|share|up|down|status|open|card|scheduler|uninstall)`)
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|resume|accounts|share|up|down|status|open|card|scheduler|uninstall)`)
   out(`baton ${VERSION} — your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                a second live session in one checkout gets its own worktree (--no-worktree to share)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>
+  resume [--check] [--json] [--path <dir>]      the hand-off waiting in this checkout, and whether it is still true
+                               freshness is recomputed from git at read time; --check prints only the verdict
+                               exit 0 current, 1 stale or unstamped, 3 no pointer here
   accounts ls|add <agent> <name>|rm|terms        optional second login for claude or codex
   share status|on|add <name>|rotate <name>|rm <name>|off
                                 more than one human on the board, off by default

@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+- **A resume pointer that cannot describe a picture that is no longer true.**
+  `.baton/RESUME.md` used to be an unowned convenience copy: written once per
+  hand-off, never touched again, with no stamp and no expiry, so a terminal that
+  exited normally left hours old text sitting there looking live. Four changes,
+  in `src/resume.mjs`:
+  - Every resume file Baton writes carries a stamp (an HTML comment, invisible
+    in rendered markdown) of the commit, branch, working-tree fingerprint and
+    live terminals it was written against. The fingerprint is a count and a
+    12-character hash of the sorted paths, never the file names, so a shared
+    board cannot leak what someone is working on.
+  - Baton owns `RESUME.md`. A session ending rewrites it to "nothing in flight",
+    naming the last hand-off, its date and where its full text still lives; the
+    board rewrites it at start for any checkout whose pointer describes a
+    terminal that is gone, or that no Baton stamped. A terminal that is still
+    running keeps its own hand-off text.
+  - `baton resume [--check] [--json] [--path <dir>]` recomputes freshness from
+    git at read time and never from the file: exit 0 current, 1 stale or
+    unstamped, 3 no pointer in this checkout. Stale still prints the body behind
+    a loud banner, because a stale hand-off beats nothing when a human chooses
+    to read it; the exit code is what scripts and hooks key on.
+  - The terminal drawer's "What happens next" section carries the same verdict,
+    recomputed on every poll.
+- **The terminal drawer reads newest first.** The conversation and the timeline
+  both put the last thing that happened at the top, so the drawer can be left
+  open beside the work without scrolling to find the current state.
+- **Fixed: a scrolled box in the drawer snapped back to the top every three
+  seconds.** The panel is rebuilt on every poll so relative timestamps stay
+  honest, which threw away where the reader had scrolled inside the task box, a
+  message or the timeline. Every scrollable box now carries a stable key and its
+  offset is carried across the rebuild.
+
 ## 0.4.3 (2026-09-14)
 
 - **Choose terminal handoff order.** Settings stores the priority order copied

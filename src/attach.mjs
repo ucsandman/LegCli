@@ -27,6 +27,7 @@ import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as 
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
 import { fetchClaudeUsage } from './taps/claude-usage.mjs'
 import { saveSessionBundle, resumePrompt } from './bundle.mjs'
+import { endSessionPointer } from './resume.mjs'
 import { openBoard, pidfile } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
 import { captureLive } from './live-capture.mjs'
@@ -567,6 +568,11 @@ export async function attach(agent, args = [], { open = true } = {}) {
   }
   const fin = readSession(sid)
   if (fin && fin.status !== 'ended') updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: exit }, { event: { type: 'ended', summary: `session ended (exit ${exit})` } })
+  // Every way out of the loop arrives here: a clean exit, a cancelled wait, the
+  // 12-leg cap, an agent that never started. The terminal is gone, so RESUME.md
+  // must stop describing it as live — Baton owns that file, and leaving the last
+  // hand-off sitting there is exactly the lie this rewrite exists to stop.
+  try { endSessionPointer(readSession(sid)) } catch (err) { appendEvent(sid, { type: 'error', summary: `resume pointer not rewritten: ${err.message.slice(0, 160)}` }) }
   try { rmSync(join(sessionDir(sid), 'control.json'), { force: true }) } catch {}
   return exit
 }

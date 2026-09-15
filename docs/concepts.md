@@ -109,11 +109,12 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    copied only when a new terminal starts.
 3. **Switch.** The agent process is stopped and the terminal restored. The
    bundle's `context-handoff-bundle load <id>` output is written to
-   `.baton/RESUME.md`, and the next agent starts in the same terminal with a
-   short pointer prompt as its first positional argument: `claude "<prompt>"`,
-   `codex "<prompt>"`, `agy -i "<prompt>"`. The prompt says to read
-   `.baton/RESUME.md`, check `git status` and `git diff`, continue, and not ask
-   the human to restate the task.
+   `.baton/RESUME-<session-id>.md` and copied to `.baton/RESUME.md`, and the next
+   agent starts in the same terminal with a short pointer prompt as its first
+   positional argument: `claude "<prompt>"`, `codex "<prompt>"`,
+   `agy -i "<prompt>"`. The prompt names the per-session file, and says to check
+   `git status` and `git diff`, continue, and not ask the human to restate the
+   task.
 4. **All out.** If every option is walled, Baton prints each one with its reset
    time, soonest first, then waits in the terminal with a one-line countdown
    (`src/wait.mjs`) and starts the first option back from the bundle when its
@@ -121,6 +122,48 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    waits again. The card records `session.all_out` and `session.waiting`
    (`{ agent, account, resets_at, since }`) and shows status `waiting`. Ctrl-C
    in the terminal, or End on the card, quits with exit 3.
+
+## The resume pointer
+
+`.baton/RESUME.md` is the file humans and other agents open by habit, so Baton
+owns it and keeps it from describing a picture that is no longer true.
+
+Every resume file starts with a stamp, an HTML comment that renders as nothing:
+
+```
+<!-- baton-resume {"v":1,"kind":"handoff","session":"s-…","head":"cf27986…",
+     "branch":"main","dirty":{"count":12,"hash":"0a4c4f34ee93"},
+     "live":[{"id":"s-…","agent":"claude"}],"bundle":"…","written_at":"…"} -->
+```
+
+The stamp says what was true when the file was written. It is never read as a
+verdict. `baton resume --check` asks git what is true now and reports the
+difference, so a file cannot lie about HEAD to a reader who re-asks git:
+
+| state | when | exit |
+| --- | --- | --- |
+| current | the repository still matches the stamp, and the terminals it names are the ones that are live | 0 |
+| stale | a commit landed, the working tree moved, the terminal it describes is gone, or another one appeared | 1 |
+| unstamped | no Baton wrote this file, so nothing can be checked | 1 |
+| missing | there is no `.baton/RESUME.md` from here up to the filesystem root | 3 |
+
+The working-tree fingerprint is a count and a short hash of the sorted paths,
+never the names: a shared board must not leak what someone is working on.
+Baton's own directories (`.baton/`, `.context-handoffs/`) are left out of it, so
+Baton's bookkeeping never reads as the human's work moving on.
+
+Two things rewrite `RESUME.md` besides a hand-off. A session ending replaces it
+with a "nothing in flight" pointer naming the last hand-off, its date and the
+per-session file that still holds its full text. The board, at start, does the
+same for any checkout whose pointer describes a terminal that is gone or that no
+Baton stamped — the case where a terminal crashed instead of exiting. A terminal
+that is genuinely still running keeps its own hand-off text; only the terminal
+that owns a pointer may replace it.
+
+`baton resume` prints the body, with a loud banner and a non-zero exit when it
+is stale: a stale hand-off still beats nothing when a human chooses to read it,
+and the exit code is what a script or a hook keys on. The terminal drawer's
+"What happens next" section shows the same verdict, recomputed every poll.
 
 `BATON_NO_HANDOFF=1` keeps the warning and the record but never switches.
 

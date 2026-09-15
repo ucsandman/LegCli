@@ -15,6 +15,7 @@ const HOME = makeHome()
 process.env.BATON_HOME = HOME
 const { markLimited, readUsage } = await import('../src/usage.mjs')
 const { listSessions, readEvents, requestControl } = await import('../src/sessions.mjs')
+const { resumeVerdict } = await import('../src/resume.mjs')
 
 const STUBS = mkdtempSync(join(tmpdir(), 'baton-stubs-'))
 const HOOK = join(ROOT, 'src', 'hook.mjs').replace(/\\/g, '/')
@@ -91,7 +92,13 @@ test('limit → every option out → waits for the first reset → starts codex 
   assert.match(codex.argv[codex.argv.length - 1], /taking over an interactive coding session from claude/)
   assert.equal(codex.session, s.session_id)
   assert.equal(codex.cwd.toLowerCase(), repo.toLowerCase())
-  assert.ok(existsSync(join(repo, '.baton', 'RESUME.md')), 'RESUME.md written for the next agent')
+  // the hand-off keeps its own per-session file; RESUME.md is Baton's, and the
+  // session ending rewrote it so nothing is left describing a live terminal
+  assert.ok(existsSync(join(repo, '.baton', `RESUME-${s.session_id}.md`)), 'the per-session handoff is written for the next agent')
+  const pointer = readFileSync(join(repo, '.baton', 'RESUME.md'), 'utf8')
+  assert.match(pointer, /nothing in flight/i, `the ended session rewrote the pointer:
+${pointer.slice(0, 400)}`)
+  assert.equal(resumeVerdict(repo).state, 'fresh', 'and it is not stale the moment it is written')
   assert.ok(existsSync(join(stubDir, 'live', 'claude', 'limit-rate_limit.json')), 'the (non-simulated) StopFailure was kept as live evidence')
   assert.equal(readUsage('claude', 'default').limited_reason, 'rate_limit')
   // no usage numbers (the config dir has no login) but the wall still landed;

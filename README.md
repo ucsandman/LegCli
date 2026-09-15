@@ -125,9 +125,11 @@ presenting it as current.
    while the session is active.
 4. **Switch.** The agent process is stopped, the terminal is restored, and the
    next option starts in the same terminal with a short pointer prompt:
-   read `.baton/RESUME.md` (the `context-handoff-bundle load` output plus the
-   reason for the switch), check `git status` and `git diff`, continue, do not
-   ask the human to restate the task. `claude "<prompt>"`, `codex "<prompt>"`
+   read `.baton/RESUME-<session-id>.md` (the `context-handoff-bundle load`
+   output plus the reason for the switch), check `git status` and `git diff`,
+   continue, do not ask the human to restate the task. The same text is copied
+   to `.baton/RESUME.md`, the file people open by habit, and both are stamped
+   with the commit and the live terminals they describe. `claude "<prompt>"`, `codex "<prompt>"`
    and `agy -i "<prompt>"` all open the normal interactive session with that
    first turn.
 5. **Order.** Other accounts of the same agent come first, then every other
@@ -309,7 +311,8 @@ happens after you run `baton accounts add`; that is your call.
   `~/.codex/config.toml`, agy's files, your repo's settings. Claude Code gets
   hooks through a per-session `--settings` file under `~/.baton`; codex and
   agy get nothing injected.
-- **Written in your repo**: `.baton/` (session notes, `RESUME.md`),
+- **Written in your repo**: `.baton/` (session notes, `RESUME.md` and one
+  `RESUME-<session-id>.md` per hand-off),
   `.context-handoffs/` (the bundles) and `.baton-worktrees/` (a second
   session's worktree), all added to `.git/info/exclude`, plus the
   `baton/<session-id>` branch of a session with its own worktree. Landing

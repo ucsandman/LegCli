@@ -2,12 +2,13 @@
 // and turns it into the prompt the next agent starts from. Reuses the v0.1
 // seam (src/handoff.mjs: chb(), resolveChb) so the CLI is still the only
 // writer of bundle files. One bundle per session (`save --update <slug>`).
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { chb, ensureExcluded } from './handoff.mjs'
 import { scrub } from './redact.mjs'
 import { updateSession, workRoot } from './sessions.mjs'
+import { perSessionFile, writeHandoffPointer } from './resume.mjs'
 
 const BATON_DIRS = /^(\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
 const bullets = (items) => items.filter(Boolean).map((x) => `- ${String(x).replace(/\r?\n/g, ' ').trim()}`)
@@ -82,16 +83,21 @@ export function resumePrompt(session, bundle, next) {
   } catch {}
   const header = `# Baton handoff\n\nPrevious agent: ${session.agent} (${session.account}). Reason: ${session.limit?.reason ?? session.handoff?.reason ?? 'handoff requested'}${session.limit?.detail ? ` — ${session.limit.detail}` : ''}.\nNext agent: ${next.agent} (${next.account}).\nBundle: ${bundle.path}\n\n`
   const body = header + (loaded || readFileSync(bundle.notes, 'utf8'))
-  // per-session file so two sessions sharing one checkout (--no-worktree, or two
-  // started in the same instant) never overwrite each other's handoff; RESUME.md
-  // stays as a convenience copy for the common single-session case
-  const perSession = join(cwd, '.baton', `RESUME-${session.session_id}.md`)
-  writeFileSync(perSession, body)
-  try { writeFileSync(join(cwd, '.baton', 'RESUME.md'), body) } catch {}
+  // src/resume.mjs owns both files: the per-session one so two sessions sharing
+  // one checkout (--no-worktree, or two started in the same instant) never
+  // overwrite each other's handoff, and RESUME.md, the copy everyone opens.
+  // Both are stamped with the git state and the live terminals they describe,
+  // so `baton resume --check` can tell a reader when they stopped being true.
+  const why = session.limit?.reason ?? session.handoff?.reason ?? 'handoff requested'
+  writeHandoffPointer(session, body, { bundle, why })
+  const perSession = perSessionFile(cwd, session.session_id)
   const task = session.task ? `\n\nThe task, as the human first stated it: ${session.task.slice(0, 700)}` : ''
   // the absolute path: the next agent is spawned in the session's cwd, which is
   // a subdirectory of the work root whenever Baton was started in one
   return `You are taking over an interactive coding session from ${session.agent}, which hit its usage limit. Read ${perSession} (the context handoff bundle is at ${bundle.path}), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.${task}`
 }
 
-export function resumeFileExists(cwd) { return existsSync(join(cwd, '.baton', 'RESUME.md')) }
+// Freshness, never existence: src/resume.mjs recomputes it from git at read
+// time. `resumeFileExists` used to live here and answered "a file is on disk",
+// which every caller then read as "the handoff it describes is still true".
+export { resumeVerdict } from './resume.mjs'

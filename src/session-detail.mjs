@@ -10,6 +10,7 @@ import { realPath } from './fsx.mjs'
 import { scrub } from './redact.mjs'
 import { transcriptTail as claudeTail } from './taps/claude.mjs'
 import { transcriptTail as codexTail } from './taps/codex.mjs'
+import { resumeVerdict, verdictForBoard } from './resume.mjs'
 
 export const MESSAGE_LIMIT = 8
 export const DIFF_MAX_LINES = 400
@@ -105,6 +106,16 @@ export function sessionDiff(session, file) {
   return { file: inside.rel, diff: lines.slice(0, DIFF_MAX_LINES).join('\n'), truncated, state }
 }
 
+// Is the resume pointer in this terminal's checkout still describing the repo
+// the reader will find? Recomputed from git on every drawer poll, and handed
+// over without its local paths: a screenshot of the drawer travels further
+// than this machine.
+function resumeFor(session) {
+  const root = workRoot(session)
+  if (!root) return null
+  try { return verdictForBoard(resumeVerdict(root)) } catch { return null }
+}
+
 export function sessionDetail(session) {
   return {
     session_id: session.session_id,
@@ -112,6 +123,7 @@ export function sessionDetail(session) {
     files: sessionFiles(session),
     events: readEvents(session.session_id).slice(-EVENT_LIMIT),
     bundle: session.bundle ?? null,
+    resume: resumeFor(session),
     ts: new Date().toISOString(),
   }
 }

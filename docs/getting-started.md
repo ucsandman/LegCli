@@ -70,13 +70,29 @@ Claude print session. The subscription login is always what runs. Nothing in
 - A `context-handoff-bundle` for this session, refreshed every two minutes and
   at every warning, limit and hand-off.
 - At the limit: the bundle is saved, the agent is stopped, and the next option
-  starts in the same terminal from `.baton/RESUME.md`. Order is other logins of
+  starts in the same terminal from `.baton/RESUME-<session-id>.md`, copied to
+  `.baton/RESUME.md`. Order is other logins of
   the same agent first, then the remaining agents (claude, codex, agy). When
   every option is out, Baton prints each reset time, soonest first, waits with
   a countdown, and starts the first one back from the bundle. Ctrl-C quits.
 
 Force a hand-off at any time with the **Hand off now** button on the card, or
 `baton sessions handoff <id>`.
+
+## Is the resume file still true?
+
+```powershell
+baton resume --check      # exit 0 current, 1 stale or unstamped, 3 none here
+baton resume              # the same verdict, then the pointer itself
+```
+
+Baton stamps every resume file with the commit, the working tree and the
+terminals it was written against, and recomputes freshness from git when you
+read it. A commit landing, the tree moving, or the terminal it described going
+away all make it stale; the terminal card's drawer shows the same verdict under
+"What happens next". A session ending rewrites `RESUME.md` to say nothing is in
+flight, and the board does the same at start for a terminal that crashed, so
+nothing is left describing work that has moved on.
 
 ## 5. Watching and steering from the CLI
 
@@ -117,9 +133,10 @@ Everything Baton writes goes under `BATON_HOME` (default `~/.baton`):
   board.log                the board server's output
 ```
 
-In the repo you run in, Baton writes `.baton/` (session notes, `RESUME.md`) and
-`.context-handoffs/` (the bundles). Both are added to `.git/info/exclude`, so
-they never show up in `git status`.
+In the repo you run in, Baton writes `.baton/` (session notes, `RESUME.md` and
+one `RESUME-<session-id>.md` per hand-off) and `.context-handoffs/` (the
+bundles). Both are added to `.git/info/exclude`, so they never show up in
+`git status`.
 
 `baton uninstall --yes` removes `~/.baton` and nothing else.
 

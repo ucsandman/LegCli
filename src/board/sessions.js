@@ -462,18 +462,20 @@
     paintDiff(pre, drawer.diffs.get(path))
   }
 
-  function messageRow(m) {
+  function messageRow(m, key) {
     const row = el('div', { class: `drawer-msg ${m.role}` }, [
       el('span', { class: 'drawer-msg-role' }, [m.role === 'user' ? 'human' : 'agent']),
       m.ts ? el('span', { class: 'drawer-msg-when' }, [whenAgo(m.ts)]) : null,
-      el('p', {}, [m.text]),
+      // every box that can scroll carries a key, so where the reader had
+      // scrolled to survives the rebuild three seconds later
+      el('p', { 'data-scroll-key': `msg:${key}` }, [m.text]),
     ])
     return row
   }
 
   function fileRow(f) {
     const wrap = el('div', { class: 'drawer-file' })
-    const pre = el('pre', { class: 'drawer-diff', hidden: '' })
+    const pre = el('pre', { class: 'drawer-diff', hidden: '', 'data-scroll-key': `diff:${f.path}` })
     const caret = el('span', { class: 'drawer-caret' }, ['▸'])
     const row = el('button', { type: 'button', class: 'drawer-file-row', 'aria-expanded': 'false' }, [
       caret,
@@ -498,6 +500,39 @@
     return wrap
   }
 
+  // The drawer is rebuilt from scratch every poll so every relative timestamp
+  // stays honest. That used to throw away where the reader had scrolled inside
+  // the task box, a message or the timeline: they snapped back to the top every
+  // three seconds, which made a long message impossible to read. Each scrollable
+  // box carries a stable data-scroll-key, and its offset is carried across.
+  function takeScroll(box) {
+    const at = new Map()
+    for (const node of box.querySelectorAll('[data-scroll-key]')) if (node.scrollTop) at.set(node.getAttribute('data-scroll-key'), node.scrollTop)
+    return at
+  }
+  function putScroll(box, at) {
+    if (!at.size) return
+    for (const node of box.querySelectorAll('[data-scroll-key]')) {
+      const was = at.get(node.getAttribute('data-scroll-key'))
+      if (was) node.scrollTop = was
+    }
+  }
+
+  // Whether .baton/RESUME.md still describes the repository a reader would find.
+  // The server recomputes this from git on every poll, so the line is a verdict
+  // about right now, not a timestamp the file remembered about itself.
+  function resumeLine(v) {
+    const cls = v.state === 'fresh' ? 'session-note ok' : v.state === 'missing' ? 'session-note' : 'session-note warn'
+    const text = v.state === 'fresh'
+      ? `✓ RESUME.md is current${v.written_at ? ` · written ${whenAgo(v.written_at)}` : ''}`
+      : v.state === 'missing'
+        ? 'no RESUME.md in this checkout yet; one is written at the first hand-off'
+        : v.state === 'unstamped'
+          ? '⚠ RESUME.md carries no Baton stamp, so its freshness cannot be checked'
+          : `⚠ RESUME.md is stale · ${v.reasons.join('; ')}`
+    return el('div', { class: cls, title: 'freshness is recomputed from git every poll · baton resume --check' }, [text])
+  }
+
   function section(title, note, body) {
     const s = el('section', { class: 'drawer-section' }, [
       el('h3', {}, [title, note ? el('span', { class: 'drawer-sub' }, [note]) : null]),
@@ -511,6 +546,7 @@
     if (!box) return
     const panel = document.getElementById('session-drawer')
     const scroll = panel.scrollTop
+    const inner = takeScroll(box)
     const s = drawerSession()
     const d = drawer.detail
     box.textContent = ''
@@ -547,12 +583,18 @@
     box.appendChild(section('Now', drawer.paused ? 'paused' : `live · every 3s${d ? ` · read ${whenAgo(d.ts)}` : ''}`, now))
 
     box.appendChild(section('Task', 'the prompt this terminal started from',
-      el('p', { class: 'drawer-task' }, [s.task || 'no prompt yet'])))
+      el('p', { class: 'drawer-task', 'data-scroll-key': 'task' }, [s.task || 'no prompt yet'])))
 
+    // newest first, here and in the timeline: the drawer is meant to be left
+    // open beside the work, where the thing worth seeing is the last thing that
+    // happened, not the oldest one thirty lines up
     const msgs = el('div', { class: 'drawer-msgs' })
-    if (d && d.messages && d.messages.length) for (const m of d.messages) msgs.appendChild(messageRow(m))
+    const turns = d && d.messages ? d.messages : []
+    // the key is the message's own position in the transcript, so a new turn
+    // arriving does not move every older box's scroll offset onto its neighbour
+    if (turns.length) turns.map((m, i) => messageRow(m, m.ts || i)).reverse().forEach((row) => msgs.appendChild(row))
     else msgs.appendChild(el('p', { class: 'session-note' }, [d ? 'no transcript for this agent' : 'loading…']))
-    box.appendChild(section('Conversation', `last ${d && d.messages ? d.messages.length : 0} turns`, msgs))
+    box.appendChild(section('Conversation', `last ${turns.length} turns · newest first`, msgs))
 
     const files = el('div', { class: 'drawer-files' })
     const list = (d && d.files) || []
@@ -560,9 +602,9 @@
     else files.appendChild(el('p', { class: 'session-note' }, [d ? 'no files changed yet' : 'loading…']))
     box.appendChild(section('Files', list.length ? `${list.length} · click one for its diff` : '', files))
 
-    const timeline = el('div', { class: 'drawer-timeline' })
+    const timeline = el('div', { class: 'drawer-timeline', 'data-scroll-key': 'timeline' })
     const events = (d && d.events) || []
-    for (const e of events.slice(-40)) {
+    for (const e of events.slice(-40).reverse()) {
       timeline.appendChild(el('div', { class: 'drawer-event' }, [
         el('span', { class: 'mono drawer-event-ts' }, [String(e.ts).slice(11, 19)]),
         el('span', { class: `drawer-event-type ${e.type}` }, [e.type]),
@@ -570,12 +612,14 @@
       ]))
     }
     if (!events.length) timeline.appendChild(el('p', { class: 'session-note' }, [d ? 'nothing recorded yet' : 'loading…']))
-    box.appendChild(section('Timeline', 'this terminal, newest last', timeline))
+    box.appendChild(section('Timeline', 'this terminal, newest first', timeline))
 
     const next = el('div', {}, [renderHandoffOrder(s)])
     if (s.bundle) next.appendChild(el('div', { class: 'session-note' }, [`bundle ${s.bundle.id}${s.bundle.at ? ` · saved ${whenAgo(s.bundle.at)}` : ''}`]))
+    if (d && d.resume) next.appendChild(resumeLine(d.resume))
     box.appendChild(section('What happens next', '', next))
     panel.scrollTop = scroll
+    putScroll(box, inner)
   }
 
   function renderSessions(v) {

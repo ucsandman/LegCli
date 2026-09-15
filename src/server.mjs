@@ -26,6 +26,7 @@ import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
 import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY } from './sessions.mjs'
 import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs'
+import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree } from './land.mjs'
 import { readUsage, recordUsage, usageIsStale, candidates, isAvailable } from './usage.mjs'
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
@@ -786,6 +787,13 @@ export function createBoardServer({ bind, port, token = process.env.BATON_TOKEN 
         server.listen(port, bind, () => {
           const addr = server.address()
           log(`listening on http://${bind}:${addr.port} (home ${home()}${token ? ', token required' : ', loopback open'})`)
+          // A terminal that crashed instead of exiting left its hand-off in
+          // .baton/RESUME.md looking live. The board is the thing that starts
+          // after a crash, so it is where that gets corrected.
+          try {
+            const touched = refreshPointers()
+            if (touched.length) log(`rewrote ${touched.length} stale resume pointer${touched.length === 1 ? '' : 's'}: the terminal each described is gone, or no Baton stamped it`)
+          } catch (err) { log(`resume pointers not refreshed: ${err.message}`) }
           if (scheduler) {
             sched = createScheduler()
             sched.run().catch((err) => log(`scheduler crashed: ${err.message}`))
