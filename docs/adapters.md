@@ -93,7 +93,7 @@ documentation say docs-only.
   usage limit … try again at \<date>". The wording comes from
   `codex-rs/protocol/src/error.rs` (`UsageLimitReachedError`); the event shape
   was read from local rollouts. The error itself:
-  **docs-only** <!-- live:codex/usage_limit_exceeded --> — a
+  **observed-live 2026-09-15** <!-- live:codex/usage_limit_exceeded --> — a
   real `task_complete.error` with `codex_error_info: usage_limit_exceeded`
   walled a codex leg at 07:56:24Z and handed the session to agy. No payload
   was kept: the capture call in `src/attach.mjs` was added while that

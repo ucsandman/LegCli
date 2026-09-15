@@ -23,6 +23,7 @@ import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
 import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable } from './usage.mjs'
 import { entitlement, allows, describe as describeLicense } from './license.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail } from './taps/claude.mjs'
+import { ensureTrust, trustLine } from './trust.mjs'
 import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as codexTail } from './taps/codex.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
 import { fetchClaudeUsage } from './taps/claude-usage.mjs'
@@ -211,6 +212,13 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }
 async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
   const sid = session.session_id
   refreshAccount(agent, account)
+  // A handoff happens when the limit hits, which is usually when nobody is
+  // watching. An agent that has never run in this folder would stop on its
+  // first-run trust prompt and wait for a keypress that is not coming, so the
+  // answer goes on file before the agent starts. BATON_TRUST=never opts out.
+  const trust = ensureTrust(agent, session.cwd, { cwd: session.cwd })
+  const trusted = trustLine(trust)
+  if (trusted) { say(trusted); appendEvent(sid, { type: 'trust', summary: trusted }) }
   const spec = await spawnSpec(agent, { account, args, sessionId: sid, prompt, cwd: session.cwd })
   appendEvent(sid, { type: 'leg', summary: `${agent} (${account}) starting${prompt ? ' from the handoff bundle' : ''}` })
   const startedMs = Date.now()

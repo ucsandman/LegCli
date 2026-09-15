@@ -13,10 +13,10 @@ body { width: 1200px; height: 630px; background: oklch(0.47 0.19 258); color: #f
 .brand { display: flex; align-items: center; gap: 14px; font-weight: 700; font-size: 30px; letter-spacing: -0.01em; }
 .brand svg { width: 40px; height: 40px; }
 h1 { margin: 0; font-size: 84px; line-height: 1.0; letter-spacing: -0.025em; font-weight: 800; max-width: 15ch; }
-.cmd { display: inline-flex; align-items: center; gap: 28px; font-family: "Azeret Mono", monospace; font-size: 26px; font-weight: 500; padding: 18px 26px; background: oklch(0.24 0.06 255); border: 1px solid oklch(0.62 0.16 258); border-radius: 3px; }
+.cmd { display: inline-flex; flex: none; white-space: nowrap; align-items: center; gap: 28px; font-family: "Azeret Mono", monospace; font-size: 26px; font-weight: 500; padding: 18px 26px; background: oklch(0.24 0.06 255); border: 1px solid oklch(0.62 0.16 258); border-radius: 3px; }
 .cmd span { color: oklch(0.90 0.05 258); font-family: "Atkinson Hyperlegible Next", sans-serif; font-size: 20px; }
 .foot { display: flex; justify-content: space-between; align-items: flex-end; }
-.tags { font-size: 20px; color: oklch(0.90 0.05 258); }
+.tags { font-size: 20px; color: oklch(0.90 0.05 258); white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -28,7 +28,7 @@ h1 { margin: 0; font-size: 84px; line-height: 1.0; letter-spacing: -0.025em; fon
   <h1>Your agent hits the limit. The next one keeps your place.</h1>
   <div class="foot">
     <div class="cmd">npm install -g baton-agents <span>then baton claude</span></div>
-    <div class="tags">Claude Code · Codex · agy · local · MIT</div>
+    <div class="tags">Claude Code · Codex · agy · local · $79</div>
   </div>
 </div>
 </body>

@@ -4,111 +4,124 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Baton floor</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="board.css">
 </head>
 <body>
+
 <header class="topbar">
-  <div class="brand">Baton floor</div>
-  <div class="repos-status">repos: <span id="repos-list">—</span></div>
-  <div class="sched-status" id="sched-status">scheduler: —</div>
-  <div class="counts-status">
-    running <span id="count-running">0</span> ·
-    queued <span id="count-queued">0</span> ·
-    waiting <span id="count-waiting">0</span> ·
-    done <span id="count-done">0</span>
+  <div class="shell">
+    <h1 class="brand">Baton floor</h1>
+    <!-- the connection state sits second, immediately after the brand, the same
+         place it sits on the board: the two bars are read as one bar. -->
+    <div class="sse-status" role="status">
+      <span class="sse-word" id="sse-text">connecting</span>
+      <span class="sse-rule is-connecting" id="sse-dot" aria-hidden="true"></span>
+    </div>
+    <div class="repos-status">repos: <span id="repos-list">-</span></div>
+    <div class="sched-status" id="sched-status"></div>
+    <div class="counts-status">
+      running <span id="count-running">0</span>
+      queued <span id="count-queued">0</span>
+      waiting <span id="count-waiting">0</span>
+      done <span id="count-done">0</span>
+    </div>
+    <div class="spacer"></div>
+    <a class="board-link" href="/">Board</a>
   </div>
-  <div class="sse-status">
-    <span class="dot connecting" id="sse-dot"></span>
-    <span id="sse-text">connecting</span>
-  </div>
-  <div class="spacer"></div>
-  <a href="/">Board</a>
 </header>
 
-<div class="banner" id="banner" hidden>Connecting to Baton…</div>
+<!-- floor.js rewrites this line from the live bind address. The markup is
+     static and cannot know the port, so it names none: a sentence that says
+     4747 on a floor bound to 4863 sends a disconnected reader to the wrong
+     address. -->
+<div class="banner" id="banner" role="status" hidden>Connecting to Baton.</div>
 
-<main class="floor-sections">
-  <section>
-    <h2>Running</h2>
-    <table class="floor-table">
-      <thead>
-        <tr>
-          <th scope="col">Card</th>
-          <th scope="col">Station</th>
-          <th scope="col">Agent / leg</th>
-          <th scope="col">Leases</th>
-          <th scope="col">Last event</th>
-          <th scope="col">Elapsed</th>
-          <th scope="col">Actions</th>
-        </tr>
-      </thead>
+<main class="shell">
+
+  <section class="head" aria-label="Accounts and usage">
+    <div id="floor-accounts"></div>
+    <p class="head-caption">Times are local.</p>
+  </section>
+
+  <section class="region" aria-labelledby="running-head">
+    <div class="region-head">
+      <h2 class="region-title" id="running-head">Running</h2>
+      <p class="region-meta"></p>
+    </div>
+    <table class="ftable">
+      <colgroup><col class="c-card"><col class="c-station"><col class="c-agent"><col class="c-leases"><col class="c-event"><col class="c-elapsed"><col class="c-actions"></colgroup>
+      <thead><tr>
+        <th scope="col">Card</th><th scope="col">Station</th><th scope="col">Agent / leg</th>
+        <th scope="col">Leases</th><th scope="col">Last event</th><th scope="col">Elapsed</th>
+        <th scope="col">Actions</th>
+      </tr></thead>
       <tbody id="running-body"></tbody>
     </table>
   </section>
 
-  <section>
-    <h2>Waiting on humans</h2>
-    <table class="floor-table">
-      <thead>
-        <tr>
-          <th scope="col">Card</th>
-          <th scope="col">Station</th>
-          <th scope="col">Status</th>
-          <th scope="col">Since</th>
-          <th scope="col">Actions</th>
-        </tr>
-      </thead>
+  <section class="region" aria-labelledby="waiting-head">
+    <div class="region-head">
+      <h2 class="region-title" id="waiting-head">Waiting on humans</h2>
+      <p class="region-meta"></p>
+    </div>
+    <table class="ftable">
+      <colgroup><col class="c-card"><col class="c-station"><col class="c-status"><col class="c-since"><col class="c-actions"></colgroup>
+      <thead><tr>
+        <th scope="col">Card</th><th scope="col">Station</th><th scope="col">Status</th>
+        <th scope="col">Since</th><th scope="col">Actions</th>
+      </tr></thead>
       <tbody id="waiting-body"></tbody>
     </table>
   </section>
 
-  <section>
-    <h2>Queued</h2>
-    <table class="floor-table">
-      <thead>
-        <tr>
-          <th scope="col">Card</th>
-          <th scope="col">Station</th>
-          <th scope="col">Leases</th>
-          <th scope="col">Blocked by</th>
-        </tr>
-      </thead>
+  <section class="region" aria-labelledby="queued-head">
+    <div class="region-head">
+      <h2 class="region-title" id="queued-head">Queued</h2>
+      <p class="region-meta"></p>
+    </div>
+    <table class="ftable">
+      <colgroup><col class="c-card"><col class="c-station"><col class="c-leases"><col class="c-blocked"></colgroup>
+      <thead><tr>
+        <th scope="col">Card</th><th scope="col">Station</th><th scope="col">Leases</th>
+        <th scope="col">Blocked by</th>
+      </tr></thead>
       <tbody id="queued-body"></tbody>
     </table>
   </section>
 
-  <section>
-    <h2>Leases</h2>
-    <table class="floor-table">
-      <thead>
-        <tr>
-          <th scope="col">Lease</th>
-          <th scope="col">Card</th>
-          <th scope="col">Station</th>
-          <th scope="col">Since</th>
-        </tr>
-      </thead>
+  <section class="region" aria-labelledby="leases-head">
+    <div class="region-head">
+      <h2 class="region-title" id="leases-head">Leases</h2>
+      <p class="region-meta"></p>
+    </div>
+    <table class="ftable">
+      <colgroup><col class="c-lease"><col class="c-card"><col class="c-station"><col class="c-since"></colgroup>
+      <thead><tr>
+        <th scope="col">Lease</th><th scope="col">Card</th><th scope="col">Station</th>
+        <th scope="col">Since</th>
+      </tr></thead>
       <tbody id="leases-body"></tbody>
     </table>
   </section>
 
-  <section>
-    <h2>Trunk lane</h2>
-    <table class="floor-table">
-      <thead>
-        <tr>
-          <th scope="col">Time</th>
-          <th scope="col">Card</th>
-          <th scope="col">Summary</th>
-        </tr>
-      </thead>
+  <section class="region" aria-labelledby="trunk-lane-head">
+    <div class="region-head">
+      <h2 class="region-title" id="trunk-lane-head">Trunk lane</h2>
+      <p class="region-meta"></p>
+    </div>
+    <table class="ftable">
+      <colgroup><col class="c-time"><col class="c-card"><col class="c-summary"></colgroup>
+      <thead><tr>
+        <th scope="col">Time</th><th scope="col">Card</th><th scope="col">Summary</th>
+      </tr></thead>
       <tbody id="trunk-body"></tbody>
     </table>
   </section>
-</main>
 
-<div class="toast" id="toast" aria-live="polite"></div>
+</main><!-- /.shell -->
+
+<div class="sysmsg" id="toast" aria-live="polite"></div>
 
 <script src="floor.js" defer></script>
 </body>

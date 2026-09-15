@@ -2,6 +2,32 @@
 
 Durable product and design decisions that the code does not explain on its own. One entry per decision, newest first.
 
+## 2026-09-15: the board is dark cobalt, and there is no light mode
+
+- **What.** The board ground is a saturated deep cobalt at hue 258, the same hue the marketing site is drenched in, taken to its dark end. Not a neutral near-black: measured in OKLab, `--e0` sits 0.0507 from `#0f1115` at 5.7 times its chroma, so the anti-reference colour `PRODUCT.md` bans is not reachable from this palette.
+- **Why.** The scene decides it. The board is checked dozens of times an hour by a head pointed at a dark terminal that then goes straight back to it; a pale plate beside a dark window is a re-adaptation on every glance, held for hours. The board is not a document the reader reads, it is an instrument the reader checks.
+- **The counter-argument, and the answer.** A pale plate is a different object in peripheral vision, so the eye knows which window it is in before it focuses. This design answers that with shape and luminance range instead of polarity: the terminal is white monospace on near-black at one size; the board is a graduated cobalt field whose single brightest object is a 30px right-aligned numeral above a horizontal rail.
+- **What it costs, as an exclusion and not a deferral.** There is no light mode. A user at a bright desk with a window behind them has no recourse. The tokens are structured so a light variant is an override of `--e0` through `--e4` plus the text ramp, but it is not in scope and it is not shipped.
+
+## 2026-09-15: urgency is carried by luminance, and never by colour alone
+
+- **What.** Every state prints a word beside its colour: `waiting on you`, `at the wall`, `over 85`, `under 60`, `no reading`, `stale 41m`. Agent identity always prints the agent name beside its hue. Panels that need the reader are raised one elevation step rather than tinted.
+- **Why.** The old board carried its entire hierarchy in one red that meant six different things, so nothing meant anything. Colour as the only carrier also fails WCAG 1.4.1 and fails the glance from four feet.
+- **The rule that follows.** No agent identity hue may sit within 25 degrees of a state hue. That is measured, not asserted; it is what caught codex green reading as success.
+
+## 2026-09-15: a window with no reading paints no bar
+
+- **What.** A usage rail draws a fill only when a real percentage was computed. A walled account with no reading gets an empty track with its graduations, and the wall is carried by the words `at the wall` and its return time.
+- **Why.** A walled account was drawn full-width because the wall is known. But the numeral beside it said `no reading`, so the loudest object on the page asserted a number the product does not have. The first fix made that bar danger-red, which was worse: it was the same fabricated number, louder. Print nothing rather than a wrong number, and say the wall in words.
+
+## 2026-09-15: Baton records the folder-trust answer, and never overrides one already given
+
+- **What.** Before starting an agent, Baton writes the folder-trust answer for the repository the user chose by typing `baton <agent>` in it: `hasTrustDialogAccepted` in `~/.claude.json`, `trust_level` in `~/.codex/config.toml`, an entry in `~/.gemini/trustedFolders.json`. `BATON_TRUST=never` turns it off.
+- **Why.** The handoff is the product, and it fires when the limit hits, which is usually when nobody is watching. An agent that had never run in that folder stopped on its first-run trust prompt and waited for a keypress that was not coming, so the bundle was written and the terminal sat idle until morning.
+- **Why writing those files is allowed at all.** `stdio: 'inherit'` in `src/attach.mjs` hands the real terminal to the agent, so Baton cannot watch for the prompt and answer it. Pre-seeding is the only mechanism that does not change Baton's architecture. For Claude Code it is also the documented remedy: its permissions guide prescribes exactly this edit.
+- **The three rules that bound it.** Never create a config file that is not already there. Never rewrite a file to say what it already says. Never override an answer already on file: only an absent key is an unanswered question, so a recorded refusal stays a refusal.
+- **What changed in the marketing claim.** The site said "edits none of your config files"; that is now "leaves your settings files alone", and the README names exactly what is written and where.
+
 ## 2026-09-14: npm publication follows a successful push to `main`
 
 - **What.** Baton publishes from the existing `.github/workflows/ci.yml`; there is no separate release workflow or manual publish step. The publisher waits for the complete Ubuntu and Windows test matrix, then publishes only when the exact package version is absent from npm.

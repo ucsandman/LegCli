@@ -7,7 +7,7 @@
 [![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](package.json)
 [![Local first](https://img.shields.io/badge/runs-on%20your%20machine-informational.svg)](#network-exposure)
 
-![The Baton board: three live claude terminals on one repo, two of them in their own worktrees and flagged for changing README.md; one landed on main through the merge queue, the other bounced naming the conflicting file, and the landed-on-trunk list says which terminal landed the commit](https://baton-agents.vercel.app/img/terminals-1280.png)
+![The Baton board at 1280px: the instrument head with one row per login, a 96% five-hour rail on claude and codex at the wall; three terminal panels, two of them raised and reading "waiting on you" because codex and claude are both changing src/server.mjs in separate checkouts; the Landed on main list; the empty Background tasks region](docs/screenshots/terminals-1280.png)
 
 You keep using your coding agents exactly as you do today, in any terminal,
 from your own config directory: Baton adds its hooks in a separate per-session
@@ -42,9 +42,42 @@ Subscription logins only: Baton strips `ANTHROPIC_API_KEY`,
 `GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLAUDECODE`,
 `CLAUDE_CODE_*`, `CLAUDE_EFFORT`, and `CLAUDE_PLUGIN_DATA` before any agent
 starts. It then sets `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for a detached
-Claude print session. Baton never edits `~/.claude/settings.json`,
-`~/.codex/config.toml` or any other file of yours; `baton uninstall` removes
-only `~/.baton`.
+Claude print session. Baton never edits `~/.claude/settings.json` or any other
+settings file of yours; its hooks ride in a separate per-session `--settings`
+file. The one thing it does write outside `~/.baton` is the folder-trust
+answer, below. `baton uninstall` removes only `~/.baton`.
+
+### The folder-trust answer
+
+Each agent CLI asks once, the first time it runs in a directory, whether you
+trust that folder, and Claude Code asks a second question when a `CLAUDE.md`
+above the repo imports a file from outside it. A handoff fires when the limit
+hits, which is usually when nobody is watching, so an agent that stopped on
+that prompt would sit there until morning with the bundle already written.
+
+Before starting an agent, Baton records the same answer you would have given,
+for the repository you already chose by typing `baton claude` in it:
+
+| agent | file | what is written |
+|---|---|---|
+| claude | `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`) | `projects["<repo>"].hasTrustDialogAccepted: true` |
+| claude | the same entry, only when such an import exists | `hasClaudeMdExternalIncludesApproved`, `hasClaudeMdExternalIncludesWarningShown` |
+| codex | `~/.codex/config.toml` | `[projects."<repo>"] trust_level = "trusted"` |
+| agy | `~/.gemini/trustedFolders.json` | `"<repo>": "TRUST_FOLDER"` |
+
+For Claude Code this is the documented remedy: its permissions guide says to
+set `projects["<path>"].hasTrustDialogAccepted` to `true` in `~/.claude.json`,
+where `<path>` is the repository root.
+
+Baton never creates one of those files: if it is not there, that CLI has not
+run as you yet and its own first-run flow is next, with you at the keyboard. It
+never rewrites a file to say what it already says, and it never removes what is
+already in one. When it approves an external `CLAUDE.md` import it prints the
+full path of every file it approved, to the terminal and to the session
+timeline on the board, so the approval is on the record rather than invisible.
+
+Set `BATON_TRUST=never` to switch all of it off and answer the prompts
+yourself.
 
 ## Contents
 
@@ -220,16 +253,17 @@ A token is kept as a sha256 hash, so a lost link is re-issued, never re-read.
 The board takes the token out of the address bar and keeps it in the browser.
 Your own browser on this machine needs no token.
 
-![What a guest sees: their own terminal in full, the other human's terminal read-only with the prompt hidden and one Request handoff button](https://baton-agents.vercel.app/img/share-guest-1280.png)
-
-What another human sees is the terminals lane, read-only. Each card says whose
-terminal it is. On a card that is not theirs there is no prompt, no file name,
-no path, no bundle and no event log; what stays is the agent, the status,
-repo@branch, the usage bars and the reset it is waiting for, and the only
-button is **Request handoff**; it lands on the owner's card as `sam asked for
-a hand-off` with Approve and Dismiss. The pipeline side of the board (cards, logs, the
-floor) stays the owner's alone. A terminal belongs to the human who started it:
-`BATON_PERSON=sam baton claude` on the same machine is sam's card, not yours.
+What another human sees is the Terminals region, read-only. Each panel says
+whose terminal it is. On a panel that is not theirs there is no prompt, no file
+name, no path, no bundle and no event log; what stays is the agent and session
+tail, the status word, the sentence `read-only: wes owns this terminal`,
+repo@branch, the worktree line, the elapsed clock, and one button,
+**Request handoff**. The instrument head prints `not shared` in place of every
+percentage. A request lands on the owner's panel as `sam asked to take this
+terminal at 11:04 PM` with **Approve sam** and **Dismiss sam**. The background
+side of the board (cards, logs, the floor) stays the owner's alone. A terminal
+belongs to the human who started it: `BATON_PERSON=sam baton claude` on the
+same machine is sam's card, not yours.
 
 The security pass that goes with it: every `/api` route needs a token, the
 event stream included; twenty wrong tokens from one address and that address
@@ -245,23 +279,34 @@ one sam's; sam's board showed wes's card with the prompt hidden and only
 
 `baton <agent>` opens it; `baton open` reopens it; `baton down` stops it.
 
-- **Accounts strip**: one pill per login with the 5h and 7d bars, a live dot
-  when a session is running on it, "limit · back <time>" when walled.
-- **Terminal cards**: agent and account, status (starting, running, near limit,
-  limit hit, handing off, ended, lost), the first prompt, repo@branch, turns,
-  HEAD, usage bars, the files being touched (chips), and the warning, limit or
-  handoff line. Two live sessions on one repo touching the same file get a red
-  border and a "⚠ claude (claude-ae85) is changing README.md in another
-  checkout; whoever lands second rebases" line on both cards. A
-  session with its own worktree shows `own worktree · from <branch>` and, after
-  a Land, `✓ landed on main · <sha>` or `✗ bounced (<reason>): <why>`.
-- **Landed on trunk**: the last commits on `main` (or `master`) of every repo
-  with a live session; a commit a Land put there says `landed by <agent>
-  (<session>)`.
-- **Buttons**: Land (sessions with their own worktree), Hand off now, End
-  (stops the agent), Remove (ended sessions).
+- **Instrument head**: one row per login, sticky at the top of the board and of
+  the floor. Each row carries the 5h and 7d rails, the percentage, when that
+  window resets and how long that is, a burn-rate sentence under the 5h rail,
+  where and when Baton read the number, and one word for the state: `under 60`,
+  `over 60`, `over 85`, `stale <n>m`, `at the wall` or `no reading`. A login
+  at its wall keeps both rails and gains `at the wall`, `back <day time>` and
+  `in <duration>` beside them.
+- **Terminals**: one full-width panel per session, the ones that need an answer
+  first. Agent and session tail, the status word, the first prompt as a button,
+  exactly one sentence (the highest-ranked thing true about the terminal), an
+  `also:` disclosure naming the rest, the files as comma-separated text,
+  `repo@branch`, `own worktree, from main` when the session cut its own
+  worktree, and an elapsed clock. Two live sessions in one repo touching the
+  same file print `codex (codex-99ab) is changing src/server.mjs in another
+  checkout; whoever lands second rebases` on both panels, and a panel that needs
+  you rises one step and says `waiting on you` in place of its status word.
+  After a Land the sentence is `landed on <base>, <7-char sha>, <n> files,
+  +<added>/-<removed>`, or `Land was attempted at <time> onto <base> and
+  bounced: <first line of the reason>. The branch still holds every commit;
+  nothing was lost.`
+- **Landed on main**: one flat list across every repo the board can see, newest
+  first, each row with the short sha, the subject, a `repo@branch` chip, and
+  when plus who. A commit a Land put there says `landed by <agent> (<id tail>)`.
+- **Buttons**, in a fixed order that never reflows: Land, Hand off now,
+  Details, End. Once a session has ended, Remove and Remove record take End's
+  place. Details opens an expansion in flow under the panel.
 - Below it, optional **Background tasks** an agent runs in a separate worktree
-  without joining the terminal conversation (see below).
+  without joining the terminal conversation (see below), then **Settings**.
 
 The board reads `~/.baton/sessions/*/session.json` over server-sent events; a
 session whose runner process is gone is marked `lost`, never shown as live.
@@ -441,7 +486,7 @@ More in [docs/faq.md](docs/faq.md).
 |-------|--------------|
 | [Getting started](docs/getting-started.md) | you want `baton claude` running in five minutes |
 | [Concepts](docs/concepts.md) | sessions, accounts, bundles, and the v0.1 cards, stations, chains and leases |
-| [Board guide](docs/board-guide.md) | every chip, glyph and button explained |
+| [Board guide](docs/board-guide.md) | every word, number and button on the board explained |
 | [Configuration](docs/configuration.md) | environment variables and options |
 | [Adapters](docs/adapters.md) | what each CLI exposes and how Baton attaches to it |
 | [CLI contracts](docs/cli-contracts.md) | exact argv per CLI and the limit-signal table with sources |

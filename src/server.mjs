@@ -37,7 +37,7 @@ const SELF = fileURLToPath(import.meta.url)
 const BOARD_DIR = join(dirname(SELF), 'board')
 const VERSION = JSON.parse(readFileSync(join(dirname(SELF), '..', 'package.json'), 'utf8')).version
 const DEFAULT_ORDER = ['plan', 'build', 'review', 'test', 'land']
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8' }
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' }
 
 const log = (msg) => { if (process.env.BATON_QUIET !== '1') process.stdout.write(`[board] ${new Date().toISOString()} ${msg}\n`) }
 
@@ -312,7 +312,11 @@ export function sessionsView({ viewer = null, share = null } = {}) {
   const shown = sessions.map((s) => (mine(s) ? { ...s, requests: readRequests(s.session_id).filter((r) => r.state === 'pending') } : redactSession(s)))
   return {
     sessions: shown,
-    accounts,
+    // a guest sees which accounts exist and which are busy, never how much of
+    // them is used: the head prints "not shared" in these slots, and the
+    // percentages, the reset times and the reading source stay on this machine
+    // (.design/BOARD-DESIGN.md 6.13)
+    accounts: guest ? accounts.map((a) => ({ agent: a.agent, account: a.account, live: a.live, shared: false })) : accounts,
     // a guest sees what landed, not where the repo lives on this machine
     trunk: guest ? trunk.map((t) => ({ repo_name: t.repo_name, branch: t.branch, commits: t.commits ?? [] })) : trunk,
     you: viewer,

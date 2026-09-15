@@ -14,7 +14,7 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs'
+import { writeFileSync, mkdirSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { makeHome, initRepo, testEnv, baton, sleep } from './helpers.mjs'
 
@@ -362,6 +362,87 @@ test('a guest\'s own board: their terminal, and of the owner\'s only that it exi
   const own = v.sessions.find((s) => s.session_id === OTHER)
   assert.equal(own.hidden, undefined)
   assert.equal(own.task, "sam's own prompt")
+})
+
+// The usage canary. The board head prints the 5-hour percentage as a 30px
+// numeral (.design/BOARD-DESIGN.md 6.1.5), so a slot a guest can read is the
+// loudest object on their page. sessionsView() used to send `accounts` whole
+// (percentages, wall, reset times, the reading source), which rendered as a
+// 56x6px bar nobody noticed. Write one usage file with all four, then fail if
+// any of them reaches a guest. A bare percentage is not substring-searchable
+// (96 occurs inside timestamps), so the numbers are checked by field name and
+// the strings and reset epochs are checked as canaries.
+test('a guest\'s board carries no usage percentage, no reset time and no reading source', async () => {
+  const fiveHourResets = 1900000096
+  const sevenDayResets = 1900000063
+  const usageSource = 'CANARY-USAGE-SOURCE-2f7a claude statusline'
+  const usageReason = 'CANARY-USAGE-REASON-6b18 usage limit reached'
+  const observed = new Date().toISOString()
+  const usageFile = join(HOME, 'usage', 'claude--default.json')
+  mkdirSync(join(HOME, 'usage'), { recursive: true })
+  writeFileSync(usageFile, JSON.stringify({
+    agent: 'claude', account: 'default',
+    five_hour: { pct: 96, resets_at: fiveHourResets }, seven_day: { pct: 63, resets_at: sevenDayResets },
+    limited_until: fiveHourResets, limited_reason: usageReason, limited_at: observed,
+    source: usageSource, observed_at: observed, updated_at: observed,
+  }))
+  const ACCOUNT_FIELDS = ['five_hour', 'seven_day', 'limited_until', 'limited_reason', 'source', 'observed_at', 'updated_at', 'stale', 'pct', 'resets_at']
+  try {
+    // the owner's own board still gets every field: this is the guest's redaction alone
+    const owner = await request(openBase, '/api/sessions')
+    assert.equal(owner.status, 200)
+    assert.equal(owner.json.you.name, 'wes')
+    const mine = owner.json.accounts.find((a) => a.agent === 'claude' && a.account === 'default')
+    assert.deepEqual(Object.keys(mine).sort(), ['account', 'agent', 'five_hour', 'limited_reason', 'limited_until', 'live', 'observed_at', 'seven_day', 'source', 'stale', 'updated_at'])
+    assert.equal(mine.five_hour.pct, 96, 'the owner reads their own 5-hour percentage')
+    assert.equal(mine.five_hour.resets_at, fiveHourResets)
+    assert.equal(mine.seven_day.pct, 63)
+    assert.equal(mine.seven_day.resets_at, sevenDayResets)
+    assert.equal(mine.limited_until, fiveHourResets)
+    assert.equal(mine.limited_reason, usageReason)
+    assert.equal(mine.source, usageSource)
+    assert.equal(mine.observed_at, observed)
+    assert.equal(mine.stale, false, 'a reading taken this second is not stale')
+    assert.equal(mine.live, 1, 'one claude terminal is running')
+
+    // the guest gets the slot and nothing inside it
+    const guest = await request(wanBase, '/api/sessions', { token: TOKENS.sam })
+    assert.equal(guest.status, 200)
+    assert.equal(guest.json.you.name, 'sam')
+    assert.deepEqual(
+      guest.json.accounts.map((a) => `${a.agent}/${a.account}`),
+      owner.json.accounts.map((a) => `${a.agent}/${a.account}`),
+      'a guest still sees which accounts exist, so the head prints one slot each',
+    )
+    for (const a of guest.json.accounts) {
+      assert.deepEqual(Object.keys(a).sort(), ['account', 'agent', 'live', 'shared'], `guest account ${a.agent}/${a.account} carries more than agent, account, live and shared`)
+      assert.equal(a.shared, false, `guest account ${a.agent}/${a.account} says its usage is shared`)
+    }
+    const theirClaude = guest.json.accounts.find((a) => a.agent === 'claude' && a.account === 'default')
+    assert.equal(theirClaude.live, mine.live, 'how many terminals are running is already on the guest\'s session list')
+    const slots = JSON.stringify(guest.json.accounts)
+    for (const field of ACCOUNT_FIELDS) assert.equal(slots.includes(field), false, `a guest board carries accounts.${field}: ${slots.slice(0, 300)}`)
+    for (const [what, needle] of [['the reading source', usageSource], ['the wall reason', usageReason], ['the 5h reset time', String(fiveHourResets)], ['the 7d reset time', String(sevenDayResets)]]) {
+      assert.equal(carries(guest.text, needle), false, `a guest board carries ${what} (${needle})`)
+    }
+
+    // SSE is the other way onto a guest board: the hello frame is the same view
+    const stream = await sseCollect(wanBase, TOKENS.sam, { ms: 400 })
+    assert.equal(stream.status, 200)
+    assert.ok(stream.frames.length >= 1, 'the guest stream opened with a hello frame')
+    assert.equal(stream.frames[0].event, 'hello')
+    const helloAccounts = JSON.parse(stream.frames[0].text).sessions.accounts
+    assert.equal(helloAccounts.length, guest.json.accounts.length, `the hello frame carries ${helloAccounts.length} account slots`)
+    for (const a of helloAccounts) assert.deepEqual(Object.keys(a).sort(), ['account', 'agent', 'live', 'shared'], `the SSE hello frame carries a whole ${a.agent} account`)
+    for (const f of stream.frames) {
+      for (const [what, needle] of [['the reading source', usageSource], ['the wall reason', usageReason], ['the 5h reset time', String(fiveHourResets)]]) {
+        assert.equal(carries(f.text, needle), false, `SSE frame ${f.event} carried ${what}`)
+      }
+    }
+  } finally {
+    // put the board back the way the rest of this file found it: no usage read at all
+    rmSync(usageFile, { force: true })
+  }
 })
 
 test('the pipeline trunk is pipeline data: a guest is refused there too', async () => {

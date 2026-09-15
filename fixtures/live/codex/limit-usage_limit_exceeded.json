@@ -1,0 +1,25 @@
+{
+  "agent": "codex",
+  "signal": "usage_limit_exceeded",
+  "captured_at": "2026-09-15T02:12:12.311Z",
+  "session_id": "s-20260915-005312-codex-4840",
+  "source": "observed-live",
+  "payload": {
+    "timestamp": "2026-09-15T02:12:12.109Z",
+    "ordinal": 1658,
+    "type": "event_msg",
+    "payload": {
+      "type": "task_complete",
+      "turn_id": "01a0a28f-046f-7b42-b865-a2fc96e06192",
+      "last_agent_message": null,
+      "error": {
+        "message": "Error running remote compact task: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 19th, 2026 10:11 PM.",
+        "codex_error_info": "usage_limit_exceeded"
+      },
+      "started_at": 1789433676,
+      "completed_at": 1789438332,
+      "duration_ms": 4655180,
+      "time_to_first_token_ms": 7145
+    }
+  }
+}

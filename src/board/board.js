@@ -1,18 +1,40 @@
-// Baton board — vanilla JS, no build step. Talks to /api/* (see src/server.mjs)
-// and /api/events (SSE). Keeps DOM nodes keyed by card_id so a live update
-// patches one card instead of re-rendering the whole board.
+// Baton board: vanilla JS, no build step. Talks to /api/* (see src/server.mjs)
+// and /api/events (SSE). Keeps one row per card_id, so a live push patches one
+// row instead of re-rendering the list. Design: .design/BOARD-DESIGN.md. Ids,
+// class names and source shapes: .design/BUILD-CONTRACT.md section 6.2. Three
+// of those shapes are pinned by test/board-updates.test.mjs, which runs this
+// file as source:
+//  1. The export line at the bottom stays ONE line with no nested braces: the
+//     test rewrites it with /module\.exports = \{[^}]+\}/ and takes the FIRST
+//     match, so that text must not appear earlier in the file either.
+//  2. upsertCard, scheduleDrawerRefresh, fetchCards, ensureLogLoaded and the
+//     'hello' listener keep their headers and the calls named in the contract.
+//  3. Every id is looked up by exactly the string the test's fake DOM
+//     registers. That fake node has no insertBefore, no querySelector that
+//     finds anything and no focus(), which is why this file appends rather
+//     than inserts and reads its own nodes back through `root.slots`.
 (function () {
   'use strict'
 
+  // 6.3: the nine shipped status words, unchanged, each beside the mark tone it
+  // takes. The word carries the meaning; the 7px mark is aria-hidden.
   const STATUS_LABELS = {
     running: 'running', handing_off: 'handing off', waiting_human: 'waiting human',
     needs_approval: 'needs approval', paused: 'paused', queued: 'queued',
     backlog: 'backlog', done: 'done', failed: 'failed', killed: 'killed',
   }
-  const STATUS_CLASS = {
-    running: 'ok', handing_off: 'warn', waiting_human: 'warn', needs_approval: 'warn',
-    paused: 'muted', queued: 'muted', backlog: 'muted', done: 'ok dim', failed: 'bad', killed: 'bad',
+  const STATUS_TONE = {
+    running: 'run', handing_off: 'warn', waiting_human: 'warn', needs_approval: 'warn',
+    paused: 'idle', queued: 'idle', backlog: 'idle', done: 'idle', failed: 'danger', killed: 'danger',
   }
+  // rows are ordered needs-you first, then the verdicts you have to answer, then
+  // work in flight, then the queue, then what is finished
+  const ROW_RANK = {
+    needs_approval: 0, waiting_human: 0, failed: 1, killed: 1, running: 2,
+    handing_off: 2, paused: 3, queued: 4, backlog: 5, done: 6,
+  }
+  // 6.5 G10: the button order is fixed and never reflows by availability
+  const ACTION_ORDER = ['approve', 'enqueue', 'resume', 'pause', 'handoff_now', 'rerun', 'reassign', 'kill']
   const ACTION_LABELS = {
     enqueue: 'Run', pause: 'Pause', resume: 'Resume', kill: 'Kill', reassign: 'Reassign',
     handoff_now: 'Hand off now', approve: 'Approve', rerun: 'Rerun',
@@ -21,17 +43,39 @@
     enqueue: 'run', pause: 'pause', resume: 'resume', kill: 'kill', reassign: 'reassign',
     handoff_now: 'handoff', approve: 'approve', rerun: 'rerun',
   }
-  const ADAPTER_ACCENTS = ['claude', 'codex', 'agy']
+  const ACTION_CLASS = { approve: 'btn-primary', enqueue: 'btn-primary', kill: 'btn-danger' }
+  // the permission modes come off /api/adapters as each CLI's own enum, in three
+  // spellings at once (acceptEdits, accept-edits, workspace-write), which is the
+  // one field in the dialog that decides what an agent may do to the repo. The
+  // value sent is still the enum; only the label the reader picks from is ours.
+  const MODE_LABELS = {
+    acceptEdits: 'edit files without asking',
+    'accept-edits': 'edit files without asking',
+    auto_edit: 'edit files without asking',
+    'workspace-write': 'write inside the worktree',
+    'read-only': 'read only',
+    plan: 'plan only',
+  }
+  const AGENT_IDS = ['claude', 'codex', 'agy']
+  const DEFAULT_BIND = '127.0.0.1:4747'
+  const TIMELINE_CAP = 12
 
   const state = {
     cards: new Map(),
-    columns: [],
+    // the fake DOM in test/board-updates.test.mjs pre-populates this map before
+    // it calls fetchCards/upsertCard; the seven kanban columns it named are gone
+    // from the page, so nothing else writes to it
     columnEls: new Map(),
     cardNodes: new Map(),
+    rowOrder: '',
     logState: new Map(),
     drawerId: null,
     drawerTimer: null,
     drawerRequest: 0,
+    drawerDetail: null,
+    drawerEvents: [],
+    timelineEl: null,
+    timelineCap: TIMELINE_CAP,
     adapters: null,
     es: null,
     retryMs: 1000,
@@ -41,6 +85,8 @@
     boardRevision: 0,
     logRequests: new Map(),
     nextLogRequest: 0,
+    bind: DEFAULT_BIND,
+    lastHello: null,
   }
   // a card push while an agent writes its log only moves these two
   const VOLATILE_CARD_FIELDS = ['last_event', 'elapsed_ms']
@@ -93,25 +139,87 @@
     return node
   }
 
-  function toast(msg) {
-    const box = document.getElementById('toast')
-    const item = el('div', { class: 'toast-item' }, [String(msg)])
-    item.appendChild(el('button', { type: 'button', 'aria-label': 'Dismiss message', onclick: () => item.remove() }, ['×']))
-    box.appendChild(item)
-    setTimeout(() => item.remove(), 6000)
+  // ---- 6.9 the system message ----
+  // One implementation for the whole page, published as window.batonMessage so
+  // sessions.js reaches it instead of writing a second one into the same box.
+  // One message at a time, deduped by exact text. A result that belongs to a
+  // terminal or a card is written into that object's sentence slot, not here.
+  // Errors never auto-dismiss, which is why `tone` defaults to danger: a bare
+  // call is an error, and an error the reader has not seen does not disappear.
+  const MESSAGE_WORD = { ok: 'done', warn: 'warning', danger: 'error' }
+  const message = { text: null, node: null, timer: null }
+
+  function dismissMessage() {
+    if (message.timer) { clearTimeout(message.timer); message.timer = null }
+    if (message.node) message.node.remove()
+    message.node = null
+    message.text = null
   }
+
+  function toast(msg, tone = 'danger') {
+    const text = String(msg)
+    const box = document.getElementById('toast')
+    if (!box || text === message.text) return
+    dismissMessage()
+    const word = MESSAGE_WORD[tone] || MESSAGE_WORD.danger
+    const item = el('div', { class: `sysmsg-item tone-${tone}` }, [
+      el('span', { class: 'status-word' }, [el('span', { class: `mark tone-${tone}`, 'aria-hidden': 'true' }), word]),
+      el('span', {}, [text]),
+    ])
+    if (tone === 'danger') {
+      item.appendChild(el('button', { type: 'button', class: 'btn btn-danger', 'aria-label': 'Dismiss message', onclick: dismissMessage }, ['Dismiss']))
+    } else {
+      message.timer = setTimeout(dismissMessage, 6000)
+    }
+    box.appendChild(item)
+    message.node = item
+    message.text = text
+  }
+  if (typeof window !== 'undefined') window.batonMessage = toast
+
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
   function truncate(str, n) {
     const s = String(str || '')
     return s.length > n ? `${s.slice(0, n - 1)}…` : s
   }
 
-  function formatElapsed(ms) {
-    const safe = Number.isFinite(ms) && ms > 0 ? ms : 0
-    const total = Math.floor(safe / 1000)
-    const m = Math.floor(total / 60)
-    const s = total % 60
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  // src/board/sessions.js OWNS THE TIME GRAMMAR FOR THE BOARD. elapsedClock()
+  // and clockAt() below are its functions character for character, because the
+  // three board files cannot import from each other and one fact must never
+  // print in two formats: `404:30` on a background card two regions under
+  // `06:44:30` on a terminal card was the same run measured two ways.
+  // G12: fixed form, zero padded, so a column of elapsed clocks aligns on its
+  // colon whether the terminal has run four minutes or four hours.
+  function elapsedClock(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000))
+    const pad = (n) => String(n).padStart(2, '0')
+    const mm = pad(Math.floor(s / 60) % 60)
+    const ss = pad(s % 60)
+    const h = Math.floor(s / 3600)
+    return h ? `${pad(h)}:${mm}:${ss}` : `${mm}:${ss}`
+  }
+
+  // an idle card has no run to measure, and a run whose start did not parse is
+  // not a zero-length run: both print the placeholder rather than a number
+  function runElapsed(card) {
+    const from = card.active_run ? Date.parse(card.active_run.started_at) : NaN
+    return Number.isFinite(from) ? elapsedClock(Date.now() - from) : '--:--'
+  }
+
+  function clockAt(ms) {
+    if (!Number.isFinite(ms)) return 'unknown'
+    const d = new Date(ms)
+    const out = Math.abs(ms - Date.now())
+    if (out < 20 * 3600000) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    if (out < 6 * 86400000) return d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
+
+  // times are local and the head says so once, in .head-caption
+  function clock(ts) {
+    const at = ts ? Date.parse(ts) : NaN
+    return Number.isFinite(at) ? clockAt(at) : 'an unknown time'
   }
 
   function formatLastEvent(last) {
@@ -127,24 +235,36 @@
   }
 
   function baseAdapterName(name) { return String(name || '').replace(/^fake-/, '') }
+  function agentClass(name) {
+    const base = baseAdapterName(name)
+    return AGENT_IDS.includes(base) ? base : 'fake'
+  }
 
+  // Kept by name: docs/board-guide.md references it. It returns the leg's state
+  // as a word now, because section 8 of the design deletes the check, the cross
+  // and the arrow from the copy, and the subset fonts carry none of them.
   function stateGlyph(s) {
-    if (s === 'done') return '✓'
-    if (s === 'handed') return '↷'
-    if (s === 'failed') return '✗'
-    if (s === 'active') return '●'
-    return '·'
+    if (s === 'done') return 'done'
+    if (s === 'handed') return 'handed off'
+    if (s === 'failed') return 'failed'
+    if (s === 'active') return 'running'
+    return 'pending'
   }
 
   // ---- SSE ----
-  function setSseState(s) {
-    const dot = document.getElementById('sse-dot')
+  function setSseState(s, waitMs) {
+    const rule = document.getElementById('sse-dot')
     const text = document.getElementById('sse-text')
     const banner = document.getElementById('banner')
-    dot.className = `dot ${s}`
-    text.textContent = s === 'live' ? 'live' : s === 'reconnecting' ? 'reconnecting…' : 'connecting'
+    rule.className = `sse-rule is-${s}`
+    text.textContent = s === 'live' ? 'live'
+      : s === 'reconnecting' ? `reconnecting, next attempt in ${Math.round((waitMs || state.retryMs) / 1000)}s`
+        : 'connecting'
     banner.hidden = s === 'live'
-    if (!banner.hidden) banner.textContent = s === 'reconnecting' ? 'Reconnecting to Baton…' : 'Connecting to Baton…'
+    if (banner.hidden) return
+    banner.textContent = s === 'reconnecting' && state.lastHello
+      ? `Reconnecting to Baton. Last reading ${clock(state.lastHello)}.`
+      : `${s === 'reconnecting' ? 'Reconnecting' : 'Connecting'} to Baton on ${state.bind}.`
   }
 
   function connectSse() {
@@ -158,14 +278,14 @@
     es.addEventListener('hello', (e) => {
       if (state.es !== es || request !== state.sseRequest) return
       state.retryMs = 1000
+      state.lastHello = new Date().toISOString()
       setSseState('live')
       const data = JSON.parse(e.data)
       state.boardRevision += 1
-      state.columns = data.columns
       state.cards = new Map(data.cards.map((c) => [c.card_id, c]))
       renderBoard()
-      // nothing between the drop and this hello was replayed: an open drawer
-      // is as old as the gap
+      // nothing between the drop and this hello was replayed: an open detail
+      // region is as old as the gap
       scheduleDrawerRefresh()
       if (data.sessions) window.dispatchEvent(new CustomEvent('baton:sessions', { detail: data.sessions }))
     })
@@ -177,32 +297,35 @@
     es.onopen = () => { if (state.es === es && request === state.sseRequest) fetchCards() }
     es.onerror = () => {
       if (state.es !== es || request !== state.sseRequest) return
-      setSseState('reconnecting')
-      try { es.close() } catch { /* ignore */ }
       const wait = state.retryMs || 1000
+      setSseState('reconnecting', wait)
+      try { es.close() } catch { /* ignore */ }
       setTimeout(() => { if (request === state.sseRequest) connectSse() }, wait)
       state.retryMs = Math.min(wait * 2, 15000)
     }
   }
 
-  // ---- board render ----
+  // ---- the page's own status lines ----
   function renderScheduler(sched) {
     if (!sched) return
     document.getElementById('sched-status').textContent =
-      `scheduler: ${sched.running ? 'running' : 'stopped'}, ${sched.max_concurrent} max`
+      `scheduler ${sched.running ? 'running' : 'stopped'}, ${sched.max_concurrent} max`
   }
 
   // a guest on a shared board has no pipeline side: take it off the page
   // instead of shouting 403 at them
   const ownerOnly = (err) => /belongs to the owner of this machine/.test(err.message)
+  // `node`, not `el`: the loop variable shadowed this file's own el() DOM
+  // factory, so any line added inside these two loops that builds a node would
+  // fail against a name that is in scope everywhere else in the file
   function guestMode() {
     document.body.classList.add('guest')
-    for (const el of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (el) el.hidden = true
+    for (const node of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (node) node.hidden = true
   }
 
   function ownerMode() {
     document.body.classList.remove('guest')
-    for (const el of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (el) el.hidden = false
+    for (const node of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (node) node.hidden = false
   }
 
   const isGuest = () => document.body.classList.contains('guest')
@@ -214,7 +337,6 @@
     try {
       const data = await api('/api/cards')
       if (request !== state.cardsRequest || revision !== state.boardRevision || isGuest()) return
-      state.columns = data.columns
       state.cards = new Map(data.cards.map((c) => [c.card_id, c]))
       renderBoard()
       scheduleDrawerRefresh()
@@ -229,6 +351,9 @@
     try {
       const data = await api('/api/health')
       if (request !== state.authRequest) return false
+      if (data.bind) state.bind = `${data.bind}:${data.port}`
+      renderBoardFacts(data)
+      renderTokenMeta()
       // a guest is told who they are by health, which is open to them
       if (data.you && data.you.role && data.you.role !== 'owner') { guestMode(); return false }
       ownerMode()
@@ -242,39 +367,86 @@
     }
   }
 
+  // ---- 6.12 step 8: one row per card, no columns ----
   function toggleEmptyState() {
     const empty = document.getElementById('empty-state')
-    const columnsEl = document.getElementById('columns')
+    const list = document.getElementById('columns')
     const hasCards = state.cards.size > 0
     empty.hidden = hasCards
-    columnsEl.hidden = !hasCards
+    list.hidden = !hasCards
   }
 
-  function updateColumnCounts() {
-    for (const [name, colEl] of state.columnEls) {
-      let count = 0
-      for (const c of state.cards.values()) if (c.column === name) count += 1
-      colEl.countEl.textContent = String(count)
+  function countCards(...statuses) {
+    let n = 0
+    for (const c of state.cards.values()) if (statuses.includes(c.status)) n += 1
+    return n
+  }
+
+  // G14: a verdict carries its volume
+  function cardsMeta() {
+    const total = state.cards.size
+    if (!total) return ''
+    const running = countCards('running', 'handing_off')
+    const queued = countCards('queued')
+    const backlog = countCards('backlog')
+    const waiting = countCards('waiting_human', 'needs_approval')
+    const finished = countCards('done', 'failed', 'killed')
+    const parts = []
+    if (running) parts.push(`${running} running`)
+    if (queued) parts.push(`${queued} queued`)
+    if (backlog) parts.push(`${backlog} in backlog`)
+    if (waiting) parts.push(`${waiting} waiting on you`)
+    if (finished) parts.push(`${finished} finished`)
+    return parts.length ? parts.join(', ') : `${total} cards, nothing is running`
+  }
+
+  function renderCardsMeta() {
+    const meta = document.querySelector('#board .region-meta')
+    if (meta) meta.textContent = cardsMeta()
+  }
+
+  function rowRank(card) {
+    const r = ROW_RANK[card.status]
+    return r === undefined ? 7 : r
+  }
+
+  function startedAt(card) {
+    const at = (card.active_run && card.active_run.started_at) || card.updated_at || card.created_at
+    const ms = at ? Date.parse(at) : NaN
+    return Number.isNaN(ms) ? 0 : ms
+  }
+
+  function orderedCards() {
+    return [...state.cards.values()].sort((a, b) => rowRank(a) - rowRank(b) || startedAt(a) - startedAt(b))
+  }
+
+  // Re-appending every row costs one DOM move each and can move a node out from
+  // under the cursor, so it happens only when the order string actually changed.
+  function orderRows() {
+    const list = document.getElementById('columns')
+    const order = orderedCards().map((c) => c.card_id)
+    const key = order.join(',')
+    if (key === state.rowOrder) return
+    state.rowOrder = key
+    for (const id of order) {
+      const row = state.cardNodes.get(id)
+      if (row) list.appendChild(row)
     }
+    if (state.drawerId) placeDetail(state.drawerId)
   }
 
   function renderBoard() {
-    const columnsEl = document.getElementById('columns')
-    columnsEl.textContent = ''
-    state.columnEls = new Map()
+    const list = document.getElementById('columns')
+    // the detail region is a child of this list while a row is expanded: park it
+    // back on the body so the wipe below does not take it out of the document
+    document.body.appendChild(document.getElementById('drawer'))
+    list.textContent = ''
     state.cardNodes = new Map()
-    for (const name of state.columns) {
-      const countEl = el('span', { class: 'count' }, ['0'])
-      const list = el('div', { class: 'column-cards' })
-      const section = el('section', { class: 'column' }, [
-        el('h2', {}, [name, countEl]),
-        list,
-      ])
-      columnsEl.appendChild(section)
-      state.columnEls.set(name, { section, list, countEl })
-    }
-    for (const card of state.cards.values()) renderCard(card)
-    updateColumnCounts()
+    const order = orderedCards()
+    for (const card of order) renderRow(card)
+    state.rowOrder = order.map((c) => c.card_id).join(',')
+    if (state.drawerId) placeDetail(state.drawerId)
+    renderCardsMeta()
     toggleEmptyState()
   }
 
@@ -304,13 +476,11 @@
 
   function upsertCard(card) {
     state.boardRevision += 1
-    if (!state.columnEls.has(card.column)) {
-      fetchCards()
-      return
-    }
     const prev = state.cards.get(card.card_id)
     const tail = staleLogTail(state.logState.get(card.card_id), card, Date.now())
-    renderCard(card)
+    renderRow(card)
+    orderRows()
+    renderCardsMeta()
     toggleEmptyState()
     if (tail) ensureLogLoaded(card.card_id, tail)
     if (state.drawerId === card.card_id && drawerRefreshNeeded(prev, card)) scheduleDrawerRefresh()
@@ -322,7 +492,8 @@
     state.logState.delete(id)
     const root = state.cardNodes.get(id)
     if (root) { root.remove(); state.cardNodes.delete(id) }
-    updateColumnCounts()
+    state.rowOrder = ''
+    renderCardsMeta()
     toggleEmptyState()
     if (state.drawerId === id) closeDrawer()
   }
@@ -332,13 +503,10 @@
     if (card) {
       card.last_event = { ts: ev.ts, type: ev.type, summary: ev.summary, actor: ev.actor }
       const root = state.cardNodes.get(ev.card_id)
-      if (root) {
-        const line = root.querySelector('.card-last-event')
-        if (line) {
-          line.textContent = formatLastEvent(card.last_event)
-          if (ev.type === 'blocked_by') line.setAttribute('title', ev.summary)
-          else line.removeAttribute('title')
-        }
+      if (root && root.slots) {
+        const said = cardSentence(card)
+        root.slots.sentence.className = `sentence tone-${said.tone}`
+        root.slots.sentence.textContent = said.text
       }
     }
     if (state.drawerId === ev.card_id) appendDrawerEvent(ev)
@@ -348,30 +516,42 @@
     for (const [id, card] of state.cards) {
       if (!card.active_run) continue
       const root = state.cardNodes.get(id)
-      if (!root) continue
-      const span = root.querySelector('.elapsed')
-      if (span) span.textContent = formatElapsed(Date.now() - Date.parse(card.active_run.started_at))
+      if (!root || !root.slots) continue
+      root.slots.elapsed.textContent = runElapsed(card)
     }
   }
 
-  // ---- card node ----
-  function buildStatusChip(card) {
+  // ---- the row ----
+  // 6.3: a 7px square and one of the nine shipped words. The mark is decoration;
+  // deleting it loses nothing, which is why it is aria-hidden.
+  function statusWord(card) {
     let label = STATUS_LABELS[card.status] || card.status
-    const cls = STATUS_CLASS[card.status] || 'muted'
-    let titleAttr = null
-    if (card.status === 'queued' && card.last_event && card.last_event.type === 'blocked_by') {
-      // the scheduler writes "blocked by <holder> on <lease> …" for a lease and
-      // "blocked: <reason>" for anything else (the concurrency cap, a landing repo)
-      const s = String(card.last_event.summary || '')
-      label = /^blocked by /.test(s) ? 'blocked by lease' : 'blocked: ' + s.replace(/^blocked:\s*/, '').slice(0, 24)
-      titleAttr = s
-    } else if (card.status === 'running' && card.station_kind === 'land') {
-      label = 'landing'
-    } else if (card.status === 'waiting_human' && card.pr_url) {
-      label = 'PR open'
-      titleAttr = card.pr_url
+    if (card.status === 'running' && card.station_kind === 'land') label = 'landing'
+    else if (card.status === 'waiting_human' && card.pr_url) label = 'PR open'
+    return el('span', { class: 'status-word' }, [
+      el('span', { class: `mark tone-${STATUS_TONE[card.status] || 'idle'}`, 'aria-hidden': 'true' }),
+      label,
+    ])
+  }
+
+  // R2 line 2, exactly one sentence, the highest-ranked thing true about the
+  // card. Every branch names a station, a time, a count or the server's own
+  // reason, so the reader can check it.
+  function cardSentence(card) {
+    const last = card.last_event
+    if (card.bounce_reason && ['queued', 'running', 'handing_off', 'needs_approval'].includes(card.status)) {
+      const attempt = card.land_attempts ? ` on attempt ${card.land_attempts}` : ''
+      return { tone: 'danger', text: `Land bounced${attempt}: ${card.bounce_reason}. The worktree still holds every commit; nothing was lost.` }
     }
-    return el('span', { class: `chip status-chip ${cls}`, title: titleAttr }, [label])
+    if (card.status === 'queued' && last && last.type === 'blocked_by') return { tone: 'warn', text: last.summary }
+    if (['failed', 'killed'].includes(card.status)) {
+      return { tone: 'danger', text: `${card.status} at station ${card.station} after ${plural(card.runs_count || 0, 'run')}: ${last ? last.summary : 'no events yet'}` }
+    }
+    if (['waiting_human', 'needs_approval'].includes(card.status)) {
+      return { tone: 'warn', text: `waiting on you at station ${card.station} since ${clock(card.updated_at)}` }
+    }
+    if (card.status === 'done') return { tone: 'ok', text: `done after ${plural(card.runs_count || 0, 'run')}, ${last ? last.summary : 'no events yet'}` }
+    return { tone: 'muted', text: `${formatLastEvent(last)}${last ? `, ${clock(last.ts)}` : ''}` }
   }
 
   function shortWorktree(card) {
@@ -381,30 +561,161 @@
     return i > 0 ? parts.slice(i - 1).join('/') : parts.slice(-2).join('/')
   }
 
-  // A bounced card carries its reason until it lands or ends: "bounced: test
-  // red (attempt 1)" while it is queued, running or handing off again.
-  function buildBounceChip(card) {
-    if (!card.bounce_reason || !['queued', 'running', 'handing_off', 'needs_approval'].includes(card.status)) return null
-    const short = String(card.bounce_reason).split(/[(:]/)[0].trim().slice(0, 24) || 'bounced'
-    const attempt = card.land_attempts ? ` (attempt ${card.land_attempts})` : ''
-    return el('span', { class: 'chip status-chip warn bounce-chip', title: card.bounce_reason }, [`bounced: ${short}${attempt}`])
-  }
-
+  // 6.11: flat inline tokens, middot-separated by CSS, each agent name printed
+  // beside its own colour so identity never rides on hue alone.
   function buildChainRail(card) {
     const rail = el('div', { class: 'chain-rail' })
     for (const entry of card.chain_view || []) {
-      const accent = ADAPTER_ACCENTS.includes(baseAdapterName(entry.adapter)) ? baseAdapterName(entry.adapter) : 'fake'
-      const pill = el('span', { class: `pill adapter-${accent} state-${entry.state}` }, [
-        el('span', { class: 'pill-adapter' }, [entry.adapter]),
-        entry.mode ? el('span', { class: 'pill-mode' }, [entry.mode]) : null,
-        el('span', { class: 'pill-state', 'aria-hidden': 'true' }, [stateGlyph(entry.state)]),
-        entry.approve ? el('span', { class: 'pill-lock', 'aria-hidden': 'true' }, ['🔒']) : null,
-      ])
-      rail.appendChild(pill)
+      rail.appendChild(el('span', { class: `chip chip-id-${agentClass(entry.adapter)}` }, [entry.adapter]))
+      const tone = entry.state === 'done' ? 'chip-state-ok' : entry.state === 'failed' ? 'chip-state-bad' : 'chip'
+      rail.appendChild(el('span', { class: `chip ${tone}` }, [stateGlyph(entry.state)]))
     }
     return rail
   }
 
+  function buildLeases(card) {
+    const leases = card.leases && card.leases.length ? card.leases : ['**']
+    const blocked = card.status === 'queued' && card.last_event && card.last_event.type === 'blocked_by'
+    const wrap = el('div', { class: 'leases' }, leases.map((l) => el('span', { class: 'chip' }, [l])))
+    if (blocked) wrap.appendChild(el('span', { class: 'chip chip-state-warn' }, ['blocked by lease']))
+    return wrap
+  }
+
+  // 6.5: no confirm() anywhere on this board. The buttons swap for a sentence
+  // and two controls on --e4, focus moves to Cancel, Escape cancels. sessions.js
+  // carries a copy of this function: these two files have no module system, so a
+  // change here is a prompt to change the copy there.
+  let openConfirm = null
+  function confirmRow(question, verb, onYes, onCancel) {
+    const cancel = el('button', { type: 'button', class: 'btn btn-secondary', onclick: () => { openConfirm = null; onCancel() } }, ['Cancel'])
+    const row = el('div', { class: 'confirm-row' }, [
+      el('span', {}, [question]),
+      el('button', { type: 'button', class: 'btn btn-danger', onclick: () => { openConfirm = null; onYes() } }, [verb]),
+      cancel,
+    ])
+    openConfirm = onCancel
+    row.cancelBtn = cancel
+    return row
+  }
+
+  async function runAction(card, action) {
+    try {
+      await api(`/api/cards/${encodeURIComponent(card.card_id)}/${ACTION_PATHS[action]}`, { method: 'POST', body: {} })
+    } catch (err) {
+      toast(err.message)
+    }
+  }
+
+  async function removeCardAction(card) {
+    try {
+      await api(`/api/cards/${encodeURIComponent(card.card_id)}`, { method: 'DELETE' })
+      dropCard(card.card_id)
+    } catch (err) {
+      toast(err.message)
+    }
+  }
+
+  function askRemove(card, wrap) {
+    const name = card.title || card.card_id
+    const row = confirmRow(`Remove ${name}? Its card record, events and runs are deleted; the worktree is kept.`, 'Remove', () => removeCardAction(card), () => renderRow(card))
+    wrap.textContent = ''
+    wrap.appendChild(row)
+    row.cancelBtn.focus()
+  }
+
+  function buildActions(card) {
+    const wrap = el('div', { class: 'row-actions' })
+    const available = card.actions || []
+    for (const action of ACTION_ORDER) {
+      if (!available.includes(action) || !ACTION_LABELS[action]) continue
+      const label = ACTION_LABELS[action]
+      const cls = `btn ${ACTION_CLASS[action] || 'btn-secondary'}`
+      const run = action === 'reassign' ? () => openReassign(card, wrap) : () => runAction(card, action)
+      wrap.appendChild(el('button', { type: 'button', class: cls, 'aria-label': `${label} ${card.title || card.card_id}`, onclick: run }, [label]))
+    }
+    if (['done', 'failed', 'killed'].includes(card.status)) {
+      wrap.appendChild(el('button', { type: 'button', class: 'btn btn-danger', 'aria-label': `Remove ${card.title || card.card_id}`, onclick: () => askRemove(card, wrap) }, ['Remove']))
+    }
+    return wrap
+  }
+
+  // the reassign picker replaces the buttons in place, like the confirm row
+  async function openReassign(card, wrap) {
+    if (!state.adapters) {
+      try { state.adapters = (await api('/api/adapters')).adapters } catch (err) { toast(err.message); return }
+    }
+    const adapterSelect = el('select', { 'aria-label': `Reassign adapter for ${card.title || card.card_id}` })
+    const modeSelect = el('select', { 'aria-label': `Reassign mode for ${card.title || card.card_id}` })
+    for (const a of state.adapters) adapterSelect.appendChild(el('option', { value: a.name }, [a.name]))
+    if (card.active_adapter) adapterSelect.value = card.active_adapter
+    function populateModes() {
+      modeSelect.textContent = ''
+      const adapter = (state.adapters || []).find((a) => a.name === adapterSelect.value)
+      for (const m of adapter ? adapter.modes.allowed : []) modeSelect.appendChild(el('option', { value: m }, [m]))
+      if (adapter && adapter.modes.default) modeSelect.value = adapter.modes.default
+    }
+    adapterSelect.addEventListener('change', populateModes)
+    populateModes()
+    const apply = el('button', { type: 'button', class: 'btn btn-primary', onclick: async () => {
+      try {
+        await api(`/api/cards/${encodeURIComponent(card.card_id)}/reassign`, { method: 'POST', body: { adapter: adapterSelect.value, mode: modeSelect.value } })
+        renderRow(card)
+      } catch (err) { toast(err.message) }
+    } }, ['Apply'])
+    const cancel = el('button', { type: 'button', class: 'btn btn-secondary', onclick: () => renderRow(card) }, ['Cancel'])
+    wrap.textContent = ''
+    wrap.appendChild(el('div', { class: 'reassign-picker' }, [adapterSelect, modeSelect, apply, cancel]))
+  }
+
+  // 5.1: R1 who, R2 what, R3 where, R4 when-act-verdict. No object type moves a
+  // field to a different x, which is why a card row reads down the same four
+  // columns as an account and a terminal.
+  function buildRow(card) {
+    const said = cardSentence(card)
+    const chain = (card.chain_view && card.chain_view.length ? card.chain_view : card.chain) || []
+    const agent = card.active_adapter || (chain[0] ? chain[0].adapter : null)
+    const title = el('button', {
+      type: 'button', class: 'row-title', 'aria-expanded': state.drawerId === card.card_id ? 'true' : 'false',
+      onclick: () => expandRow(card.card_id),
+    }, [card.title || truncate(card.task, 60) || card.card_id])
+    const sentence = el('p', { class: `sentence tone-${said.tone}` }, [said.text])
+    const elapsed = el('span', { class: 'elapsed' }, [runElapsed(card)])
+    const cells = [
+      el('div', { class: 'r1' }, [
+        el('span', { class: agent ? `chip chip-id-${agentClass(agent)}` : 'chip' }, [agent || 'no agent']),
+        card.station && card.station !== '-' ? el('span', { class: 'chip' }, [card.station]) : null,
+        statusWord(card),
+      ]),
+      el('div', { class: 'r2' }, [title, sentence]),
+      el('div', { class: 'r3' }, [
+        el('p', { class: 'row-meta mono' }, [`${card.repo_name || 'no repo'}@${card.trunk || 'main'}`]),
+        card.worktree ? el('p', { class: 'row-meta mono', title: card.worktree }, [shortWorktree(card)]) : null,
+        buildChainRail(card),
+        buildLeases(card),
+      ]),
+      el('div', { class: 'r4' }, [elapsed, buildActions(card)]),
+    ]
+    return { cells, slots: { title, sentence, elapsed } }
+  }
+
+  function renderRow(card) {
+    state.cards.set(card.card_id, card)
+    let root = state.cardNodes.get(card.card_id)
+    if (!root) {
+      root = el('article', { class: 'row', 'data-card-id': card.card_id })
+      state.cardNodes.set(card.card_id, root)
+      document.getElementById('columns').appendChild(root)
+      state.rowOrder = ''
+    } else {
+      while (root.firstChild) root.removeChild(root.firstChild)
+    }
+    const built = buildRow(card)
+    for (const cell of built.cells) root.appendChild(cell)
+    root.slots = built.slots
+    return root
+  }
+
+  // ---- 6.6 the detail region: in flow under its row, never an overlay ----
   async function ensureLogLoaded(id, tail) {
     const cardAtRequest = state.cards.get(id)
     if (!cardAtRequest) return
@@ -423,7 +734,7 @@
         runs_count: card.runs_count,
         run: runAtRequest,
       })
-      renderCard(card)
+      if (state.drawerId === id) repaintDrawer()
     }).catch((err) => {
       if (state.logRequests.get(id) === request) toast(err.message)
     }).finally(() => {
@@ -434,158 +745,14 @@
     return promise
   }
 
-  function buildLogSection(card) {
-    const wrap = el('div', { class: 'card-log' })
-    const cache = state.logState.get(card.card_id)
-    if (card.runs_count > 0 && !cache) ensureLogLoaded(card.card_id, 8)
-    const lines = cache ? cache.lines : []
-    const text = lines.length ? lines.join('\n') : (card.runs_count > 0 ? 'loading log…' : 'no runs yet')
-    wrap.appendChild(el('pre', { class: 'log-pre' }, [text]))
-    if (card.runs_count > 0 && (!cache || !cache.expanded)) {
-      wrap.appendChild(el('button', { type: 'button', class: 'log-more', onclick: () => ensureLogLoaded(card.card_id, 200) }, ['show more']))
-    }
-    return wrap
+  function detailSection(title, note, body) {
+    return el('section', { class: 'detail-section' }, [
+      el('h3', { class: 'detail-heading' }, [title, note ? el('span', { class: 'detail-sub' }, [note]) : null]),
+    ].concat(body))
   }
 
-  function buildReassignPicker(card) {
-    const adapterSelect = el('select', { 'aria-label': `Reassign adapter for ${card.title || card.card_id}` })
-    const modeSelect = el('select', { 'aria-label': `Reassign mode for ${card.title || card.card_id}` })
-    const applyBtn = el('button', { type: 'button' }, ['Apply'])
-    const cancelBtn = el('button', { type: 'button' }, ['Cancel'])
-    const picker = el('div', { class: 'reassign-picker', hidden: true }, [adapterSelect, modeSelect, applyBtn, cancelBtn])
-
-    function populateModes() {
-      modeSelect.textContent = ''
-      const adapter = (state.adapters || []).find((a) => a.name === adapterSelect.value)
-      const allowed = adapter ? adapter.modes.allowed : []
-      for (const m of allowed) modeSelect.appendChild(el('option', { value: m }, [m]))
-      if (adapter && adapter.modes.default) modeSelect.value = adapter.modes.default
-    }
-
-    async function open() {
-      if (!state.adapters) {
-        try { state.adapters = (await api('/api/adapters')).adapters } catch (err) { toast(err.message); return }
-      }
-      adapterSelect.textContent = ''
-      for (const a of state.adapters) adapterSelect.appendChild(el('option', { value: a.name }, [a.name]))
-      if (card.active_adapter) adapterSelect.value = card.active_adapter
-      populateModes()
-      picker.hidden = false
-    }
-
-    adapterSelect.addEventListener('change', populateModes)
-    applyBtn.addEventListener('click', async () => {
-      try {
-        await api(`/api/cards/${encodeURIComponent(card.card_id)}/reassign`, { method: 'POST', body: { adapter: adapterSelect.value, mode: modeSelect.value } })
-        picker.hidden = true
-      } catch (err) {
-        toast(err.message)
-      }
-    })
-    cancelBtn.addEventListener('click', () => { picker.hidden = true })
-
-    return { node: picker, open }
-  }
-
-  async function runAction(card, action) {
-    try {
-      await api(`/api/cards/${encodeURIComponent(card.card_id)}/${ACTION_PATHS[action]}`, { method: 'POST', body: {} })
-    } catch (err) {
-      toast(err.message)
-    }
-  }
-
-  async function removeCardAction(card) {
-    if (!confirm(`Remove card "${card.title || card.card_id}"? This cannot be undone.`)) return
-    try {
-      await api(`/api/cards/${encodeURIComponent(card.card_id)}`, { method: 'DELETE' })
-      dropCard(card.card_id)
-    } catch (err) {
-      toast(err.message)
-    }
-  }
-
-  function buildActions(card, reassign) {
-    const wrap = el('div', { class: 'card-actions' })
-    for (const action of card.actions || []) {
-      const label = ACTION_LABELS[action]
-      if (!label) continue
-      if (action === 'reassign') {
-        wrap.appendChild(el('button', { type: 'button', 'aria-label': `${label} ${card.title || card.card_id}`, onclick: () => reassign.open() }, [label]))
-        continue
-      }
-      wrap.appendChild(el('button', { type: 'button', 'aria-label': `${label} ${card.title || card.card_id}`, onclick: () => runAction(card, action) }, [label]))
-    }
-    if (['done', 'failed', 'killed'].includes(card.status)) {
-      wrap.appendChild(el('button', { type: 'button', class: 'danger', 'aria-label': `Remove ${card.title || card.card_id}`, onclick: () => removeCardAction(card) }, ['Remove']))
-    }
-    return wrap
-  }
-
-  function buildCardChildren(card) {
-    const children = []
-    const titleBtn = el('button', { type: 'button', class: 'card-title', onclick: () => openDrawer(card.card_id) }, [card.title || truncate(card.task, 60)])
-    children.push(el('div', { class: 'card-head' }, [titleBtn]))
-
-    children.push(el('div', { class: 'card-meta' }, [
-      el('span', { class: 'repo-name' }, [card.repo_name || '']),
-      card.station && card.station !== '-' ? el('span', { class: 'chip station-chip' }, [card.station]) : null,
-      buildStatusChip(card),
-      buildBounceChip(card),
-    ]))
-
-    children.push(buildChainRail(card))
-
-    const leases = card.leases && card.leases.length ? card.leases : ['**']
-    children.push(el('div', { class: 'card-leases' }, leases.map((l) => el('span', { class: 'chip lease-chip' }, [l]))))
-
-    children.push(el('div', { class: 'card-elapsed' }, [
-      el('span', { class: 'elapsed' }, [card.active_run ? formatElapsed(Date.now() - Date.parse(card.active_run.started_at)) : '--:--']),
-    ]))
-
-    const lastEventEl = el('div', { class: 'card-last-event' }, [formatLastEvent(card.last_event)])
-    if (card.last_event && card.last_event.type === 'blocked_by') lastEventEl.setAttribute('title', card.last_event.summary)
-    children.push(lastEventEl)
-
-    children.push(buildLogSection(card))
-
-    const reassign = buildReassignPicker(card)
-    children.push(buildActions(card, reassign))
-    children.push(reassign.node)
-
-    return children
-  }
-
-  function renderCard(card) {
-    state.cards.set(card.card_id, card)
-    let root = state.cardNodes.get(card.card_id)
-    if (!root) {
-      root = el('article', { class: 'card', 'data-card-id': card.card_id })
-      state.cardNodes.set(card.card_id, root)
-    } else {
-      while (root.firstChild) root.removeChild(root.firstChild)
-    }
-    for (const child of buildCardChildren(card)) if (child) root.appendChild(child)
-    const target = state.columnEls.get(card.column)
-    if (target && root.parentElement !== target.list) target.list.appendChild(root)
-    updateColumnCounts()
-    return root
-  }
-
-  // ---- drawer ----
-  function buildEventRow(e) {
-    const row = el('div', { class: 'event-row' }, [
-      el('span', { class: 'mono event-ts' }, [e.ts]),
-      el('span', { class: 'event-type' }, [e.type]),
-      el('span', { class: 'event-actor' }, [formatActor(e.actor)]),
-      el('span', { class: 'event-summary' }, [e.summary]),
-    ])
-    if (e.body) {
-      const details = el('details', {}, [el('summary', {}, ['body'])])
-      details.appendChild(el('pre', { class: 'mono' }, [typeof e.body === 'string' ? e.body : JSON.stringify(e.body, null, 2)]))
-      row.appendChild(details)
-    }
-    return row
+  function kvRow(key, value) {
+    return [el('span', { class: 'kv-key' }, [key]), el('span', { class: 'kv-val' }, [value])]
   }
 
   function copyToClipboard(text) {
@@ -607,64 +774,89 @@
     document.body.removeChild(ta)
   }
 
-  function renderDrawer(detail, log) {
-    const content = document.getElementById('drawer-content')
-    content.textContent = ''
-    const card = detail.card
-    content.appendChild(el('h2', {}, [card.title || card.card_id]))
+  // G11: the machine strings in full, never shortened. The row prints the short
+  // form; this is where the reader comes for the one they can paste.
+  function whereBlock(card, bundle) {
+    const rows = []
+      .concat(kvRow('repo', card.repo || 'no repo'))
+      .concat(kvRow('trunk', card.trunk || 'main'))
+      .concat(kvRow('worktree', card.worktree || 'no worktree yet'))
+      .concat(kvRow('leases', (card.leases && card.leases.length ? card.leases : ['**']).join(', ')))
+    if (bundle && bundle.path) rows.push(...kvRow('bundle', bundle.path))
+    const copy = el('button', { type: 'button', class: 'btn btn-secondary', onclick: () => copyToClipboard(card.worktree || card.repo || '') }, ['Copy worktree path'])
+    return [el('div', { class: 'kv' }, rows), copy]
+  }
 
-    content.appendChild(el('h3', {}, ['Task']))
-    content.appendChild(el('p', {}, [card.task || '']))
+  function eventRow(e) {
+    return el('div', { class: 'turn' }, [
+      el('span', { class: 'turn-when' }, [clock(e.ts)]),
+      el('span', { class: 'turn-role' }, [`${e.type}, ${formatActor(e.actor)}`]),
+      el('p', {}, [e.summary]),
+    ])
+  }
 
-    content.appendChild(el('h3', {}, ['Worktree']))
-    // shown relative to the repo (the full path is the tooltip): a shared board
-    // should not print an operator's home directory
-    content.appendChild(el('p', { class: 'mono', title: card.worktree || '' }, [shortWorktree(card) || '(none)']))
-
-    content.appendChild(el('h3', {}, ['Pipeline']))
-    const pipelineList = el('ol', { class: 'pipeline-list' })
-    for (const st of card.pipeline || []) {
-      pipelineList.appendChild(el('li', { class: st.name === card.station ? 'current' : '' }, [`${st.name} (${st.kind})`]))
+  // capped by count, and the cap names its volume: no nested scrollbar, the page
+  // just grows when the reader asks for more
+  function paintTimeline() {
+    const box = state.timelineEl
+    if (!box) return
+    box.textContent = ''
+    const all = state.drawerEvents
+    const shown = all.slice(-state.timelineCap).reverse()
+    for (const e of shown) box.appendChild(eventRow(e))
+    if (all.length > shown.length) {
+      box.appendChild(el('p', { class: 'cap-line' }, [
+        `showing ${shown.length} of ${plural(all.length, 'event')}`,
+        el('button', { type: 'button', class: 'btn btn-text', onclick: () => { state.timelineCap += 40; paintTimeline() } }, ['show 40 more']),
+      ]))
     }
-    content.appendChild(pipelineList)
-
-    content.appendChild(el('h3', {}, ['Events']))
-    const timeline = el('div', { class: 'events-timeline', id: 'drawer-events' })
-    for (const e of detail.events || []) timeline.appendChild(buildEventRow(e))
-    content.appendChild(timeline)
-
-    content.appendChild(el('h3', {}, ['Runs']))
-    const runsList = el('ul', { class: 'runs-list' })
-    for (const r of detail.runs || []) {
-      runsList.appendChild(el('li', {}, [`run ${r.run} — ${r.adapter} — ${r.outcome ?? r.status} — signal ${r.signal ?? '-'} — exit ${r.exit_code ?? '-'}`]))
-    }
-    content.appendChild(runsList)
-
-    content.appendChild(el('h3', {}, ['Bundle']))
-    if (detail.bundle) {
-      const pathText = detail.bundle.path || ''
-      const copyBtn = el('button', { type: 'button', onclick: () => copyToClipboard(pathText) }, ['Copy path'])
-      // shown from the worktree down; Copy path copies the full path
-      const parts = pathText.split(/[\\/]/).filter(Boolean)
-      const wt = parts.lastIndexOf('.baton-worktrees')
-      const shown = wt >= 0 ? parts.slice(wt + 2).join('/') : parts.slice(-3).join('/')
-      content.appendChild(el('p', {}, [`${detail.bundle.id}: `, el('span', { class: 'mono', title: pathText }, [shown || pathText]), copyBtn]))
-    } else {
-      content.appendChild(el('p', {}, ['no bundle']))
-    }
-
-    content.appendChild(el('h3', {}, ['Log']))
-    content.appendChild(el('pre', { class: 'log-pre' }, [(log.lines || []).join('\n') || '(empty)']))
   }
 
   function appendDrawerEvent(ev) {
-    const timeline = document.getElementById('drawer-events')
-    if (timeline) timeline.appendChild(buildEventRow(ev))
+    state.drawerEvents.push(ev)
+    paintTimeline()
+  }
+
+  function renderDrawer(detail) {
+    state.drawerDetail = detail
+    const content = document.getElementById('drawer-content')
+    content.textContent = ''
+    const card = detail.card || {}
+    const id = card.card_id || state.drawerId
+    content.appendChild(el('h2', { class: 'detail-heading' }, [card.title || id]))
+
+    content.appendChild(detailSection('Task', `card ${id}`, el('p', { class: 'drawer-task' }, [card.task || 'no task recorded'])))
+    content.appendChild(detailSection('Where', 'full paths, never shortened', whereBlock(card, detail.bundle)))
+
+    const stations = card.pipeline || []
+    const at = stations.findIndex((s) => s.name === card.station) + 1
+    const pipeline = []
+    for (const st of stations) pipeline.push(...kvRow(st.name, `${st.kind}${st.name === card.station ? ', this station' : ''}`))
+    content.appendChild(detailSection('Pipeline', at ? `station ${at} of ${stations.length}` : `${plural(stations.length, 'station')}, none started`, el('div', { class: 'kv' }, pipeline)))
+
+    const runs = detail.runs || []
+    const runRows = []
+    for (const r of runs) runRows.push(...kvRow(`run ${r.run}`, `${r.adapter}, ${r.outcome ?? r.status}, signal ${r.signal ?? 'none'}, exit ${r.exit_code ?? 'none'}`))
+    content.appendChild(detailSection('Runs', plural(runs.length, 'run'), el('div', { class: 'kv' }, runRows.length ? runRows : kvRow('runs', 'no runs yet'))))
+
+    state.drawerEvents = detail.events || []
+    state.timelineEl = el('div', { class: 'drawer-timeline' })
+    content.appendChild(detailSection('Timeline', 'newest first', state.timelineEl))
+    paintTimeline()
+
+    const cache = state.logState.get(id)
+    const lines = cache ? cache.lines : []
+    content.appendChild(detailSection('Log', lines.length ? `last ${plural(lines.length, 'line')}` : 'no output yet',
+      el('pre', { class: 'log-pre' }, [lines.length ? lines.join('\n') : (card.runs_count ? 'the log for this run is empty' : 'no runs yet')])))
+  }
+
+  function repaintDrawer() {
+    if (state.drawerDetail) renderDrawer(state.drawerDetail)
   }
 
   function refreshDrawerAfterUpdate() {
-    // card summary changed while the drawer is open; the pipeline highlight
-    // and top section can go stale, so refetch the drawer's own detail.
+    // the card summary changed while its row is expanded; the station marker and
+    // the run list go stale with it, so refetch the detail
     if (state.drawerId) openDrawer(state.drawerId)
   }
 
@@ -678,30 +870,79 @@
     }, DRAWER_REFRESH_MS)
   }
 
+  // The detail region is MOVED under the row being expanded instead of floating
+  // over it, so the page keeps exactly one scroll container. A row that has not
+  // been rendered yet has nowhere to put it, and so does the stub DOM the tests
+  // run against, in which case it stays where the markup left it.
+  function placeDetail(id) {
+    const row = state.cardNodes.get(id)
+    const detail = document.getElementById('drawer')
+    if (row && typeof row.after === 'function') row.after(detail)
+    return detail
+  }
+
+  function markRow(id, expanded) {
+    const root = id ? state.cardNodes.get(id) : null
+    if (!root || !root.slots) return null
+    if (expanded) root.classList.add('is-selected')
+    else root.classList.remove('is-selected')
+    root.slots.title.setAttribute('aria-expanded', expanded ? 'true' : 'false')
+    return root
+  }
+
   async function openDrawer(id) {
+    const previous = state.drawerId
+    if (previous && previous !== id) markRow(previous, false)
     state.drawerId = id
+    state.timelineCap = TIMELINE_CAP
     const request = ++state.drawerRequest
     const drawer = document.getElementById('drawer')
     drawer.hidden = false
     drawer.setAttribute('aria-hidden', 'false')
+    placeDetail(id)
+    markRow(id, true)
     try {
       const [detail, log] = await Promise.all([
         api(`/api/cards/${encodeURIComponent(id)}`),
         api(`/api/cards/${encodeURIComponent(id)}/log?tail=2000`),
       ])
       if (state.drawerId !== id || request !== state.drawerRequest) return
-      renderDrawer(detail, log)
+      const card = state.cards.get(id)
+      state.logState.set(id, {
+        lines: log.lines || [],
+        expanded: true,
+        at: Date.now(),
+        runs_count: card ? card.runs_count : null,
+        run: card && card.active_run ? card.active_run.run : null,
+      })
+      renderDrawer(detail)
     } catch (err) {
       toast(err.message)
     }
   }
 
   function closeDrawer() {
+    const open = state.drawerId
     state.drawerId = null
     state.drawerRequest += 1
+    state.drawerDetail = null
+    state.timelineEl = null
     const drawer = document.getElementById('drawer')
     drawer.hidden = true
     drawer.setAttribute('aria-hidden', 'true')
+    return markRow(open, false)
+  }
+
+  // only one region is expanded at a time, and the control that opened it gets
+  // the focus back when it collapses
+  function expandRow(id) {
+    if (state.drawerId === id) return collapseRow()
+    openDrawer(id)
+  }
+
+  function collapseRow() {
+    const root = closeDrawer()
+    if (root && root.slots) root.slots.title.focus()
   }
 
   // ---- new card dialog ----
@@ -732,17 +973,33 @@
 
   function adapterLabel(adapter) { return adapter.fake ? `${adapter.name} (test/demo)` : adapter.name }
 
+  // the agents already named in this dialog: the first agent and every fallback
+  // row already added. A fallback set to one of these can never fire.
+  function chosenAdapters(ui) {
+    const used = [ui.testAdapter.value || ui.firstAgent.value]
+    for (const row of ui.chainRows.children) if (row.fields) used.push(row.fields.adapterSelect.value)
+    return used.filter(Boolean)
+  }
+
   function addChainRow(ui, { adapter: preferred = null, first = false } = {}) {
     const adapterSelect = el('select', { 'aria-label': 'Chain adapter' })
     const adapters = [...(state.adapters || [])].sort((a, b) => Number(a.fake) - Number(b.fake))
     for (const a of adapters) adapterSelect.appendChild(el('option', { value: a.name }, [adapterLabel(a)]))
+    // Add fallback agent used to default to the first option in the list, which
+    // is normally the agent already chosen as First agent: the summary line then
+    // read "Baton tries claude, then agy, then claude", a fallback that cannot
+    // fire. rebuildDefaultFallbacks already applies this filter.
+    if (!preferred && !first) {
+      const used = chosenAdapters(ui)
+      preferred = adapters.filter((a) => !a.fake).map((a) => a.name).find((name) => !used.includes(name)) || null
+    }
     if (preferred && adapters.some((a) => a.name === preferred)) adapterSelect.value = preferred
     const modeSelect = el('select', { 'aria-label': 'Chain mode' })
     const approveCheckbox = el('input', { type: 'checkbox', 'aria-label': 'Approve before this leg' })
     const approveLabel = el('label', {}, [approveCheckbox, ' approval before start'])
     const turnsInput = el('input', { type: 'number', min: '0', 'aria-label': 'Max turns', placeholder: 'max turns' })
     const fakeInput = el('input', { type: 'text', 'aria-label': 'Scripted test behavior', placeholder: 'test behavior' })
-    const removeBtn = first ? null : el('button', { type: 'button', 'aria-label': 'Remove fallback agent' }, ['Remove'])
+    const removeBtn = first ? null : el('button', { type: 'button', class: 'btn btn-danger', 'aria-label': 'Remove fallback agent' }, ['Remove'])
     const title = el('span', { class: 'fallback-row-title' }, [first ? `First: ${preferred}` : `Fallback ${ui.chainRows.children.length + 1}`])
     const row = el('div', { class: `chain-row${first ? '' : ' fallback-row'}` }, [title, adapterSelect, modeSelect, approveLabel, turnsInput, fakeInput, removeBtn])
     if (first) adapterSelect.hidden = true
@@ -752,11 +1009,14 @@
       modeSelect.textContent = ''
       const adapter = (state.adapters || []).find((a) => a.name === adapterSelect.value)
       const allowed = adapter ? adapter.modes.allowed : []
-      for (const m of allowed) modeSelect.appendChild(el('option', { value: m }, [m]))
+      for (const m of allowed) modeSelect.appendChild(el('option', { value: m }, [MODE_LABELS[m] ? `${MODE_LABELS[m]} (${m})` : m]))
       if (adapter && adapter.modes.default) modeSelect.value = adapter.modes.default
       fakeInput.hidden = !(adapter && adapter.fake)
     }
     adapterSelect.addEventListener('change', populateModes)
+    // the summary sentence names the fallback agents by row, so it has to
+    // follow a row whose agent the reader changed after it was added
+    if (!first) adapterSelect.addEventListener('change', () => refreshFallbackSummary(ui))
     populateModes()
 
     row.fields = { adapterSelect, modeSelect, approveCheckbox, turnsInput, fakeInput }
@@ -768,7 +1028,7 @@
   function refreshFallbackSummary(ui) {
     const names = [...ui.chainRows.children].filter((row) => row.fields).map((row) => row.fields.adapterSelect.value)
     ui.fallbackSummary.textContent = names.length
-      ? `If the first agent cannot continue, Baton tries ${names.join(' → ')} in this order.`
+      ? `If the first agent cannot continue, Baton tries ${names.join(', then ')} in this order.`
       : 'No fallback agent is set. Add one under Advanced options if another agent should take over.'
   }
 
@@ -781,7 +1041,7 @@
     ui.chainRows.textContent = ''
     const first = ui.firstAgent.value
     const real = (state.adapters || []).filter((a) => !a.fake).map((a) => a.name)
-    const preferred = ['claude', 'codex', 'agy'].filter((name) => real.includes(name) && name !== first)
+    const preferred = AGENT_IDS.filter((name) => real.includes(name) && name !== first)
     for (const adapter of preferred) addChainRow(ui, { adapter })
     refreshFallbackSummary(ui)
   }
@@ -859,7 +1119,34 @@
     ui.addRowBtn.addEventListener('click', () => addChainRow(ui))
   }
 
-  // ---- settings ----
+  // ---- 6.10 settings: the last region of the page, in flow ----
+  function renderTokenMeta() {
+    const meta = document.querySelector('.region-settings .region-meta')
+    if (!meta) return
+    meta.textContent = getToken()
+      ? `API token set, sent to ${state.bind} as a bearer token`
+      : `No API token set, requests reach ${state.bind} unauthenticated`
+  }
+
+  function renderBoardFacts(health) {
+    const box = document.querySelector('.region-settings .board-facts')
+    if (!box) return
+    box.textContent = ''
+    const you = health.you || {}
+    const share = you.share || { on: false, people: 0 }
+    const sched = health.scheduler
+    const lines = [
+      `baton ${health.version}, bound to ${state.bind}`,
+      `signed in as ${you.name || 'local'}, ${you.role || 'owner'}`,
+      share.on ? `share on, ${share.people === 1 ? '1 person' : `${share.people} people`}` : 'share off, nobody invited',
+    ]
+    // a guest is sent neither the scheduler nor the paths: print nothing rather
+    // than a number this board was not told
+    if (sched) lines.push(sched.running ? `scheduler running, pid ${sched.pid}, ${sched.max_concurrent} max` : `scheduler stopped, ${sched.max_concurrent} max`)
+    if (health.home) lines.push(`board home ${health.home}`)
+    for (const line of lines) box.appendChild(el('p', {}, [line]))
+  }
+
   function initSettings() {
     const input = document.getElementById('token-input')
     input.value = getToken()
@@ -867,6 +1154,7 @@
       const v = input.value.trim()
       if (v) localStorage.setItem('batonToken', v)
       else localStorage.removeItem('batonToken')
+      renderTokenMeta()
       state.boardRevision += 1
       state.cardsRequest += 1
       state.sseRequest += 1
@@ -876,6 +1164,25 @@
       if (owner) fetchCards()
       connectSse()
     })
+    const show = document.getElementById('token-show')
+    if (show) {
+      show.addEventListener('click', () => {
+        const hidden = input.type !== 'text'
+        input.type = hidden ? 'text' : 'password'
+        show.textContent = hidden ? 'Hide' : 'Show'
+      })
+    }
+    const disclosure = document.querySelector('.region-settings .disclosure')
+    const body = document.getElementById('settings-body')
+    if (disclosure && body) {
+      disclosure.addEventListener('click', () => {
+        const opening = body.hidden
+        body.hidden = !opening
+        disclosure.setAttribute('aria-expanded', opening ? 'true' : 'false')
+        disclosure.textContent = opening ? 'Hide settings' : 'Show settings'
+      })
+    }
+    renderTokenMeta()
   }
 
   // ---- init ----
@@ -884,8 +1191,12 @@
     initNewCardDialog()
     document.getElementById('new-card-btn').addEventListener('click', () => openNewCardDialog())
     document.getElementById('empty-new-card-btn').addEventListener('click', () => openNewCardDialog())
-    document.getElementById('drawer-close').addEventListener('click', () => closeDrawer())
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.drawerId) closeDrawer() })
+    document.getElementById('drawer-close').addEventListener('click', () => collapseRow())
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return
+      if (openConfirm) { const cancel = openConfirm; openConfirm = null; cancel(); return }
+      if (state.drawerId) collapseRow()
+    })
     // health first: it says whether this human owns the pipeline side at all
     await loadHealth()
     fetchCards()

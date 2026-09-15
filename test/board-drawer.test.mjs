@@ -50,3 +50,44 @@ test('renderDrawer captures the offsets before it empties the panel and restores
   assert.ok(capture < wipe, 'the offsets are taken BEFORE the panel is emptied, or there is nothing left to read')
   assert.ok(wipe < restore, 'and put back after it is rebuilt')
 })
+
+// A board left open beside the work rebuilds itself every 3 seconds, and the
+// rebuild restores focus so a tabbed control is not lost. focus() scrolls its
+// element into view unless told not to, so the restore moved the viewport on
+// every poll: click any button, scroll away, and the next tick dragged you
+// back. The page could not be scrolled at all until the reader clicked
+// somewhere harmless. Only a focus move the reader asked for may scroll.
+test('focus restored by a rebuild never moves the viewport', () => {
+  const body = SRC.slice(SRC.indexOf('function putFocus(box, at)'))
+  const end = body.indexOf('\n  function ', 1)
+  const fn = end === -1 ? body : body.slice(0, end)
+  assert.match(fn, /\.focus\(\{[^}]*preventScroll:\s*true/, 'putFocus focuses with preventScroll: true')
+  assert.ok(!/\.focus\(\)/.test(fn), 'and never with a bare focus(), which scrolls')
+})
+
+test('the focus moves the reader asked for are still allowed to scroll', () => {
+  // confirmRow moves focus to Cancel, and closing the detail region hands focus
+  // back to the control that opened it. Both follow a click, so bringing the
+  // target into view is the right behaviour and must not be "fixed".
+  assert.match(SRC, /setTimeout\(\(\) => no\.focus\(\), 0\)/, 'the confirm row still focuses Cancel')
+  assert.match(SRC, /getElementById\('session-drawer-close'\)\?\.focus\(\)/, 'opening the detail region still focuses its close control')
+})
+
+// renderSessions moves the expanded region out of the list and back so the
+// rebuild cannot orphan it. Detaching a subtree resets scrollTop on every
+// scrollable box inside it, so a reader half way down a 200-line diff was
+// returned to the top by a rebuild of the list around them. renderDrawer's
+// own capture could not save it: by the time it ran the offset was already 0.
+test('re-parenting the expanded region carries its scroll offsets across the move', () => {
+  const body = SRC.slice(SRC.indexOf('function renderSessions(v)'))
+  const end = body.indexOf('\n  function ', 1)
+  const fn = end === -1 ? body : body.slice(0, end)
+  const capture = fn.indexOf('takeScroll(region)')
+  const park = fn.indexOf('document.body.appendChild(region)')
+  const restore = fn.indexOf('putScroll(region,')
+  assert.ok(capture > -1, 'renderSessions reads the offsets before it moves the region')
+  assert.ok(park > -1, 'the region is still parked on the body during the wipe')
+  assert.ok(restore > -1, 'and the offsets are written back')
+  assert.ok(capture < park, 'the offsets are read BEFORE the move, or they are already zero')
+  assert.ok(park < restore, 'and restored after the region is back in place')
+})

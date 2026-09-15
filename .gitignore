@@ -8,3 +8,9 @@ docs/screenshots/*.tmp
 costclaw-report.html
 costclaw-out/
 .dashclaw-local/
+.playwright-cli/
+baton-demo*.mp4
+.design/
+marketing/
+.claude/
+CLAUDE.md

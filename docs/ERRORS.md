@@ -1,0 +1,98 @@
+# Errors
+
+What broke, why, and what fixed it. One entry per failure, newest first. A first
+occurrence has to be written down or a repeat is never countable.
+
+## 2026-09-15: a 3-second rebuild made the board impossible to scroll
+
+- **Symptom.** Reported by the operator as "I'm not able to scroll down or up or
+  really interact with the new UI layout, and it keeps reverting to where I was
+  before scrolling." Intermittent-looking, which is what made it hard to believe.
+- **Root cause.** `src/board/sessions.js`, in `putFocus()`. Every region on the
+  board is wiped and rebuilt on a timer, so focus is captured before the wipe and
+  restored after it, or a tabbed control is lost every three seconds. The restore
+  called `target.focus()`. `focus()` scrolls its element into view unless it is
+  passed `{ preventScroll: true }`, so the moment the reader clicked any button,
+  every poll dragged the viewport back to that button, forever.
+- **Why it looked random.** With nothing focused, `takeFocus()` returns null and
+  the page behaves. The bug only appears after the reader interacts, which is
+  exactly when they stop suspecting the page and start suspecting themselves.
+- **Fix.** `target.focus({ preventScroll: true })` on the rebuild path only. A
+  focus move the reader asked for (Cancel in a confirm row, the close control of
+  the detail region) still scrolls, because there it is the right behaviour.
+- **Measured before and after.** Before: scroll to 1200, click Details, and the
+  next seven samples read 106, 106, 106… After: four scenarios held for 20
+  seconds each across both the 3s poll and the 15s re-sort, 0px drift on all
+  four. `test/board-drawer.test.mjs` now pins both halves of the rule.
+- **The lesson that generalises.** Screenshots and a green suite cannot see "the
+  page fights you three seconds later". A live surface needs a hold test: put the
+  viewport somewhere, wait through every timer the page owns, and assert it did
+  not move. The same applies to focus, scroll position, an open disclosure and a
+  text selection.
+
+## 2026-09-15: Baton silently reversed a user's refusal to trust a folder
+
+- **Symptom.** None visible. That is the point: it wrote to a file the user owns
+  and printed a line that read like a first-time record.
+- **Root cause.** `src/trust.mjs` treated "not `true`" as "not asked yet". A
+  `hasTrustDialogAccepted: false` in `~/.claude.json`, which is what clicking
+  "No, exit" records, was flipped to `true` on every run in that repo. The agy
+  writer had the same shape: any value other than `TRUST_FOLDER`, including a
+  deliberate `DO_NOT_TRUST`, fell through to a write. The codex writer was the
+  only one of the three that got it right, because it happened to test for
+  presence rather than for truth.
+- **Fix.** Only an absent key is an unanswered question. An answer already on
+  file is the user's, including "no", and is left alone with a stated reason.
+  The imports question is separate: `WarningShown: true` with `Approved: false`
+  is a recorded refusal and is not re-approved.
+- **The lesson that generalises.** When code writes a file a human owns, absent
+  and negative are different states and must be distinguished in the code, not
+  in a comment. `!== true` is not "unset".
+
+## 2026-09-15: the trust record was written under a key Claude Code never reads
+
+- **Symptom.** Would have been: the flag is on file, the prompt still appears,
+  and nothing says why. Caught before shipping by diffing against a copy of a
+  real `~/.claude.json` rather than a synthetic one.
+- **Root cause.** The project key was written in Windows-native form,
+  `C:\Projects\foo`. Claude Code stores it as `C:/Projects/foo`: 100 of the 104
+  entries in a real config are forward-slash with an upper-case drive letter and
+  no trailing separator, and the four that are not are older duplicates of
+  projects that also appear in the new form. The wrong spelling creates a second
+  entry that is simply ignored.
+- **Fix.** `claudeProjectKey()` normalises to that form. An older spelling
+  already present is updated in place, never created, so a stale entry is
+  corrected without littering the config.
+- **The lesson that generalises.** When writing into someone else's data file,
+  derive the key format from that file's own contents on a real machine. A
+  synthetic fixture agrees with whatever the code does and proves nothing.
+
+## 2026-09-15: a walled usage bar was drawn full, then drawn red, before it was drawn at all
+
+- **Symptom.** The account at its limit showed a full calm-blue bar beside the
+  words `no reading`: the most urgent row on the page looked like the safest.
+- **Root cause.** `board.css` draws a walled account's fill at 100%, but the
+  colour stops were computed from the percentage, which is 0 when there is no
+  reading, and `fillStops(0)` puts every stop at 100% so the whole bar paints
+  calm.
+- **The wrong first fix, and why.** Computing the stops from 100 when walled made
+  the bar danger-red. That is the same fabricated number, louder. An independent
+  review caught it. The right answer is that a window with no reading paints no
+  fill at all, and the wall is carried by the words beside it.
+- **The lesson that generalises.** When a display and its own label disagree,
+  fix the display's right to exist, not its colour.
+
+## 2026-09-15: the OG card advertised a commercial product as MIT
+
+- **Symptom.** `site/og.html` printed `Claude Code · Codex · agy · local · MIT`
+  on the card every shared link renders. Baton ships under the Baton License
+  Agreement, all rights reserved; the only MIT in the repo is in `NOTICE`, about
+  a borrowed component explicitly re-licensed.
+- **Fix.** The tag line names the price instead. The first correction was longer
+  than the string it replaced and pushed `.cmd` into wrapping, so `.cmd` is now
+  `flex: none; white-space: nowrap` and the footer measures 0px past its gutter
+  with a 15px gap, checked with `getBoundingClientRect` rather than by eye.
+- **The lesson that generalises.** A generated image is code with no test. Any
+  copy change inside one needs the render measured afterwards, and legal or
+  pricing strings in marketing assets need checking against `LICENSE` and
+  `package.json`, which are the only sources that are actually true.

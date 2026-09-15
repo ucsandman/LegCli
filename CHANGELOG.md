@@ -2,6 +2,62 @@
 
 ## Unreleased
 
+- **The board is rebuilt as an instrument, not a dashboard.** The old board was a
+  generic dark panel: `--bg: #0f1115`, the exact colour `PRODUCT.md` names as an
+  anti-reference, with kanban columns 2,056px wide on a 1,280px viewport, raw
+  JSON printed inside every card, a chip around every noun, and warning red used
+  for six different meanings. It was replaced from a six-concept tournament
+  judged on four lenses (task fitness, craft, data truth, buildability). The
+  winning concept, Cobalt Instrument:
+  - A sticky instrument head with one row per login and two window rails each.
+    The ones digit of every percentage right-aligns onto the same x, so 4, 45 and
+    96 are one scan down a column, and the 85 percent post is painted into every
+    track at all times, including at 0 percent fill: you can see the wall before
+    you reach it. `role="meter"` carries the whole answer in one
+    `aria-valuetext`; a window with no reading is not a meter at all and paints
+    no bar, because printing nothing beats printing a number that does not exist.
+  - One four-column register (who / what / where / when-or-act) that accounts,
+    terminals, landed commits, background cards and floor rows all lay their
+    fields into, so five private layouts became one instrument face.
+  - Kanban columns became rows ordered needs-you first. The overlay drawer became
+    an in-flow expansion. The toast stack became one system message. Settings
+    left its popover and became the last region.
+  - Urgency is carried by luminance, not hue. Every status prints a word beside
+    its colour: `waiting on you`, `at the wall`, `over 85`, `no reading`.
+  - Self-hosted Atkinson Hyperlegible Next and Azeret Mono subsets (17 KB and
+    13 KB), so the board keeps its typography with no network at all.
+  - `/floor` shares the head verbatim, so a time, a percentage or a tier word can
+    never read two ways on the two pages.
+- **Both usage bars used to vanish at the moment they mattered.** `sessions.js`
+  guarded them with `!walled &&`, so hitting a limit hid the two numbers that
+  explain the limit. Deleted.
+- **The board no longer fights the reader's scroll.** The 3-second rebuild
+  restores focus so a tabbed control is not lost, but `focus()` scrolls its
+  element into view unless told not to, so clicking any button pinned the
+  viewport to it on every poll and the page could not be scrolled at all.
+  `preventScroll` on the rebuild path only; a focus move the reader asked for
+  still scrolls.
+- **A handoff no longer stalls on a first-run trust prompt.** The handoff fires
+  when the limit hits, which is usually when nobody is watching, and an agent
+  that had never run in that folder stopped on "Is this a project you trust?" and
+  waited for a keypress that was not coming. Baton now records the same answer
+  for the repository you chose by typing `baton claude` in it: claude's
+  `hasTrustDialogAccepted` in `~/.claude.json` (the remedy Claude Code's own
+  permissions guide prescribes), codex's `trust_level` in `~/.codex/config.toml`,
+  agy's entry in `~/.gemini/trustedFolders.json`. An external `CLAUDE.md` import
+  is approved with every path printed to the terminal and the session timeline.
+  Baton never creates one of those files, never rewrites one to say what it
+  already says, and never overrides an answer already on file: a recorded "no"
+  is an answer and stays. `BATON_TRUST=never` switches it all off.
+- **Guest boards no longer receive the owner's usage.** `sessionsView()` sent the
+  accounts array unredacted. It was invisible as a 56x6 pixel bar; the redesign
+  would have made it a 30px numeral at the top of the page. Guests see
+  `not shared`, and `share-security.test.mjs` gains a canary that fails if a
+  percentage ever reaches a guest board again.
+- The OG card advertised `MIT`. Baton ships under the Baton License Agreement.
+- `README.md`, `docs/board-guide.md` and `docs/DEMO.md` rewritten against the
+  board that now exists, and every screenshot recaptured.
+
 - **A resume pointer that cannot describe a picture that is no longer true.**
   `.baton/RESUME.md` used to be an unowned convenience copy: written once per
   hand-off, never touched again, with no stamp and no expiry, so a terminal that

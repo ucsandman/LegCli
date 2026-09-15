@@ -4,7 +4,7 @@
 
 - [getting-started.md](getting-started.md): install, run `baton claude`, what you get while it runs, where files live, and the v0.1 pipeline flow as an extra.
 - [concepts.md](concepts.md): sessions, accounts, usage windows and the interactive handoff, then cards, stations, chains, outcomes, leases, the land station and the card status state diagram.
-- [board-guide.md](board-guide.md): the Terminals lane (accounts strip, terminal cards, overlap flags, landed on trunk, the three buttons) and the v0.1 pipeline columns and floor view.
+- [board-guide.md](board-guide.md): the instrument head (a row per login, two window rails each, the 85 percent post), the Terminals panels, overlap flags, Landed on main, Background tasks, Settings, and the floor view.
 - [configuration.md](configuration.md): every environment variable, the accounts layout, `.env`, network exposure, card-level options.
 - [adapters.md](adapters.md): what Baton reads from each CLI in an interactive session, each adapter's headless argv, modes, forbidden flags, gotchas, and how to add a new one.
 - [faq.md](faq.md): short answers to real questions (the status line, codex's missing hook, agy's missing percentage, second accounts, uninstall, limits, secrets, Windows support).
@@ -29,6 +29,7 @@
 ## History
 
 - [REUSE.md](REUSE.md): what Baton ports from the private team tooling it started from, and what it drops.
+- [ERRORS.md](ERRORS.md): what broke, the root cause and the fix, so a repeat is countable.
 - [DEVIATIONS.md](DEVIATIONS.md): every place Baton's shape differs from that ported source or from the plan, one row per change.
 
 ## Also see

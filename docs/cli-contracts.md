@@ -270,7 +270,7 @@ variable and `BATON_SESSION` (source: src/attach.mjs, src/env.mjs).
   limit … try again at \<date>" (source:
   github.com/openai/codex `codex-rs/protocol/src/error.rs`
   `UsageLimitReachedError`). The event shape was read from local rollouts;
-  the error itself is **docs-only** <!-- live:codex/usage_limit_exceeded -->.
+  the error itself is **observed-live 2026-09-15** <!-- live:codex/usage_limit_exceeded -->.
   A `task_complete.error` with `codex_error_info: usage_limit_exceeded` walled
   a codex leg once, but no scrubbed payload was kept, so
   `fixtures/live/codex/limit-usage_limit_exceeded.json` is still the slot for

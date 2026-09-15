@@ -13,7 +13,10 @@ export function makeHome() {
 }
 
 export function testEnv(home, extra = {}) {
-  const env = { ...process.env, BATON_HOME: home, BATON_TIMERS_MS: '60000,120000', BATON_POLL_MS: '250', BATON_QUIET: '1', ...extra }
+  // BATON_TRUST=never: a test spawns agents in throwaway repos, and without
+  // this the suite would write a trust record for every one of them into the
+  // developer's own ~/.claude.json, ~/.codex/config.toml and ~/.gemini.
+  const env = { ...process.env, BATON_HOME: home, BATON_TIMERS_MS: '60000,120000', BATON_POLL_MS: '250', BATON_QUIET: '1', BATON_TRUST: 'never', ...extra }
   delete env.DASHCLAW_URL
   delete env.DASHCLAW_API_KEY
   delete env.FAKE_MODE

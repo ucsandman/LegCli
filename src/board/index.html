@@ -4,75 +4,110 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Baton</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="board.css">
 </head>
 <body>
+
 <header class="topbar">
-  <div class="brand">Baton</div>
-  <div class="sse-status">
-    <span class="dot connecting" id="sse-dot"></span>
-    <span id="sse-text">connecting</span>
+  <div class="shell">
+    <h1 class="brand">Baton</h1>
+    <div class="sse-status" role="status">
+      <span class="sse-word" id="sse-text">connecting</span>
+      <span class="sse-rule is-connecting" id="sse-dot" aria-hidden="true"></span>
+    </div>
+    <div class="sched-status" id="sched-status"></div>
+    <div class="spacer"></div>
+    <a class="floor-link" href="/floor">Floor</a>
   </div>
-  <div class="sched-status" id="sched-status">scheduler: —</div>
-  <div class="spacer"></div>
-  <button type="button" id="new-card-btn">New card</button>
-  <a href="/floor">Floor</a>
-  <details class="settings">
-    <summary>Settings</summary>
-    <div class="settings-panel">
-      <label for="token-input">API token</label>
-      <input type="text" id="token-input" autocomplete="off" spellcheck="false">
+</header>
+
+<!-- board.js rewrites this line from the live bind address the moment the SSE
+     hello lands. The markup is static and cannot know the port, so it names
+     none: a sentence that says 4747 on a board bound to 4863 is worse than a
+     sentence that says nothing about where. -->
+<div class="banner" id="banner" role="status" hidden>Connecting to Baton.</div>
+
+<div class="shell">
+
+  <section class="head" aria-label="Accounts and usage">
+    <div id="accounts"></div>
+    <p class="head-caption">Times are local.</p>
+  </section>
+
+  <section class="region region-terminals" aria-labelledby="terminals-head">
+    <div class="region-head">
+      <h2 class="region-title" id="terminals-head">Terminals</h2>
+      <!-- the one ranked verdict for the whole region, and the only live region
+           on the board that carries product signal rather than connection
+           state. It changes only when the counts change, so it cannot chatter. -->
+      <p class="region-meta" role="status" aria-atomic="true"></p>
+      <span class="chip" id="whoami" hidden></span>
+    </div>
+    <div class="session-list" id="session-grid"></div>
+    <p class="empty-line" hidden>No terminal is running. Start one in any repo: <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code>. It appears here within a second of the agent's first turn.</p>
+  </section>
+
+  <section class="region region-trunk" aria-labelledby="trunk-head">
+    <div class="region-head">
+      <h2 class="region-title" id="trunk-head">Landed on main</h2>
+      <p class="region-meta"></p>
+    </div>
+    <div class="trunk-list" id="trunk"></div>
+  </section>
+
+  <main class="region" id="board" aria-labelledby="cards-head">
+    <div class="region-head">
+      <h2 class="region-title" id="cards-head">Background tasks</h2>
+      <p class="region-meta"></p>
+      <button type="button" class="btn btn-primary" id="new-card-btn">New card</button>
+    </div>
+    <p class="empty-line" id="empty-state" hidden>No background task. <button type="button" class="btn btn-text" id="empty-new-card-btn">New card</button> queues one. They run headless in their own worktree and report on the floor.</p>
+    <div class="card-list" id="columns"></div>
+  </main>
+
+  <section class="region region-settings" aria-labelledby="settings-head">
+    <div class="region-head">
+      <h2 class="region-title" id="settings-head">Settings</h2>
+      <p class="region-meta"></p>
+      <button type="button" class="btn btn-text disclosure" aria-expanded="false" aria-controls="settings-body">Show settings</button>
+    </div>
+    <div class="settings-body" id="settings-body" hidden>
+      <div class="field">
+        <label for="token-input">API token</label>
+        <input type="password" id="token-input" autocomplete="off" spellcheck="false">
+        <button type="button" class="btn btn-secondary" id="token-show">Show</button>
+        <!-- the address belongs to the region meta above, which board.js writes
+             from the live bind. Naming it twice from two sources printed two
+             different servers in one panel. -->
+        <p class="field-help">Stored in this browser's localStorage and sent as a bearer token to the server named above. Clear the field to sign out.</p>
+      </div>
       <fieldset class="default-order" id="default-order" hidden>
         <legend>New terminal handoff order</legend>
         <p class="field-help">Used by terminals started after you save.</p>
         <div id="default-order-list"></div>
-        <button type="button" id="default-order-save">Save default</button>
+        <button type="button" class="btn btn-secondary" id="default-order-save">Save default</button>
         <span class="field-status" id="default-order-status" aria-live="polite"></span>
       </fieldset>
+      <div class="field board-facts"></div>
     </div>
-  </details>
-</header>
+  </section>
 
-<div class="banner" id="banner" hidden>Connecting to Baton…</div>
+</div><!-- /.shell -->
 
-<section class="sessions" id="sessions" aria-label="Terminals">
-  <div class="sessions-head">
-    <h2>Terminals</h2>
-    <span class="hint">start one in any repo: <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code></span>
-    <span class="chip" id="whoami" hidden></span>
-    <div class="spacer"></div>
-    <div class="accounts" id="accounts" aria-label="Accounts and usage"></div>
-  </div>
-  <div class="session-grid" id="session-grid"></div>
-  <div class="trunk" id="trunk" aria-label="Landed on trunk"></div>
-</section>
-
-<main id="board">
-  <div class="pipelines-head">
-    <h2>Background tasks</h2>
-    <span class="hint">optional work an agent does in a separate working copy, independent of your terminal conversation</span>
-  </div>
-  <div class="empty-state" id="empty-state" hidden>
-    <p>No background tasks. The terminals above are your live conversations. A Build-only card works separately and stops without merging its changes.</p>
-    <button type="button" id="empty-new-card-btn">New card</button>
-  </div>
-  <div class="columns" id="columns"></div>
-</main>
-
-<aside class="drawer" id="drawer" hidden aria-hidden="true">
-  <div class="drawer-inner">
-    <button type="button" id="drawer-close" aria-label="Close card details">Close</button>
+<div class="detail" id="drawer" hidden aria-hidden="true">
+  <div class="detail-inner">
+    <button type="button" class="btn btn-secondary" id="drawer-close" aria-label="Close card details">Close</button>
     <div id="drawer-content"></div>
   </div>
-</aside>
+</div>
 
-<aside class="drawer session-drawer" id="session-drawer" hidden aria-label="What this terminal is doing">
-  <div class="drawer-inner" id="session-drawer-content"></div>
-</aside>
+<div class="detail" id="session-drawer" hidden role="region" aria-label="What this terminal is doing">
+  <div class="detail-inner" id="session-drawer-content"></div>
+</div>
 
 <dialog id="new-card-dialog" aria-label="New card">
-  <h2>New background card</h2>
+  <h2 class="region-title">New background card</h2>
   <p class="dialog-intro">An agent works without an interactive terminal in a separate git worktree. The default Build workflow stops with changes in that worktree and does not merge them.</p>
   <form id="new-card-form">
     <div class="form-error" id="new-card-error" hidden></div>
@@ -108,7 +143,7 @@
       <div class="form-row">
         <label for="nc-pipeline">Workflow</label>
         <select id="nc-pipeline">
-          <option value="build" selected>Build only — stop with worktree changes</option>
+          <option value="build" selected>Build only, stop with worktree changes</option>
           <option value="build-land">Build, test, and merge automatically</option>
           <option value="factory">Plan, build, review, test, and merge automatically</option>
           <option value="custom">Custom workflow JSON</option>
@@ -125,7 +160,7 @@
         <label>Fallback agents</label>
         <span class="field-help">Baton tries each row in order only when the agent before it cannot continue.</span>
         <div id="nc-chain-rows"></div>
-        <button type="button" id="nc-add-row">Add fallback agent</button>
+        <button type="button" class="btn btn-secondary" id="nc-add-row">Add fallback agent</button>
       </div>
 
       <div class="form-row">
@@ -165,13 +200,13 @@
     </details>
 
     <div class="dialog-actions">
-      <button type="button" id="nc-cancel">Cancel</button>
-      <button type="submit">Create card</button>
+      <button type="button" class="btn btn-secondary" id="nc-cancel">Cancel</button>
+      <button type="submit" class="btn btn-primary">Create card</button>
     </div>
   </form>
 </dialog>
 
-<div class="toast" id="toast" aria-live="polite"></div>
+<div class="sysmsg" id="toast" aria-live="polite"></div>
 
 <script src="board.js" defer></script>
 <script src="sessions.js" defer></script>
