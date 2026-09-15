@@ -157,3 +157,25 @@ occurrence has to be written down or a repeat is never countable.
   a sibling keeps failing. Read the per-job conclusions, not the run's, and treat
   a leg that has not completed since a feature landed as unmeasured. Locally,
   `npm test` does not run `npm run lint` here: both are needed before a push.
+
+## 2026-09-15: the site did not deploy, and the repo said it had
+
+- **Symptom.** `main` was fast-forwarded with the board and site redesign, every
+  check was green, and `baton-agents.vercel.app` still served the old blue page.
+  GitHub showed `Vercel — Canceled by Ignored Build Step` with a green tick,
+  which reads like a pass.
+- **Root cause.** `site/vercel.json` carried
+  `ignoreCommand: git diff --quiet HEAD^ HEAD .`, and with Root Directory `site`
+  that asks one question: did the SINGLE most recent commit touch `site/`? The
+  push was five commits; `site/` changed in the first of them and the tip was a
+  test fix, so the answer was no and the build was skipped. A push is not a
+  commit, and `HEAD^ HEAD` cannot see past the tip.
+- **Fix.** `ignoreCommand` removed, so every push to `main` deploys. Vercel's
+  built-in "Skip deployments when there are no changes to the root directory"
+  is the safe form of the same idea because it compares against the last
+  deployment, not against `HEAD^`.
+- **The lesson that generalises.** A skipped step reports as a green tick.
+  "Canceled by Ignored Build Step" and a cancelled CI matrix leg are the same
+  trap in different clothes: an absence of failure that is not a success. After
+  a deploy, load the page and confirm the change is on it — the deploy
+  platform's own tick is not evidence that anything shipped.
