@@ -26,6 +26,10 @@
   const FIVE_HOUR_MS = 5 * 3600 * 1000
 
   let view = null
+  const NO_BRANCH_BLOCKER = 'this terminal works in the checkout itself: there is no branch of its own to land'
+  let hoisted = new Set()
+  let trunkOpen = false
+  let finishedOpen = false
   let headOpen = false
   let pendingConfirm = null
   const sessionEditors = new Map()
@@ -202,6 +206,30 @@
     if (a.stale && a.agent !== 'agy') line.append(document.createTextNode(`, ${ago(now - observed)} ago, `), el('span', { class: 'prov is-stale' }, ['stale']))
     return line
   }
+  // The one-line form of an account: the single fact worth a glance. The board
+  // is checked far more often than it is worked, so the head defaults to this
+  // and the rails open on demand. Nothing is dropped, only deferred.
+  function acctBrief(a) {
+    const state = acctState(a)
+    const w = worstWindow(a)
+    const parts = [el('b', { class: `acct-name id-${idOf(a.agent)}` }, [accountLabel(a)])]
+    let tone = ''
+    if (state === 'walled') {
+      tone = 'is-danger'
+      parts.push(el('span', { class: 'v' }, ['at the wall']))
+      if (Number.isFinite(a.limited_until)) parts.push(el('span', { class: 'q' }, [`back ${until(a.limited_until)}`]))
+    } else if (state === 'notshared' || state === 'loading' || !w || !Number.isFinite(w.pct)) {
+      parts.push(el('span', { class: 'v q' }, [tierWord(a, w)]))
+    } else {
+      const pct = Math.round(w.pct)
+      tone = pct >= 85 ? 'is-danger' : pct >= 60 ? 'is-warn' : ''
+      parts.push(el('span', { class: 'v' }, [`${pct}%`]))
+      parts.push(el('span', { class: 'q' }, [`of ${w === a.seven_day ? '7d' : '5h'}`]))
+      if (state === 'stale') parts.push(el('span', { class: 'q is-stale' }, [tierWord(a, w)]))
+    }
+    return el('span', { class: `u ${tone}`.trim() }, parts)
+  }
+
   function worstWindow(a) {
     const w = [a.five_hour, a.seven_day].filter((x) => x && Number.isFinite(x.pct)).sort((x, y) => y.pct - x.pct)
     return w[0] || a.five_hour || a.seven_day || null
@@ -309,30 +337,36 @@
   function renderAccounts(accounts) {
     const box = document.getElementById('accounts')
     if (!box) return
-    box.textContent = ''
     const list = accounts || []
+    // The head is one line until the reader asks for the rails. Measured on a
+    // real board with three logins: 390px of a 900px viewport became 96px, and
+    // the usage question is still answered without a click because the line
+    // carries the worst fact per login.
+    const brief = document.getElementById('head-brief')
+    const toggle = document.getElementById('head-toggle')
+    const caption = document.getElementById('head-caption')
+    if (brief) {
+      brief.textContent = ''
+      if (!list.length) brief.appendChild(el('span', { class: 'u' }, [el('span', { class: 'v q' }, ['no usage read yet'])]))
+      for (const a of list) brief.appendChild(acctBrief(a))
+    }
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', headOpen ? 'true' : 'false')
+      const chev = document.getElementById('head-chev')
+      if (chev) chev.textContent = headOpen ? 'hide windows' : 'show windows'
+    }
+    box.hidden = !headOpen
+    if (caption) caption.hidden = !headOpen
+    if (!headOpen) { publishHeadHeight(); return }
+    box.textContent = ''
+    // Expanded, every account shows both rails in the payload's own order, so
+    // no row moves for a reason the reader cannot see. The old narrow-only
+    // condense is gone: the summary line above does that job at every width,
+    // and doing it twice meant the phone had two disclosures for one fact.
     const narrow = Boolean(narrowQuery.matches) && list.length > 1
-    // 5.5: the condensed head shows the account closest to a wall, with both of
-    // its windows, and hides only the others. At full width the head keeps the
-    // payload's own order, so no row moves for a reason the reader cannot see.
     const worst = narrow ? closestToWall(list) : null
     const ordered = worst ? [worst, ...list.filter((a) => a !== worst)] : list
-    ordered.forEach((a, i) => {
-      const row = acctRow(a, narrow && i === 0)
-      if (narrow && i > 0 && !headOpen) row.hidden = true
-      box.appendChild(row)
-    })
-    if (narrow) {
-      // G3: the demoted accounts are NAMED with their tier, never counted. `2
-      // more accounts` hid the fact that one of them was the 96% row, so the
-      // phone head carried neither the word `claude` nor the number 96.
-      const hidden = ordered.slice(1)
-      const named = hidden.map((a) => `${accountLabel(a)} ${tierWord(a, worstWindow(a))}`).join(', ')
-      const more = el('button', { type: 'button', class: 'btn btn-text', 'aria-expanded': headOpen ? 'true' : 'false' },
-        [headOpen ? `hide ${hidden.map((a) => accountLabel(a)).join(', ')}` : `also: ${named}`])
-      more.addEventListener('click', () => { headOpen = !headOpen; renderAccounts(accounts) })
-      box.appendChild(more)
-    }
+    for (const a of ordered) box.appendChild(acctRow(a, narrow && a === worst))
     publishHeadHeight()
   }
 
@@ -706,6 +740,31 @@
   // A full-width band in the four-register grid, not a floating card. Elevation
   // is assigned by urgency, not by nesting: a terminal that starts needing you
   // rises, and that rise is the notification.
+  // A pasted screenshot arrives in the prompt as a machine tag carrying an
+  // absolute temp path. On the board that is two lines of noise in front of the
+  // sentence the reader came to read, and it puts the operator's own home
+  // directory on screen. The tag is replaced by what it actually was.
+  function promptText(task) {
+    if (!task) return 'no prompt yet'
+    const cleaned = String(task)
+      .replace(/<image\b[^>]*>[\s\S]*?<\/image>/gi, ' ')
+      .replace(/<image\b[^>]*>/gi, ' ')
+      .replace(/\[Image #\d+\]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!cleaned) return 'an image, with no text'
+    return /^<image/i.test(String(task).trim()) || /\[Image #\d+\]/.test(String(task)) ? `(image) ${cleaned}` : cleaned
+  }
+
+  // A file is identified by its name. The directory above it is the same for
+  // every file in the list, and when the work happens in a temp directory the
+  // full path is 90 characters of noise per file with the operator's user name
+  // in the middle of it. The whole path stays on the title and in the detail.
+  function fileLabel(path) {
+    const parts = String(path).split(/[\\/]/).filter(Boolean)
+    return parts.length ? parts[parts.length - 1] + (/[\\/]$/.test(String(path)) ? '/' : '') : String(path)
+  }
+
   function renderSession(s) {
     const notes = rankedNotes(s)
     const urgent = needsYou(s, notes)
@@ -718,22 +777,32 @@
     if (shared() && s.owner) chips.push(el('span', { class: 'chip' }, [isMine(s) ? `${s.owner}, you` : s.owner]))
     if (s.lineage && s.lineage.from) chips.push(el('span', { class: 'chip' }, [`from ${s.lineage.from}`]))
     panel.appendChild(el('div', { class: 'r1' }, [
-      el('div', {}, [el('span', { class: `acct-name chip-id-${idOf(s.agent)}` }, [s.agent]), ' ', el('span', { class: 'chip' }, [tail(s.session_id)])]),
+      // the tail is `codex-99ab`, printed immediately after the word `codex`:
+      // the prefix is the agent name twice, and it is the half that squeezed
+      // the state word out of the identity column on a one-line row
+      el('div', {}, [el('span', { class: `acct-name chip-id-${idOf(s.agent)}` }, [s.agent]), ' ',
+        el('span', { class: 'chip', title: s.session_id }, [tail(s.session_id).replace(new RegExp(`^${s.agent}-`), '')])]),
       statusMark(s.status, s.session_id, urgent ? 'waiting on you' : null),
-      chips.length ? el('div', {}, chips) : null,
+      chips.length ? el('div', { class: 'r1-chips' }, chips) : null,
     ]))
 
     const r2 = el('div', { class: 'r2' })
     if (s.hidden) r2.appendChild(el('p', { class: 'sentence tone-muted' }, ['prompt hidden']))
     else {
       // a real <button>, so Enter, Space, the focus ring and touch all come free
-      const prompt = el('button', { type: 'button', class: 'panel-prompt', title: s.task || 'no prompt yet', 'aria-expanded': drawer.id === s.session_id ? 'true' : 'false', 'data-focus-key': `prompt:${s.session_id}` }, [s.task || 'no prompt yet'])
+      const prompt = el('button', { type: 'button', class: 'panel-prompt', title: s.task || 'no prompt yet', 'aria-expanded': drawer.id === s.session_id ? 'true' : 'false', 'data-focus-key': `prompt:${s.session_id}` }, [promptText(s.task)])
       prompt.addEventListener('click', () => (drawer.id === s.session_id ? closeSessionDrawer() : openSessionDrawer(s.session_id, 'prompt')))
       r2.appendChild(prompt)
     }
-    // exactly one sentence, the highest-ranked note
-    if (notes[0]) r2.appendChild(el('p', { class: `sentence tone-${notes[0].tone}` }, [notes[0].text]))
-    const rest = notes.slice(1)
+    // Exactly one sentence, the highest-ranked note. A terminal that is merely
+    // running has nothing to say that its own row does not already show, and
+    // four panels each saying "activity" is four lines of noise that make the
+    // one panel with something real to say harder to find. The sentence is kept
+    // for a row that needs the reader, and for anything not simply running.
+    const own = notes.filter((n) => !hoisted.has(n.text))
+    const quiet = !urgent && own[0] && own[0].tone === 'muted'
+    if (own[0] && !quiet) r2.appendChild(el('p', { class: `sentence tone-${own[0].tone}` }, [own[0].text]))
+    const rest = quiet ? [] : own.slice(1)
     if (rest.length) {
       // G3: the demoted notes are NAMED, never counted. "2 more" tells the
       // reader nothing about whether the thing behind it matters.
@@ -753,7 +822,7 @@
       const line = el('p', { class: 'files' })
       touched.slice(0, 6).forEach((f, i) => {
         if (i) line.appendChild(document.createTextNode(', '))
-        line.appendChild(el('span', { class: `file${overlapFiles.has(f) ? ' is-overlap' : ''}`, title: f }, [f]))
+        line.appendChild(el('span', { class: `file${overlapFiles.has(f) ? ' is-overlap' : ''}`, title: f }, [fileLabel(f)]))
       })
       if (touched.length > 6) line.appendChild(document.createTextNode(`, and ${touched.length - 6} more`))
       r2.appendChild(line)
@@ -789,9 +858,7 @@
     // G10: the order is Land, Hand off now, Details, End, and it never reflows
     // by availability. A button that does not apply is omitted, never moved.
     const landing = Boolean(s.land && s.land.state === 'landing')
-    const blocker = s.worktree
-      ? s.land_blocker
-      : 'this terminal works in the checkout itself: there is no branch of its own to land'
+    const blocker = s.worktree ? s.land_blocker : NO_BRANCH_BLOCKER
     // G10 is disabled-with-its-reason, so the reason is attached to the control
     // as well as printed: the title used to be on the inverse condition, giving
     // the tooltip to the button that explains itself and none to the one that
@@ -1150,6 +1217,52 @@
     meta.textContent = `${verdict}${landed ? `, last landed ${clockAt(landed)}` : ''}`
   }
 
+  // A fact that is true of every terminal on the board is a property of the
+  // board, not of any row. Printed per row it was the same sentence three
+  // times, which is three lines of noise around the one row that had something
+  // of its own to say. The per-row copy stays in the DOM, visually hidden, so
+  // the Land button's aria-describedby still resolves to its own reason.
+  function sharedBlocker(list) {
+    const shown = list.filter((s) => !s.hidden)
+    if (shown.length < 2) return null
+    const first = shown[0].worktree ? shown[0].land_blocker : NO_BRANCH_BLOCKER
+    if (!first) return null
+    return shown.every((s) => (s.worktree ? s.land_blocker : NO_BRANCH_BLOCKER) === first) ? first : null
+  }
+
+  // Any sentence two or more terminals would print identically is a fact about
+  // the board, not about a terminal. `near the 7d wall, next: codex` on three
+  // rows is one fact and two lines of noise, and it is set in the alarm weight,
+  // so the noise is the loudest thing on the page.
+  function sharedNotes(list, notesOf) {
+    const seen = new Map()
+    for (const s of list) {
+      for (const n of notesOf.get(s.session_id) || []) {
+        const at = seen.get(n.text) || { n, count: 0 }
+        at.count += 1
+        seen.set(n.text, at)
+      }
+    }
+    // only a note that carries a state worth acting on is worth saying at board
+    // level. `turn 12, last activity 1:04 AM` is per-terminal detail: shared by
+    // coincidence, not a fact about the board, and hoisting it put the quietest
+    // sentence on the page in the loudest position.
+    return [...seen.values()].filter((x) => x.count >= 2 && x.n.tone !== 'muted').map((x) => x.n)
+  }
+
+  function hoistShared(list, notesOf) {
+    const slot = document.getElementById('terminals-hoisted')
+    if (!slot) return
+    const shared = sharedBlocker(list)
+    const notes = notesOf ? sharedNotes(list, notesOf) : []
+    hoisted = new Set(notes.map((n) => n.text))
+    slot.textContent = ''
+    for (const n of notes) slot.appendChild(el('span', { class: `hoisted-note tone-${n.tone}` }, [n.text]))
+    if (shared) slot.appendChild(el('span', { class: 'hoisted-note tone-muted' }, [`every terminal here ${shared.replace(/^this terminal /, '')}`]))
+    slot.hidden = !slot.childNodes.length
+    for (const p of document.querySelectorAll('#session-grid .blocker')) p.classList.toggle('is-hoisted', Boolean(shared))
+  }
+
   function renderSessions(v) {
     const focus = takeFocus(document)
     const grid = document.getElementById('session-grid')
@@ -1174,10 +1287,45 @@
     const empty = document.querySelector('.region-terminals .empty-line')
     if (empty) empty.hidden = list.length > 0
     terminalsMeta(list, notesOf)
-    for (const s of list) {
+
+    // A terminal that has ended or been lost is history. After a day of work
+    // it is most of the list, and shown as full rows it buries the one or two
+    // terminals that are actually live. History collapses to a single line that
+    // names what is in it, and opens when the reader wants it.
+    const done = (s) => !s.active && !urgent(s) && drawer.id !== s.session_id
+    const live = list.filter((s) => !done(s))
+    const finished = list.filter(done)
+    // computed over the rows that are actually drawn: a sentence shared only by
+    // terminals collapsed into the history line is not on screen to be deduped
+    hoistShared(live, notesOf)
+    for (const s of live) {
       const panel = renderSession(s)
       grid.appendChild(panel)
       if (drawer.id === s.session_id && region) panel.after(region)
+    }
+    if (finished.length) {
+      const counts = {}
+      for (const s of finished) counts[s.status] = (counts[s.status] || 0) + 1
+      const words = Object.entries(counts).map(([k, n]) => `${n} ${(STATUS[k] && STATUS[k][0]) || k}`).join(', ')
+      const line = el('div', { class: 'finished-line' })
+      const btn = el('button', { type: 'button', class: 'btn btn-text', 'aria-expanded': finishedOpen ? 'true' : 'false', 'data-focus-key': 'finished-toggle' },
+        [finishedOpen ? `hide ${finished.length} finished` : `${words}, earlier today`])
+      btn.addEventListener('click', () => { finishedOpen = !finishedOpen; renderSessions(view) })
+      line.appendChild(btn)
+      // naming eight dead session ids is a wall of text nobody reads. The
+      // repos they were working in is the fact worth carrying.
+      if (!finishedOpen) {
+        const repos = [...new Set(finished.map((s) => s.repo_name).filter(Boolean))]
+        if (repos.length) line.appendChild(el('span', { class: 'finished-names' }, [`in ${repos.slice(0, 3).join(', ')}${repos.length > 3 ? ` and ${repos.length - 3} more` : ''}`]))
+      }
+      grid.appendChild(line)
+      if (finishedOpen) {
+        for (const s of finished) {
+          const panel = renderSession(s)
+          grid.appendChild(panel)
+          if (drawer.id === s.session_id && region) panel.after(region)
+        }
+      }
     }
     // every control in a panel is a new element after this rebuild, and the
     // expanded region was moved out and back, which blurs whatever was focused
@@ -1193,11 +1341,19 @@
     box.textContent = ''
     const branches = []
     let count = 0
-    for (const t of v.trunk || []) {
-      if (!t.branch) continue
+    // What landed is history, and history is not what the board is for. The
+    // full list was eighteen rows of git log at the same visual weight as the
+    // live terminals, so the loudest thing on the page was a commit from
+    // eleven days ago. Collapsed it is one line; `git log` is one keystroke
+    // away in the terminal the reader already has open.
+    const all = (v.trunk || []).filter((t) => t.branch)
+    const total = all.reduce((n, t) => n + t.commits.length, 0)
+    const shown = trunkOpen ? Infinity : 3
+    for (const t of all) {
       branches.push(`${t.repo_name}@${t.branch}`)
       for (const c of t.commits) {
         count++
+        if (count > shown) continue
         const lb = c.landed_by
         const by = lb && lb.by && lb.by !== 'local' ? ` for ${lb.by}` : ''
         box.appendChild(el('div', { class: 'trunk-row' }, [
@@ -1209,6 +1365,12 @@
             : el('span', { class: 'chip' }, [`${c.when}, ${c.author}`])]),
         ]))
       }
+    }
+    if (total > 3) {
+      const more = el('button', { type: 'button', class: 'btn btn-text', 'aria-expanded': trunkOpen ? 'true' : 'false', 'data-focus-key': 'trunk-toggle' },
+        [trunkOpen ? `show the last 3` : `${total - 3} older`])
+      more.addEventListener('click', () => { trunkOpen = !trunkOpen; renderTrunk(view) })
+      box.appendChild(el('div', { class: 'finished-line' }, [more]))
     }
     const meta = document.querySelector('.region-trunk .region-meta')
     if (meta) {
@@ -1258,6 +1420,14 @@
   window.addEventListener('resize', publishHeadHeight)
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('default-order-save')?.addEventListener('click', saveDefaultOrder)
+    // The rails are remembered per browser: a reader who wants them open all
+    // day should not re-open them on every reload.
+    try { headOpen = localStorage.getItem('batonHeadOpen') === '1' } catch { /* private window */ }
+    document.getElementById('head-toggle')?.addEventListener('click', () => {
+      headOpen = !headOpen
+      try { localStorage.setItem('batonHeadOpen', headOpen ? '1' : '0') } catch { /* private window */ }
+      renderAccounts(view ? view.accounts || [] : [])
+    })
     renderLoadingHead()
     refresh()
     setInterval(tickElapsed, 1000)

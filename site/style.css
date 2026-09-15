@@ -31,15 +31,39 @@
   --line: oklch(0.87 0.012 258);
   --line-strong: oklch(0.72 0.02 258);
 
-  --claude: oklch(0.70 0.15 40);
-  --codex: oklch(0.70 0.15 165);
-  --agy: oklch(0.70 0.18 300);
-  --claude-ink: oklch(0.50 0.15 40);
-  --codex-ink: oklch(0.48 0.13 165);
+  /* agent identity, the shipped values from src/board/board.css --id-*. No
+     identity hue sits within 25 degrees of a state hue, which is why codex is
+     aqua at 178 and not green at 165: green is what a landed commit is. */
+  --claude: oklch(0.780 0.115 46);
+  --codex: oklch(0.820 0.100 178);
+  --agy: oklch(0.760 0.120 300);
+  /* the same three hues darkened for a swatch on a light band; codex stays at
+     178 so it does not read as the landed green here either */
+  --claude-ink: oklch(0.50 0.15 46);
+  --codex-ink: oklch(0.48 0.10 178);
   --agy-ink: oklch(0.48 0.20 300);
   --warn: oklch(0.82 0.16 85);
   --bad: oklch(0.68 0.20 25);
   --ok: oklch(0.75 0.17 150);
+
+  /* The shipped board's own surfaces and rail inks, copied from
+     src/board/board.css so a rail recreated on this page is the colour of the
+     rail in the product. Used only inside the product recreations. */
+  --ground: oklch(0.205 0.052 258);
+  --sunk: oklch(0.17 0.048 258);
+  --edge: oklch(0.36 0.042 258);
+  --edge-hi: oklch(0.48 0.052 258);
+  --tick: oklch(0.46 0.048 258);
+  --panel: oklch(0.25 0.05 258);
+  --panel-up: oklch(0.295 0.048 258);
+  --calm: oklch(0.55 0.09 258);
+  --warn-fill: oklch(0.72 0.15 75);
+  --bad-fill: oklch(0.56 0.17 20);
+  /* board.css splits state colour in two: the darker --warn / --danger are rail
+     fills inside a track, the lighter -text pair is for marks, numerals and
+     sentences, which have to clear 4.5:1 on the raised panel. */
+  --warn-text: oklch(0.840 0.130 78);
+  --danger-text: oklch(0.740 0.140 20);
 
   --sans: "Atkinson Hyperlegible Next", "Segoe UI", system-ui, sans-serif;
   --mono: "Azeret Mono", ui-monospace, Consolas, Menlo, monospace;
@@ -48,6 +72,14 @@
   --gutter: clamp(20px, 4vw, 56px);
   --fold: clamp(72px, 11vw, 160px);
   --wrap: 1120px;
+
+  /* one spacing scale; nothing in the markup sets a margin of its own */
+  --s-1: 8px;
+  --s-2: 12px;
+  --s-3: 20px;
+  --s-4: 32px;
+  --s-5: 44px;
+  --s-6: 56px;
 
   --z-nav: 10;
 }
@@ -68,17 +100,41 @@ h1, h2, h3, p, ul, ol, figure, table { margin: 0; }
 ul, ol { padding: 0; list-style: none; }
 a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.16em; }
 a:hover { text-decoration-thickness: 2px; }
+/* A command is a string the reader is meant to copy and run, so it never breaks
+   inside itself: `git diff --stat` split as `git diff -` / `-stat` is not a
+   command any more. The places that carry a long machine path rather than a
+   command opt back out, below. */
 code, kbd, .mono {
   font-family: var(--mono);
   font-size: 0.88em;
   font-weight: 500;
+  white-space: nowrap;
 }
+.cmd code, .touched code, .stripped code, .files, .where, .worktree, .prov,
+.burn, .in, .blocker, .trunk-row .mono, .panel-prompt, .lic code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* a four-column beat is narrower than `.baton/RESUME-<session-id>.md`, so that
+   one token may break; break-word leaves every command that fits intact */
+.steps .step p code { white-space: normal; overflow-wrap: break-word; }
 b, strong { font-weight: 700; }
 img { max-width: 100%; height: auto; display: block; }
 button { font: inherit; color: inherit; }
 
+/* The ring is --blue on a light band and amber on anything cobalt. The nav bar,
+   the footer, the skip link and the buy button all paint their own blue ground
+   without carrying .band.blue, so each is named here: a --blue ring on a --blue
+   fill measures 1:1 and WCAG 2.2 wants 3:1. Measured: amber is 3.93:1 on
+   --blue, 9.33:1 on --blue-deep, 9.98:1 on --ink. The buy button keeps its 3px
+   offset so its ring is drawn on the band, never on its own white fill. */
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
-.blue :focus-visible { outline-color: var(--warn); }
+.blue :focus-visible,
+.nav :focus-visible,
+footer :focus-visible,
+.skip:focus-visible,
+.buy:focus-visible { outline-color: var(--warn); }
+.buy:focus-visible { outline-offset: 3px; }
 
 .skip {
   position: absolute; left: var(--gutter); top: -60px;
@@ -88,6 +144,11 @@ button { font: inherit; color: inherit; }
 .skip:focus { top: 12px; }
 
 .wrap { max-width: var(--wrap); margin: 0 auto; padding-inline: var(--gutter); }
+/* arriving by an in-page link must not park the fold's opening rule under the
+   61px sticky bar */
+main section[id], #main { scroll-margin-top: 72px; }
+/* the intro block above a fold's main content: one value, set once */
+.fold-intro { margin-bottom: var(--s-5); }
 
 /* Bands */
 .band { padding-block: var(--fold); }
@@ -113,11 +174,12 @@ button { font: inherit; color: inherit; }
 }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; text-decoration: none; letter-spacing: -0.01em; }
 .brand svg { width: 26px; height: 26px; flex: none; }
-.nav-links { display: flex; gap: clamp(14px, 2vw, 28px); font-size: 15px; font-weight: 500; }
+.nav-links { display: flex; flex-wrap: wrap; gap: clamp(14px, 2vw, 28px); font-size: 15px; font-weight: 500; }
 .nav-links a { text-decoration: none; padding-block: 6px; border-bottom: 2px solid transparent; }
 .nav-links a:hover { border-bottom-color: var(--on-blue); }
 .nav-links .repo { padding: 8px 14px; border: 1px solid var(--on-blue); border-radius: 2px; border-bottom-width: 1px; }
 .nav-links .repo:hover { background: var(--on-blue); color: var(--blue); border-bottom-color: var(--on-blue); }
+.nav-links .repo:active { background: var(--on-blue-muted); color: var(--blue); }
 
 /* Type */
 h1 {
@@ -137,23 +199,31 @@ h2 {
   max-width: 18ch;
 }
 h3 { font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
-.lead { font-size: clamp(1.1rem, 1.5vw, 1.3125rem); line-height: 1.5; max-width: 58ch; }
+/* 21px at 1320 and 19px by 1120, so the lead is never mistaken for body */
+.lead { font-size: clamp(1.1875rem, 1.6vw, 1.3125rem); line-height: 1.5; max-width: 58ch; }
 p { max-width: 66ch; text-wrap: pretty; }
 .muted { color: var(--muted); }
 .blue .muted { color: var(--on-blue-muted); }
+/* one sub-body step, 15px. Sizes under it exist only inside a product
+   recreation, where they are the product's own. */
 .small { font-size: 15px; }
-.stack > * + * { margin-top: 20px; }
+.stack > * + * { margin-top: var(--gap, 20px); }
 .stack-tight > * + * { margin-top: 12px; }
 
-/* Two-column folds */
+/* Two-column folds. 5/7 means the narrow column holds the heading and the wide
+   one holds the product visual or the prose; the asymmetry is never applied the
+   other way round, which puts a 36ch ribbon of body text beside a void. */
 .cols {
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   gap: clamp(32px, 5vw, 80px);
   align-items: start;
 }
-.cols.rev { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
 .cols > * { min-width: 0; }
+/* the one inversion that is not a heading beside a visual: two prose columns of
+   unequal length, the longer one in the wider column */
+.cols.cols-wide { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+.changeover-stack { --gap: 40px; }
 
 /* Command rows */
 .commands { display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
@@ -165,23 +235,46 @@ p { max-width: 66ch; text-wrap: pretty; }
   border-radius: 2px;
   color: var(--on-blue);
 }
-.light .cmd { border-color: var(--line-strong); background: var(--ink); color: var(--bg); }
-.cmd code { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.cmd code { font-size: 15px; font-weight: 500; overflow-wrap: anywhere; hyphens: none; }
 .copy {
   flex: none;
-  min-height: 36px; padding: 6px 12px;
+  min-height: 44px; padding: 6px 12px;
   border: 1px solid var(--blue-rule); background: transparent; color: inherit;
-  border-radius: 2px; font-size: 14px; font-weight: 600; cursor: pointer;
+  border-radius: 2px; font-size: 15px; font-weight: 600; cursor: pointer;
   transition: background 220ms var(--ease), color 220ms var(--ease);
 }
-.light .copy { border-color: oklch(0.45 0.03 258); }
 .copy:hover { background: var(--on-blue); color: var(--blue-deep); }
-.light .copy:hover { background: var(--bg); color: var(--ink); }
+.copy:active { background: var(--on-blue); color: var(--blue-deep); transition-duration: 0ms; }
 .copy[data-done="1"] { background: var(--ok); color: var(--blue-deep); border-color: var(--ok); }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* Hero */
-.hero .wrap { display: grid; gap: clamp(28px, 4vw, 44px); }
+/* Hero. The instrument is in the first fold, because the reader arrived from a
+   usage limit and wants to see the thing, not read about it. 7/5 above 1000px,
+   stacked below, with the recreation under the commands. */
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: clamp(28px, 4vw, 44px) clamp(32px, 4vw, 64px); align-items: start; }
+.hero .hero-copy { display: grid; gap: clamp(24px, 3vw, 36px); }
+/* the headline now shares the fold with the instrument, so it is sized to its
+   own column rather than to the page */
+.hero h1 { font-size: clamp(2.4rem, 4.6vw, 4rem); max-width: 17ch; }
+@media (max-width: 1000px) { .hero h1 { font-size: clamp(2.4rem, 6.4vw, 4.6rem); } }
 .hero .facts { max-width: 60ch; color: var(--on-blue-muted); font-size: 15px; }
+.hero-figure { margin: 0; }
+.hero-figure figcaption { margin-top: 12px; font-size: 15px; color: var(--on-blue-muted); max-width: 46ch; }
+/* the hero crop carries the same rows at a narrow measure: the register drops
+   the two columns a 400px crop cannot hold, which is what the board's own
+   narrow breakpoint does */
+.board.is-mini .b-top, .board.is-mini .b-headline { padding-inline: 14px; }
+.board.is-mini .b-region { padding: 0 14px; }
+.board.is-mini .b-region:last-child { padding-bottom: 14px; }
+.board.is-mini .panel { margin: 0 -14px; padding-inline: 14px; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.board.is-mini .panel .r1 { grid-column: 1; grid-row: 1; }
+.board.is-mini .panel .r2 { grid-column: 1; grid-row: 2; }
+.board.is-mini .panel .r4 { grid-column: 2; grid-row: 1 / span 2; justify-content: flex-end; }
+.board.is-mini .b-headline { align-items: flex-start; }
+.board.is-mini .head-brief { flex-direction: column; gap: 5px; }
+@media (max-width: 1000px) {
+  .hero .wrap { grid-template-columns: 1fr; }
+}
 
 /* Marker rule: the signature. A hairline with short tabs sitting on it. */
 .marker {
@@ -191,19 +284,19 @@ p { max-width: 66ch; text-wrap: pretty; }
   display: flex; flex-wrap: wrap; gap: 8px 32px;
   font-size: 15px;
 }
-.light .marker { border-top-color: var(--line-strong); }
 .marker .tab { display: inline-flex; align-items: baseline; gap: 12px; position: relative; padding-top: 2px; }
+.marker .tab > span { max-width: 66ch; }
 .marker .tab::before {
   content: ""; position: absolute; left: 0; top: -15px; width: 2px; height: 14px;
   background: var(--on-blue);
 }
-.light .marker .tab::before { background: var(--ink); }
 .marker .tab.warn::before { background: var(--warn); }
 .marker .tab.bad::before { background: var(--bad); }
-.marker .tab.ok::before { background: var(--ok); }
 .marker code { font-size: 14px; font-weight: 600; }
-.marker.after { margin-top: 0; border-top: 0; padding-top: 0; }
-.marker.after .tab::before { top: auto; bottom: 100%; height: 14px; }
+/* the closing marker's rule is the terminal's own bottom edge, so the tick has
+   to hang in the 14px of air under it rather than paint inside the panel */
+.marker.after { margin-top: 0; border-top: 0; padding-top: 14px; }
+.marker.after .tab::before { top: -15px; }
 
 /* Live terminal */
 .live { --term-fg: var(--on-blue); }
@@ -228,21 +321,11 @@ p { max-width: 66ch; text-wrap: pretty; }
   color: var(--on-blue-muted);
 }
 .term-strip .who { font-weight: 600; color: var(--on-blue); }
-.term-strip .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--claude); margin-right: 8px; vertical-align: 1px; }
-.term[data-owner="codex"] .term-strip .dot { background: var(--codex); }
-.bar { display: inline-flex; align-items: center; gap: 10px; }
-.bar i { display: inline-block; width: 120px; height: 6px; background: oklch(0.34 0.07 255); border-radius: 1px; overflow: hidden; }
-.bar i::before {
-  content: ""; display: block; height: 100%; width: 100%;
-  transform: scaleX(var(--p, 0)); transform-origin: left center;
-  background: var(--fill, var(--ok));
-  transition: transform 900ms var(--ease), background 400ms var(--ease);
-}
-.bar[data-state="warn"] i::before { background: var(--warn); }
-.bar[data-state="limit"] i::before { background: var(--bad); }
-.bar[data-state="warn"] b { color: var(--warn); }
-.bar[data-state="limit"] b { color: var(--bad); }
-.bar b { font-weight: 600; min-width: 4ch; display: inline-block; }
+.term-strip .strip-rails { display: grid; gap: 6px; flex: 1 1 280px; max-width: 460px; }
+.term-strip .rail { font-size: 12.5px; }
+.term-strip .num-5h { font-size: 19px; }
+.term-strip .num-7d { font-size: 14px; }
+.term-strip .tier { font-weight: 600; }
 .term-strip .bell { margin-left: auto; color: var(--warn); font-weight: 600; opacity: 0; transition: opacity 300ms var(--ease); }
 .term-strip .bell[data-on="1"] { opacity: 1; }
 .term-body { padding: 22px 20px 26px; min-height: 200px; }
@@ -267,13 +350,15 @@ p { max-width: 66ch; text-wrap: pretty; }
 }
 @keyframes blink { 50% { opacity: 0; } }
 .term-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin-top: 18px; font-size: 15px; color: var(--on-blue-muted); }
+.term-foot > span { max-width: 66ch; }
 .replay {
-  min-height: 40px; padding: 8px 16px;
+  min-height: 44px; padding: 8px 16px;
   border: 1px solid var(--on-blue); background: transparent; color: var(--on-blue);
   border-radius: 2px; font-weight: 600; font-size: 15px; cursor: pointer;
   transition: background 220ms var(--ease), color 220ms var(--ease);
 }
 .replay:hover { background: var(--on-blue); color: var(--blue); }
+.replay:active { background: var(--on-blue-muted); color: var(--blue); transition-duration: 0ms; }
 .replay[hidden] { display: none; }
 
 /* Plates and tables */
@@ -282,128 +367,332 @@ p { max-width: 66ch; text-wrap: pretty; }
   border: 1px solid var(--line);
   border-radius: 3px;
 }
-.blue .plate { background: var(--blue-deep); border-color: var(--blue-rule); color: var(--on-blue); }
 .before-after { font-family: var(--mono); font-size: 14px; }
 .before-after > div { display: grid; grid-template-columns: 7ch 1fr; gap: 16px; padding: 16px 20px; }
 .before-after > div + div { border-top: 1px solid var(--line); }
 .before-after .k { color: var(--muted); }
 .before-after .b { color: var(--blue); font-weight: 700; }
 
-table.reads { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+table.reads { width: 100%; border-collapse: collapse; font-size: 15px; }
 table.reads th, table.reads td { text-align: left; vertical-align: top; padding: 16px 18px 16px 0; border-top: 1px solid var(--line); }
-table.reads thead th { border-top: 0; padding-top: 0; color: var(--muted); font-weight: 500; font-size: 14px; }
+table.reads thead th { border-top: 0; padding-top: 0; color: var(--muted); font-weight: 500; font-size: 15px; }
 table.reads td:first-child { white-space: nowrap; font-family: var(--mono); font-size: 14px; font-weight: 600; }
 table.reads .sw { display: inline-block; width: 9px; height: 9px; border-radius: 1px; margin-right: 10px; vertical-align: 0; }
 .sw.claude { background: var(--claude-ink); }
 .sw.codex { background: var(--codex-ink); }
 .sw.agy { background: var(--agy-ink); }
+/* the one scrollable region on the page, so it is reachable and named */
 .table-wrap { overflow-x: auto; }
+.table-wrap:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
-/* Board recreation */
-.board {
-  background: var(--blue-deep);
+/* ---- The window rail. One component, used by the live terminal strip and by
+   the board recreation, because the product has one. Track, graduations, the
+   85 post and the right-aligned numeral follow src/board/board.css 6.1. ---- */
+.rail { display: grid; grid-template-columns: 2.6ch minmax(0, 1fr) 88px; column-gap: 10px; align-items: center; font-family: var(--mono); font-size: 13px; }
+/* In the head the track is capped at 200px so it reads as a gauge rather than
+   as a progress bar, and the reset line right-aligns to the numeral's own right
+   edge, so a login row has one right edge and not three. The product carries
+   the reset on the numeral's line at 1464px of shell; this page's content
+   column is 1018px, which is the width at which the product's own rule
+   (board.css, the rule under 1280) drops the reset to its own line. */
+.b-head .rail { grid-template-columns: 2.6ch minmax(0, 200px) 88px; }
+.b-head .rail > .reset { grid-column: 1 / -1; grid-row: 2; padding-top: 3px; text-align: right; }
+.rail > .reset { grid-column: 1 / -1; padding-top: 3px; text-align: right; color: var(--on-blue-muted); }
+.win { text-align: right; color: var(--on-blue-faint); }
+.track { position: relative; height: 12px; border-radius: 1px; background: var(--sunk); box-shadow: inset 0 1px 0 var(--edge); overflow: hidden; }
+.track.h8 { height: 8px; }
+/* two tick layers span the whole track, one under the fill in light ink and one
+   over it in dark ink clipped to the filled part, so the 10 percent graduations
+   read at every fill level, 0 included */
+.track::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 50%; z-index: 1; background-image: repeating-linear-gradient(to right, var(--tick) 0 1px, transparent 1px 10%); }
+.track::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 50%; z-index: 3; background-image: repeating-linear-gradient(to right, var(--sunk) 0 1px, transparent 1px 10%); clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0); }
+/* one element, one gradient, hard stops from the value: the fill shows the
+   zones it crossed and red is confined to the part past 85 */
+.fill { position: absolute; left: 0; top: 0; bottom: 0; z-index: 2; width: var(--pct, 0%); background-image: linear-gradient(to right, var(--calm) 0 var(--s60, 100%), var(--warn-fill) var(--s60, 100%) var(--s85, 100%), var(--bad-fill) var(--s85, 100%) 100%); box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.12); transition: width 700ms var(--ease); }
+/* the 85 percent post, painted at all times: a light core with a dark keyline
+   each side, so it reads on an empty track and on every fill colour */
+.post { position: absolute; top: 0; bottom: 0; left: 85%; z-index: 4; width: 3px; margin-left: -1px; background-image: linear-gradient(to right, var(--sunk) 0 1px, var(--warn-text) 1px 2px, var(--sunk) 2px 3px); }
+/* a window with no reading paints no bar and no post: the track and its
+   graduations, and the refusal in the numeral cell */
+.rail.is-none .fill, .rail.is-none .post { display: none; }
+.num { text-align: right; white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.02; color: var(--on-blue); }
+.num-5h { font-size: 22px; }
+.num-7d { font-size: 15px; }
+/* the 5h numeral is the largest type on the board, 30px, and the head is where
+   the recreation says so */
+.b-head .num-5h { font-size: 30px; }
+.b-head .num-7d { font-size: 19px; }
+.num.is-warn { color: var(--warn-text); }
+.num.is-danger { color: var(--danger-text); }
+.num.is-none { font-family: var(--sans); font-size: 14px; font-weight: 400; line-height: 1.3; color: var(--on-blue-faint); }
+.pct { font-size: 12.5px; color: var(--on-blue-faint); padding-left: 0.1em; }
+.tier { color: var(--on-blue-muted); }
+.tier.is-warn { color: var(--warn-text); }
+.tier.is-danger { color: var(--danger-text); }
+.tier.is-none { color: var(--on-blue-faint); }
+.tier.is-walled { font-size: 17px; font-weight: 700; color: var(--danger-text); }
+/* walled is an extra state, never a replacement: both percentages stay under
+   the hatch, and a window with no reading still paints nothing */
+.is-walled .rail:not(.is-none) .fill { background-image: repeating-linear-gradient(45deg, oklch(0.56 0.17 20 / 0.22) 0 3px, transparent 3px 6px), linear-gradient(to right, var(--calm) 0 var(--s60, 100%), var(--warn-fill) var(--s60, 100%) var(--s85, 100%), var(--bad-fill) var(--s85, 100%) 100%); }
+
+/* agent identity. The name is always printed beside the colour. */
+.acct-name { font-weight: 700; }
+.id-claude { color: var(--claude); }
+.id-codex { color: var(--codex); }
+.id-agy { color: var(--agy); }
+
+/* the flat data token: mono, no border, no background, middot between siblings */
+.chip { font-family: var(--mono); font-size: 12.5px; color: var(--on-blue-faint); }
+.chip + .chip::before { content: "\00b7"; padding: 0 5px; color: var(--on-blue-faint); }
+
+/* ---- Board recreation. The shipped board's regions, in DOM. ---- */
+.board, .pair {
+  background: var(--ground);
   color: var(--on-blue);
   border-radius: 3px;
   border: 1px solid var(--blue-rule);
   font-size: 14px;
   overflow: hidden;
 }
-.board-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 12px 18px; border-bottom: 1px solid oklch(0.34 0.07 255); font-family: var(--mono); font-size: 13px; color: var(--on-blue-muted); }
-.board-top .live-dot { color: var(--ok); font-weight: 600; }
-.board-top .live-dot::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 7px; }
-.board-top .url { margin-left: auto; }
-.accounts { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 18px 0; }
-.pill {
-  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
-  padding: 8px 12px; border: 1px solid oklch(0.40 0.08 255); border-radius: 2px;
-  font-family: var(--mono); font-size: 12.5px;
-}
-.pill .who { font-weight: 700; }
-.pill .who.claude { color: var(--claude); }
-.pill .who.codex { color: var(--codex); }
-.pill .who.agy { color: var(--agy); }
-.pill .bar i { width: 64px; }
-.pill .walled { color: var(--bad); }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; padding: 16px 18px 18px; }
-.card {
-  border: 1px solid oklch(0.40 0.08 255); border-radius: 3px; padding: 14px 14px 12px;
-  display: grid; gap: 9px; align-content: start;
-  background: oklch(0.27 0.06 255);
-}
-.card.overlap { border-color: var(--bad); }
-.card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.tag { display: inline-block; padding: 2px 8px; border: 1px solid currentColor; border-radius: 2px; font-family: var(--mono); font-size: 12px; font-weight: 600; line-height: 1.5; }
-.tag.claude { color: var(--claude); }
-.tag.codex { color: var(--codex); }
-.tag.agy { color: var(--agy); }
-.tag.run { color: var(--ok); }
-.tag.warn { color: var(--warn); }
-.tag.hand { color: var(--warn); }
-.card-head .age { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--on-blue-faint); }
-.card .task { font-size: 15px; line-height: 1.4; }
-.card .meta { font-family: var(--mono); font-size: 12px; color: var(--on-blue-muted); display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { font-family: var(--mono); font-size: 12px; padding: 2px 7px; border: 1px solid oklch(0.42 0.08 255); border-radius: 2px; color: var(--on-blue-muted); }
-.chip.hot { border-color: var(--bad); color: var(--bad); }
-.card .bars { display: grid; gap: 4px; font-family: var(--mono); font-size: 12px; }
-.card .bars .bar i { width: 100%; max-width: 220px; }
-.card .bars .bar { display: grid; grid-template-columns: 2.4ch minmax(0, 1fr) 4ch; align-items: center; gap: 10px; }
-.card .flag { font-size: 13px; line-height: 1.4; }
-.card .flag.bad { color: var(--bad); }
-.card .flag.ok { color: var(--ok); }
-.card .flag.warn { color: var(--warn); }
-.card .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.card .btns span { padding: 6px 10px; border: 1px solid oklch(0.48 0.08 255); border-radius: 2px; font-size: 13px; font-weight: 600; }
-.card .btns span.end { color: var(--bad); border-color: var(--bad); }
-.landed { padding: 14px 18px 18px; border-top: 1px solid oklch(0.34 0.07 255); font-family: var(--mono); font-size: 12.5px; color: var(--on-blue-muted); display: grid; gap: 6px; }
-.landed .h { color: var(--on-blue-faint); font-weight: 600; }
-.landed .sha { color: var(--on-blue); font-weight: 600; }
-.landed .by { color: var(--ok); }
-figure.recreated > figcaption { margin-top: 14px; font-size: 14px; color: var(--muted); max-width: 70ch; }
-.blue figure.recreated > figcaption { color: var(--on-blue-muted); }
 
-/* Two-session pair */
-.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
-.pair { color: var(--on-blue); }
-.pair .card { background: var(--blue-deep); }
+/* topbar: a word with a 2px rule under it, never a round connection dot */
+.b-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 18px; border-bottom: 1px solid var(--edge); }
+.b-brand { font-size: 20px; font-weight: 600; }
+.sse { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.sse-word { color: var(--on-blue-muted); }
+.sse-rule { display: block; width: 24px; height: 2px; background: var(--on-blue-muted); }
+.b-sched { font-size: 13px; color: var(--on-blue-faint); }
+.b-floor { margin-left: auto; font-size: 13px; color: var(--on-blue-muted); }
 
-/* Changeover */
-.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 32px clamp(24px, 3vw, 48px); }
-.steps .step { border-top: 1px solid var(--blue-rule); padding-top: 14px; position: relative; }
-.steps .step::before { content: ""; position: absolute; left: 0; top: -1px; width: 28px; height: 2px; background: var(--on-blue); }
+/* the four-column register every row type lays its fields into */
+.acct, .panel, .trunk-row {
+  display: grid;
+  /* c1 fits `claude a3f8` beside the longest status word; c2 is budgeted so the
+     head's reset cell holds `resets 4:15 PM, in 1h 12m` on one line, which is
+     the product's G7: the numeral and its reset are one horizontal run. */
+  grid-template-columns: 208px minmax(0, 1fr) 120px 196px;
+  column-gap: 20px;
+  align-items: center;
+}
+.acct > *, .panel > *, .trunk-row > * { min-width: 0; }
+
+/* ---- the head line. This is what `baton claude` opens with: one line per
+   login carrying that login's worst reading, and `show windows` on the right.
+   The rails below it are what that control reveals. ---- */
+.b-headline {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px;
+  padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--tick);
+}
+.head-brief { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; min-width: 0; }
+.u { display: inline-flex; align-items: baseline; gap: 8px; font-family: var(--mono); font-size: 14px; white-space: nowrap; }
+.u .acct-name { font-family: var(--sans); font-size: 14px; }
+.u .v { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--on-blue); }
+.u .q { color: var(--on-blue-faint); }
+.u.is-danger .v { color: var(--danger-text); font-weight: 700; }
+.head-chev { margin-left: auto; padding-left: 20px; flex: none; font-family: var(--mono); font-size: 13px; color: var(--on-blue-faint); text-decoration: underline; text-underline-offset: 3px; }
+
+/* the instrument head, opened: one row per login, two window rails each */
+.b-head { padding: 4px 18px 10px; background: var(--panel); border-bottom: 1px solid var(--tick); }
+.b-head-note { max-width: none; padding: 8px 18px; background: var(--sunk); border-bottom: 1px solid var(--tick); font-size: 13px; color: var(--on-blue-faint); }
+.acct { grid-template-rows: auto auto; align-items: start; row-gap: 4px; padding: 12px 0; }
+.acct + .acct { border-top: 1px solid var(--edge); }
+.acct > .r1 { grid-column: 1; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 4px; }
+.acct > .r2 { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; row-gap: 8px; }
+.acct > .r3 { grid-column: 2 / -1; grid-row: 2; display: flex; flex-wrap: wrap; column-gap: 20px; row-gap: 2px; padding-top: 6px; }
+.acct > .r4 { grid-column: 4; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 2px; }
+.acct .acct-name, .panel .acct-name { font-size: 16px; }
+.reset { color: var(--on-blue-muted); }
+.prov, .burn, .in { font-family: var(--mono); font-size: 12.5px; line-height: 1.35; color: var(--on-blue-faint); overflow-wrap: anywhere; }
+.head-caption { padding-top: 10px; font-size: 13px; color: var(--on-blue-faint); }
+
+/* a region and its head */
+.b-region { padding: 0 18px; }
+.b-region:last-child { padding-bottom: 18px; }
+.region-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 18px 0 8px; border-bottom: 1px solid var(--tick); }
+.region-title { font-size: 18px; font-weight: 600; }
+.region-meta { font-size: 14px; color: var(--on-blue-muted); }
+/* a reason that is true of every terminal is said once for the region; the
+   per-row copy stays in the DOM for the Land button's aria-describedby */
+.hoisted { margin: 8px 0 0; font-size: 14px; color: var(--on-blue-muted); }
+
+/* the session panel: a full-width band, elevation by urgency, not a card */
+.panel { position: relative; align-items: start; margin: 0 -18px; padding: 14px 18px; background: var(--panel); }
+.panel + .panel { border-top: 1px solid var(--edge); }
+.panel.needs-you { background: var(--panel-up); box-shadow: inset 2px 0 0 var(--on-blue), inset 0 1px 0 var(--edge-hi); }
+.panel.is-inert { background: var(--sunk); }
+.panel.is-hover { background: var(--panel-up); }
+.panel .r1, .panel .r3 { display: flex; flex-direction: column; gap: 5px; }
+.panel .r2, .panel .r4 { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; }
+.panel-prompt { font-size: 16px; line-height: 1.35; }
+.status-word { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--on-blue-muted); }
+.mark { display: inline-block; flex: none; width: 7px; height: 7px; background: currentColor; color: var(--on-blue-muted); }
+.mark.tone-idle { background: transparent; box-shadow: inset 0 0 0 1px currentColor; color: var(--on-blue-faint); }
+.sentence { font-size: 16px; line-height: 1.4; }
+.sentence.tone-danger { font-weight: 700; color: var(--danger-text); }
+.also { font-size: 14px; color: var(--on-blue-muted); text-decoration: underline; text-underline-offset: 3px; }
+.files { font-family: var(--mono); font-size: 13px; line-height: 1.5; color: var(--on-blue-faint); overflow-wrap: anywhere; }
+.file.is-overlap { color: var(--warn-text); }
+.where { font-family: var(--mono); font-size: 12.5px; line-height: 1.4; color: var(--on-blue-faint); overflow-wrap: anywhere; }
+.worktree { font-family: var(--mono); font-size: 12.5px; color: var(--on-blue-muted); }
+.elapsed { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 21px; font-weight: 600; color: var(--on-blue-muted); }
+.blocker { font-size: 13px; line-height: 1.4; color: var(--on-blue-faint); }
+.blocker.is-hoisted { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ---- the quiet roster, src/board/board.css 6.2.0. A terminal that is running
+   normally is one line: the reader is watching, not working. Its files, its
+   worktree line, its disclosure and its account chips stay in the DOM and
+   return when the row needs the reader or the pointer is on it. Measured on a
+   real four-terminal board: ~300px per terminal became 43px. ---- */
+.panel:not(.needs-you) .files,
+.panel:not(.needs-you) .worktree,
+.panel:not(.needs-you) .also,
+.panel:not(.needs-you) .chip-line { display: none; }
+.panel:not(.needs-you) { padding-block: 8px; }
+.panel:not(.needs-you) .r1 { flex-direction: row; align-items: baseline; flex-wrap: nowrap; gap: 8px; }
+.panel:not(.needs-you) .r3 { flex-direction: row; align-items: baseline; gap: 8px; }
+.panel:not(.needs-you) .r4 { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+/* the session id gives way before the state word does: the state is why the row
+   is being read, the id only says which row it is */
+.panel:not(.needs-you) .name-line { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.panel:not(.needs-you) .r1 .chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel:not(.needs-you) .r1 .status-word { flex: none; padding-left: 8px; }
+/* one line means one line: the register column widths are shared with the
+   accounts and the commit list and are not this row's to widen, so a long value
+   clips with an ellipsis instead of wrapping the row */
+.panel:not(.needs-you) .where { align-self: stretch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel:not(.needs-you) .panel-prompt { align-self: stretch; font-size: 15px; color: var(--on-blue-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel:not(.needs-you) .elapsed { font-size: 15px; }
+.panel:not(.needs-you) .blocker { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.panel.is-inert .panel-prompt, .panel.is-inert .where { color: var(--on-blue-faint); }
+/* At rest the controls take no space at all: four buttons are wider than the
+   register's action column, so leaving them in the flow either overflowed the
+   row or wrapped it. They lift out of the grid and return over the row on
+   hover or focus. The codex row below is drawn in that pointer-on state. */
+.panel:not(.needs-you) .actions {
+  position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+  flex-wrap: nowrap; padding: 4px 0 4px 32px;
+  background: linear-gradient(to right, transparent, var(--panel-up) 32px);
+  opacity: 0;
+}
+.panel.is-hover .actions { opacity: 1; }
+
+/* the button row: fixed order, 44px, 2px radius. A button that does not apply
+   is omitted, never moved, which is why a stopped terminal reads
+   Land / Details / Remove. On a row that needs you the row sits in the
+   register's fourth column and wraps there, exactly as the product's does. */
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border: 1px solid transparent; border-radius: 2px; font-size: 14px; color: var(--on-blue-muted); }
+.actions .btn-primary { background: var(--panel-up); box-shadow: inset 0 1px 0 var(--edge-hi); color: var(--on-blue); font-size: 16px; font-weight: 600; }
+.actions .btn-primary.is-off { background: var(--sunk); box-shadow: none; color: var(--on-blue-faint); }
+.actions .btn-secondary { border-color: var(--edge); }
+
+/* what has landed on trunk, in the same register */
+.trunk-row { padding: 11px 0; font-size: 14px; color: var(--on-blue-muted); }
+.trunk-row + .trunk-row { border-top: 1px solid var(--edge); }
+.trunk-row .mono { font-family: var(--mono); font-size: 13px; color: var(--on-blue); }
+
+figure.recreated > figcaption { margin-top: 14px; font-size: 15px; color: var(--muted); max-width: 66ch; }
+
+/* Two-session pair: the same panels, with no head above them */
+.pair .panel { margin: 0; }
+
+/* Changeover. A four-beat chronology never renders three-then-one, so the count
+   is explicit rather than left to auto-fit. The beat's tab is the marker's own
+   tab, 2px by 14px, hung under the rule instead of over it: one signature
+   geometry, two placements. */
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px clamp(24px, 3vw, 48px); }
+.steps .step { border-top: 1px solid var(--blue-rule); padding-top: 16px; position: relative; }
+.steps .step::before { content: ""; position: absolute; left: 0; top: 0; width: 2px; height: 14px; background: var(--on-blue); }
 .steps .step.warn::before { background: var(--warn); }
 .steps .step.bad::before { background: var(--bad); }
 .steps .step.ok::before { background: var(--ok); }
 .steps .step > code { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
-.steps .step p { font-size: 15.5px; }
+.steps .step p { font-size: 15px; }
+@media (max-width: 1000px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .steps { grid-template-columns: 1fr; } }
 
-/* Touched lists */
-.touched { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 32px clamp(24px, 3vw, 48px); }
+/* Touched lists. Four lists, two by two, so the last one is never an orphan. */
+.touched { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px clamp(24px, 3vw, 48px); align-items: start; }
 .touched h3 { padding-bottom: 10px; border-bottom: 1px solid var(--line-strong); margin-bottom: 14px; }
-.touched li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 15.5px; }
+.touched li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 15px; overflow-wrap: anywhere; }
 .touched li:last-child { border-bottom: 0; }
-.touched code { font-size: 13.5px; }
+.touched code { font-size: 14px; }
+@media (max-width: 860px) { .touched { grid-template-columns: 1fr; } }
+/* the twenty-one variable names are the longest run in the fold, so they get
+   the widest measure rather than the narrowest column */
+.stripped { margin-top: 32px; padding: 20px 24px; }
+.stripped h3 { font-size: 1.05rem; margin-bottom: 10px; }
+.stripped p { max-width: none; font-family: var(--mono); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; color: var(--ink); }
+.stripped .note { font-family: var(--sans); font-size: 15px; color: var(--muted); margin-top: 12px; }
 
 /* Install and footer */
+.install { padding-bottom: clamp(56px, 7vw, 96px); }
 .install .wrap { display: grid; gap: 28px; }
 .links { display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 15px; }
-footer { background: var(--blue-deep); color: var(--on-blue-muted); font-size: 14px; padding-block: 28px; }
+footer { background: var(--blue-deep); color: var(--on-blue-muted); font-size: 15px; padding-block: 28px; }
 footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; }
 footer a { color: var(--on-blue); }
 
-/* Responsive */
+/* Responsive. The recreated register follows the board's own breakpoints:
+   four columns, then three with R3 and R4 stacked, then one. */
+@media (max-width: 1000px) {
+  /* the product's own rule: under 1280 R2 cannot hold four cells and a readable
+     track, so the reset drops to its own line rather than the track shrinking */
+  .b-head .rail { grid-template-columns: 2.6ch minmax(0, 1fr) 88px; }
+  .b-head .rail > .reset { grid-column: 1 / -1; grid-row: 2; padding-top: 3px; text-align: right; }
+  .acct, .panel, .trunk-row { grid-template-columns: 176px minmax(0, 1fr) 216px; column-gap: 20px; }
+  .panel .r3, .trunk-row .r3 { grid-column: 3; grid-row: 1; }
+  .panel .r4, .trunk-row .r4 { grid-column: 3; grid-row: 2; align-items: flex-end; text-align: right; }
+  .acct > .r3 { grid-column: 2 / -1; grid-row: 2; }
+  .acct > .r4 { grid-column: 3; grid-row: 1; align-items: flex-end; text-align: right; }
+  .actions { justify-content: flex-end; }
+}
 @media (max-width: 860px) {
-  .cols, .cols.rev { grid-template-columns: 1fr; }
+  .cols, .cols.cols-wide { grid-template-columns: 1fr; }
   .nav-links { gap: 14px; }
   .nav-links .hide-sm { display: none; }
+}
+@media (max-width: 680px) {
+  .acct, .panel, .trunk-row { grid-template-columns: 1fr; row-gap: 8px; }
+  .acct > .r1, .acct > .r3, .acct > .r4,
+  .panel .r3, .panel .r4, .trunk-row .r3, .trunk-row .r4 {
+    grid-column: 1; grid-row: auto; align-items: flex-start; text-align: left;
+  }
+  /* the rails still stretch to the full width of the row they stack into */
+  .acct > .r2 { grid-column: 1; grid-row: auto; align-items: stretch; text-align: left; }
+  .acct > .r3 { flex-direction: column; }
+  .rail, .b-head .rail { grid-template-columns: 2.8ch auto minmax(0, 1fr); row-gap: 5px; }
+  .rail .track { grid-column: 1 / -1; grid-row: 2; }
+  .rail > .reset, .b-head .rail > .reset { grid-column: 3; grid-row: 1; padding-top: 0; text-align: right; }
+  .num { text-align: left; }
+  .num-5h, .b-head .num-5h { font-size: 19px; }
+  .b-head .num-7d { font-size: 15px; }
+  /* on a row with no room for the register, the controls come back into flow */
+  .panel:not(.needs-you) .actions { position: static; transform: none; opacity: 1; flex-wrap: wrap; padding: 0; background: none; }
+  .panel:not(.needs-you) .r1, .panel:not(.needs-you) .r3, .panel:not(.needs-you) .r4 { flex-direction: column; align-items: flex-start; }
+  .panel:not(.needs-you) .panel-prompt, .panel:not(.needs-you) .where { white-space: normal; }
+  .actions { justify-content: flex-start; }
+  .term-strip .strip-rails { max-width: none; }
+  /* the head line stacks one login per row rather than wrapping mid-reading */
+  .b-headline { align-items: flex-start; }
+  .head-brief { flex-direction: column; gap: 5px; }
+}
+/* 320 and 360 are real phones. Below 440 the nav carries the brand and the one
+   outbound link and nothing else, so the bar cannot push the page sideways. */
+@media (max-width: 440px) {
+  .nav .wrap { gap: 12px; }
+  .nav-links a[href^="#"] { display: none; }
 }
 @media (max-width: 560px) {
   body { font-size: 16px; }
   h1 { max-width: none; }
-  .term { font-size: 13.5px; }
+  .plan .price b { font-size: 2.6rem; }
+  #pricing-h { margin-left: -1px; }
+  /* the 14px floor: the transcript and its strip are the smallest type here */
+  .term { font-size: 14px; }
+  .term-strip { font-size: 14px; }
   .term-body { padding: 18px 14px 22px; }
   .term-strip { padding: 10px 14px; }
-  .bar i { width: 90px; }
   .cmd { align-items: stretch; flex-direction: column; gap: 10px; }
   .copy { align-self: flex-start; }
   .nav .wrap { min-height: 56px; }
@@ -415,32 +704,55 @@ footer a { color: var(--on-blue); }
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
 
-/* Dark product surfaces inside light bands */
-.board .muted, .pair .muted { color: var(--on-blue-muted); }
-
 /* Touch targets and phone label floor */
 @media (pointer: coarse) {
-  .copy, .replay { min-height: 44px; }
   .nav-links a { padding-block: 12px; }
   .nav-links .repo { padding-block: 10px; }
 }
+/* Nothing on a phone is set below 14px, inline code and the recreations
+   included. Inline code is set a step down from its line; on a phone that step
+   must not take it under the floor. */
 @media (max-width: 560px) {
-  .tag, .chip, .card .meta, .card .age, .pill, .landed, .board-top, .card .bars, .card .flag { font-size: 13px; }
+  /* a phone column is narrower than `pip install -U context-handoff-bundle`, so
+     below 560 a command may break at its spaces; break-word keeps every command
+     that still fits on one line whole, and splits no token that fits alone */
+  code, kbd, .mono { font-size: max(14px, 0.88em); white-space: normal; overflow-wrap: break-word; }
+  .touched code { font-size: 14px; }
+  .chip, .files, .where, .worktree, .prov, .burn, .in, .win, .pct, .blocker,
+  .b-sched, .b-floor, .trunk-row .mono, .head-caption, .rail, .term-strip .rail,
+  .term-strip .tier, .term-strip .bell, .term-strip .acct-name,
+  .u, .u .acct-name, .head-chev, .b-head-note, .hoisted { font-size: 14px; }
 }
 
-/* Pricing */
-.plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-.plan { padding: 28px 28px 26px; display: flex; flex-direction: column; gap: 14px; }
+/* Pricing. Two ruled columns in the same hairline vocabulary as .touched and
+   .steps, not two plates side by side: a card grid is the one shape a stranger
+   could name without reading a word of this. The price is the largest thing in
+   each column, and one path is solid and the other outlined, so the $79 once
+   and the $12 a seat are not two identical decisions. */
+.plans { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px clamp(32px, 5vw, 72px); align-items: start; }
+.plan { display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--blue-rule); padding-top: 18px; position: relative; }
+.plan::before { content: ""; position: absolute; left: 0; top: 0; width: 2px; height: 14px; background: var(--on-blue); }
 .plan .buy { margin-top: auto; }
-.plan h3 { font-size: 1.4rem; }
-.plan .price { font-size: 1.05rem; color: var(--muted); }
-.plan .price b { font-size: 2.4rem; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; margin-right: 6px; }
-.plan ul { display: grid; gap: 8px; margin-top: 4px; }
-.plan li { padding-left: 18px; position: relative; font-size: 15.5px; }
-.plan li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 8px; height: 2px; background: var(--blue); }
+.plan h3 { font-size: 1.1rem; font-weight: 600; color: var(--on-blue-muted); }
+.plan .price { font-size: 1.05rem; color: var(--on-blue-muted); }
+.plan .price b { display: block; font-size: 3.2rem; line-height: 1.05; font-weight: 800; color: var(--on-blue); letter-spacing: -0.03em; }
+.plan ul { display: grid; gap: 10px; margin-top: 4px; max-width: 46ch; }
+.plan li { padding-left: 18px; position: relative; font-size: 15px; }
+.plan li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 8px; height: 2px; background: var(--blue-rule); }
+.plan figure { margin: 4px 0 0; }
+.plan figure img { border: 1px solid var(--blue-rule); border-radius: 3px; }
+.plan figcaption { margin-top: 10px; font-size: 15px; color: var(--on-blue-muted); }
 .buy {
-  display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 10px 18px; margin-top: 10px;
-  background: var(--blue); color: var(--on-blue); text-decoration: none; font-weight: 700; border-radius: 2px;
-  transition: background 220ms var(--ease);
+  display: inline-flex; align-items: center; justify-content: center; align-self: flex-start;
+  min-height: 46px; padding: 10px 20px; margin-top: 18px;
+  background: var(--on-blue); color: var(--blue); text-decoration: none; font-weight: 700; border-radius: 2px;
+  border: 1px solid var(--on-blue);
+  transition: background 220ms var(--ease), color 220ms var(--ease);
 }
-.buy:hover { background: var(--blue-hover); }
+.buy:hover { background: var(--on-blue-muted); }
+.buy:active { background: var(--on-blue-faint); transition-duration: 0ms; }
+.buy.secondary { background: transparent; color: var(--on-blue); }
+.buy.secondary:hover { background: var(--on-blue); color: var(--blue); }
+.buy.secondary:active { background: var(--on-blue-muted); color: var(--blue); transition-duration: 0ms; }
+.plans-note { margin-top: 40px; }
+@media (max-width: 860px) { .plans { grid-template-columns: 1fr; } }

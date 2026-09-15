@@ -31,8 +31,14 @@
 <div class="shell">
 
   <section class="head" aria-label="Accounts and usage">
-    <div id="accounts"></div>
-    <p class="head-caption">Times are local.</p>
+    <!-- One line by default. The rails are a click away, not a tax on every
+         glance: the board is checked far more often than it is worked. -->
+    <button type="button" class="head-line" id="head-toggle" aria-expanded="false" aria-controls="accounts">
+      <span class="head-brief" id="head-brief"></span>
+      <span class="head-chev" id="head-chev">show windows</span>
+    </button>
+    <div id="accounts" hidden></div>
+    <p class="head-caption" id="head-caption" hidden>Times are local.</p>
   </section>
 
   <section class="region region-terminals" aria-labelledby="terminals-head">
@@ -44,6 +50,9 @@
       <p class="region-meta" role="status" aria-atomic="true"></p>
       <span class="chip" id="whoami" hidden></span>
     </div>
+    <!-- a sentence that is true of every terminal is said once here, not once
+         per row. Three panels repeating one fact is three lines of noise. -->
+    <p class="hoisted" id="terminals-hoisted" hidden></p>
     <div class="session-list" id="session-grid"></div>
     <p class="empty-line" hidden>No terminal is running. Start one in any repo: <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code>. It appears here within a second of the agent's first turn.</p>
   </section>

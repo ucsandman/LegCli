@@ -202,7 +202,7 @@ input[type="checkbox"] { min-height: 0; accent-color: var(--calm); }
 
 .grid, .acct, .panel, .row, .trunk-row {
   display: grid;
-  grid-template-columns: 176px minmax(320px, 1fr) 208px 264px;
+  grid-template-columns: 208px minmax(300px, 1fr) 208px 264px;
   column-gap: var(--s-6);
   align-items: center;
 }
@@ -258,6 +258,23 @@ input[type="checkbox"] { min-height: 0; accent-color: var(--calm); }
 .acct > .r3 { grid-column: 2 / -1; grid-row: 2; display: flex; flex-wrap: wrap; column-gap: var(--s-5); row-gap: 2px; }
 .acct > .r4 { grid-column: 4; grid-row: 1 / span 2; }
 .head-caption { padding-top: var(--s-1); color: var(--text-3); }
+
+/* ---- 6.1.0 the head line. The board is checked far more often than it is
+   worked, so the default head is one line carrying the single worst fact per
+   login, and the rails open on demand. Measured on a real three-login board:
+   the head fell from 390px of a 900px viewport to 96px. ---- */
+.head-line { display: flex; align-items: baseline; gap: var(--s-4); width: 100%; padding: var(--s-2) 0; background: none; border: 0; text-align: left; cursor: pointer; }
+.head-line:hover { background: var(--e3); box-shadow: 0 0 0 var(--gutter) var(--e3); }
+.head-brief { display: flex; align-items: baseline; gap: var(--s-4); flex-wrap: wrap; min-width: 0; }
+.u { display: inline-flex; align-items: baseline; gap: var(--s-2); font-family: var(--mono); font-size: var(--t-0); }
+.u .acct-name { font-family: var(--sans); font-weight: var(--w-head); }
+.u .v { font-weight: var(--w-data); font-variant-numeric: tabular-nums; color: var(--text); }
+.u .q { color: var(--text-3); }
+.u.is-warn .v { color: var(--warn-text); }
+.u.is-danger .v { color: var(--danger-text); font-weight: var(--w-head); }
+.u .q.is-stale { color: var(--warn-text); }
+.head-chev { margin-left: auto; padding-left: var(--s-3); flex: none; font-family: var(--mono); font-size: var(--t--1); color: var(--text-3); text-decoration: underline; }
+.head-line:hover .head-chev { color: var(--text-2); }
 /* G7 wants the numeral and its reset in one horizontal run and one fixation,
    so the reset cell is wide enough for the longest string the board can print
    (`resets Sat 10:11 PM, in 4d 22h`, 222px) and never wraps. Below 1280 R2
@@ -334,7 +351,7 @@ input[type="checkbox"] { min-height: 0; accent-color: var(--calm); }
    is never the only carrier: the 2px inset bar is a shape, it survives
    greyscale, and it is the same idiom .row.is-selected already uses. */
 .panel.needs-you { background: var(--e3); box-shadow: inset 2px 0 0 var(--text), inset 0 1px 0 var(--edge-hi); }
-.panel.is-running { background: var(--e2); }
+.panel:not(.needs-you) { background: var(--e2); }
 .panel.is-inert { background: var(--e1); }
 /* the panel is the most-interacted row on the board and was the only row type
    with no hover state, while it declared the transition for one. */
@@ -354,6 +371,104 @@ input[type="checkbox"] { min-height: 0; accent-color: var(--calm); }
 .worktree { color: var(--text-2); }
 .elapsed { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: var(--t-3); font-weight: var(--w-data); color: var(--text-2); }
 .actions, .row-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+/* ---- 6.2.0 the quiet roster. A terminal that is running normally is one line:
+   the reader is watching, not working. Everything below the first line is kept
+   in the DOM for the screen reader and for the moment the row stops being
+   normal, and is shown when the row needs the reader, when the pointer is on
+   it, or when its detail region is open. Measured on a real four-terminal
+   board: ~300px per terminal became 43px. ---- */
+.panel:not(.needs-you) .files,
+.panel:not(.needs-you) .worktree,
+.panel:not(.needs-you) .also,
+.panel:not(.needs-you) .prompt-note { display: none; }
+.panel:not(.needs-you) { padding-block: var(--s-2); }
+/* the register columns stack when a row has something to say. A row that is
+   merely running has one thing per column, so they run along the line instead
+   and the whole terminal is one line high. */
+.panel:not(.needs-you) .r1 { flex-direction: row; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; }
+.panel:not(.needs-you) .r3 { flex-direction: row; align-items: baseline; gap: var(--s-2); }
+.panel:not(.needs-you) .r4 { flex-direction: row; align-items: center; justify-content: flex-end; gap: var(--s-3); }
+
+.panel:not(.needs-you) .status-word { margin-left: 0; }
+/* one line means one line: the register column widths are shared with the
+   accounts and the commit list and are not this row's to widen, so the long
+   values clip with an ellipsis and keep their full text in a title. */
+.panel:not(.needs-you) .r1 { flex-wrap: nowrap; }
+.panel:not(.needs-you) .r1 > div { display: flex; align-items: baseline; gap: var(--s-2); min-width: 0; overflow: hidden; }
+/* the session id gives way before the state word does: the state is why the
+   row is being read, the id only says which row it is */
+.panel:not(.needs-you) .r1 .chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel:not(.needs-you) .r1 .status-word { flex: none; padding-left: var(--s-2); }
+/* the account, owner and lineage chips are context, not identity. On a one
+   line row they were taking the space the session id needed, so `claude 4840`
+   became `claude 4.` and `from codex` became `from ...`: two truncations
+   where one full value would do. They return in the detail region. */
+.panel:not(.needs-you) .r1 > .r1-chips { display: none; }
+.panel:not(.needs-you) .where { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel:not(.needs-you) .r4 { justify-content: space-between; }
+/* the reason Land is off is already on the button, as its title and as its
+   aria-describedby target. On a row that is merely running it does not also
+   need a paragraph, least of all wrapped to nine lines inside the action
+   column. It returns on hover, on focus, and on any row that needs the reader. */
+.panel:not(.needs-you) .blocker { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.panel:not(.needs-you) .panel-prompt { -webkit-line-clamp: 1; line-clamp: 1; font-size: var(--t-0); color: var(--text-2); }
+.panel:not(.needs-you) .elapsed { font-size: var(--t-0); font-weight: var(--w-data); color: var(--text-3); }
+/* hover reveals the controls for the row under the pointer and NOTHING else.
+   Revealing content on hover reflows the list while the reader is pointing at
+   it, which is precisely what a surface built for a glance must never do.
+   Everything hidden here is one click away in the detail region. */
+
+/* the controls are absent until the row needs one or the pointer is on it, so
+   four identical button triples stop competing with the words */
+.panel { position: relative; }
+/* At rest the controls take no space at all: four buttons are 304px and the
+   register's action column is 264px, so leaving them in the flow either
+   overflowed the page or wrapped the row to two lines. They lift out of the
+   grid and return over the row on hover or focus, where they read as the
+   controls for the row the pointer is on. */
+.panel:not(.needs-you) .actions {
+  position: absolute; right: var(--gutter); top: 50%; transform: translateY(-50%);
+  flex-wrap: nowrap; padding: var(--s-1) 0 var(--s-1) var(--s-4);
+  background: linear-gradient(to right, transparent, var(--e3) var(--s-4));
+  opacity: 0; pointer-events: none; transition: opacity 140ms var(--ease);
+}
+.panel:not(.needs-you):hover .actions,
+.panel:not(.needs-you):focus-within .actions { opacity: 1; pointer-events: auto; }
+/* a pointer-less device never fires :hover, so the controls are simply present */
+@media (hover: none) {
+  .panel:not(.needs-you) .actions { opacity: 1; }
+  .panel:not(.needs-you) .files, .panel:not(.needs-you) .worktree { display: block; }
+}
+/* an ended or lost terminal is not a running one. It recedes. */
+.panel.is-inert .panel-prompt, .panel.is-inert .where { color: var(--text-3); }
+
+/* the hoisted sentence, said once for the region */
+.hoisted { margin: var(--s-2) 0 0; color: var(--text-2); }
+
+/* history: one line naming what is in it, not one row per dead terminal */
+.finished-line { display: flex; align-items: baseline; gap: var(--s-3); padding: var(--s-3) 0; border-top: 1px solid var(--line); color: var(--text-3); }
+.finished-names { font-family: var(--mono); font-size: var(--t--1); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- composition. Three lists stacked at one visual weight read as one long
+   table with no subject. The terminals are the subject: they keep the panel
+   ground and the full type scale, and everything that is history recedes a
+   step and gets real air around it. ---- */
+.region + .region { margin-top: var(--s-6); }
+.region-trunk, .region-settings { color: var(--text-3); }
+.region-trunk .region-title, .region-settings .region-title { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-3); }
+.region-trunk .trunk-row { padding-block: var(--s-1); }
+.region-trunk .r2 { color: var(--text-3); }
+.region-trunk .mono { color: var(--text-3); }
+/* the sentences the board says once, above the list it says them about */
+.hoisted { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); }
+.hoisted-note.tone-danger { color: var(--danger-text); font-weight: var(--w-head); }
+.hoisted-note.tone-warn { color: var(--warn-text); }
+.hoisted-note.tone-muted { color: var(--text-3); }
+/* the per-row copy stays for the screen reader and for aria-describedby: it is
+   removed from sight, never from the accessibility tree */
+.blocker.is-hoisted { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .blocker { line-height: 1.4; color: var(--text-3); }
 
 /* ---- 6.5 buttons: 44px, 2px radius. Red never sits idle, so a destructive
