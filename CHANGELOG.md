@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.6.1 (2026-09-15)
+
+- **The documentation is on the web.** The repository is private and stays
+  private, which meant every "read the source", README, FAQ and changelog link
+  on the site and in the package pointed at a 404 for anyone who is not the
+  owner — the first click a stranger makes. `npm run docs` renders the public
+  subset of `docs/` plus the README and this changelog to static pages under
+  `/docs`, committed to the repo because Vercel serves `site/` with no build
+  step. CI regenerates them and fails if the committed output has drifted.
+  Working files (DECISIONS, DEVIATIONS, ERRORS, REUSE, ROADMAP-v2, DEMO) stay
+  out.
+- **Nothing dangles at a 404.** The clone instructions in the README and
+  getting-started are replaced by where the source actually is for a buyer:
+  `$(npm root -g)/baton-agents/src`, plain `.mjs`, nothing bundled. Links to
+  files with a public home go there; links to files that only ship inside the
+  package point at the package. The README's images are now absolute URLs,
+  because npm rewrites relative image paths to `raw.githubusercontent.com`,
+  which 404s for a private repository — the hero image on the npm page had been
+  broken.
+- **A support page**, at `/support`: one address, the refund terms, license-key
+  troubleshooting, what to put in a bug report, and the security reporting path.
+  A private repository has no issue tracker to point at, so this is the whole
+  path. `SECURITY.md` said only `0.1.x` was supported, four minor versions late,
+  and pointed at a GitHub advisory form strangers cannot reach.
+- **The claims check themselves.** `fixtures/verified.json` pins the verified
+  CLI versions, the verification date and the test count. `npm test` now asserts
+  every public surface agrees with it, and a weekly job
+  (`npm run claims:drift`) compares the pins against what those CLIs publish
+  now, because "verified against Claude Code 2.1.268" quietly stops being true.
+  On its first run it found `llms.txt` claiming 463 tests and the landing page
+  claiming 406 while the suite reported 454, and that all three pinned CLIs had
+  already moved.
+- **The handoff is on film.** The landing page carries the 53-second recording
+  of a real run — claude's five-hour gauge reaching 100 percent, the headline
+  turning to *at the wall*, the terminal continuing on codex — and the README
+  leads with a GIF of the same moment. `preload="none"`, so the page weight is
+  unchanged until someone presses play.
+- **macOS is in CI.** The matrix was Ubuntu and Windows only.
+- Removed a stray `hello-fake.txt` that a fake-agent run had committed to the
+  repository root.
+
 ## 0.6.0 (2026-09-15)
 
 - **Removed: the 14-day trial.** Baton is bought up front, and the risk

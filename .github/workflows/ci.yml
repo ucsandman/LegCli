@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +45,20 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # The docs site is generated and committed, because Vercel serves site/
+      # as static files and runs no build step. An edit to docs/ that never got
+      # rebuilt would ship a public page contradicting the package.
+      - name: The committed docs site matches docs/
+        if: runner.os == 'Linux'
+        run: |
+          npm run docs
+          if ! git diff --quiet -- site/; then
+            echo "site/ is out of date. Run 'npm run docs' and commit the result."
+            git diff --stat -- site/
+            exit 1
+          fi
+          echo "site/ is current"
 
   publish-npm:
     needs: test

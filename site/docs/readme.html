@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baton README</title>
+<meta name="description" content="The complete Baton README as shipped in the npm package: what it does, what it reads, what it never touches, and the license.">
+<link rel="canonical" href="https://baton-agents.vercel.app/docs/readme">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/docs/readme">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="Baton README">
+<meta property="og:description" content="The complete Baton README as shipped in the npm package: what it does, what it reads, what it never touches, and the license.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Baton README">
+<meta name="twitter:description" content="The complete Baton README as shipped in the npm package: what it does, what it reads, what it never touches, and the license.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme" aria-current="page">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#contents">Contents</a></li><li><a href="#60-second-run">60-second run</a></li><li><a href="#what-baton-reads-from-each-agent">What Baton reads from each agent</a></li><li><a href="#how-a-handoff-works">How a handoff works</a></li><li><a href="#two-sessions-in-one-repo">Two sessions in one repo</a></li><li><a href="#more-than-one-human">More than one human</a></li><li><a href="#the-board">The board</a></li><li><a href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></li><li><a href="#what-is-and-is-not-touched">What is and is not touched</a></li><li><a href="#cli-reference">CLI reference</a></li><li><a href="#background-tasks-the-v01-extras">Background tasks: the v0.1 extras</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#documentation">Documentation</a></li><li><a href="#contributing">Contributing</a></li><li><a href="#privacy-and-attribution">Privacy and attribution</a></li><li><a href="#license-and-pricing">License and pricing</a></li></ul></nav>
+<h1 id="baton"><a class="anchor" href="#baton">baton</a></h1>
+<p><strong>Type <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code> instead of the bare command. You get the same interactive agent; Baton opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.</strong></p>
+<p><a href="https://baton-agents.vercel.app/license"><img src="https://img.shields.io/badge/license-commercial-blue.svg" alt="License: commercial"></a>
+<a href="https://baton-agents.vercel.app/docs/getting-started"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node 22+"></a>
+<a href="https://baton-agents.vercel.app/docs"><img src="https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg" alt="Runtime deps: 0"></a>
+<a href="https://baton-agents.vercel.app/docs/configuration"><img src="https://img.shields.io/badge/runs-on%20your%20machine-informational.svg" alt="Local first"></a></p>
+<p><img src="https://baton-agents.vercel.app/img/baton-handoff.gif" alt="Claude&#39;s five-hour gauge fills to 100 percent, the board headline changes to &quot;at the wall&quot;, and the terminal that was running claude is handed to codex and keeps going without a restart"></p>
+<p><em>Claude hits the five-hour wall. The terminal is handed to codex and keeps going. Nothing is retyped. (<a href="https://baton-agents.vercel.app/#handoff">the full 53-second run</a>)</em></p>
+<p><img src="https://baton-agents.vercel.app/img/docs/terminals-1280.png" alt="The Baton board at 1280px: a headline reading &quot;All 4 terminals are on claude, and claude has 5% left&quot;, under it the staleness of the reading; a lit claude panel with its 7 day gauge at 95 percent past the reserve notch and its 5 hour gauge at 38; half panels for codex, at the wall, and agy, which publishes no figure; four terminal rows with their prompts and buttons; and counts for finished terminals, what landed and background tasks"></p>
+<p>You keep using your coding agents exactly as you do today, in any terminal,
+from your own config directory: Baton adds its hooks in a separate per-session
+settings file and never edits yours. <code>baton claude --model opus</code> is
+<code>claude --model opus</code> with four things running alongside it:</p>
+<ol>
+<li><strong>A board.</strong> Opened once in your browser, reused after that. Every Baton
+session in every terminal is a card on it: agent, account, repo and branch,
+the task, the files it is touching, its 5h and 7d usage, what has landed on
+trunk. Two sessions editing the same file in one repo are flagged on both
+cards, and a second session in a checkout that already has one gets its
+own worktree and a <strong>Land</strong> button instead of writing over the first.</li>
+<li><strong>Usage tracking</strong> per agent and account, from what each CLI already
+exposes: Claude Code&#39;s usage endpoint and its <code>StopFailure</code> hook, Codex&#39;s
+read-only app-server rate-limit read, agy&#39;s log.</li>
+<li><strong>A context handoff bundle</strong> (<a href="https://pypi.org/project/context-handoff-bundle/">context-handoff-bundle</a>)
+refreshed as the session goes, so the work is always ready to hand off.</li>
+<li><strong>The handoff itself.</strong> Near the limit you get a warning. At the limit Baton
+saves the bundle, stops the agent, and starts the next option in the same
+terminal from that bundle: another login of the same agent if you added
+one, otherwise the next agent in the order shown on the terminal card.
+The default is claude → codex → agy, and Settings changes the default for
+new terminals. Nothing is retyped.
+When every option is out, it tells you which resets first and when, waits
+for that reset with a countdown, and starts that agent from the bundle.</li>
+</ol>
+<p>Subscription logins only: Baton strips <code>ANTHROPIC_API_KEY</code>,
+<code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>,
+<code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>, <code>OPENAI_API_BASE</code>, <code>GEMINI_API_KEY</code>,
+<code>GOOGLE_API_KEY</code>, <code>GOOGLE_GEMINI_BASE_URL</code>, <code>GOOGLE_GENAI_USE_VERTEXAI</code>,
+<code>GOOGLE_GENAI_USE_ENTERPRISE</code>, <code>GOOGLE_CLOUD_PROJECT</code>,
+<code>GOOGLE_CLOUD_LOCATION</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code>, <code>CLAUDECODE</code>,
+<code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code>, and <code>CLAUDE_PLUGIN_DATA</code> before any agent
+starts. It then sets <code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0</code> for a detached
+Claude print session. Baton never edits <code>~/.claude/settings.json</code> or any other
+settings file of yours; its hooks ride in a separate per-session <code>--settings</code>
+file. The one thing it does write outside <code>~/.baton</code> is the folder-trust
+answer, below. <code>baton uninstall</code> removes only <code>~/.baton</code>.</p>
+<h3 id="the-folder-trust-answer"><a class="anchor" href="#the-folder-trust-answer">The folder-trust answer</a></h3>
+<p>Each agent CLI asks once, the first time it runs in a directory, whether you
+trust that folder, and Claude Code asks a second question when a <code>CLAUDE.md</code>
+above the repo imports a file from outside it. A handoff fires when the limit
+hits, which is usually when nobody is watching, so an agent that stopped on
+that prompt would sit there until morning with the bundle already written.</p>
+<p>Before starting an agent, Baton records the same answer you would have given,
+for the repository you already chose by typing <code>baton claude</code> in it:</p>
+<table>
+<thead>
+<tr>
+<th>agent</th>
+<th>file</th>
+<th>what is written</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>claude</td>
+<td><code>~/.claude.json</code> (or <code>$CLAUDE_CONFIG_DIR/.claude.json</code>)</td>
+<td><code>projects[&quot;&lt;repo&gt;&quot;].hasTrustDialogAccepted: true</code></td>
+</tr>
+<tr>
+<td>claude</td>
+<td>the same entry, only when such an import exists</td>
+<td><code>hasClaudeMdExternalIncludesApproved</code>, <code>hasClaudeMdExternalIncludesWarningShown</code></td>
+</tr>
+<tr>
+<td>codex</td>
+<td><code>~/.codex/config.toml</code></td>
+<td><code>[projects.&quot;&lt;repo&gt;&quot;] trust_level = &quot;trusted&quot;</code></td>
+</tr>
+<tr>
+<td>agy</td>
+<td><code>~/.gemini/trustedFolders.json</code></td>
+<td><code>&quot;&lt;repo&gt;&quot;: &quot;TRUST_FOLDER&quot;</code></td>
+</tr>
+</tbody></table>
+<p>For Claude Code this is the documented remedy: its permissions guide says to
+set <code>projects[&quot;&lt;path&gt;&quot;].hasTrustDialogAccepted</code> to <code>true</code> in <code>~/.claude.json</code>,
+where <code>&lt;path&gt;</code> is the repository root.</p>
+<p>Baton never creates one of those files: if it is not there, that CLI has not
+run as you yet and its own first-run flow is next, with you at the keyboard. It
+never rewrites a file to say what it already says, and it never removes what is
+already in one. When it approves an external <code>CLAUDE.md</code> import it prints the
+full path of every file it approved, to the terminal and to the session
+timeline on the board, so the approval is on the record rather than invisible.</p>
+<p>Set <code>BATON_TRUST=never</code> to switch all of it off and answer the prompts
+yourself.</p>
+<h2 id="contents"><a class="anchor" href="#contents">Contents</a></h2>
+<ul>
+<li><a href="#60-second-run">60-second run</a></li>
+<li><a href="#what-baton-reads-from-each-agent">What Baton reads from each agent</a></li>
+<li><a href="#how-a-handoff-works">How a handoff works</a></li>
+<li><a href="#two-sessions-in-one-repo">Two sessions in one repo</a></li>
+<li><a href="#more-than-one-human">More than one human</a></li>
+<li><a href="#the-board">The board</a></li>
+<li><a href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></li>
+<li><a href="#what-is-and-is-not-touched">What is and is not touched</a></li>
+<li><a href="#cli-reference">CLI reference</a></li>
+<li><a href="#background-tasks-the-v01-extras">Background tasks: the v0.1 extras</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#documentation">Documentation</a></li>
+<li><a href="#contributing">Contributing</a></li>
+<li><a href="#license">License</a></li>
+</ul>
+<h2 id="60-second-run"><a class="anchor" href="#60-second-run">60-second run</a></h2>
+<p>Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one
+logged-in agent CLI (<code>claude</code>, <code>codex</code> or <code>agy</code>).</p>
+<pre><code>npm install -g baton-agents
+pip install -U context-handoff-bundle
+cd &lt;any repo&gt;
+baton claude
+</code></pre>
+<p>That is the whole setup. The first <code>baton &lt;agent&gt;</code> starts the board on
+<a href="http://127.0.0.1:4747">http://127.0.0.1:4747</a> and opens it; later sessions reuse it. Anything after the
+agent name passes straight through (<code>baton codex -m gpt-5.3-codex-spark</code>,
+<code>baton claude --resume</code>). The agent&#39;s own prompt and permission flags pass
+through unchanged, and your settings file is never edited: Baton&#39;s hooks ride
+in a separate per-session <code>--settings</code> file.</p>
+<p>The source repository is private. Baton is commercial, source-available
+software: every <code>.mjs</code> file that runs is in the package you just installed, at
+<code>$(npm root -g)/baton-agents/src</code>, and the license lets you read it and modify
+your own copy. There is nothing compiled, minified or bundled to see through.</p>
+<h2 id="what-baton-reads-from-each-agent"><a class="anchor" href="#what-baton-reads-from-each-agent">What Baton reads from each agent</a></h2>
+<p>Nothing is guessed from screen scraping. Each tap was read from the CLI&#39;s
+source or documentation and then checked on a real machine (2026-09-11,
+Claude Code 2.1.268, codex-cli 0.153.4, agy 1.2.0); the rightmost column says
+which.</p>
+<table>
+<thead>
+<tr>
+<th>agent</th>
+<th>usage percentages</th>
+<th>the wall (limit hit)</th>
+<th>how Baton attaches</th>
+<th>status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>claude</td>
+<td><code>GET api.anthropic.com/api/oauth/usage</code> with the login Claude Code stored, the same data as <code>/usage</code> and the built-in status line (<code>five_hour</code>, <code>seven_day</code>, <code>utilization</code>, <code>resets_at</code>); polled every 60 s</td>
+<td><code>StopFailure</code> hook with <code>error: rate_limit</code> (<a href="https://code.claude.com/docs/en/hooks#stopfailure">docs</a>)</td>
+<td>one extra settings file per session via <code>--settings</code>, carrying only Baton&#39;s own hooks; <code>autoContinueAtUsageLimit</code> is set to <code>false</code> because Baton owns the handoff</td>
+<td>observed live</td>
+</tr>
+<tr>
+<td>codex</td>
+<td>read-only <code>account/rateLimits/read</code> through the app-server, polled every 60 s by the board and active attach; windows are identified by duration (300 minutes = 5h, 10080 = 7d)</td>
+<td><code>task_complete.error.codex_error_info: usage_limit_exceeded</code>, message &quot;You&#39;ve hit your usage limit … try again at …&quot; (<code>codex-rs/protocol/src/error.rs</code>)</td>
+<td>no model turn and no hook are injected; the board reads the CLI backend and records only returned windows</td>
+<td>verified by source and regression tests</td>
+</tr>
+<tr>
+<td>agy</td>
+<td>none exposed (agy&#39;s own status line fetches a quota summary that is written nowhere)</td>
+<td><code>RESOURCE_EXHAUSTED</code>, &quot;it resets in …&quot;, &quot;out of quota&quot; in the log</td>
+<td><code>--log-file</code> per session; <code>~/.gemini/antigravity-cli/history.jsonl</code> gives the prompts and conversation id</td>
+<td>observed live (a real <code>RESOURCE_EXHAUSTED</code> with its reset was read from the log on 2026-09-11)</td>
+</tr>
+</tbody></table>
+<p>Why not Claude Code&#39;s status line JSON (<code>rate_limits.five_hour.used_percentage</code>):
+on 2.1.268 the custom <code>statusLine</code> Baton passes through <code>--settings</code> did not
+run, so the endpoint poll is the source. Baton still writes a <code>statusLine</code>
+entry that records the same fields, so the moment a build honours it the poll
+becomes a fallback.</p>
+<p>For Codex, Baton does not infer availability from a lower percentage: only an
+explicit available answer from the backend clears an earlier wall. The board
+labels each bar as <code>&lt;n&gt;% used</code> and marks an old reading as stale rather than
+presenting it as current.</p>
+<h2 id="how-a-handoff-works"><a class="anchor" href="#how-a-handoff-works">How a handoff works</a></h2>
+<ol>
+<li><strong>Warning.</strong> At 85 % of any window (<code>BATON_WARN_PCT</code>) the session card turns
+amber, the event log names the next option, and the terminal bell rings once.</li>
+<li><strong>Limit.</strong> claude: the <code>StopFailure</code> hook fires with <code>rate_limit</code>. codex: the
+rollout reports <code>usage_limit_exceeded</code>. agy: the log says
+<code>RESOURCE_EXHAUSTED</code>. The account is marked walled until the reset the CLI
+reported (or the soonest known window reset).</li>
+<li><strong>Bundle.</strong> Baton writes structured notes (task, the last messages from the
+transcript, <code>git diff --stat</code>, dirty files, files edited this session, recent
+commits, why it stopped) and runs <code>context-handoff-bundle save --repo-local</code>
+with one slug per leg; each save writes its own timestamped bundle next to
+the last one. A checkpoint of the same bundle is taken every two minutes
+while the session is active.</li>
+<li><strong>Switch.</strong> The agent process is stopped, the terminal is restored, and the
+next option starts in the same terminal with a short pointer prompt:
+read <code>.baton/RESUME-&lt;session-id&gt;.md</code> (the <code>context-handoff-bundle load</code>
+output plus the reason for the switch), check <code>git status</code> and <code>git diff</code>,
+continue, do not ask the human to restate the task. The same text is copied
+to <code>.baton/RESUME.md</code>, the file people open by habit, and both are stamped
+with the commit and the live terminals they describe. <code>claude &quot;&lt;prompt&gt;&quot;</code>, <code>codex &quot;&lt;prompt&gt;&quot;</code>
+and <code>agy -i &quot;&lt;prompt&gt;&quot;</code> all open the normal interactive session with that
+first turn.</li>
+<li><strong>Order.</strong> Other accounts of the same agent come first, then every other
+agent in the saved order, each tried once. The order is a priority list, not
+a rotation: put agy at the bottom and agy is the last option from a Claude
+terminal and from a Codex terminal alike. The board shows the exact
+sequence with the agent running now skipped, plus the preferred option and
+the first option eligible from current install and limit state. Use <strong>Change
+order</strong> on a terminal card to change that terminal, or Settings to set the
+default copied by new terminals. An option whose CLI is missing or whose
+wall has not reset is skipped.</li>
+<li><strong>All out.</strong> The terminal prints each option with its reset time, soonest
+first, then stays open with a countdown to the first reset and starts that
+agent from the bundle when it arrives. The card says <code>waiting for &lt;agent&gt; at &lt;time&gt;</code>. Ctrl-C (or End on the card) quits with exit 3 instead.</li>
+</ol>
+<p>You can force a handoff any time: the <strong>Hand off now</strong> button on the card, or
+<code>baton sessions handoff &lt;id&gt;</code>. Verified on this machine: <code>baton claude</code> opened
+the real Claude Code TUI with Baton&#39;s hooks firing into the session log, the
+usage poll recorded 36 % of the 5h window and 74 % of the 7d window, the
+warning fired at 96 % of the 7d window and named codex as the next option, and
+a limit saved the bundle, stopped claude and started codex in the same
+terminal with the pointer prompt. A real <code>StopFailure</code> arrived on 2026-09-11
+and is kept at <code>fixtures/live/claude/limit-rate_limit.json</code>; to drive the path
+on demand, <code>baton sessions simulate-limit &lt;id&gt;</code> sends the same <code>StopFailure</code>
+<code>rate_limit</code> payload Claude Code would send through Baton&#39;s hook: verified end
+to end on a haiku session, the hook set the limit, the runner saved the
+bundle, stopped claude and started codex, which read <code>.baton/RESUME.md</code> on its
+first turn. The simulated wall clears after two minutes and is never kept as
+evidence. The first real <code>StopFailure</code> was saved that way, with secrets
+scrubbed, at <code>fixtures/live/claude/limit-rate_limit.json</code>, and the claude docs
+row flipped to observed-live (<code>node scripts/live-limits.mjs</code>). The same
+capture is wired for codex <code>usage_limit_exceeded</code> and agy <code>RESOURCE_EXHAUSTED</code>;
+no payload for either has been kept yet.</p>
+<p>Terminals started by this version can change order while they run. An older
+terminal stays on the order it started with; its card says a restart is needed
+and can save the desired default for the next launch. A normal agent exit ends
+the terminal. It does not trigger a handoff.</p>
+<h2 id="two-sessions-in-one-repo"><a class="anchor" href="#two-sessions-in-one-repo">Two sessions in one repo</a></h2>
+<p>Two agents in one working tree write over each other&#39;s files. So when you
+start <code>baton codex</code> in a checkout where <code>baton claude</code> is already live, the new
+session gets its own git worktree, <code>&lt;repo&gt;/.baton-worktrees/&lt;session-id&gt;</code> on
+branch <code>baton/&lt;session-id&gt;</code>, cut from the branch the checkout has out, and the
+terminal prints one line saying where it is. The agent starts there; the card,
+the usage tracking and the handoff work the same. <code>--no-worktree</code> shares the
+checkout on purpose (Baton takes the flag out; the agent never sees it).</p>
+<p>The card of a session with its own worktree has a <strong>Land</strong> button. It sends
+the branch through the merge queue: whatever the agent left uncommitted is
+committed on the branch, the branch is rebased onto its base, the repo&#39;s test
+command runs (<code>package.json</code> <code>test</code>, <code>pytest</code>, or none with a warning), and the
+base is fast-forwarded, never merged. When a step fails nothing lands and the
+card says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of
+the output, <code>dirty-trunk</code> when the checkout has local changes the landing
+would overwrite. Local changes it would not touch are left alone. The
+landed-on-trunk list says which terminal landed each commit. <strong>Remove</strong> safely
+prunes a finished session only when its worktree is clean and its branch is
+already on the base. <strong>Remove record</strong> is a separate visible button with a
+confirmation: it removes only Baton&#39;s saved session record and deliberately
+keeps the worktree, branch, unmerged commits, and dirty files.</p>
+<p>Verified live on 2026-09-11 with three haiku sessions in a throwaway repo. The
+first stayed in the checkout; the second and third each got a worktree and
+appended a line to README.md. Land on the second, clicked on the real board,
+ran the repo&#39;s tests and fast-forwarded main; Land on the third bounced with
+<code>rebase-conflict</code> on README.md and kept its commit on its branch; the
+landed-on-trunk list named the second terminal (the screenshot above).</p>
+<h2 id="more-than-one-human"><a class="anchor" href="#more-than-one-human">More than one human</a></h2>
+<p>Off until you run it. <code>baton share on</code> binds the board to your Tailscale
+address (or <code>--bind lan</code>, or an address you name) and gives every human their
+own name and token; until then the board stays on <code>127.0.0.1</code> and there is no
+token at all.</p>
+<pre><code>baton share on              your own link, printed once
+baton share add sam         sam&#39;s link, printed once
+baton share                 who is on the board (never a token again)
+baton share rotate sam      sam&#39;s old link stops working
+baton share off             back to 127.0.0.1; every link stops working
+</code></pre>
+<p>A token is kept as a sha256 hash, so a lost link is re-issued, never re-read.
+The board takes the token out of the address bar and keeps it in the browser.
+Your own browser on this machine needs no token.</p>
+<p>What another human sees is the Terminals region, read-only. Each panel says
+whose terminal it is. On a panel that is not theirs there is no prompt, no file
+name, no path, no bundle and no event log; what stays is the agent and session
+tail, the status word, the sentence <code>read-only: wes owns this terminal</code>,
+repo@branch, the worktree line, the elapsed clock, and one button,
+<strong>Request handoff</strong>. The instrument head prints <code>not shared</code> in place of every
+percentage. A request lands on the owner&#39;s panel as <code>sam asked to take this terminal at 11:04 PM</code> with <strong>Approve sam</strong> and <strong>Dismiss sam</strong>. The background
+side of the board (cards, logs, the floor) stays the owner&#39;s alone. A terminal
+belongs to the human who started it: <code>BATON_PERSON=sam baton claude</code> on the
+same machine is sam&#39;s card, not yours.</p>
+<p>The security pass that goes with it: every <code>/api</code> route needs a token, the
+event stream included; twenty wrong tokens from one address and that address
+waits a minute; one identity gets 600 requests a minute; a guest gets 403 on
+everything that is not theirs; and the tests send a bad and a missing token to
+every route. There is still no TLS, so keep this on Tailscale or a network you
+trust. Verified live on 2026-09-11: two terminals on one machine, one wes&#39;s and
+one sam&#39;s; sam&#39;s board showed wes&#39;s card with the prompt hidden and only
+<strong>Request handoff</strong>, and sam&#39;s request reached wes&#39;s board (<code>~/.baton/board.log</code>:
+&quot;hand-off requested … by sam&quot;).</p>
+<h2 id="the-board"><a class="anchor" href="#the-board">The board</a></h2>
+<p><code>baton &lt;agent&gt;</code> opens it; <code>baton open</code> reopens it; <code>baton down</code> stops it.</p>
+<ul>
+<li><strong>Instrument head</strong>: one row per login, sticky at the top of the board and of
+the floor. Each row carries the 5h and 7d rails, the percentage, when that
+window resets and how long that is, a burn-rate sentence under the 5h rail,
+where and when Baton read the number, and one word for the state: <code>under 60</code>,
+<code>over 60</code>, <code>over 85</code>, <code>stale &lt;n&gt;m</code>, <code>at the wall</code> or <code>no reading</code>. A login
+at its wall keeps both rails and gains <code>at the wall</code>, <code>back &lt;day time&gt;</code> and
+<code>in &lt;duration&gt;</code> beside them.</li>
+<li><strong>Terminals</strong>: one full-width panel per session, the ones that need an answer
+first. Agent and session tail, the status word, the first prompt as a button,
+exactly one sentence (the highest-ranked thing true about the terminal), an
+<code>also:</code> disclosure naming the rest, the files as comma-separated text,
+<code>repo@branch</code>, <code>own worktree, from main</code> when the session cut its own
+worktree, and an elapsed clock. Two live sessions in one repo touching the
+same file print <code>codex (codex-99ab) is changing src/server.mjs in another checkout; whoever lands second rebases</code> on both panels, and a panel that needs
+you rises one step and says <code>waiting on you</code> in place of its status word.
+After a Land the sentence is <code>landed on &lt;base&gt;, &lt;7-char sha&gt;, &lt;n&gt; files, +&lt;added&gt;/-&lt;removed&gt;</code>, or <code>Land was attempted at &lt;time&gt; onto &lt;base&gt; and bounced: &lt;first line of the reason&gt;. The branch still holds every commit; nothing was lost.</code></li>
+<li><strong>Landed on main</strong>: one flat list across every repo the board can see, newest
+first, each row with the short sha, the subject, a <code>repo@branch</code> chip, and
+when plus who. A commit a Land put there says <code>landed by &lt;agent&gt; (&lt;id tail&gt;)</code>.</li>
+<li><strong>Buttons</strong>, in a fixed order that never reflows: Land, Hand off now,
+Details, End. Once a session has ended, Remove and Remove record take End&#39;s
+place. Details opens an expansion in flow under the panel.</li>
+<li>Below it, optional <strong>Background tasks</strong> an agent runs in a separate worktree
+without joining the terminal conversation (see below), then <strong>Settings</strong>.</li>
+</ul>
+<p>The board reads <code>~/.baton/sessions/*/session.json</code> over server-sent events; a
+session whose runner process is gone is marked <code>lost</code>, never shown as live.</p>
+<h2 id="second-accounts-and-what-the-terms-say"><a class="anchor" href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></h2>
+<p>Optional. <code>baton accounts add claude work</code> creates
+<code>~/.baton/accounts/claude/work</code>, junctions your <code>hooks</code>, <code>skills</code>, <code>agents</code>,
+<code>commands</code>, <code>plugins</code>, <code>rules</code>, <code>scripts</code>, <code>output-styles</code> and <code>tools</code> into it,
+copies <code>settings.json</code>, <code>CLAUDE.md</code> and the status-line scripts (refreshed from
+your real <code>~/.claude</code> before every launch), and prints one line to paste:</p>
+<pre><code>$env:CLAUDE_CONFIG_DIR=&#39;C:\Users\you\.baton\accounts\claude\work&#39;; claude auth login
+</code></pre>
+<p>Same for codex (<code>CODEX_HOME</code>; <code>config.toml</code>, <code>AGENTS.md</code>, <code>skills</code>, <code>prompts</code>,
+<code>rules</code>, <code>plugins</code>, <code>agents</code>, <code>hooks</code>, <code>memories</code> shared). agy 1.2.0 has no
+config-directory override, so it stays one account. Only the login lives in
+the account directory; <code>baton accounts rm</code> removes the junctions and the
+directory and never touches your real home.</p>
+<p>The terms, as published (effective dates below):</p>
+<ul>
+<li>Anthropic Consumer Terms (effective 2025-10-08): &quot;You may not share your
+Account login information, Anthropic API key, or Account credentials with
+anyone else&quot; and you &quot;must not … bypass any of our systems or protective
+measures.&quot;</li>
+<li>Anthropic Usage Policy (effective 2025-09-15): do not &quot;Coordinate malicious
+activity across multiple accounts to avoid detection or circumvent product
+guardrails&quot; or &quot;Utilize automation in account creation.&quot;</li>
+<li>OpenAI Terms of Use (effective 2026-01-01): &quot;You may not share your account
+credentials or make your account available to anyone else&quot; and you may not
+&quot;circumvent any rate limits or restrictions or bypass any protective
+measures.&quot;</li>
+</ul>
+<p>Owning two paid subscriptions is not named as prohibited by either. Rotating to
+a second account of the same vendor because the first one is rate-limited sits
+close to OpenAI&#39;s &quot;circumvent any rate limits&quot; wording and Anthropic&#39;s
+&quot;circumvent product guardrails&quot;. Baton&#39;s default chain switches vendors
+(claude → codex → agy), which is plainly fine. Same-vendor rotation only
+happens after you run <code>baton accounts add</code>; that is your call.</p>
+<h2 id="what-is-and-is-not-touched"><a class="anchor" href="#what-is-and-is-not-touched">What is and is not touched</a></h2>
+<ul>
+<li><strong>Never edited</strong>: <code>~/.claude/settings.json</code>, <code>~/.claude.json</code>,
+<code>~/.codex/config.toml</code>, agy&#39;s files, your repo&#39;s settings. Claude Code gets
+hooks through a per-session <code>--settings</code> file under <code>~/.baton</code>; codex and
+agy get nothing injected.</li>
+<li><strong>Written in your repo</strong>: <code>.baton/</code> (session notes, <code>RESUME.md</code> and one
+<code>RESUME-&lt;session-id&gt;.md</code> per hand-off),
+<code>.context-handoffs/</code> (the bundles) and <code>.baton-worktrees/</code> (a second
+session&#39;s worktree), all added to <code>.git/info/exclude</code>, plus the
+<code>baton/&lt;session-id&gt;</code> branch of a session with its own worktree. Landing
+fast-forwards your branch; nothing is ever pushed.</li>
+<li><strong>Stripped from every agent&#39;s environment</strong>: <code>ANTHROPIC_API_KEY</code>,
+<code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>,
+<code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>, <code>OPENAI_API_BASE</code>, <code>GEMINI_API_KEY</code>,
+<code>GOOGLE_API_KEY</code>, <code>GOOGLE_GEMINI_BASE_URL</code>, <code>GOOGLE_GENAI_USE_VERTEXAI</code>,
+<code>GOOGLE_GENAI_USE_ENTERPRISE</code>, <code>GOOGLE_CLOUD_PROJECT</code>,
+<code>GOOGLE_CLOUD_LOCATION</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code>, <code>CLAUDECODE</code>,
+<code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code>, and <code>CLAUDE_PLUGIN_DATA</code>. <code>CLAUDE_CODE_*</code>
+does not include <code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS</code>: Baton sets that one
+to <code>0</code> for a detached Claude print session.</li>
+<li><strong>Read but never written or printed</strong>: Claude Code&#39;s stored login, sent only
+to <code>api.anthropic.com</code> for the usage numbers. The ledger scrubs bearer tokens
+and key shapes from every line regardless.</li>
+<li><strong><code>baton uninstall --yes</code></strong>: removes <code>~/.baton</code> (sessions, usage, extra
+account directories with their junctions, v0.1 cards, the board pidfile) and
+nothing else; then <code>npm rm -g baton-agents</code>.</li>
+</ul>
+<h2 id="cli-reference"><a class="anchor" href="#cli-reference">CLI reference</a></h2>
+<pre><code>baton claude|codex|agy [agent args…]   the interactive agent, board alongside, handoff on limit
+      [--no-worktree]                  share the checkout with a live session instead of a worktree
+baton sessions ls [--json]             every session and its usage
+baton sessions show|events &lt;id&gt;
+baton sessions handoff|end &lt;id&gt;        same as the board buttons
+baton sessions rm &lt;id&gt;                 forget an ended session
+baton sessions simulate-limit &lt;id&gt;     the real limit path without a real wall (claude, agy)
+baton accounts ls                      logins and their 5h/7d usage
+baton accounts add &lt;claude|codex&gt; &lt;name&gt; | rm &lt;agent&gt; &lt;name&gt; | terms
+baton license                          the license on this machine, or where to buy one
+baton license activate &lt;key&gt; | deactivate | refresh   (refresh renews a Team key)
+baton share                            who is on the board (off by default; Team plan)
+baton share on [--bind tailscale|lan|&lt;addr&gt;] [--port N] | off
+baton share add|rotate|rm &lt;name&gt;       one link per human, printed once
+baton open | down | status             the board
+baton uninstall [--yes]
+</code></pre>
+<p>Environment, all optional: <code>BATON_HOME</code> (default <code>~/.baton</code>), <code>BATON_PORT</code>
+(4747), <code>BATON_ACCOUNT</code> (start on a named login), <code>BATON_WARN_PCT</code> (85),
+<code>BATON_NO_HANDOFF=1</code> (warn and record, never switch), <code>BATON_NO_OPEN=1</code> (do not
+open the browser), <code>BATON_USAGE_POLL_MS</code> (60000), <code>BATON_CLAUDE_ARGS</code> /
+<code>BATON_CODEX_ARGS</code> / <code>BATON_AGY_ARGS</code> (extra args for a leg Baton starts after
+a hand-off, e.g. <code>-m gpt-5.3-codex-spark</code>), <code>BATON_CLAUDE_BIN</code>,
+<code>BATON_CODEX_BIN</code>, <code>BATON_AGY_BIN</code>, <code>BATON_CHB_BIN</code>, <code>BATON_PERSON</code> (whose
+terminal this is when the board is shared), <code>BATON_RATE_MAX</code> (600 requests a
+minute per human) and <code>BATON_RATE_MAX_FAILURES</code> (20 wrong tokens per address).</p>
+<h2 id="background-tasks-the-v01-extras"><a class="anchor" href="#background-tasks-the-v01-extras">Background tasks: the v0.1 extras</a></h2>
+<p>Version 0.1 was the other way round: you dropped a task card on the board and
+Baton ran the agents headless in a git worktree, one per card, with a fallback
+chain, path leases, a scheduler and a merge queue. All of that still works and
+lives below the terminals lane, but it is no longer the way in.</p>
+<p>The New background card form starts with a repo, task, and real first agent.
+<strong>Run now</strong> queues it; turning that off saves a draft in Backlog. The default
+<strong>Build only</strong> workflow stops with its changes in the card&#39;s worktree and does
+not merge them. The Advanced <strong>Build, test, and merge</strong> and <strong>Factory</strong>
+workflows include an automatic land station; their labels say so before you
+choose them. Fallback agents, permissions, approval gates, turn caps, leases,
+trunk, merge method, tests, title, and scripted test/demo adapters are also
+under Advanced options.</p>
+<ul>
+<li><code>baton up</code> boots the board with the scheduler and merge queue and streams
+redacted logs; <code>baton card add --repo &lt;path&gt; --task &quot;&lt;t&gt;&quot; --chain claude,codex --queue</code>
+creates a card; presets <code>build</code>, <code>build-land</code>, <code>factory</code>; station kinds
+agent, test, land, human.</li>
+<li>Adapters spawn the CLIs headless as argv, never through a shell, with their
+own permission modes and never a bypass flag: <code>claude -p --output-format json --permission-mode &lt;m&gt;</code>, <code>codex exec --json -s &lt;m&gt; -C &lt;worktree&gt;</code>,
+<code>agy -p --output-format json --mode &lt;m&gt; --add-dir &lt;worktree&gt;</code>; <code>fake</code>,
+<code>fake-claude</code>, <code>fake-codex</code>, <code>fake-agy</code> for tests and demos.</li>
+<li>A leg that ends on a limit signal, a stall, a crash or exit 0 without
+<code>.baton/DONE</code> hands off with a bundle to the next adapter in the same
+worktree; a <code>land</code> station rebases, tests and fast-forwards trunk or bounces
+the card with the failure in the bundle.</li>
+<li>Optional mirrors, off unless set in <code>.env</code>: OpenClaw Workboard
+(<code>BATON_SYNC_WORKBOARD=1</code>) and DashClaw (<code>BATON_SYNC_DASHCLAW=1</code>).</li>
+</ul>
+<p>The full v0.1 story, with the fake-limit demo and the real claude→codex run,
+is in <a href="/docs/concepts">docs/concepts.md</a>, <a href="https://www.npmjs.com/package/baton-agents">docs/DEMO.md</a>,
+<a href="/docs/real-run">docs/real-run.md</a> and <a href="/docs/board-guide">docs/board-guide.md</a>.</p>
+<h3 id="network-exposure"><a class="anchor" href="#network-exposure">Network exposure</a></h3>
+<p>Baton binds <code>127.0.0.1</code>. <code>baton share on</code> is the supported way to listen
+anywhere else: it binds your Tailscale or LAN address and every human gets
+their own token (see <a href="#more-than-one-human">More than one human</a>). Without
+share, setting <code>BATON_BIND</code> to a non-loopback address needs <code>BATON_TOKEN</code> too,
+or the server refuses to start (exit 3), and requests then need
+<code>Authorization: Bearer &lt;token&gt;</code>. Tokenless owner access also requires a
+loopback hostname (<code>127.0.0.1</code>, <code>localhost</code>, or <code>[::1]</code>), which prevents a
+DNS-rebound hostname from inheriting local access. Either way there is no TLS.</p>
+<h2 id="troubleshooting"><a class="anchor" href="#troubleshooting">Troubleshooting</a></h2>
+<ul>
+<li><strong>The board did not open</strong>: <code>baton open</code>, or visit <a href="http://127.0.0.1:4747">http://127.0.0.1:4747</a>.
+<code>~/.baton/board.log</code> has the server&#39;s output.</li>
+<li><strong>claude&#39;s card shows &quot;usage unknown&quot;</strong>: Claude Code has no stored claude.ai
+login in that config directory (run <code>claude auth login</code>), the stored token
+expired (start <code>claude</code> once, it refreshes), or the usage endpoint answered
+with something Baton does not recognise. The card says which. The wall is
+still caught through the hook; only the percentages are missing.</li>
+<li><strong>codex usage is unavailable or stale</strong>: the read-only Codex app-server quota
+request failed or has not completed in the last five minutes. The board
+retries every minute; an active Codex session also keeps its rollout tap as a
+fallback for percentages and the wall signal.</li>
+<li><strong>agy&#39;s card has no percentage</strong>: expected, agy exposes none. Baton sees the
+wall when agy hits it.</li>
+<li><strong>A session shows <code>lost</code></strong>: the terminal that ran <code>baton &lt;agent&gt;</code> is gone
+(closed, crashed, machine slept through a kill). Remove it from the board.</li>
+<li><strong>Nested session</strong>: <code>baton claude</code> typed inside a Claude Code shell works;
+the parent&#39;s <code>CLAUDECODE</code> markers are stripped so the child starts.</li>
+<li><strong><code>npm install</code> dies with <code>edgesOut</code></strong> (clone only): the global npm is older
+than Node; run <code>npx --yes npm@latest install</code> once.</li>
+</ul>
+<p>More in <a href="/docs/faq">docs/faq.md</a>.</p>
+<h2 id="documentation"><a class="anchor" href="#documentation">Documentation</a></h2>
+<table>
+<thead>
+<tr>
+<th>guide</th>
+<th>read it when</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="/docs/getting-started">Getting started</a></td>
+<td>you want <code>baton claude</code> running in five minutes</td>
+</tr>
+<tr>
+<td><a href="/docs/concepts">Concepts</a></td>
+<td>sessions, accounts, bundles, and the v0.1 cards, stations, chains and leases</td>
+</tr>
+<tr>
+<td><a href="/docs/board-guide">Board guide</a></td>
+<td>every word, number and button on the board explained</td>
+</tr>
+<tr>
+<td><a href="/docs/configuration">Configuration</a></td>
+<td>environment variables and options</td>
+</tr>
+<tr>
+<td><a href="/docs/adapters">Adapters</a></td>
+<td>what each CLI exposes and how Baton attaches to it</td>
+</tr>
+<tr>
+<td><a href="/docs/cli-contracts">CLI contracts</a></td>
+<td>exact argv per CLI and the limit-signal table with sources</td>
+</tr>
+<tr>
+<td><a href="/docs/faq">FAQ</a></td>
+<td>a question the others did not answer</td>
+</tr>
+<tr>
+<td><a href="https://www.npmjs.com/package/baton-agents">Demo</a> and <a href="/docs/real-run">real run</a></td>
+<td>the v0.1 handoff, fake and real</td>
+</tr>
+<tr>
+<td><a href="/docs/vocabulary">Vocabulary</a></td>
+<td>statuses, outcomes and event types</td>
+</tr>
+<tr>
+<td><a href="https://www.npmjs.com/package/baton-agents">Roadmap v2</a></td>
+<td>where this is going</td>
+</tr>
+<tr>
+<td><a href="https://www.npmjs.com/package/baton-agents">Reuse</a> and <a href="https://www.npmjs.com/package/baton-agents">deviations</a></td>
+<td>what was ported and every place the plan changed</td>
+</tr>
+<tr>
+<td><a href="https://www.npmjs.com/package/baton-agents">Website</a></td>
+<td>the public page: static HTML in <code>site/</code>, preview with <code>python -m http.server 4780 --directory site</code>, deployed to Vercel from that directory; PRODUCT.md and DESIGN.md at the root carry its brief and tokens</td>
+</tr>
+</tbody></table>
+<h2 id="contributing"><a class="anchor" href="#contributing">Contributing</a></h2>
+<p>Issues and pull requests are welcome. Read <a href="/support">CONTRIBUTING.md</a>
+for the dev setup and the rules (zero runtime deps, argv spawns only, no
+bypass flags, a privacy check on every commit). Security reports go through
+<a href="/support#security">SECURITY.md</a>.</p>
+<pre><code>npm install
+npm test          # node --test + privacy check
+npm run lint
+</code></pre>
+<p>Any real agent session started only to test Baton runs on the cheapest model
+(<code>baton claude --model haiku</code>); the live checks in <code>test/</code> never start one.</p>
+<p>Maintainer releases use npm trusted publishing with no <code>NPM_TOKEN</code>. Bump the
+package, lockfile, site metadata and release notes, then push <code>main</code>. CI waits
+for the Ubuntu and Windows test matrix, validates the exact version against
+npm, and publishes only when that version is missing and newer than the stable
+<code>latest</code>. Existing versions skip cleanly; older, prerelease, and registry-error
+cases fail the job. The npm trusted publisher is bound to
+<code>ucsandman/baton</code> and <code>.github/workflows/ci.yml</code>. The repository stays private,
+so publication uses <code>--provenance=false</code>.</p>
+<h2 id="privacy-and-attribution"><a class="anchor" href="#privacy-and-attribution">Privacy and attribution</a></h2>
+<p>Parts of the runner, ledger and git snapshot were ported from a private
+repository that was MIT licensed (see <a href="https://www.npmjs.com/package/baton-agents">NOTICE</a> and
+<a href="https://www.npmjs.com/package/baton-agents">docs/REUSE.md</a>), with chat identifiers, machine paths and
+personal names removed. The test suite runs a privacy check on every commit,
+and the fixtures store home paths as <code>~</code>.</p>
+<h2 id="license-and-pricing"><a class="anchor" href="#license-and-pricing">License and pricing</a></h2>
+<p>Baton is commercial software under the <a href="/license">Baton License Agreement</a>.
+It ships as readable JavaScript so you can see what it does on your machine,
+and you may modify it for your own use, but not redistribute it or work
+around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
+and remain available. The version in this source tree is 0.6.0; see
+<a href="https://www.npmjs.com/package/baton-agents">npm</a> for published versions and
+<a href="/docs/changelog">CHANGELOG.md</a> for release notes.</p>
+<p>Using it needs a license: <strong>Personal, $79 once</strong>, one human on any number of
+machines, every release for 12 months and the version you have keeps working
+after that; <strong>Team, $12 per seat per month</strong>, Personal plus <code>baton share</code> for
+more than one human on the board. Buy at the site, then
+<code>baton license activate &lt;key&gt;</code>. There is no trial; there is a <strong>30-day
+money-back guarantee</strong>, so the way to evaluate Baton is to use it on real work
+and ask for a refund if it does not earn its place. A key is a signed token
+checked offline with the public key in <code>src/license.mjs</code>; only a Team key
+renewal talks to the site. The bare agent CLIs are never affected by any of
+this; only what Baton adds is licensed.</p>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

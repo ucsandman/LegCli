@@ -4,22 +4,22 @@
 
 | version | supported |
 |---------|-----------|
-| 0.1.x | yes |
+| 0.6.x | yes |
+| < 0.6 | no |
 
-Baton is pre-1.0 and local-only software. Only the latest `0.1.x` release
-gets security fixes.
+Baton is pre-1.0 and local-only software. Only the latest minor release gets
+security fixes; upgrade with `npm install -g baton-agents@latest`.
 
 ## Reporting a vulnerability
 
-Do not open a public GitHub issue for a security vulnerability. Use GitHub's
-private vulnerability reporting on this repository instead: go to the
-repository's **Security** tab, then **Report a vulnerability**. This opens
-a private draft advisory that only the maintainer can see until it is
-resolved.
+Email **baton@practicalsystems.io** with `SECURITY` in the subject. The
+source repository is private, so there is no public issue tracker and no
+GitHub advisory form to use; mail is the whole reporting path.
 
 Include what you found, how to reproduce it, and what you think the impact
-is. You will get an acknowledgment and, where reasonable, updates as the
-fix moves forward.
+is. You will get an acknowledgment inside two working days and, where
+reasonable, updates as the fix moves forward. Please give a fix a reasonable
+window before publishing details.
 
 ## Scope
 

@@ -21,8 +21,9 @@ npm install -g baton-agents
 pip install -U context-handoff-bundle
 ```
 
-From a clone instead: `git clone https://github.com/ucsandman/baton.git && cd
-baton && npm install && npm link`.
+The source repository is private, so there is no clone to install from. The
+source you run ships in the package: `$(npm root -g)/baton-agents/src`, plain
+`.mjs`, nothing bundled. Read it before you trust it.
 
 ## 3. Run an agent
 

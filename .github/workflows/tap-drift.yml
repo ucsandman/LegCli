@@ -1,0 +1,33 @@
+name: Tap drift
+
+# "Verified against Claude Code 2.1.268" is a promise with a shelf life. The
+# agent CLIs ship most weeks, and a pinned version nobody runs any more is a
+# trust liability on the landing page, not a stale comment.
+#
+# This runs weekly and fails when any pinned CLI has moved. A failure is not a
+# broken build: it is the prompt to re-run the taps on a real machine and
+# update fixtures/verified.json and every surface in the same commit.
+
+on:
+  schedule:
+    - cron: '17 13 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # agy has no npm package, so on a runner it is simply not reachable and
+      # the check says so rather than passing quietly. Claude Code and Codex
+      # are both checked against the registry.
+      - name: Compare the pinned CLI versions against what those CLIs publish now
+        run: node scripts/check-claims.mjs --strict

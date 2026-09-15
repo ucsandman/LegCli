@@ -1,0 +1,34 @@
+{
+  "_comment": "The single source of truth for every dated, numbered claim Baton makes in public. scripts/check-claims.mjs asserts that each surface listed here states exactly these values, and --strict additionally compares the pinned CLI versions against what those CLIs currently publish. Re-verify on a real machine, then edit this file and every surface in the same commit.",
+  "verifiedOn": "2026-09-11",
+  "verifiedOnLong": "11 September 2026",
+  "tests": 472,
+  "clis": {
+    "claude": {
+      "label": "Claude Code",
+      "version": "2.1.268",
+      "npm": "@anthropic-ai/claude-code",
+      "probe": "claude --version"
+    },
+    "codex": {
+      "label": "codex-cli",
+      "version": "0.153.4",
+      "npm": "@openai/codex",
+      "probe": "codex --version"
+    },
+    "agy": {
+      "label": "agy",
+      "version": "1.2.0",
+      "npm": null,
+      "probe": "agy --version",
+      "note": "Antigravity CLI is a closed Go binary with no npm package, so drift is only visible from a machine that has it installed."
+    }
+  },
+  "surfaces": [
+    "README.md",
+    "site/llms.txt",
+    "site/index.html",
+    "docs/cli-contracts.md",
+    "docs/adapters.md"
+  ]
+}

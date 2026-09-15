@@ -49,7 +49,17 @@ Durable product and design decisions that the code does not explain on its own. 
 - Google Search Console: URL-prefix property `https://baton-agents.vercel.app/`, verified by the `google-site-verification` meta tag in `site/index.html` (removing the tag revokes it); `sitemap.xml` submitted; home URL inspected and indexing requested.
 - Bing Webmaster Tools: site added manually and verified by the `msvalidate.01` meta tag (account-wide code); `sitemap.xml` submitted.
 - Vercel Web Analytics: enabled on project `baton-agents` (plan-included tier); the tag is `<script defer src="/_vercel/insights/script.js">` and it is the only script besides `site.js`.
-- Not done: a custom domain (none owned for Baton); the GitHub repository is still private, so the site's GitHub, README, FAQ and changelog links 404 for strangers until it is made public.
+- Not done: a custom domain (none owned for Baton; Wes buys one 2026-09-18).
+
+## 2026-09-15: the private repo gets a public documentation site instead of being opened
+
+The repository stays private (see the 2026-09-11 license decision). That left every "read the source", README, FAQ and changelog link on the site and in the package pointing at a 404 for anyone who is not the owner, which is the first click a Hacker News or Reddit reader makes.
+
+- **The docs are published, the source is not.** `scripts/build-docs-site.mjs` renders the public subset of `docs/` plus `README.md` and `CHANGELOG.md` to static pages under `site/docs`, committed, because Vercel serves `site/` with no build step. DECISIONS, DEVIATIONS, ERRORS, REUSE, ROADMAP-v2, DEMO and dated review notes are working files and stay out. CI regenerates and fails if the committed output has drifted from `docs/`.
+- **Nothing dangles at a 404.** The clone instructions in `README.md` and `docs/getting-started.md` are replaced by where the source actually is for a buyer (`$(npm root -g)/baton-agents/src`). Links to files with a public home go there (`LICENSE` → `/license`, `SECURITY.md` → `/support#security`); links to working files that ship inside the package point at the package. `package.json` keeps its `repository` field because npm trusted publishing is bound to it (`.github/workflows/ci.yml` asserts the exact URL), so the npm "Repository" link is the one 404 that has to stay; `bugs.url` points at `/support` instead.
+- **README images are absolute.** npm rewrites relative image paths to `raw.githubusercontent.com`, which 404s for a private repo, so the hero image and the new handoff GIF are absolute URLs on the site. Checked: the raw URL returns 404.
+- **A support page exists.** `/support` carries the one address (`baton@practicalsystems.io`), the refund terms, license-key troubleshooting, what to send in a bug report, and the security reporting path, because a private repo has no issue tracker to point at.
+- **The claims are machine-checked.** `fixtures/verified.json` pins the verified CLI versions, the verification date and the test count; `scripts/check-claims.mjs` asserts every public surface agrees (run by `npm test`) and, with `--strict`, compares the pins against what those CLIs publish now (weekly, `.github/workflows/tap-drift.yml`). It found on its first run that `llms.txt` said 463 tests and the landing page said 406 while the suite reported 454.
 
 ## 2026-09-11: Baton is a commercial product; the site stays on the free Vercel address
 

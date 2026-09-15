@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baton vocabulary</title>
+<meta name="description" content="The words Baton uses on the board and in the CLI, each with the one meaning it carries everywhere.">
+<link rel="canonical" href="https://baton-agents.vercel.app/docs/vocabulary">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/docs/vocabulary">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="Baton vocabulary">
+<meta property="og:description" content="The words Baton uses on the board and in the CLI, each with the one meaning it carries everywhere.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Baton vocabulary">
+<meta name="twitter:description" content="The words Baton uses on the board and in the CLI, each with the one meaning it carries everywhere.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary" aria-current="page">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#session-statuses">Session statuses</a></li><li><a href="#session-event-types">Session event types</a></li><li><a href="#land-states-terminal-cards">Land states (terminal cards)</a></li><li><a href="#share-roles-more-than-one-human">Share roles (more than one human)</a></li><li><a href="#card-statuses">Card statuses</a></li><li><a href="#leg-outcomes">Leg outcomes</a></li><li><a href="#station-kinds">Station kinds</a></li><li><a href="#event-types">Event types</a></li><li><a href="#actor-types">Actor types</a></li><li><a href="#human-actions-and-board-buttons">Human actions and board buttons</a></li><li><a href="#bounce-reasons-land-station">Bounce reasons (land station)</a></li><li><a href="#cross-check-against-visible-strings">Cross-check against visible strings</a></li></ul></nav>
+<h1 id="vocabulary"><a class="anchor" href="#vocabulary">Vocabulary</a></h1>
+<p>One page of the words Baton uses for state, events and actions, pulled
+straight from the source (not invented). Each table lists the exact
+identifiers the code uses; UI copy is allowed to be more readable (&quot;Hand off
+now&quot; for <code>handoff_now</code>) but must not use a different word for the same thing.
+Regenerate this by re-running the greps in each section header if the source
+changes.</p>
+<h2 id="session-statuses"><a class="anchor" href="#session-statuses">Session statuses</a></h2>
+<p>One interactive terminal under <code>baton claude|codex|agy</code>. Source:
+<code>src/sessions.mjs</code> <code>SESSION_STATUSES</code>; board labels from <code>STATUS</code> in
+<code>src/board/sessions.js</code>.</p>
+<table>
+<thead>
+<tr>
+<th>status</th>
+<th>board label</th>
+<th>active?</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>starting</code></td>
+<td>starting</td>
+<td>yes</td>
+<td>the runner registered the session; the agent has not reported in yet</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td>running</td>
+<td>yes</td>
+<td>the agent is up and taking turns</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td>near limit</td>
+<td>yes</td>
+<td>a usage window crossed <code>BATON_WARN_PCT</code> (default 85)</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td>limit hit</td>
+<td>yes</td>
+<td>the agent reported its usage limit; the account is walled</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td>handing off</td>
+<td>yes</td>
+<td>the bundle is being saved and the next option chosen</td>
+</tr>
+<tr>
+<td><code>waiting</code></td>
+<td>waiting for reset</td>
+<td>yes</td>
+<td>every option is walled; the terminal counts down to the first reset (<code>session.waiting</code>) and then starts that agent from the bundle</td>
+</tr>
+<tr>
+<td><code>handed_off</code></td>
+<td>handed off</td>
+<td>no</td>
+<td>this leg is done; the next agent owns the terminal</td>
+</tr>
+<tr>
+<td><code>ended</code></td>
+<td>ended</td>
+<td>no</td>
+<td>the agent exited, or End was pressed</td>
+</tr>
+<tr>
+<td><code>lost</code></td>
+<td>lost</td>
+<td>no</td>
+<td>the runner process that owned the terminal is gone; never shown as live</td>
+</tr>
+</tbody></table>
+<p>The six active statuses are what the board counts as a live session for
+overlap flags and for the accounts strip&#39;s live dot.</p>
+<h2 id="session-event-types"><a class="anchor" href="#session-event-types">Session event types</a></h2>
+<p>Source: the <code>appendEvent</code>/<code>updateSession</code> call sites in <code>src/attach.mjs</code>,
+<code>src/sessions.mjs</code>, <code>src/taps/claude.mjs</code> and <code>src/server.mjs</code>; written to
+<code>$BATON_HOME/sessions/&lt;id&gt;/events.jsonl</code>.</p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>started</code></td>
+<td>the session was created: agent, account and directory</td>
+</tr>
+<tr>
+<td><code>leg</code></td>
+<td>one agent is starting in this terminal, noting whether it starts from a handoff bundle</td>
+</tr>
+<tr>
+<td><code>agent_ready</code></td>
+<td>the agent reported its own session id (claude&#39;s <code>SessionStart</code> hook, codex&#39;s rollout <code>session_meta</code>)</td>
+</tr>
+<tr>
+<td><code>turn</code></td>
+<td>a human prompt was submitted; carries the turn number and the first 120 characters</td>
+</tr>
+<tr>
+<td><code>turn_done</code></td>
+<td>the agent&#39;s reply for that turn, first 160 characters</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td>a usage window crossed the warning threshold; names the window, the percentage and the next option</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td>a usage limit was detected; carries the agent&#39;s own wording, <code>(simulated)</code> when <code>baton sessions simulate-limit</code> produced it</td>
+</tr>
+<tr>
+<td><code>handoff_requested</code></td>
+<td>someone pressed Hand off now, ran <code>baton sessions handoff</code>, or (on a shared board) asked for or approved a hand-off; <code>by</code> names the human (a dismissed request logs as <code>status</code> instead)</td>
+</tr>
+<tr>
+<td><code>handoff</code></td>
+<td>the switch happened: from, to, reason, bundle id</td>
+</tr>
+<tr>
+<td><code>all_out</code></td>
+<td>every option is walled; the resets are printed and the terminal waits for the first one (<code>ended</code> with &quot;quit while waiting&quot; if Ctrl-C or End cuts the wait short, exit 3)</td>
+</tr>
+<tr>
+<td><code>agent_exit</code></td>
+<td>the agent process exited, with its code</td>
+</tr>
+<tr>
+<td><code>ended</code></td>
+<td>the session ended</td>
+</tr>
+<tr>
+<td><code>lost</code></td>
+<td>the runner pid is gone; the session was marked <code>lost</code></td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>a spawn error, a tap error, a failed bundle checkpoint, or an error the agent reported</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>a note that does not fit another type</td>
+</tr>
+<tr>
+<td><code>worktree</code></td>
+<td>another live session was in the checkout, so this one got its own worktree: path, branch, base</td>
+</tr>
+<tr>
+<td><code>land_requested</code></td>
+<td>Land was pressed: the branch and its base</td>
+</tr>
+<tr>
+<td><code>land_warning</code></td>
+<td>the landing ran without a test command</td>
+</tr>
+<tr>
+<td><code>landed</code></td>
+<td>the base was fast-forwarded to the branch: sha range, files, who pressed Land</td>
+</tr>
+<tr>
+<td><code>bounced</code></td>
+<td>the landing stopped with a <a href="#bounce-reasons-land-station">bounce reason</a>; the full detail is in <code>body</code></td>
+</tr>
+<tr>
+<td><code>land_noop</code></td>
+<td>Land found nothing on the branch beyond its base</td>
+</tr>
+</tbody></table>
+<h2 id="land-states-terminal-cards"><a class="anchor" href="#land-states-terminal-cards">Land states (terminal cards)</a></h2>
+<p><code>$BATON_HOME/sessions/&lt;id&gt;/land.json</code>, written by the board server only
+(<code>src/land.mjs</code>); the runner never touches it.</p>
+<table>
+<thead>
+<tr>
+<th>state</th>
+<th>card line</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>landing</code></td>
+<td>landing <code>&lt;branch&gt;</code> onto <code>&lt;base&gt;</code>…</td>
+<td>the merge queue has the branch</td>
+</tr>
+<tr>
+<td><code>landed</code></td>
+<td>✓ landed on <code>&lt;base&gt;</code> · <code>&lt;sha&gt;</code></td>
+<td>the base was fast-forwarded</td>
+</tr>
+<tr>
+<td><code>noop</code></td>
+<td>nothing to land</td>
+<td>the branch had nothing beyond its base</td>
+</tr>
+<tr>
+<td><code>bounced</code></td>
+<td>✗ bounced (<code>&lt;reason&gt;</code>)</td>
+<td>a step failed and the base is untouched</td>
+</tr>
+<tr>
+<td><code>interrupted</code></td>
+<td>the landing was cut off</td>
+<td>the board restarted while it was landing; press Land again</td>
+</tr>
+</tbody></table>
+<h2 id="share-roles-more-than-one-human"><a class="anchor" href="#share-roles-more-than-one-human">Share roles (more than one human)</a></h2>
+<p><code>$BATON_HOME/share.json</code>, written by <code>baton share</code> (<code>src/share.mjs</code>).</p>
+<table>
+<thead>
+<tr>
+<th>role</th>
+<th>the terminals lane</th>
+<th>the pipeline side</th>
+<th>their own terminals</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>owner</code></td>
+<td>every card in full</td>
+<td>everything</td>
+<td>control, Land, Remove, approve or dismiss a request</td>
+</tr>
+<tr>
+<td><code>guest</code></td>
+<td>their own cards in full; every other card read-only, with the prompt, paths, file names, limit text, bundle and events left out</td>
+<td>403</td>
+<td>control, Land and Remove their own; <strong>Request handoff</strong> on anyone else&#39;s</td>
+</tr>
+</tbody></table>
+<p>A request is <code>{ by, at, state: pending\|approved\|dismissed }</code> in the session&#39;s
+<code>requests.json</code>; approving it sends the runner <code>handoff</code> with
+<code>by: &quot;&lt;owner&gt; for &lt;guest&gt;&quot;</code>.</p>
+<h2 id="card-statuses"><a class="anchor" href="#card-statuses">Card statuses</a></h2>
+<p>Source: <code>src/chain.mjs</code> <code>TERMINAL</code> + <code>NON_TERMINAL</code>.</p>
+<table>
+<thead>
+<tr>
+<th>status</th>
+<th>terminal?</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>backlog</code></td>
+<td>no</td>
+<td>card created, not yet queued</td>
+</tr>
+<tr>
+<td><code>queued</code></td>
+<td>no</td>
+<td>waiting for the scheduler to start a leg under its leases</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td>no</td>
+<td>a leg (agent/test/land station) is executing</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td>no</td>
+<td>the leg ended (limit/incomplete/no_progress/stalled/failed) and Baton is writing the handoff bundle</td>
+</tr>
+<tr>
+<td><code>waiting_human</code></td>
+<td>no</td>
+<td>parked at a <code>human</code> station for a button press</td>
+</tr>
+<tr>
+<td><code>needs_approval</code></td>
+<td>no</td>
+<td>next chain entry has <code>approve: true</code>; parked for Approve</td>
+</tr>
+<tr>
+<td><code>paused</code></td>
+<td>no</td>
+<td>human paused it; child killed, bundle written</td>
+</tr>
+<tr>
+<td><code>done</code></td>
+<td>yes</td>
+<td>all pipeline stations complete</td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>yes</td>
+<td>chain exhausted, an environment fault, or land attempts exhausted</td>
+</tr>
+<tr>
+<td><code>killed</code></td>
+<td>yes</td>
+<td>killed from the board</td>
+</tr>
+</tbody></table>
+<h2 id="leg-outcomes"><a class="anchor" href="#leg-outcomes">Leg outcomes</a></h2>
+<p>Source: <code>src/limits.mjs</code> <code>OUTCOMES</code> (<code>classify()</code>&#39;s return value).</p>
+<table>
+<thead>
+<tr>
+<th>outcome</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>completed</code></td>
+<td>exit 0 and <code>.baton/DONE</code> present</td>
+</tr>
+<tr>
+<td><code>incomplete</code></td>
+<td>exit 0 with changes but no DONE marker</td>
+</tr>
+<tr>
+<td><code>no_progress</code></td>
+<td>exit 0, no DONE marker, no changes</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td>an adapter-specific or generic usage-limit signal fired</td>
+</tr>
+<tr>
+<td><code>stalled</code></td>
+<td>the kill timer fired before the leg finished</td>
+</tr>
+<tr>
+<td><code>auth_failed</code></td>
+<td>an auth signal fired, or stderr says another auth source is set; not treated as a limit</td>
+</tr>
+<tr>
+<td><code>launch_failed</code></td>
+<td>the CLI failed to spawn, or a launch signal fired</td>
+</tr>
+<tr>
+<td><code>killed</code></td>
+<td>killed from the board</td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>none of the above; non-zero exit with no recognized signal</td>
+</tr>
+</tbody></table>
+<p><code>limit</code>, <code>incomplete</code>, <code>no_progress</code>, <code>stalled</code> and <code>failed</code> hand off to the
+next adapter in the chain (<code>HANDOFF_OUTCOMES</code>); <code>auth_failed</code> and
+<code>launch_failed</code> do not advance the chain: a human fixes the environment and
+clicks Rerun (<code>NO_ADVANCE_OUTCOMES</code>).</p>
+<h2 id="station-kinds"><a class="anchor" href="#station-kinds">Station kinds</a></h2>
+<p>Source: <code>src/pipeline.mjs</code> <code>KINDS</code>.</p>
+<table>
+<thead>
+<tr>
+<th>kind</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>agent</code></td>
+<td>runs the station&#39;s chain (one or more adapters) with that station&#39;s prompt</td>
+</tr>
+<tr>
+<td><code>human</code></td>
+<td>parks the card for a button press; no automatic work</td>
+</tr>
+<tr>
+<td><code>test</code></td>
+<td>runs the repo&#39;s test command; bounces the card on red</td>
+</tr>
+<tr>
+<td><code>land</code></td>
+<td>merge queue: rebase, test, fast-forward trunk (see Bounce reasons below); at most one, must be last</td>
+</tr>
+</tbody></table>
+<h2 id="event-types"><a class="anchor" href="#event-types">Event types</a></h2>
+<p>Source: <code>src/ledger.mjs</code> <code>EVENT_TYPES</code>, written by <code>ledgerAppend</code>/<code>ev()</code> calls
+across <code>src/chain.mjs</code>, <code>src/orchestrator.mjs</code>, <code>src/scheduler.mjs</code>,
+<code>src/land.mjs</code> and <code>src/store.mjs</code>.</p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>card_created</code></td>
+<td>a card was added</td>
+</tr>
+<tr>
+<td><code>leg_started</code></td>
+<td>an adapter leg started running</td>
+</tr>
+<tr>
+<td><code>leg_progress</code></td>
+<td>progress recorded mid-leg</td>
+</tr>
+<tr>
+<td><code>leg_exited</code></td>
+<td>the adapter process exited</td>
+</tr>
+<tr>
+<td><code>limit_detected</code></td>
+<td>a limit signal fired during a leg</td>
+</tr>
+<tr>
+<td><code>handoff_written</code></td>
+<td>the handoff bundle was written for the next leg</td>
+</tr>
+<tr>
+<td><code>leg_resumed</code></td>
+<td>a leg resumed from a bundle (pause/resume, or a bounce)</td>
+</tr>
+<tr>
+<td><code>station_done</code></td>
+<td>a station finished and the card advanced</td>
+</tr>
+<tr>
+<td><code>bounced</code></td>
+<td>a test or land failure sent the card back to <code>build</code></td>
+</tr>
+<tr>
+<td><code>landed</code></td>
+<td>the land station merged the card&#39;s work onto trunk</td>
+</tr>
+<tr>
+<td><code>land_warning</code></td>
+<td>the land station landed without running tests (no test command found)</td>
+</tr>
+<tr>
+<td><code>land_retry</code></td>
+<td>trunk moved during land; one fast-forward retry</td>
+</tr>
+<tr>
+<td><code>blocked_by</code></td>
+<td>the scheduler could not start the card because a lease is held</td>
+</tr>
+<tr>
+<td><code>scheduler_started</code></td>
+<td>the scheduler process started</td>
+</tr>
+<tr>
+<td><code>scheduler_stopped</code></td>
+<td>the scheduler process stopped</td>
+</tr>
+<tr>
+<td><code>approval_needed</code></td>
+<td>the card is parked for Approve (gated leg or a PR was opened)</td>
+</tr>
+<tr>
+<td><code>approved</code></td>
+<td>a human clicked Approve</td>
+</tr>
+<tr>
+<td><code>reassigned</code></td>
+<td>a human changed the current leg&#39;s adapter/mode</td>
+</tr>
+<tr>
+<td><code>paused</code></td>
+<td>a human clicked Pause</td>
+</tr>
+<tr>
+<td><code>resumed</code></td>
+<td>a human clicked Resume</td>
+</tr>
+<tr>
+<td><code>killed</code></td>
+<td>a human clicked Kill</td>
+</tr>
+<tr>
+<td><code>done</code></td>
+<td>the card finished all stations</td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>the card failed (chain exhausted, land attempts exhausted, or an environment fault)</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>an unexpected error (orchestrator crash, handoff bundle write failure, land station crash)</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>a status note that doesn&#39;t fit another type (e.g. &quot;rerun from build leg 0&quot;)</td>
+</tr>
+</tbody></table>
+<h2 id="actor-types"><a class="anchor" href="#actor-types">Actor types</a></h2>
+<p>Source: <code>src/ledger.mjs</code> (<code>parseActor</code>/<code>actorKey</code>).</p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>agent</code></td>
+<td>an adapter CLI acting on a leg; carries <code>adapter</code> (and optionally <code>model</code>)</td>
+</tr>
+<tr>
+<td><code>human</code></td>
+<td>a person acting through the board or CLI; carries <code>id</code></td>
+</tr>
+<tr>
+<td><code>baton</code></td>
+<td>Baton itself (scheduler, orchestrator) acting with no human or agent behind it</td>
+</tr>
+</tbody></table>
+<h2 id="human-actions-and-board-buttons"><a class="anchor" href="#human-actions-and-board-buttons">Human actions and board buttons</a></h2>
+<p>Source: <code>src/chain.mjs</code> <code>HUMAN_ACTIONS</code>; board labels from
+<code>ACTION_LABELS</code> in <code>src/board/board.js</code> (~line 17).</p>
+<table>
+<thead>
+<tr>
+<th>action</th>
+<th>board button</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>pause</code></td>
+<td>Pause</td>
+<td>stop after the current leg</td>
+</tr>
+<tr>
+<td><code>resume</code></td>
+<td>Resume</td>
+<td>pick up where it stopped</td>
+</tr>
+<tr>
+<td><code>kill</code></td>
+<td>Kill</td>
+<td>stop the running agent; card ends as <code>killed</code></td>
+</tr>
+<tr>
+<td><code>reassign</code></td>
+<td>Reassign</td>
+<td>pick the next adapter/mode from a picker instead of the chain order</td>
+</tr>
+<tr>
+<td><code>handoff_now</code></td>
+<td>Hand off now</td>
+<td>end the current leg, write the bundle, start the next adapter</td>
+</tr>
+<tr>
+<td><code>approve</code></td>
+<td>Approve</td>
+<td>release a leg gated with <code>approve: true</code>, or clear a <code>waiting_human</code> station</td>
+</tr>
+<tr>
+<td><code>rerun</code></td>
+<td>Rerun</td>
+<td>start the station over from the last bundle</td>
+</tr>
+</tbody></table>
+<p>The board also shows a <strong>Run</strong> button for <code>enqueue</code> (queues a <code>backlog</code> card;
+API path <code>run</code>). <code>enqueue</code> moves a card via the station machine&#39;s
+<code>backlog</code>→<code>queued</code> transition and is not in <code>HUMAN_ACTIONS</code>, since it is
+reached through card creation/queueing rather than <code>humanAction()</code>.</p>
+<h2 id="bounce-reasons-land-station"><a class="anchor" href="#bounce-reasons-land-station">Bounce reasons (land station)</a></h2>
+<p>Source: <code>src/mergequeue.mjs</code> (<code>bounce()</code> call sites, documented in the
+file&#39;s own header comment).</p>
+<table>
+<thead>
+<tr>
+<th>reason</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>dirty-trunk</code></td>
+<td>the repo root isn&#39;t on the trunk branch, or has uncommitted changes; root is left untouched. A terminal&#39;s Land allows local changes in the checkout and bounces this way only when the fast-forward would overwrite one, naming the files</td>
+</tr>
+<tr>
+<td><code>rebase-conflict</code></td>
+<td>rebasing the card&#39;s branch onto trunk conflicted</td>
+</tr>
+<tr>
+<td><code>rebase-failed</code></td>
+<td>git refused the rebase for a reason other than a conflict (a hook, an unusable upstream); the detail carries git&#39;s own words</td>
+</tr>
+<tr>
+<td><code>tests-red</code></td>
+<td>the land station&#39;s own test run (no test command found → falls back per <code>land_warning</code>, otherwise <code>test_command</code>/<code>npm test</code>/<code>pytest</code>) failed</td>
+</tr>
+<tr>
+<td><code>trunk-moved</code></td>
+<td>trunk moved while tests ran; one fast-forward retry also failed</td>
+</tr>
+</tbody></table>
+<p>Card-level <code>bounce_reason</code> is stored as <code>&quot;&lt;reason&gt;: &lt;detail&gt;&quot;</code>
+(<code>src/orchestrator.mjs</code>); the board&#39;s status chip shows the text up to the
+first colon or opening parenthesis, truncated to 24 characters. The separate
+pipeline <code>test</code>
+station (kind <code>test</code>, distinct from a <code>land</code> station&#39;s own internal test
+step) bounces with its own free-text reason (&quot;test red (…): …&quot;), not one of
+the four words above, it is a different failure path through the same
+<code>bounced</code> event type.</p>
+<h2 id="cross-check-against-visible-strings"><a class="anchor" href="#cross-check-against-visible-strings">Cross-check against visible strings</a></h2>
+<p>Checked against <code>src/board/board.js</code>, <code>src/board/floor.js</code>,
+<code>src/board/index.html</code>, <code>src/board/floor.html</code>, <code>bin/baton.mjs</code>&#39;s usage text
+and <code>README.md</code>.</p>
+<ul>
+<li>Board button labels (<code>ACTION_LABELS</code>, <code>WAIT_LABELS</code>) match README&#39;s &quot;Board
+buttons&quot; table word for word (Run, Approve, Pause, Resume, Hand off now,
+Reassign, Kill, Rerun).</li>
+<li>Board status labels (<code>STATUS_LABELS</code>) and chain-rail glyphs
+(<code>stateGlyph</code>: ✓ done, ↷ handed, ✗ failed, ● active, · pending) match the
+README&#39;s drawer description.</li>
+<li>Station kinds shown in the drawer (<code>${name} (${kind})</code>) and README&#39;s
+&quot;Station kinds&quot; list both use <code>agent</code>/<code>human</code>/<code>test</code>/<code>land</code>.</li>
+<li>CLI human-action verbs in <code>bin/baton.mjs</code> (<code>pause</code>, <code>resume</code>, <code>kill</code>,
+<code>approve</code>, <code>handoff-now</code>, <code>rerun</code>, <code>reassign</code>) are the same 7 words as
+<code>HUMAN_ACTIONS</code>, spelled with hyphens instead of underscores on the CLI
+surface (<code>handoff-now</code> vs <code>handoff_now</code>), a deliberate, consistent
+per-surface convention, not a mismatch.</li>
+<li>One mismatch found: the bounce chip splits on the first colon <strong>or</strong>
+opening parenthesis (<code>src/board/board.js:325</code>), which the Bounce reasons
+note above now states. Nothing else needed changing in <code>src/board/*</code>.</li>
+</ul>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

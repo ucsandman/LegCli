@@ -3,6 +3,32 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-15: share-security failed once in the full suite and has not repeated
+
+**Not fixed. Recorded so a second occurrence is countable.**
+
+One full-suite run reported `test\share-security.test.mjs` failing at `:1:1`
+after 1496 ms, with no individual test named. The file passed 19 of 19 in
+isolation in 6.5 s, and passed inside two later full runs of the whole suite.
+No root cause found.
+
+What the evidence rules out: parallel contention, because `npm test` runs
+`--test-concurrency=1`. What it points at: the file failed at the top level
+rather than in a named test, and far faster than its healthy 6.5 s, so it died
+during setup, not in an assertion. The file binds several loopback boards on
+ephemeral ports and exercises a rate-limit lockout, and a Baton board was live
+on 4747 for 161 minutes when the failing run started.
+
+The cost of the bad reading was real even though the test was fine: the suite
+totalled 454 tests that run instead of 472, because a file that dies at the top
+level never registers its subtests, and 454 was briefly written into
+`fixtures/verified.json` and onto two public pages as the published test count.
+A total from a run with a failure in it is not the suite's size.
+
+If it happens again: capture the file's stderr before anything else
+(`node --test --test-reporter=spec` writes it; the default reporter swallowed
+it), and check whether a board was listening on 4747 at the time.
+
 ## 2026-09-15: a 3-second rebuild made the board impossible to scroll
 
 - **Symptom.** Reported by the operator as "I'm not able to scroll down or up or

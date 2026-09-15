@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baton docs: usage limits, the board and the handoff</title>
+<meta name="description" content="Every Baton document: install, the concepts, the board, configuration, the CLI contract, the agent adapters and the FAQ.">
+<link rel="canonical" href="https://baton-agents.vercel.app/docs">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/docs">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="Baton docs: usage limits, the board and the handoff">
+<meta property="og:description" content="Every Baton document: install, the concepts, the board, configuration, the CLI contract, the agent adapters and the FAQ.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Baton docs: usage limits, the board and the handoff">
+<meta name="twitter:description" content="Every Baton document: install, the concepts, the board, configuration, the CLI contract, the agent adapters and the FAQ.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs" aria-current="page">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+
+<h1>Baton documentation</h1>
+<p class="lede">Baton is a local wrapper for coding-agent CLIs: type <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code> and you get the same interactive agent with a board beside it, usage tracking per agent and account, a handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits.</p>
+<p class="lede">The source repository is private. These pages carry the same text as the documentation shipped inside the npm package, so every claim on the site can be checked before you buy, and the source itself is readable at <code>$(npm root -g)/baton-agents/src</code> after you install.</p>
+<ul class="doc-cards">
+<li><a href="/docs/getting-started"><strong>Install Baton and monitor your Claude Code usage limit</strong><span>Install Baton, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.</span></a></li>
+<li><a href="/docs/concepts"><strong>How Baton works: sessions, bundles and the wall</strong><span>The pieces Baton is built from: a session, the usage reading, the handoff bundle, the wall, worktrees and landing work on trunk.</span></a></li>
+<li><a href="/docs/board-guide"><strong>The Baton board, panel by panel</strong><span>Every card, gauge, button and drawer on the Baton board, what each number means, and where the reading behind it came from.</span></a></li>
+<li><a href="/docs/configuration"><strong>Baton configuration and environment variables</strong><span>Every Baton environment variable, the config file, network exposure, the token seam and the folder-trust switch.</span></a></li>
+<li><a href="/docs/cli-contracts"><strong>What Baton reads from Claude Code, Codex and agy</strong><span>The exact usage endpoints, hooks, log lines and limit strings Baton reads from Claude Code, Codex and agy, each cited to its source.</span></a></li>
+<li><a href="/docs/adapters"><strong>Baton agent adapters for Claude Code, Codex and agy</strong><span>How each agent adapter spawns its CLI, what it strips from the environment, and how to tell whether a tap is live or docs-only.</span></a></li>
+<li><a href="/docs/faq"><strong>Baton FAQ: what it edits, what it sends, how the license works</strong><span>What Baton edits and never edits, whether it sends anything anywhere, what happens to your license, and what it does not do.</span></a></li>
+<li><a href="/docs/real-run"><strong>A real run: Claude Code hits its usage limit, Codex continues</strong><span>One recorded session: Claude Code working, the limit landing, the bundle saved, and Codex picking the work up in the same terminal.</span></a></li>
+<li><a href="/docs/vocabulary"><strong>Baton vocabulary</strong><span>The words Baton uses on the board and in the CLI, each with the one meaning it carries everywhere.</span></a></li>
+<li><a href="/docs/readme"><strong>Baton README</strong><span>The complete Baton README as shipped in the npm package: what it does, what it reads, what it never touches, and the license.</span></a></li>
+<li><a href="/docs/changelog"><strong>Baton changelog</strong><span>Every released version of Baton and what changed in it.</span></a></li>
+</ul>
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

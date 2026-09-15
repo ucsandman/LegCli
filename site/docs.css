@@ -1,0 +1,262 @@
+/* Documentation pages. style.css supplies the tokens, the fonts and the reset;
+   this file only lays out a long read: a fixed left index, a measured column,
+   and code that stays readable at 400px. */
+
+body.docs {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 10px 16px;
+  z-index: 100;
+}
+.skip:focus { left: 0; }
+
+/* top bar */
+.docs-top {
+  border-bottom: 1px solid var(--line);
+  background: var(--e1);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-nav);
+}
+.docs-top-wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 14px var(--gutter);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.docs-home {
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+.docs-top nav { display: flex; gap: 20px; font-size: 14px; }
+.docs-top nav a { color: var(--muted); text-decoration: none; }
+.docs-top nav a:hover { color: var(--ink); }
+
+/* shell */
+.docs-shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 var(--gutter) 96px;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+
+.docs-nav {
+  position: sticky;
+  top: 72px;
+  padding-top: 40px;
+  font-size: 14px;
+}
+.docs-nav-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.docs-nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.docs-nav a {
+  display: block;
+  padding: 6px 10px;
+  margin-left: -10px;
+  border-radius: var(--r-control);
+  color: var(--muted);
+  text-decoration: none;
+  line-height: 1.35;
+}
+.docs-nav a:hover { background: var(--e2); color: var(--ink); }
+.docs-nav a[aria-current="page"] { background: var(--e2); color: var(--ink); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* the column */
+.docs-body {
+  padding-top: 40px;
+  max-width: 76ch;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--ink);
+}
+.docs-body > * + * { margin-top: 1.1em; }
+.docs-body h1 {
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin-top: 0;
+}
+.docs-body h2 {
+  font-size: clamp(21px, 2.4vw, 26px);
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+  margin-top: 2.2em;
+  padding-top: .6em;
+  border-top: 1px solid var(--line);
+}
+.docs-body h3 { font-size: 17px; margin-top: 1.8em; }
+.docs-body h4 { font-size: 15px; margin-top: 1.5em; color: var(--on-blue-muted); }
+.docs-body .anchor { color: inherit; text-decoration: none; }
+.docs-body .anchor:hover::after { content: " #"; color: var(--accent); font-weight: 400; }
+
+.docs-body .lede { color: var(--on-blue-muted); font-size: 17px; }
+.docs-body a { color: var(--accent-hi); text-underline-offset: 3px; }
+.docs-body a:hover { color: var(--ink); }
+
+/* Spacing comes from margins, not from `display: grid`: a grid container drops
+   the list-item markers, which silently unbulleted every list in the docs. */
+.docs-body ul, .docs-body ol { padding-left: 1.4em; }
+.docs-body li + li { margin-top: .4em; }
+.docs-body li > ul, .docs-body li > ol { margin-top: .4em; }
+.docs-body ul { list-style: disc; }
+.docs-body ol { list-style: decimal; }
+.docs-body li::marker { color: var(--muted); }
+
+.docs-body code {
+  font-family: var(--mono);
+  font-size: .88em;
+  background: var(--e2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: .12em .38em;
+  overflow-wrap: anywhere;
+}
+.docs-body pre {
+  background: var(--e1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-well);
+  padding: 14px 16px;
+  overflow-x: auto;
+  box-shadow: var(--sink);
+}
+.docs-body pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+.docs-body blockquote {
+  margin-left: 0;
+  padding: 2px 0 2px 18px;
+  border-left: 2px solid var(--accent);
+  color: var(--on-blue-muted);
+}
+
+.docs-body img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-well);
+  display: block;
+}
+
+/* tables are the docs' densest surface; they scroll rather than squash */
+.docs-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+}
+.docs-body th, .docs-body td {
+  border: 1px solid var(--line);
+  padding: 8px 11px;
+  text-align: left;
+  vertical-align: top;
+}
+.docs-body th { background: var(--e2); font-weight: 600; white-space: nowrap; }
+.docs-body td code { white-space: nowrap; }
+
+.docs-body hr { border: 0; border-top: 1px solid var(--line); margin: 2.4em 0; }
+.docs-end { margin-top: 3.4em; }
+.docs-foot { font-size: 14px; color: var(--muted); }
+
+/* on-this-page */
+.toc {
+  border: 1px solid var(--line);
+  background: var(--e1);
+  border-radius: var(--r-well);
+  padding: 14px 18px;
+  font-size: 14px;
+  margin-bottom: 2em;
+}
+.toc-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.toc ul { list-style: none; padding: 0; margin: 0; columns: 2; column-gap: 28px; gap: 0; }
+.toc li { break-inside: avoid; margin-bottom: 4px; }
+.toc a { color: var(--on-blue-muted); text-decoration: none; }
+.toc a:hover { color: var(--ink); text-decoration: underline; }
+
+/* docs index */
+.doc-cards { list-style: none; padding: 0; display: grid; gap: 10px; }
+.doc-cards a {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-well);
+  background: var(--e1);
+  text-decoration: none;
+  color: var(--ink);
+}
+.doc-cards a:hover { border-color: var(--control-edge); background: var(--e2); }
+.doc-cards strong { font-size: 16px; }
+.doc-cards span { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .docs-shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  /* Stacked, this index put eleven links between the reader and the first
+     sentence. One swipeable row keeps the document at the top of the screen. */
+  .docs-nav {
+    position: static;
+    padding-top: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+    margin-inline: calc(var(--gutter) * -1);
+    padding-inline: var(--gutter);
+    overflow: hidden;
+  }
+  .docs-nav-title { margin-bottom: 8px; }
+  .docs-nav ul {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+    overscroll-behavior-x: contain;
+  }
+  .docs-nav a {
+    white-space: nowrap;
+    margin-left: 0;
+    padding: 7px 13px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  .docs-nav a[aria-current="page"] { box-shadow: none; border-color: var(--accent); }
+  .docs-body { padding-top: 24px; }
+  .toc ul { columns: 1; }
+}

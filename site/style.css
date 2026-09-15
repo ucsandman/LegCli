@@ -513,3 +513,20 @@ footer a { color: var(--on-blue); }
   transition: background 220ms var(--ease);
 }
 .buy:hover { background: var(--blue-hover); }
+
+/* The recording of a real handoff. It sits after the animated transcript: the
+   transcript explains the shape, this proves it happened. preload="none" keeps
+   the 6.5 MB off every page load; the poster carries the weight until a click. */
+.demo { margin: 56px 0 0; display: grid; gap: 20px; }
+.demo figcaption { display: grid; gap: 8px; max-width: 62ch; }
+.demo figcaption h3 { font-size: clamp(20px, 2.4vw, 27px); line-height: 1.2; letter-spacing: -0.01em; }
+.demo figcaption p { font-size: 16px; line-height: 1.6; }
+.demo video {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--e0);
+  border: 1px solid var(--blue-rule);
+  border-radius: var(--r-panel);
+  box-shadow: var(--lift);
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baton support, refunds and bug reports</title>
+<meta name="description" content="How to get help with Baton: one email address, a two-working-day reply, the 30-day refund with no reason required, license key problems, and where to send a security report.">
+<link rel="canonical" href="https://baton-agents.vercel.app/support">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/support">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="Baton support, refunds and bug reports">
+<meta property="og:description" content="One address, a reply inside two working days, and a 30-day refund with no reason required.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Baton support, refunds and bug reports">
+<meta name="twitter:description" content="One address, a reply inside two working days, and a 30-day refund with no reason required.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+      <li><a href="/docs">All docs</a></li>
+      <li><a href="/docs/getting-started">Install</a></li>
+      <li><a href="/docs/concepts">How it works</a></li>
+      <li><a href="/docs/faq">FAQ</a></li>
+      <li><a href="/docs/configuration">Configuration</a></li>
+      <li><a href="/support" aria-current="page">Support</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+
+<h1>Support</h1>
+
+<p class="lede">One address: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>. It is read by the person who wrote Baton. You get a reply inside two working days.</p>
+
+<p>Baton is sold by one person, not a company with a ticket queue, and the source repository is private, so there is no public issue tracker to check first. Mail is the whole support path. That also means nothing you send disappears into a triage system.</p>
+
+<h2 id="refunds">Refunds</h2>
+
+<p>Within 30 days of buying, reply to your receipt, or write to the address above with the email you bought under. We refund in full.</p>
+
+<ul>
+  <li>No reason required, and we will not ask for one.</li>
+  <li>You do not have to uninstall first, and you do not have to have stopped using it.</li>
+  <li>The refund goes back to the card Stripe charged, usually visible in five to ten days depending on your bank.</li>
+</ul>
+
+<p>There is no trial, because Baton does not pay off on a schedule. It pays off in the one moment a limit lands in the middle of something, which may be day two or day twenty. The guarantee is there so that waiting for that moment costs you nothing.</p>
+
+<h2 id="license-keys">License keys</h2>
+
+<p>Your key arrives by email straight after checkout, from <code>baton@practicalsystems.io</code>. Activate it with:</p>
+
+<pre><code>baton license activate &lt;key&gt;</code></pre>
+
+<p>Common problems, in the order they happen:</p>
+
+<ul>
+  <li><strong>The email has not arrived.</strong> Check spam, then write to us with the email address you paid with. Keys can be resent any number of times.</li>
+  <li><strong>The key is refused.</strong> Run <code>baton license status</code> and send us what it prints. Keys are Ed25519 tokens verified offline, so a refusal is a real signature or date problem, never a server being down.</li>
+  <li><strong>A new release stopped accepting a Personal key.</strong> A Personal license covers every release dated on or before the date printed in your key. The releases it already covers keep working; a newer one needs a renewal. <code>baton license status</code> prints the date.</li>
+  <li><strong>You changed machines.</strong> Personal is one named person on any number of machines, so activate the same key again on the new one. <code>baton license deactivate</code> exists if you want the old machine to stop carrying it.</li>
+</ul>
+
+<h2 id="bug-reports">Bug reports</h2>
+
+<p>Send these four things and most bugs need no follow-up questions:</p>
+
+<ol>
+  <li><code>baton --version</code> and <code>baton status</code>, plus your OS.</li>
+  <li>Which agent CLI and version, for example <code>claude --version</code>.</li>
+  <li>What you expected, and what happened instead.</li>
+  <li>The part of <code>~/.baton/board.log</code> around the time it happened. Baton redacts secrets from its own logs, but read it before sending.</li>
+</ol>
+
+<h2 id="security">Security reports</h2>
+
+<p>Email the same address with <strong>SECURITY</strong> in the subject. Please give a fix a reasonable window before publishing details. What is in scope and what is not is set out in the security policy shipped with the package, and the short version is: the board binding and its token seam, the environment stripping each adapter does, and the secret redaction are all in scope; the agent CLIs themselves are not, report those to their own maintainers.</p>
+
+<h2 id="platforms">What is supported</h2>
+
+<ul>
+  <li><strong>Node 22 or newer.</strong> Windows, macOS and Linux; the test suite runs on all three on every commit.</li>
+  <li><strong>The latest minor release</strong> gets fixes. Upgrade with <code>npm install -g baton-agents@latest</code>.</li>
+  <li><strong>Agent CLIs:</strong> Claude Code, Codex and agy. Which readings are live against which version is printed in <a href="/docs/cli-contracts">what Baton reads from each CLI</a>, with the date each one was checked on a real machine.</li>
+</ul>
+
+<h2 id="before-you-buy">Before you buy</h2>
+
+<p>Everything Baton does, what it edits, what it never edits, and what it reads from each agent is written out in <a href="/docs">the documentation</a>, which is the same text that ships inside the package. Ask us anything that is not answered there, before paying rather than after.</p>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

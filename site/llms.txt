@@ -41,9 +41,24 @@ Off by default. `baton share on` binds the board to a Tailscale or LAN address a
 
 ## Verified
 
-Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 463 tests.
+Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 472 tests.
 
 ## Docs
 
-- README, docs and changelog ship in the npm package: https://www.npmjs.com/package/baton-agents
+The source repository is private, so these pages are the public copy of the documentation that ships inside the npm package.
+
+- All docs: https://baton-agents.vercel.app/docs
+- Install and first run: https://baton-agents.vercel.app/docs/getting-started
+- How it works (sessions, bundles, the wall): https://baton-agents.vercel.app/docs/concepts
+- The board, panel by panel: https://baton-agents.vercel.app/docs/board-guide
+- Configuration and environment variables: https://baton-agents.vercel.app/docs/configuration
+- What Baton reads from each agent CLI, with sources: https://baton-agents.vercel.app/docs/cli-contracts
+- Agent adapters: https://baton-agents.vercel.app/docs/adapters
+- FAQ: https://baton-agents.vercel.app/docs/faq
+- A real run, limit to handoff: https://baton-agents.vercel.app/docs/real-run
+- Vocabulary: https://baton-agents.vercel.app/docs/vocabulary
+- Full README: https://baton-agents.vercel.app/docs/readme
+- Changelog: https://baton-agents.vercel.app/docs/changelog
+- Support and refunds: https://baton-agents.vercel.app/support
 - License: https://baton-agents.vercel.app/license
+- Package: https://www.npmjs.com/package/baton-agents

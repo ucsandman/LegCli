@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Baton board, panel by panel</title>
+<meta name="description" content="Every card, gauge, button and drawer on the Baton board, what each number means, and where the reading behind it came from.">
+<link rel="canonical" href="https://baton-agents.vercel.app/docs/board-guide">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/docs/board-guide">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="The Baton board, panel by panel">
+<meta property="og:description" content="Every card, gauge, button and drawer on the Baton board, what each number means, and where the reading behind it came from.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Baton board, panel by panel">
+<meta name="twitter:description" content="Every card, gauge, button and drawer on the Baton board, what each number means, and where the reading behind it came from.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide" aria-current="page">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#screenshots">Screenshots</a></li><li><a href="#the-verdict-and-the-logins">The verdict and the logins</a></li><li><a href="#terminals">Terminals</a></li><li><a href="#the-ledger">The ledger</a></li><li><a href="#a-shared-board-more-than-one-human">A shared board (more than one human)</a></li><li><a href="#background-tasks-page-layout">Background tasks: page layout</a></li><li><a href="#order">Order</a></li><li><a href="#card-row">Card row</a></li><li><a href="#card-expansion">Card expansion</a></li><li><a href="#new-card-form">New card form</a></li><li><a href="#buttons">Buttons</a></li><li><a href="#what-a-state-looks-like">What a state looks like</a></li><li><a href="#floor-view">Floor view</a></li><li><a href="#keyboard-and-accessibility">Keyboard and accessibility</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+<h1 id="board-guide"><a class="anchor" href="#board-guide">Board guide</a></h1>
+<p>For anyone using the Baton board day to day: what every element means and when
+it shows up. The board is one page, read top to bottom: <strong>the verdict</strong> (one
+sentence saying what to do next), <strong>the logins</strong> (one panel each), <strong>Terminals</strong>
+(one row each), <strong>the ledger</strong> (finished terminals, what landed, background
+tasks, as three counts that open), then <strong>Settings</strong>. Start a session
+(<code>baton claude</code>) or the background-task board (<code>npm start</code>), see
+<a href="/docs/getting-started">getting-started.md</a>, then use this as a reference.</p>
+<p>The visual system, and why it is what it is, is <code>DESIGN.md</code> at the repo root.</p>
+<h2 id="screenshots"><a class="anchor" href="#screenshots">Screenshots</a></h2>
+<p><code>docs/screenshots/</code> (listed here so you know what exists before you look for
+one). All nineteen were retaken on 2026-09-15 against the current build, after
+the dark-product-surface redesign and the card-row port that followed it:</p>
+<pre><code>terminals-1280.png        the board at 1280 px, four terminals on one login
+board-400px.png           the same board at 400 px
+board-details-open.png    a terminal with its expansion open
+board-empty.png           no background tasks at all
+board-running.png         one card running its first agent
+board-handoff.png         the limit hit, the card waiting on you
+board-drawer.png          that card expanded: bundle, runs, timeline
+board-done.png            the card finished, on the agent that finished it
+floor.png                 /floor with nothing queued
+floor-landing.png         /floor with every lane full
+floor-final-1280.png      /floor after a card finished
+floor-final-400.png       the same at 400 px
+share-owner-1280.png      a shared board as its owner
+share-guest-1280.png      the same board as a guest: prompts and repos redacted
+demo-1-claude-running.png  leg 1 running on fake-claude
+demo-2-limit-hit.png       limit hit, bundle written, the row waiting on you
+demo-3-handoff-bundle.png  the row expanded: bundle path, run signal, timeline
+demo-4-codex-running.png   leg 2 running on fake-codex
+demo-5-done.png            done, both legs on the chain
+</code></pre>
+<p>The five <code>demo-*.png</code> are one run of the sequence in <a href="https://www.npmjs.com/package/baton-agents">DEMO.md</a>, all at
+1280 px.</p>
+<p>To retake one, seed a board with the shape a real one has and drive it to the
+state the shot needs:</p>
+<pre><code>node scripts/seed-wes-board.mjs     # 4 live terminals, 5 finished, long paths
+node scripts/seed-floor-board.mjs   # cards in every floor lane, plus a landing
+node scripts/board-shots.mjs &lt;port&gt; &lt;tag&gt;   # shoot 1280 and 400, print the numbers
+</code></pre>
+<p>Each seeder writes a throwaway <code>BATON_HOME</code> under the OS temp dir; serve it on a
+spare port with <code>BATON_TRUST=never</code>. <strong>Never use port 4747</strong> — that is the live
+board, with real sessions on it.</p>
+<p>Measure against those seeds and never against a board of healthy terminals:
+styling scoped to live rows and measured on a clean board reported 40px terminal
+rows while the real screen showed 400px.</p>
+<h2 id="the-verdict-and-the-logins"><a class="anchor" href="#the-verdict-and-the-logins">The verdict and the logins</a></h2>
+<p><code>src/board/sessions.js</code> draws both, from the <code>accounts</code> array of
+<code>GET /api/sessions</code> and the sessions beside it.</p>
+<p><strong>The verdict</strong> is the largest thing on the page and it is a sentence, not a
+number. It names the one fact that decides what happens next:</p>
+<pre><code>All 4 terminals are on claude, and claude has 5% left.
+</code></pre>
+<p>One login carrying every terminal is one point of failure, so that is what the
+sentence says. With the terminals spread across logins it names the one closest
+to a wall instead; with nothing running it says so, and names any login that is
+walled. The number it prints is what is <strong>left</strong>, because that is the quantity
+you are deciding against.</p>
+<p>Under it, one line carrying the age of the reading and which direction it is
+wrong in:</p>
+<pre><code>Measured 2h 13m ago. 4 terminals have been running since, so the real figure is
+higher than 95 percent, never lower.
+</code></pre>
+<p>A reading taken two hours ago is a floor, not a measurement, and saying so is
+the entire reason to print its age. Any login at a wall other than the one in
+the headline is named on the same line.</p>
+<p><strong>The logins</strong> sit under the verdict, one panel each, and how much surface a
+panel gets is the design saying how much it matters:</p>
+<ul>
+<li>The login carrying the terminals gets a wide panel, lit one step brighter than
+the rest, with both of its windows drawn. The window closest to a wall is the
+full-size instrument; the other is the same instrument at half height with a
+smaller numeral, so which one to read is not a question.</li>
+<li>A login with a single fact to report gets a half panel: its gauge if it has a
+reading, then the fact. A walled login reads <code>At the wall</code> and
+<code>Back Saturday 10:11 PM. Nothing runs on codex until then.</code></li>
+<li>A login that publishes no figure draws no instrument at all. agy&#39;s panel says
+<code>agy publishes no usage figure, ever. Baton shows its terminals and their elapsed time instead.</code> An empty track reads as a measurement of zero to anyone
+glancing at it, so none is drawn.</li>
+</ul>
+<p><strong>The gauge</strong> is a track, a fill and a numeral. The fill runs in the login&#39;s own
+identity colour up to 85 percent and in the over colour past it, and a 2px notch
+is cut through the bar at 85 at all times, including at zero fill: you can see
+the reserve before you reach it. A window that has never been read draws no fill
+and prints <code>no reading</code>, because a zero is a reading and Baton does not print
+one it does not have.</p>
+<p>Nothing here is on hover. A screen reader gets the whole answer from each
+track&#39;s <code>aria-valuetext</code>, including the reset, the source and the staleness; a
+window with no value is not a <code>meter</code> at all and carries the same sentence as
+its label. The caption under the logins reads <code>Times are local.</code></p>
+<p>For Codex, the board reads the app-server&#39;s read-only
+<code>account/rateLimits/read</code> response every 60 seconds and maps its 300- and
+10080-minute windows to 5h and 7d. The active <code>baton codex</code> attach also polls
+that response. A percentage alone does not clear a limit wall: Baton waits for
+an explicit available answer from the backend.</p>
+<h2 id="terminals"><a class="anchor" href="#terminals">Terminals</a></h2>
+<p><code>src/board/sessions.js</code> renders the region from <code>GET /api/sessions</code>, refreshed
+by the server-sent <code>sessions</code> event, re-sorted every 15 s, with the elapsed
+clocks ticking every second. With no sessions it prints <code>No terminal is running. Start one in any repo: baton claude, baton codex or baton agy. It appears here within a second of the agent&#39;s first turn.</code></p>
+<p>The region head carries one verdict with its volume: <code>3 running, 2 waiting on you</code>, or <code>3 running, nothing is waiting on you</code>, or <code>nothing is running</code>, with
+<code>, last landed 11:02 PM</code> appended when a terminal on the page has landed.</p>
+<h3 id="terminal-row"><a class="anchor" href="#terminal-row">Terminal row</a></h3>
+<p>One row per live session, inside a single panel, separated from its siblings by
+a hairline. Rows that need an answer come first; the rest follow in start order.
+A row that needs you says <code>waiting on you</code> where its status word would be, so
+the state is never carried by colour or position alone.</p>
+<p>Reading across the row: what it is doing, what it is working on, how long it has
+been at it, and what you can do about it.</p>
+<ul>
+<li><strong>The register</strong>, one line of the smallest type on the board: the status word
+with its dot, then where the work is (<code>baton on main</code>, or the folder when it
+is not a repo), then anything unusual about this terminal as plain words — the
+account when it is not <code>default</code>, the owner on a shared board, <code>from &lt;agent&gt;</code>
+when it was handed off, <code>own worktree, from main</code> when it cut its own.</li>
+<li><strong>The prompt</strong>, as a button: the first prompt of the session, carried in full
+in its tooltip and in the expansion. A pasted screenshot arrives as an
+<code>&lt;image name=... path=...&gt;</code> tag with an absolute temp path in it; the tag is
+replaced by <code>(image)</code> and the text, so the operator&#39;s home directory is not on
+screen and the sentence starts where the sentence starts.</li>
+<li><strong>Under the prompt</strong>, exactly one sentence, the highest-ranked thing true
+about this terminal, then <code>also: &lt;names&gt;</code> naming every sentence it is holding
+back, then the files this session is touching as comma-separated <strong>basenames</strong>
+up to six, then <code>, and N more</code>. The whole path stays on the title and in the
+expansion; printed in full it was ninety characters of temp path per file. A
+file another live session is also touching is printed in the warning colour.
+A terminal that is merely running prints no sentence at all: its own row
+already says so, and four rows each saying <code>activity</code> is four lines of noise.</li>
+<li><strong>The clock</strong>: elapsed since the session started (<code>4h 24m</code>), and the session&#39;s
+short id. The id used to print as <code>claude-7f3a</code> immediately after the word
+<code>claude</code>; the prefix is the agent name twice and it is gone.</li>
+<li><strong>The buttons</strong>, in a fixed 2x2 grid so every row&#39;s controls sit in the same
+place: Land, Hand off now, Details, End. Land is the primary action only when
+it can actually run — when it is blocked the accent moves to Hand off now,
+because a disabled control should not wear the one accent colour in the
+design. When Land is disabled its reason is printed, never left in a tooltip.</li>
+</ul>
+<p><strong>A fact true of every row is said once, at the region.</strong> Three rows all reading
+<code>this terminal works in the checkout itself: there is no branch of its own to land</code> is one fact and two lines of noise, so it is hoisted to the region head as
+<code>every terminal here works in the checkout itself...</code>. The per-row copy stays in
+the DOM, visually hidden, so each Land button&#39;s <code>aria-describedby</code> still resolves
+to its own reason. The same applies to any sentence two or more terminals would
+print identically, except muted ones: <code>turn 12, last activity 1:04 AM</code> is shared
+by coincidence, not a fact about the board.</p>
+<p><strong>Finished terminals leave this panel.</strong> A terminal that has ended or been lost
+is history, and after a day&#39;s work it is most of the list. It moves to the
+ledger (below) as part of a count that opens. A finished terminal that still
+needs you, or whose expansion you have open, stays in place.</p>
+<h3 id="the-one-sentence"><a class="anchor" href="#the-one-sentence">The one sentence</a></h3>
+<p><code>rankedNotes</code> in <code>src/board/sessions.js</code> is the single source of every sentence
+a panel prints. It builds the list, sorts it, prints the first, and names the
+rest behind <code>also:</code>. Rank 1 is worst.</p>
+<table>
+<thead>
+<tr>
+<th>rank</th>
+<th>what it says</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>every option is out, first back: codex 10:11 PM</code>, or <code>limit: &lt;reason&gt;, back &lt;time&gt;</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>a bounced Land, or <code>the landing was cut off (the board restarted); press Land again</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>an overlap with another live session</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>sam asked to take this terminal at 11:04 PM</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>waiting for codex at 10:11 PM</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>handing off to codex, &lt;reason&gt;, 2m</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>landing &lt;branch&gt; onto main: commit, rebase, test, fast-forward</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>near the 5h wall, next: codex</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td>a finished Land, <code>nothing to land</code>, or the button you last pressed</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>turn 14, last activity 11:04 PM</code>, the fallback that is always true</td>
+</tr>
+</tbody></table>
+<p>A sentence at rank 4 or better is what raises the panel, sorts it to the top and
+counts it in the region head, so those three cannot disagree.</p>
+<p>Two of them in full, because they are what the board exists to say:</p>
+<ul>
+<li><strong>Overlap</strong>, two live sessions in one repo whose <code>files_touched</code> or
+<code>files_dirty</code> sets intersect (<code>sessions.overlaps</code>), so it catches a file one
+agent has edited and another has only made dirty. In separate checkouts:
+<code>codex (codex-99ab) is changing src/server.mjs in another checkout; whoever lands second rebases</code>. In the same checkout: <code>codex (codex-99ab) is editing src/server.mjs too</code>. Three file names, then <code>, and N more</code>.</li>
+<li><strong>A Land</strong>. Bounced: <code>Land was attempted at 6:40 PM onto main and bounced: CONFLICT (content): Merge conflict in src/server.mjs. The branch still holds every commit; nothing was lost.</code> Finished: <code>landed on &lt;base&gt;, &lt;7-char sha&gt;, &lt;n&gt; files, +&lt;added&gt;/-&lt;removed&gt;</code>, with <code>, untested</code> when the land recorded no
+test run. A finished Land stops being printed ten minutes after it happened.
+Nothing to land: <code>nothing to land: &lt;branch&gt; has no changes beyond main</code>.</li>
+</ul>
+<h3 id="status-words"><a class="anchor" href="#status-words">Status words</a></h3>
+<table>
+<thead>
+<tr>
+<th>status</th>
+<th>word</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>starting</code></td>
+<td>starting</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td>running</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td>near limit</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td>limit hit</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td>handing off</td>
+</tr>
+<tr>
+<td><code>waiting</code></td>
+<td>waiting for reset</td>
+</tr>
+<tr>
+<td><code>handed_off</code></td>
+<td>handed off</td>
+</tr>
+<tr>
+<td><code>ended</code></td>
+<td>ended</td>
+</tr>
+<tr>
+<td><code>lost</code></td>
+<td>lost</td>
+</tr>
+</tbody></table>
+<p>The word carries the meaning. The 7 px square beside it is <code>aria-hidden</code> and
+only repeats the tone. <code>waiting</code> means every option is walled and the terminal
+is counting down to the first reset; its sentence reads <code>waiting for &lt;agent&gt; at &lt;time&gt;</code>, and End quits that terminal with exit 3. <code>lost</code> means the runner
+process that owned that terminal is gone. It is never counted as live.</p>
+<h3 id="terminal-buttons"><a class="anchor" href="#terminal-buttons">Terminal buttons</a></h3>
+<p>The order is fixed, Land, Hand off now, Details, End, and it never reflows by
+availability: a button that does not apply is omitted, never moved.</p>
+<table>
+<thead>
+<tr>
+<th>button</th>
+<th>shown when</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Land</td>
+<td>always, disabled with the reason printed under it when the session has no worktree of its own, while it is landing, or when the worktree is gone</td>
+<td><code>POST /api/sessions/:id/land</code> (202): commits what the agent left on <code>baton/&lt;id&gt;</code>, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the panel&#39;s sentence shows the result</td>
+</tr>
+<tr>
+<td>Request handoff</td>
+<td>the board is shared and this terminal is someone else&#39;s</td>
+<td><code>POST /api/sessions/:id/request-handoff</code> (202): asks the owner; nothing happens until they approve</td>
+</tr>
+<tr>
+<td>Approve <code>&lt;name&gt;</code> / Dismiss <code>&lt;name&gt;</code></td>
+<td>the board is shared and someone asked for a hand-off on your terminal</td>
+<td><code>POST /api/sessions/:id/requests/&lt;name&gt;/approve</code> (or <code>/dismiss</code>): approving hands the terminal off, and the event says who it was for</td>
+</tr>
+<tr>
+<td>Details</td>
+<td>any terminal of yours</td>
+<td><code>GET /api/sessions/:id/detail</code>: the transcript, the files changed with their line counts, the timeline and the current bundle; <code>GET /api/sessions/:id/diff?file=&lt;path&gt;</code> for one file, capped at 400 lines, refused for any path outside that terminal&#39;s own tree</td>
+</tr>
+<tr>
+<td>Hand off now</td>
+<td>the session is active</td>
+<td><code>POST /api/sessions/:id/handoff</code>: saves the bundle, stops this agent, starts the next option in the same terminal</td>
+</tr>
+<tr>
+<td>Change order</td>
+<td>inside the expansion, while the status is <code>starting</code>, <code>running</code>, <code>warning</code>, <code>limit</code> or <code>waiting</code></td>
+<td>saves its validated claude/codex/agy priority; an older wrapper instead saves the machine default and says to restart the terminal</td>
+</tr>
+<tr>
+<td>End</td>
+<td>the session is active</td>
+<td><code>POST /api/sessions/:id/end</code>: stops the agent, ends the session</td>
+</tr>
+<tr>
+<td>Remove</td>
+<td>the session is not active</td>
+<td><code>DELETE /api/sessions/:id</code>: safely prunes the session record, worktree, and merged branch only when the worktree is clean and the branch is already on its base; otherwise it leaves them and explains why</td>
+</tr>
+<tr>
+<td>Remove record</td>
+<td>the session is not active and has an own worktree</td>
+<td><code>DELETE /api/sessions/:id?force=1&amp;keep_worktree=1</code>: removes only Baton&#39;s record and keeps the worktree, branch, unmerged commits, and dirty files</td>
+</tr>
+</tbody></table>
+<p>End, Remove and Remove record confirm first: the button row is replaced in place
+by one sentence and two buttons, focus moves to Cancel, and Escape cancels.
+There is no modal and no browser <code>confirm()</code>. Settings has the same order editor
+for the default copied by new terminals.</p>
+<h3 id="the-expansion"><a class="anchor" href="#the-expansion">The expansion</a></h3>
+<p><strong>Details</strong>, or a click on the prompt, expands a region in flow directly under
+that panel; the page grows and the panel stays where it is. Nothing slides in
+from the right, and the page keeps one scroll container
+(<code>docs/screenshots/board-details-open.png</code>). Sections, top to bottom:</p>
+<ol>
+<li>A header with the agent, the id tail, <strong>Pause updates</strong> and <strong>Close</strong>.</li>
+<li><strong>Now</strong>: the status word, the turn count and the last activity time, the last
+thing the agent said, then <code>path</code>, <code>branch</code>, <code>cut from</code>, <code>transcript</code> and
+<code>head</code> in full, never shortened. <code>usage unknown (&lt;why&gt;); the limit still hands off</code> sits here when the endpoint had no numbers for this login: no
+login in that config directory, a 404, a 429, a body that is not JSON, or a
+shape Baton does not recognise.</li>
+<li><strong>Task</strong>: the prompt in full.</li>
+<li><strong>Conversation</strong>: the last 8 turns, newest first, headed <code>showing 8 of 34 turns</code>; <strong>show 40 more</strong> raises the cap.</li>
+<li><strong>Files</strong>: every file changed, with <code>uncommitted</code>, <code>+&lt;adds&gt;</code>, <code>-&lt;dels&gt;</code>, or
+<code>new</code> or <code>committed</code> when there are no counts against <code>HEAD</code>. A row expands
+to that file&#39;s diff, capped at 400 lines.</li>
+<li><strong>Timeline</strong>: the last 40 events, newest first.</li>
+<li><strong>What happens next</strong>: <code>now: claude, then codex, then agy</code>, which fallback is
+preferred and which is eligible now, the line <code>Used after a usage limit or Hand off now. A normal exit ends this terminal.</code>, the <strong>Change order</strong>
+editor, the current bundle id, and whether <code>.baton/RESUME.md</code> still describes
+the repository (recomputed from git on every poll).</li>
+</ol>
+<p>It refetches every 3 seconds while it is open, and stops on <strong>Pause updates</strong>,
+when the tab is in the background, or when it is closed. The rest of the page
+stays live, so the panel&#39;s own buttons keep working. Messages and diffs are
+scrubbed for secrets on the way out, and the whole region is refused for a
+terminal that belongs to someone else. <strong>Close</strong> or the Escape key closes it.</p>
+<p><strong>Change order</strong> moves the three agents without removing one; same-agent
+secondary accounts still come before the other agents. The list is an absolute
+priority: an agent moved to the bottom is tried last from every starting agent.
+The editor previews the resulting priority, with the agent running now skipped,
+before saving.</p>
+<h2 id="the-ledger"><a class="anchor" href="#the-ledger">The ledger</a></h2>
+<p>Below the terminals, three counts sitting on the ground with no panel, because a
+raised surface here would compete with the terminals that are live. Each is a
+heading, a line of detail and a button that opens the detail below the row.</p>
+<ul>
+<li><strong>N finished</strong> — the terminals that have ended or been lost, <code>4 lost, 2 ended, in baton, costclaw, declick</code>. <strong>View all N</strong> opens them as full rows. On a real
+board after a day&#39;s work this is most of the list, which is exactly why it is a
+count and not the list.</li>
+<li><strong>N landed</strong> — what has landed on trunk across every repo the board can see,
+<code>newest 38 minutes ago, on baton@main, recruiting-tool@main</code>. <strong>View N
+commits</strong> opens them grouped by repo, newest first: the subject and, for a
+commit a Land put there, <code>3 hours ago, by claude</code>, read from
+<code>~/.baton/landings.jsonl</code>, which outlives the session; any other commit shows
+its git author. Shown in full it was eighteen rows of <code>git log</code> at the same
+visual weight as the live terminals, so the loudest thing on the page was a
+commit from eleven days ago. With nothing landed it reads <code>Nothing landed yet</code>
+and explains what Land does.</li>
+<li><strong>N background tasks</strong> — the card runtime below, as a count with <strong>View N
+cards</strong>, plus <strong>New card</strong>. With none it reads <code>Nothing is queued. Baton starts the next login only when a terminal hands off.</code></li>
+</ul>
+<h2 id="a-shared-board-more-than-one-human"><a class="anchor" href="#a-shared-board-more-than-one-human">A shared board (more than one human)</a></h2>
+<p>With <code>baton share</code> on (off by default), the Terminals region head carries a chip
+reading <code>you are wes, 2 on this board</code>, with <code>, a guest</code> after the name for
+anyone who is not the owner, and every row carries an owner word in its
+register: <code>wes, you</code> on yours, <code>wes</code> on someone else&#39;s. There is no colour
+difference between the two.</p>
+<p>A row that belongs to someone else carries exactly one sentence, <code>read-only: wes owns this terminal</code>. Its prompt reads <code>prompt hidden</code>; it has no file names, no
+path beyond the repo and branch, no bundle and no event log; and its only button
+is <strong>Request handoff</strong>. A guest&#39;s login panels say <code>Usage for this login is not shared with guests</code> and draw no instrument. The owner sees <code>sam asked to take this terminal at 11:04 PM</code> on their own row, with <strong>Approve sam</strong> and <strong>Dismiss
+sam</strong>.</p>
+<p>A guest&#39;s board has no background tasks cell, no New card button and no Floor
+link: that side belongs to the owner of the machine, and the API answers 403.</p>
+<h2 id="background-tasks-page-layout"><a class="anchor" href="#background-tasks-page-layout">Background tasks: page layout</a></h2>
+<p>Everything from here down is the v0.1 card runtime. Each card runs separately
+from the interactive terminal conversations, in its own git worktree. It is the
+third ledger cell, and its rows open in a drawer under the ledger.</p>
+<p>The masthead (<code>src/board/index.html</code>) has the Baton wordmark on the left and, on
+the right, the connection word (<code>connecting</code> / <code>live</code> / <code>reconnecting…</code>) with its
+dot, the scheduler status (<code>scheduler running, 2 max</code>), and the <strong>Floor</strong> link.
+<strong>New card</strong> is in the ledger cell, not the masthead, and <strong>Settings</strong> is the
+last region of the page, in flow. Nothing on the board is sticky: the verdict is
+what you came for and it is at the top, so there is nothing to pin.</p>
+<p>With no cards the region prints <code>No background task. New card queues one. They run headless in their own worktree and report on the floor.</code> With cards the
+region head prints the counts instead: <code>2 running, 1 queued, 3 finished</code>.</p>
+<p><strong>Settings</strong> holds the <strong>API token</strong> field (only needed when the server is bound
+off loopback; see <a href="/docs/configuration#network-exposure">configuration.md</a>), the
+<strong>New terminal handoff order</strong> editor used by terminals started after you save,
+and the board&#39;s own facts: version and bind address, who you are signed in as,
+whether share is on, the scheduler, and the board home. Its region head says
+<code>No API token set, requests reach 127.0.0.1:4747 unauthenticated</code>, or <code>API token set, sent to 127.0.0.1:4747 as a bearer token</code> once a token is stored.</p>
+<h2 id="order"><a class="anchor" href="#order">Order</a></h2>
+<p>There are no columns. Cards are rows in one list, ordered by status (<code>ROW_RANK</code>
+in <code>src/board/board.js</code>), then by start time within a rank:</p>
+<table>
+<thead>
+<tr>
+<th>rank</th>
+<th>statuses</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td><code>needs_approval</code>, <code>waiting_human</code></td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>failed</code>, <code>killed</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>running</code>, <code>handing_off</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>paused</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>queued</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>backlog</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>done</code></td>
+</tr>
+</tbody></table>
+<p>Rows are re-appended only when that order actually changes, so a row does not
+move out from under the cursor.</p>
+<h2 id="card-row"><a class="anchor" href="#card-row">Card row</a></h2>
+<p>Each card row reads in the same four registers as a terminal panel:</p>
+<ul>
+<li><strong>Who</strong>: an adapter chip in that agent&#39;s colour (or <code>no agent</code>), the station
+name when it is not <code>-</code>, and the status word.</li>
+<li><strong>What</strong>: the title (the card&#39;s <code>title</code>, or the first 60 characters of the
+task) as a button that opens the <a href="#card-expansion">expansion</a>, and one
+sentence under it.</li>
+<li><strong>Where</strong>: <code>repo@trunk</code>, the worktree path shortened to its tail with the full
+path in its tooltip, the chain rail, and the lease chips, one per claimed
+lease or <code>**</code> (the whole repo) when none were set, plus <code>blocked by lease</code>
+when the scheduler says so.</li>
+<li><strong>When</strong>: the elapsed clock, <code>mm:ss</code> while a leg is running and <code>--:--</code>
+otherwise, then the buttons.</li>
+</ul>
+<p>The log is not on the row. It is in the expansion.</p>
+<h3 id="the-one-sentence"><a class="anchor" href="#the-one-sentence">The one sentence</a></h3>
+<p><code>cardSentence</code> in <code>src/board/board.js</code>, one sentence, the highest-ranked thing
+true about the card:</p>
+<ul>
+<li>A bounced land, at <code>queued</code>, <code>running</code>, <code>handing_off</code> or <code>needs_approval</code>:
+<code>Land bounced on attempt 2: rebase-conflict. The worktree still holds every commit; nothing was lost.</code> The reason is printed in full.</li>
+<li>Queued and blocked: the scheduler&#39;s own <code>blocked_by</code> message.</li>
+<li><code>failed</code> or <code>killed</code>: <code>failed at station build after 2 runs: &lt;last event&gt;</code>.</li>
+<li><code>waiting_human</code> or <code>needs_approval</code>: <code>waiting on you at station review since 11:04 PM</code>.</li>
+<li><code>done</code>: <code>done after 3 runs, &lt;last event&gt;</code>.</li>
+<li>Otherwise the last ledger event, <code>&lt;type&gt;: &lt;summary&gt;</code>, truncated to 90
+characters, with its time.</li>
+</ul>
+<h3 id="status-words"><a class="anchor" href="#status-words">Status words</a></h3>
+<table>
+<thead>
+<tr>
+<th>status</th>
+<th>word</th>
+<th>notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>backlog</code></td>
+<td>backlog</td>
+<td></td>
+</tr>
+<tr>
+<td><code>queued</code></td>
+<td>queued</td>
+<td></td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td>running, or <strong>landing</strong></td>
+<td>&quot;landing&quot; when the current station is a <code>land</code> station</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td>handing off</td>
+<td></td>
+</tr>
+<tr>
+<td><code>waiting_human</code></td>
+<td>waiting human, or <strong>PR open</strong></td>
+<td>&quot;PR open&quot; when the card carries a <code>pr_url</code> (land mode <code>pr</code>)</td>
+</tr>
+<tr>
+<td><code>needs_approval</code></td>
+<td>needs approval</td>
+<td></td>
+</tr>
+<tr>
+<td><code>paused</code></td>
+<td>paused</td>
+<td></td>
+</tr>
+<tr>
+<td><code>done</code></td>
+<td>done</td>
+<td></td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>failed</td>
+<td></td>
+</tr>
+<tr>
+<td><code>killed</code></td>
+<td>killed</td>
+<td></td>
+</tr>
+</tbody></table>
+<h3 id="chain-rail"><a class="anchor" href="#chain-rail">Chain rail</a></h3>
+<p>One pair of tokens per chain entry at the current station: the adapter name in
+its agent colour, then that leg&#39;s state as a word, <code>pending</code>, <code>running</code>, <code>done</code>,
+<code>handed off</code> or <code>failed</code> (<code>stateGlyph</code> in <code>src/board/board.js</code>). There are no
+glyphs: the subset fonts carry no check, cross or arrow. A gated <code>approve: true</code>
+entry is not marked on the rail; <strong>Approve</strong> appears in the row&#39;s buttons when
+the card reaches <code>needs_approval</code>.</p>
+<h2 id="card-expansion"><a class="anchor" href="#card-expansion">Card expansion</a></h2>
+<p>Click a card&#39;s title to expand a region in flow under that row. Sections, top to
+bottom:</p>
+<ol>
+<li><strong>Title</strong>.</li>
+<li><strong>Task</strong>: the full task text, headed <code>card &lt;id&gt;</code>.</li>
+<li><strong>Where</strong>: <code>repo</code>, <code>trunk</code>, <code>worktree</code>, <code>leases</code> and the bundle path, full
+paths never shortened, with a <strong>Copy worktree path</strong> button.</li>
+<li><strong>Pipeline</strong>: one row per station, its name and its kind, the current one
+marked <code>, this station</code>; the heading says <code>station 2 of 5</code>.</li>
+<li><strong>Runs</strong>: one row per run: run number, adapter, outcome or status, signal,
+exit code.</li>
+<li><strong>Timeline</strong>: the ledger, newest first.</li>
+<li><strong>Log</strong>: the tail of the active or most recent run&#39;s combined log, up to 2000
+lines.</li>
+</ol>
+<p><strong>Close</strong> or the Escape key collapses it, and focus returns to the title.</p>
+<h2 id="new-card-form"><a class="anchor" href="#new-card-form">New card form</a></h2>
+<p>The dialog opened by <strong>New card</strong> (<code>src/board/index.html</code>):</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Repo path</td>
+<td>required; an absolute path to a git repository</td>
+</tr>
+<tr>
+<td>Task</td>
+<td>required; the prompt every leg gets</td>
+</tr>
+<tr>
+<td>First agent</td>
+<td>required; real agents appear here and Claude is preferred when installed</td>
+</tr>
+<tr>
+<td>Run now</td>
+<td>checked by default; unchecking saves the card as a draft in <code>backlog</code></td>
+</tr>
+<tr>
+<td>Workflow (Advanced)</td>
+<td>Build only stops unmerged in the worktree; Build-land runs test then land; Factory runs plan, build, review, test, and land; custom JSON reveals a station-array textarea</td>
+</tr>
+<tr>
+<td>First-agent controls (Advanced)</td>
+<td>allowed permission mode, approval gate, max turns, and scripted behavior when the test/demo override is selected</td>
+</tr>
+<tr>
+<td>Fallback agents (Advanced)</td>
+<td>one understandable row per later adapter, tried in displayed order only if the previous agent cannot continue</td>
+</tr>
+<tr>
+<td>Scripted first agent (Advanced)</td>
+<td>explicitly test/demo only; keeps fake adapters out of the normal first-agent default</td>
+</tr>
+<tr>
+<td>File leases (Advanced)</td>
+<td>comma-separated path globs to reserve so overlapping cards wait</td>
+</tr>
+<tr>
+<td>Trunk branch</td>
+<td>default <code>main</code></td>
+</tr>
+<tr>
+<td>Merge method</td>
+<td><code>ff</code> or <code>pr</code>; relevant to a workflow with a land station</td>
+</tr>
+<tr>
+<td>Test command</td>
+<td>overrides the land station&#39;s auto-detected command</td>
+</tr>
+<tr>
+<td>Title</td>
+<td>optional; defaults to the task&#39;s first 80 characters</td>
+</tr>
+</tbody></table>
+<p><strong>Cancel</strong> closes without creating a card; <strong>Create card</strong> posts it and closes on
+success (errors show inline above the form).</p>
+<h2 id="buttons"><a class="anchor" href="#buttons">Buttons</a></h2>
+<p>Which buttons a card shows depends on its status (<code>src/chain.mjs</code>
+<code>availableActions</code>, labels from <code>src/board/board.js</code> <code>ACTION_LABELS</code>). The order
+is fixed: Approve, Run, Resume, Pause, Hand off now, Rerun, Reassign, Kill.</p>
+<table>
+<thead>
+<tr>
+<th>button</th>
+<th>shown when</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Run</td>
+<td><code>backlog</code></td>
+<td>queues the card (<code>enqueue</code>)</td>
+</tr>
+<tr>
+<td>Pause</td>
+<td><code>running</code></td>
+<td>stop after the current leg, child killed, bundle written</td>
+</tr>
+<tr>
+<td>Hand off now</td>
+<td><code>running</code>, at an <code>agent</code> station that has a later chain entry</td>
+<td>end the current leg as if it were incomplete, write the bundle, start the next adapter</td>
+</tr>
+<tr>
+<td>Resume</td>
+<td><code>paused</code></td>
+<td>pick up where it stopped</td>
+</tr>
+<tr>
+<td>Approve</td>
+<td><code>needs_approval</code> or <code>waiting_human</code></td>
+<td>release a gated leg, or clear a human station</td>
+</tr>
+<tr>
+<td>Kill</td>
+<td>any non-terminal status</td>
+<td>stop the running agent; card ends <code>killed</code></td>
+</tr>
+<tr>
+<td>Reassign</td>
+<td>any non-terminal status, and the current station is an <code>agent</code> station</td>
+<td>pick a different adapter/mode for the current leg from a picker</td>
+</tr>
+<tr>
+<td>Rerun</td>
+<td><code>done</code>, <code>failed</code>, <code>killed</code></td>
+<td>start the station over from the last bundle</td>
+</tr>
+<tr>
+<td>Remove</td>
+<td><code>done</code>, <code>failed</code>, <code>killed</code></td>
+<td>delete the card record, its events and its runs; the worktree is kept (confirms first)</td>
+</tr>
+</tbody></table>
+<h2 id="what-a-state-looks-like"><a class="anchor" href="#what-a-state-looks-like">What a state looks like</a></h2>
+<table>
+<thead>
+<tr>
+<th>state</th>
+<th>row rank</th>
+<th>status word</th>
+<th>typical buttons</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>backlog</td>
+<td>5</td>
+<td>backlog</td>
+<td>Run</td>
+</tr>
+<tr>
+<td>queued</td>
+<td>4</td>
+<td>queued</td>
+<td>Kill, Reassign*</td>
+</tr>
+<tr>
+<td>blocked by lease</td>
+<td>4</td>
+<td>queued, with a <code>blocked by lease</code> chip</td>
+<td>Kill, Reassign*</td>
+</tr>
+<tr>
+<td>running</td>
+<td>2</td>
+<td>running (or landing)</td>
+<td>Pause, Hand off now†, Kill, Reassign*</td>
+</tr>
+<tr>
+<td>handing off</td>
+<td>2</td>
+<td>handing off</td>
+<td>Kill, Reassign*</td>
+</tr>
+<tr>
+<td>needs approval</td>
+<td>0</td>
+<td>needs approval</td>
+<td>Approve, Kill, Reassign*</td>
+</tr>
+<tr>
+<td>waiting human</td>
+<td>0</td>
+<td>waiting human (or PR open)</td>
+<td>Approve, Kill</td>
+</tr>
+<tr>
+<td>paused</td>
+<td>3</td>
+<td>paused</td>
+<td>Resume, Kill, Reassign*</td>
+</tr>
+<tr>
+<td>done</td>
+<td>6</td>
+<td>done</td>
+<td>Rerun, Remove</td>
+</tr>
+<tr>
+<td>failed</td>
+<td>1</td>
+<td>failed</td>
+<td>Rerun, Remove</td>
+</tr>
+<tr>
+<td>killed</td>
+<td>1</td>
+<td>killed</td>
+<td>Rerun, Remove</td>
+</tr>
+</tbody></table>
+<p>* Reassign only shows when the current station is an <code>agent</code> station.
+† Hand off now only shows when that station has a later chain entry.</p>
+<h2 id="floor-view"><a class="anchor" href="#floor-view">Floor view</a></h2>
+<p><code>/floor</code> (<code>docs/screenshots/floor.png</code>) is the scheduler-eye view across every
+card. It carries the same instrument head as the board, then polls <code>/api/floor</code>
+and <code>/api/trunk?since=1h</code> every 2 seconds and refreshes on the same server-sent
+events as the board. Its top bar has the Baton floor brand, the same connection
+word and 24 px rule, a repos list, the scheduler status, running/queued/waiting/
+done counts, then a spacer and the <strong>Board</strong> link. Five tables:</p>
+<table>
+<thead>
+<tr>
+<th>section</th>
+<th>columns</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Running</td>
+<td>Card, Station, Agent / leg, Leases, Last event, Elapsed, Actions</td>
+</tr>
+<tr>
+<td>Waiting on humans</td>
+<td>Card, Station, Status, Since, Actions</td>
+</tr>
+<tr>
+<td>Queued</td>
+<td>Card, Station, Leases, Blocked by</td>
+</tr>
+<tr>
+<td>Leases</td>
+<td>Lease, Card, Station, Since</td>
+</tr>
+<tr>
+<td>Trunk lane</td>
+<td>Time, Card, Summary</td>
+</tr>
+</tbody></table>
+<p>Each region head names its own count, <code>0 running</code>, <code>0 landed in the last hour</code>,
+and an empty table is replaced by a sentence saying what would put a row there.
+The Trunk lane lists commits landed in the last hour, newest first. The Leases
+table is <code>src/leases.mjs</code> <code>held()</code>: one row per lease currently claimed by a
+running or handing-off card.</p>
+<h2 id="keyboard-and-accessibility"><a class="anchor" href="#keyboard-and-accessibility">Keyboard and accessibility</a></h2>
+<ul>
+<li>Every interactive element (links, buttons, inputs, selects, textareas,
+summaries) gets a visible focus ring: <code>outline: 2px solid var(--focus); outline-offset: 2px</code> on <code>:focus-visible</code> only (<code>src/board/board.css</code>). There
+is no bare <code>:focus</code> rule, so a mouse click leaves no ring behind it.</li>
+<li>Escape closes the open expansion, the terminal&#39;s and the card&#39;s. If a confirm
+row is open, Escape cancels that first. The floor has neither, so Escape does
+nothing there.</li>
+<li>Buttons carry descriptive <code>aria-label</code>s (for example &quot;Pause <code>&lt;card title&gt;</code>&quot;,
+&quot;Reassign adapter for <code>&lt;card title&gt;</code>&quot;) so a screen reader announces which card
+an action applies to, not just the button label.</li>
+<li>A terminal&#39;s expansion is a <code>role=&quot;region&quot;</code> labelled &quot;What this terminal is
+doing&quot;, and both expansions set <code>aria-hidden</code> and <code>hidden</code> on open and close.</li>
+<li>The 7 px status mark is an <code>aria-hidden</code> decoration; the status word beside it
+carries the meaning. The chain rail prints each leg&#39;s state as a word, so
+nothing on it is hidden from a screen reader either.</li>
+<li>No state is carried by colour alone: a panel that needs you also says <code>waiting on you</code> and gains a 2 px bar, and every usage tier prints its word beside the
+rail.</li>
+<li><code>@media (prefers-reduced-motion: reduce)</code> is respected in
+<code>src/board/board.css</code>: the status mark&#39;s annunciation animation and every
+transition on the page are disabled for readers who ask for it.</li>
+</ul>
+<h2 id="see-also"><a class="anchor" href="#see-also">See also</a></h2>
+<ul>
+<li><a href="/docs/concepts">concepts.md</a>: what each status and outcome means underneath
+the board.</li>
+<li><a href="/docs/configuration">configuration.md</a>: <code>BATON_BIND</code> / <code>BATON_TOKEN</code> (the
+Settings token field), <code>BATON_PORT</code>.</li>
+</ul>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

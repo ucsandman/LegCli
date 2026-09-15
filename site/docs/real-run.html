@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A real run: Claude Code hits its usage limit, Codex continues | Baton</title>
+<meta name="description" content="One recorded session: Claude Code working, the limit landing, the bundle saved, and Codex picking the work up in the same terminal.">
+<link rel="canonical" href="https://baton-agents.vercel.app/docs/real-run">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/docs/real-run">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="A real run: Claude Code hits its usage limit, Codex continues">
+<meta property="og:description" content="One recorded session: Claude Code working, the limit landing, the bundle saved, and Codex picking the work up in the same terminal.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A real run: Claude Code hits its usage limit, Codex continues">
+<meta name="twitter:description" content="One recorded session: Claude Code working, the limit landing, the bundle saved, and Codex picking the work up in the same terminal.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run" aria-current="page">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#command">Command</a></li><li><a href="#timeline-utc-from-fixturesreal-runeventsjsonl">Timeline (UTC, from fixtures/real-run/events.jsonl)</a></li><li><a href="#leg-1-claude">Leg 1 (claude)</a></li><li><a href="#the-bundle">The bundle</a></li><li><a href="#leg-2-codex">Leg 2 (codex)</a></li><li><a href="#what-this-proves">What this proves</a></li></ul></nav>
+<h1 id="real-run-claude-codex-no-fakes"><a class="anchor" href="#real-run-claude-codex-no-fakes">Real run: claude → codex, no fakes</a></h1>
+<p>One task, two real logged-in CLIs, the real handoff path. Run on 2026-09-10 on
+a scratch repo (<code>toy-real</code>: README, package.json with <code>&quot;test&quot;: &quot;node --test&quot;</code>,
+one commit). Evidence: <code>fixtures/real-run/</code> (run records, logs, bundle <code>show</code>,
+events; home paths scrubbed to <code>~</code>).</p>
+<h2 id="command"><a class="anchor" href="#command">Command</a></h2>
+<pre><code>node bin/baton.mjs card add --repo &lt;toy-real&gt; --chain claude,codex --max-turns claude=2 --mode codex=workspace-write --pipeline build --title &quot;calc module (real run)&quot; --task &quot;Create src/calc.mjs exporting add, sub, mul and div (div throws on division by zero). Create test/calc.test.mjs using node:test covering all four functions including the divide-by-zero case. Run node --test and fix until green. Then write .baton/DONE.&quot;
+node bin/baton.mjs card run card-20260911-0232-real-calc
+</code></pre>
+<p><code>--max-turns claude=2</code> is the handoff trigger: the task needs more than two
+turns, so the first leg ends before the DONE marker.</p>
+<h2 id="timeline-utc-from-fixturesreal-runeventsjsonl"><a class="anchor" href="#timeline-utc-from-fixturesreal-runeventsjsonl">Timeline (UTC, from <code>fixtures/real-run/events.jsonl</code>)</a></h2>
+<table>
+<thead>
+<tr>
+<th>time</th>
+<th>event</th>
+<th>detail</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>02:32:50</td>
+<td>card_created</td>
+<td>actor human:local, chain claude &gt; codex</td>
+</tr>
+<tr>
+<td>02:32:51</td>
+<td>leg_started</td>
+<td>adapter <code>claude</code>, run 1, <code>mode=default</code>, <code>--max-turns 2</code></td>
+</tr>
+<tr>
+<td>02:33:23</td>
+<td>leg_exited</td>
+<td><strong>outcome <code>failed</code></strong>, exit 1, signal <code>claude-max-turns</code> (32 s)</td>
+</tr>
+<tr>
+<td>02:33:24</td>
+<td>handoff_written</td>
+<td>bundle <code>20260911-023324-baton-card-20260911-0232-real-calc-build-leg0</code>, quality <strong>strong (0.65)</strong></td>
+</tr>
+<tr>
+<td>02:33:25</td>
+<td>leg_started</td>
+<td>adapter <code>codex</code>, run 2, <code>-s workspace-write</code></td>
+</tr>
+<tr>
+<td>02:35:39</td>
+<td>leg_exited</td>
+<td><strong>outcome <code>completed</code></strong>, exit 0 (2 m 14 s)</td>
+</tr>
+<tr>
+<td>02:35:40</td>
+<td>station_done, done</td>
+<td></td>
+</tr>
+</tbody></table>
+<p>Wall time: 2 m 50 s. <code>grep -c fake fixtures/real-run/events.jsonl</code> = 0.</p>
+<h2 id="leg-1-claude"><a class="anchor" href="#leg-1-claude">Leg 1 (claude)</a></h2>
+<p>The result JSON on stdout (<code>fixtures/real-run/leg1/out.log</code>) is the signal that
+was docs-only until this run and is now observed-live:</p>
+<pre><code>{&quot;type&quot;:&quot;result&quot;,&quot;subtype&quot;:&quot;error_max_turns&quot;,&quot;is_error&quot;:true,&quot;stop_reason&quot;:&quot;tool_use&quot;,&quot;terminal_reason&quot;:&quot;max_turns&quot;,&quot;num_turns&quot;:3, …}
+</code></pre>
+<p>Exit code 1, empty stderr, no <code>.baton/DONE</code>; the diff evidence saw one changed
+path (<code>.dashclaw-local/</code>, written by the machine&#39;s Claude Code hooks, not the
+task). Classification: <code>budget</code> signal <code>claude-max-turns</code> + non-zero exit →
+<code>failed</code>, handoff. (A budget cap is Baton&#39;s own setting, not a usage limit; it
+still hands off.)</p>
+<h2 id="the-bundle"><a class="anchor" href="#the-bundle">The bundle</a></h2>
+<p><code>fixtures/real-run/bundle-show.txt</code>: Findings carry &quot;Done so far&quot;, &quot;Diff since
+leg start&quot;, the touched path; Open questions carry the outcome and exit code.
+Leg 2 picked the handoff up: its first message is &quot;Proceeding from the last
+agent state&quot; and its second tool call reads <code>.baton/CONTRACT.md</code> and the
+handoff file (<code>fixtures/real-run/leg2/out.excerpt.log</code>, items 1-3).</p>
+<h2 id="leg-2-codex"><a class="anchor" href="#leg-2-codex">Leg 2 (codex)</a></h2>
+<p><code>fixtures/real-run/leg2/out.excerpt.log</code> (JSONL): codex read the resume,
+wrote <code>src/calc.mjs</code> and <code>test/calc.test.mjs</code>, ran the tests itself (its
+sandbox allowed <code>node --test</code> here; LESSONS 07-13 recorded a policy block on a
+different machine setup), wrote <code>.baton/PROGRESS.md</code> and <code>.baton/DONE</code>, and
+printed a summary. Verified inside leg 2
+(<code>fixtures/real-run/leg2/out.excerpt.log</code>, item 20), which ran the repo&#39;s
+<code>npm test</code> -&gt; <code>node --test</code> in the worktree:</p>
+<pre><code>tests 5  pass 5  fail 0
+</code></pre>
+<p>The worktree holds <code>src/calc.mjs</code>, <code>test/calc.test.mjs</code> and
+<code>.baton/{CONTRACT.md, DONE, PROGRESS.md, handoff-build-leg0.md}</code>.</p>
+<h2 id="what-this-proves"><a class="anchor" href="#what-this-proves">What this proves</a></h2>
+<ul>
+<li>The subscription logins were used: neither leg&#39;s stderr carries an
+&quot;another auth source&quot; warning (<code>leg1/err.log</code> is empty, <code>leg2/err.log</code> is
+one stdin notice), and <code>sanitizeEnv</code> strips ANTHROPIC_API_KEY and
+OPENAI_API_KEY before any adapter starts (test/redact.test.mjs).</li>
+<li>The handoff is CLI-agnostic: the bundle written after a Claude leg was
+consumed by a Codex leg through the same <code>load</code> + contract prompt.</li>
+<li>The DONE-marker contract classified both legs without parsing prose.</li>
+</ul>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

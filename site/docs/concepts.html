@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Baton works: sessions, bundles and the wall</title>
+<meta name="description" content="The pieces Baton is built from: a session, the usage reading, the handoff bundle, the wall, worktrees and landing work on trunk.">
+<link rel="canonical" href="https://baton-agents.vercel.app/docs/concepts">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/docs/concepts">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="How Baton works: sessions, bundles and the wall">
+<meta property="og:description" content="The pieces Baton is built from: a session, the usage reading, the handoff bundle, the wall, worktrees and landing work on trunk.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How Baton works: sessions, bundles and the wall">
+<meta name="twitter:description" content="The pieces Baton is built from: a session, the usage reading, the handoff bundle, the wall, worktrees and landing work on trunk.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts" aria-current="page">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#sessions">Sessions</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#usage-windows">Usage windows</a></li><li><a href="#handoff-interactive">Handoff (interactive)</a></li><li><a href="#the-resume-pointer">The resume pointer</a></li><li><a href="#share-more-than-one-human">Share (more than one human)</a></li><li><a href="#cards-stations-and-pipelines">Cards, stations and pipelines</a></li><li><a href="#chains-and-legs">Chains and legs</a></li><li><a href="#adapters-and-modes">Adapters and modes</a></li><li><a href="#the-done-marker-contract">The DONE marker contract</a></li><li><a href="#outcomes-and-the-classifier">Outcomes and the classifier</a></li><li><a href="#handoff-bundles">Handoff bundles</a></li><li><a href="#worktrees">Worktrees</a></li><li><a href="#leases-and-the-scheduler">Leases and the scheduler</a></li><li><a href="#the-land-station">The land station</a></li><li><a href="#the-ledger-and-actors">The ledger and actors</a></li><li><a href="#card-status-state-diagram">Card status state diagram</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+<h1 id="concepts"><a class="anchor" href="#concepts">Concepts</a></h1>
+<p>Two halves. The first four sections are the 0.2 way in: <code>baton claude</code> runs an
+interactive agent and Baton watches it. The rest is the v0.1 pipeline, which
+still works and now sits below the Terminals lane on the board. Read
+<a href="/docs/getting-started">getting-started.md</a> first if you have not run anything
+yet.</p>
+<h2 id="sessions"><a class="anchor" href="#sessions">Sessions</a></h2>
+<p>A <strong>session</strong> is one terminal running one agent under Baton. <code>baton claude</code>,
+<code>baton codex</code> and <code>baton agy</code> each create one. Baton spawns the real CLI with
+stdio inherited, so the agent&#39;s own TUI, prompts, permissions, hooks and skills
+are what you see; every argument after the agent name is passed through
+unchanged.</p>
+<p>Each session gets a directory under <code>$BATON_HOME/sessions/&lt;id&gt;/</code>
+(<code>src/sessions.mjs</code>):</p>
+<table>
+<thead>
+<tr>
+<th>file</th>
+<th>what it holds</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>session.json</code></td>
+<td>the live record the board renders; the runner is its only writer, and every write is one atomic replace</td>
+</tr>
+<tr>
+<td><code>events.jsonl</code></td>
+<td>the timeline (see <a href="/docs/vocabulary#session-event-types">VOCABULARY.md</a>)</td>
+</tr>
+<tr>
+<td><code>control.json</code></td>
+<td>requests from the board to the runner, for example <code>{ handoff: true }</code></td>
+</tr>
+<tr>
+<td><code>hook.log</code></td>
+<td>what Claude Code&#39;s hooks sent, claude sessions only</td>
+</tr>
+<tr>
+<td><code>claude-settings.json</code></td>
+<td>the per-session <code>--settings</code> file, claude sessions only</td>
+</tr>
+<tr>
+<td><code>agy.log</code></td>
+<td>agy&#39;s <code>--log-file</code>, agy sessions only</td>
+</tr>
+<tr>
+<td><code>land.json</code></td>
+<td>the last Land of a session with its own worktree (landing, landed, noop, bounced); the board server is its only writer</td>
+</tr>
+<tr>
+<td><code>requests.json</code></td>
+<td>hand-off requests from another human on a shared board (<code>{ by, at, state }</code>); the board server is its only writer</td>
+</tr>
+</tbody></table>
+<p>A session&#39;s status is one of <code>starting</code>, <code>running</code>, <code>warning</code>, <code>limit</code>,
+<code>handing_off</code>, <code>waiting</code>, <code>handed_off</code>, <code>ended</code>, <code>lost</code>. <code>lost</code> means the runner process
+that owned the terminal is gone (closed window, crash); the board never shows
+it as live.</p>
+<p>The board is started detached on <code>127.0.0.1:4747</code> by the first session that
+finds it down, and opened once. Later sessions reuse it.</p>
+<h2 id="accounts"><a class="anchor" href="#accounts">Accounts</a></h2>
+<p>An <strong>account</strong> is one login for one agent. <code>default</code> is the CLI&#39;s own home
+(<code>~/.claude</code>, <code>~/.codex</code>). An extra account is a directory under
+<code>$BATON_HOME/accounts/&lt;agent&gt;/&lt;name&gt;/</code> that the CLI is pointed at with its
+config-directory variable: <code>CLAUDE_CONFIG_DIR</code> for claude, <code>CODEX_HOME</code> for
+codex (<code>src/accounts.mjs</code> <code>LAYOUT</code>). agy 1.2.0 has no config-directory
+override, so agy stays one account.</p>
+<p>Your harness is shared into an extra account, never copied into a fork that
+drifts: the directories are junctions back to the real home (claude: <code>hooks</code>,
+<code>skills</code>, <code>agents</code>, <code>commands</code>, <code>plugins</code>, <code>rules</code>, <code>scripts</code>,
+<code>output-styles</code>, <code>tools</code>; codex: <code>skills</code>, <code>prompts</code>, <code>rules</code>, <code>plugins</code>,
+<code>agents</code>, <code>hooks</code>, <code>memories</code>, <code>superpowers</code>), and the settings files are
+copied fresh before every launch (claude: <code>settings.json</code>,
+<code>settings.local.json</code>, <code>CLAUDE.md</code>, <code>keybindings.json</code>, <code>statusline.ps1</code>,
+<code>statusline-combined.ps1</code>; codex: <code>config.toml</code>, <code>AGENTS.md</code>). Only the login
+itself lives in the account directory.</p>
+<p><code>baton accounts add &lt;claude|codex&gt; &lt;name&gt;</code> creates one and prints the single
+line to paste to log in. <code>baton accounts rm</code> removes the junctions as links,
+never following them, and deletes the directory. <code>baton accounts terms</code> prints
+what both vendors&#39; terms say about a second account; the quotes are in the
+README.</p>
+<h2 id="usage-windows"><a class="anchor" href="#usage-windows">Usage windows</a></h2>
+<p>Every agent exposes two rolling windows: a 5-hour one and a 7-day one. Baton
+keeps the latest reading per (agent, account) in
+<code>$BATON_HOME/usage/&lt;agent&gt;--&lt;account&gt;.json</code> (<code>src/usage.mjs</code>):</p>
+<pre><code>{ five_hour: {pct, resets_at}, seven_day: {pct, resets_at},
+  limited_until, limited_reason, source, updated_at }
+</code></pre>
+<p>Where each number comes from is per agent, and is in
+<a href="/docs/adapters">adapters.md</a>. The rules on top of them are shared:</p>
+<ul>
+<li><strong>Warning</strong> at <code>WARN_PCT</code>, default 85, settable with <code>BATON_WARN_PCT</code>. The
+highest percentage across the known windows is the pressure; the hottest
+window names the warning.</li>
+<li><strong>Wall.</strong> <code>markLimited()</code> records <code>limited_until</code> from the reset time the CLI
+itself reported. With no reset time it uses the soonest known window reset,
+and with neither it assumes five hours.</li>
+<li><strong>Clearing.</strong> A usage reading that arrives after <code>limited_until</code> has passed
+clears the wall.</li>
+</ul>
+<h2 id="handoff-interactive"><a class="anchor" href="#handoff-interactive">Handoff (interactive)</a></h2>
+<p>When a session hits its limit, or you press <strong>Hand off now</strong>, Baton does four
+things in order (<code>src/attach.mjs</code>, <code>src/bundle.mjs</code>):</p>
+<ol>
+<li><strong>Bundle.</strong> <code>sessionNotes()</code> writes the six sections
+<code>context-handoff-bundle</code> parses (Scope, Projects mentioned, Findings,
+Opportunities, Open questions, Evidence anchors) from the task, the last
+messages in the transcript, <code>git diff --stat</code>, the dirty files, the files
+edited this session, recent commits and why it stopped. The CLI is called as
+<code>context-handoff-bundle save --repo-local --slug baton-&lt;session id&gt;</code>, with
+<code>--update &lt;slug&gt;</code> after the first time, so one bundle per session is updated
+in place. A checkpoint runs about every two minutes while the session has
+turns, and at every warning, limit and hand-off.</li>
+<li><strong>Choose.</strong> <code>candidates()</code> lists the other accounts of the same agent first,
+then every other agent in the terminal&#39;s saved order. That order is an
+absolute priority list, not a rotation anchored on the agent running now:
+an agent placed last is tried last whichever agent the terminal started on,
+and every option is still tried once. The default order is claude, codex,
+agy. <code>chooseNext()</code> skips a missing CLI or an option whose wall has not
+reset. The board can save a new order for an active terminal; the wrapper reads
+it again at the transition and during all-out waiting. Machine Settings is
+copied only when a new terminal starts.</li>
+<li><strong>Switch.</strong> The agent process is stopped and the terminal restored. The
+bundle&#39;s <code>context-handoff-bundle load &lt;id&gt;</code> output is written to
+<code>.baton/RESUME-&lt;session-id&gt;.md</code> and copied to <code>.baton/RESUME.md</code>, and the next
+agent starts in the same terminal with a short pointer prompt as its first
+positional argument: <code>claude &quot;&lt;prompt&gt;&quot;</code>, <code>codex &quot;&lt;prompt&gt;&quot;</code>,
+<code>agy -i &quot;&lt;prompt&gt;&quot;</code>. The prompt names the per-session file, and says to check
+<code>git status</code> and <code>git diff</code>, continue, and not ask the human to restate the
+task.</li>
+<li><strong>All out.</strong> If every option is walled, Baton prints each one with its reset
+time, soonest first, then waits in the terminal with a one-line countdown
+(<code>src/wait.mjs</code>) and starts the first option back from the bundle when its
+reset passes; if that option is walled again meanwhile it re-picks and
+waits again. The card records <code>session.all_out</code> and <code>session.waiting</code>
+(<code>{ agent, account, resets_at, since }</code>) and shows status <code>waiting</code>. Ctrl-C
+in the terminal, or End on the card, quits with exit 3.</li>
+</ol>
+<h2 id="the-resume-pointer"><a class="anchor" href="#the-resume-pointer">The resume pointer</a></h2>
+<p><code>.baton/RESUME.md</code> is the file humans and other agents open by habit, so Baton
+owns it and keeps it from describing a picture that is no longer true.</p>
+<p>Every resume file starts with a stamp, an HTML comment that renders as nothing:</p>
+<pre><code>&lt;!-- baton-resume {&quot;v&quot;:1,&quot;kind&quot;:&quot;handoff&quot;,&quot;session&quot;:&quot;s-…&quot;,&quot;head&quot;:&quot;cf27986…&quot;,
+     &quot;branch&quot;:&quot;main&quot;,&quot;dirty&quot;:{&quot;count&quot;:12,&quot;hash&quot;:&quot;0a4c4f34ee93&quot;},
+     &quot;live&quot;:[{&quot;id&quot;:&quot;s-…&quot;,&quot;agent&quot;:&quot;claude&quot;}],&quot;bundle&quot;:&quot;…&quot;,&quot;written_at&quot;:&quot;…&quot;} --&gt;
+</code></pre>
+<p>The stamp says what was true when the file was written. It is never read as a
+verdict. <code>baton resume --check</code> asks git what is true now and reports the
+difference, so a file cannot lie about HEAD to a reader who re-asks git:</p>
+<table>
+<thead>
+<tr>
+<th>state</th>
+<th>when</th>
+<th>exit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>current</td>
+<td>the repository still matches the stamp, and the terminals it names are the ones that are live</td>
+<td>0</td>
+</tr>
+<tr>
+<td>stale</td>
+<td>a commit landed, the working tree moved, the terminal it describes is gone, or another one appeared</td>
+<td>1</td>
+</tr>
+<tr>
+<td>unstamped</td>
+<td>no Baton wrote this file, so nothing can be checked</td>
+<td>1</td>
+</tr>
+<tr>
+<td>missing</td>
+<td>there is no <code>.baton/RESUME.md</code> from here up to the filesystem root</td>
+<td>3</td>
+</tr>
+</tbody></table>
+<p>The working-tree fingerprint is a count and a short hash of the sorted paths,
+never the names: a shared board must not leak what someone is working on.
+Baton&#39;s own directories (<code>.baton/</code>, <code>.context-handoffs/</code>) are left out of it, so
+Baton&#39;s bookkeeping never reads as the human&#39;s work moving on.</p>
+<p>Two things rewrite <code>RESUME.md</code> besides a hand-off. A session ending replaces it
+with a &quot;nothing in flight&quot; pointer naming the last hand-off, its date and the
+per-session file that still holds its full text. The board, at start, does the
+same for any checkout whose pointer describes a terminal that is gone or that no
+Baton stamped — the case where a terminal crashed instead of exiting. A terminal
+that is genuinely still running keeps its own hand-off text; only the terminal
+that owns a pointer may replace it.</p>
+<p><code>baton resume</code> prints the body, with a loud banner and a non-zero exit when it
+is stale: a stale hand-off still beats nothing when a human chooses to read it,
+and the exit code is what a script or a hook keys on. The terminal drawer&#39;s
+&quot;What happens next&quot; section shows the same verdict, recomputed every poll.</p>
+<p><code>BATON_NO_HANDOFF=1</code> keeps the warning and the record but never switches.</p>
+<h2 id="share-more-than-one-human"><a class="anchor" href="#share-more-than-one-human">Share (more than one human)</a></h2>
+<p><code>baton share</code> is off until you run it (<code>src/share.mjs</code>). On, it writes
+<code>$BATON_HOME/share.json</code>: where the board listens, who is on it, and one
+sha256 hash per person&#39;s token (the token itself is printed once). From then
+on:</p>
+<ul>
+<li>Every <code>/api</code> request names a human: their token, or a browser on the board&#39;s
+own machine, which is the owner.</li>
+<li>A terminal belongs to the human who started it (<code>BATON_PERSON</code>, else the
+owner). Only they, and an owner, can read or control it.</li>
+<li>Everyone else sees the card without anything the terminal has said, read or
+written, and one button: Request handoff. The request lands in the session&#39;s
+<code>requests.json</code>; the owner approves it on the card, and the runner is told
+who it was for.</li>
+<li>The pipeline side of the board is the owner&#39;s alone (403 for a guest).</li>
+</ul>
+<p><code>baton share off</code> puts the board back on <code>127.0.0.1</code> and every link stops
+working; <code>baton share rotate &lt;name&gt;</code> replaces one.</p>
+<h2 id="cards-stations-and-pipelines"><a class="anchor" href="#cards-stations-and-pipelines">Cards, stations and pipelines</a></h2>
+<p>Everything from here down is the v0.1 pipeline: headless agents in a git
+worktree, one per card. It has not changed since 0.2.0 and is not the way in.</p>
+<p>A <strong>card</strong> is one task moving through a <strong>pipeline</strong>: an ordered list of
+<strong>stations</strong>. A station has a <code>kind</code>:</p>
+<table>
+<thead>
+<tr>
+<th>kind</th>
+<th>what runs</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>agent</code></td>
+<td>the station&#39;s chain (one or more adapters, in fallback order) with that station&#39;s prompt</td>
+</tr>
+<tr>
+<td><code>human</code></td>
+<td>nothing automatic; the card parks in <code>waiting_human</code> for a button press</td>
+</tr>
+<tr>
+<td><code>test</code></td>
+<td>the repo&#39;s test command; red bounces the card back to the nearest earlier <code>build</code> agent station</td>
+</tr>
+<tr>
+<td><code>land</code></td>
+<td>the merge queue: rebase, test, fast-forward trunk (see <a href="#the-land-station">Land station</a>)</td>
+</tr>
+</tbody></table>
+<p>Three presets ship in <code>src/presets.mjs</code>:</p>
+<table>
+<thead>
+<tr>
+<th>preset</th>
+<th>stations</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>build</code></td>
+<td><code>build</code> (agent)</td>
+</tr>
+<tr>
+<td><code>build-land</code></td>
+<td><code>build</code> (agent) → <code>test</code> → <code>land</code></td>
+</tr>
+<tr>
+<td><code>factory</code></td>
+<td><code>plan</code> (agent) → <code>build</code> (agent) → <code>review</code> (agent) → <code>test</code> → <code>land</code></td>
+</tr>
+</tbody></table>
+<p>A custom pipeline is a JSON array of stations passed as <code>--pipeline &lt;file&gt;</code>
+or the board&#39;s &quot;custom JSON&quot; option. A <code>land</code> station must be last, and a
+pipeline may have at most one.</p>
+<h2 id="chains-and-legs"><a class="anchor" href="#chains-and-legs">Chains and legs</a></h2>
+<p>A station&#39;s <code>chain</code> is an ordered list of adapters: the fallback order for
+that station. Each entry is one <strong>leg</strong>. When a leg ends without finishing
+(a limit, a stall, an incomplete exit, a failure), Baton writes a handoff
+bundle and starts the next entry in the chain as the next leg, in the same
+worktree. If the chain is exhausted, the card fails.</p>
+<h2 id="adapters-and-modes"><a class="anchor" href="#adapters-and-modes">Adapters and modes</a></h2>
+<p>Every adapter spawns its CLI as argv, never a shell, with its own permission
+mode. Baton never passes a bypass/YOLO flag; requesting one throws before
+anything spawns.</p>
+<table>
+<thead>
+<tr>
+<th>adapter</th>
+<th>default mode</th>
+<th>allowed modes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>claude</code></td>
+<td><code>acceptEdits</code></td>
+<td>acceptEdits, auto, plan, manual, dontAsk</td>
+</tr>
+<tr>
+<td><code>codex</code></td>
+<td><code>workspace-write</code></td>
+<td>read-only, workspace-write</td>
+</tr>
+<tr>
+<td><code>agy</code></td>
+<td><code>accept-edits</code></td>
+<td>accept-edits, plan</td>
+</tr>
+<tr>
+<td><code>fake</code> (and <code>fake-claude</code>/<code>fake-codex</code>/<code>fake-agy</code>/<code>fake-nostdin</code>)</td>
+<td><code>acceptEdits</code></td>
+<td>acceptEdits, plan, workspace-write, read-only, accept-edits, auto_edit</td>
+</tr>
+<tr>
+<td><code>grok</code> (built, not registered)</td>
+<td><code>acceptEdits</code></td>
+<td>default, acceptEdits, auto, dontAsk, plan</td>
+</tr>
+</tbody></table>
+<p>See <a href="/docs/adapters">adapters.md</a> for each adapter&#39;s exact argv, forbidden
+flags, and gotchas.</p>
+<h2 id="the-done-marker-contract"><a class="anchor" href="#the-done-marker-contract">The DONE marker contract</a></h2>
+<p>Every leg gets the same contract, regardless of which CLI runs it
+(<code>src/contract.mjs</code>): a file written to <code>.baton/CONTRACT.md</code> in the
+worktree, stating the task, the station&#39;s goal and deliverables, and the
+finish rule:</p>
+<blockquote>
+<p>When the task is finished and verified, write the file <code>.baton/DONE</code>
+containing one line that summarizes what you did.</p>
+</blockquote>
+<p>Agents are also asked to keep <code>.baton/PROGRESS.md</code> updated as they go, one
+line per step. Without a fresh <code>.baton/DONE</code>, Baton treats the leg as
+unfinished and hands it to the next agent in the chain, no matter what the
+CLI printed.</p>
+<h2 id="outcomes-and-the-classifier"><a class="anchor" href="#outcomes-and-the-classifier">Outcomes and the classifier</a></h2>
+<p><code>src/limits.mjs</code> <code>classify()</code> turns one leg&#39;s raw result (exit code, stdout,
+stderr, the parsed result JSON, whether <code>.baton/DONE</code> exists, and the git or
+filesystem diff since the leg started) into one outcome. It checks, in this
+order, stopping at the first match:</p>
+<ol>
+<li>a spawn error → <code>launch_failed</code></li>
+<li>stderr says &quot;another auth source is set&quot; → <code>auth_failed</code></li>
+<li>an adapter-specific or generic <code>auth</code> signal → <code>auth_failed</code></li>
+<li>killed from the board → <code>killed</code></li>
+<li>the kill timer fired → <code>stalled</code></li>
+<li>exit 0 and <code>.baton/DONE</code> present → <code>completed</code></li>
+<li>an adapter-specific or generic <code>limit</code> signal → <code>limit</code></li>
+<li>a <code>launch</code> signal → <code>launch_failed</code></li>
+<li>exit 0, changes present, no DONE marker → <code>incomplete</code></li>
+<li>exit 0, no DONE marker, no changes → <code>no_progress</code></li>
+<li>anything else (non-zero exit, no recognized signal) → <code>failed</code></li>
+</ol>
+<p><code>completed</code>, <code>auth_failed</code> and <code>killed</code> never hand off. Every other outcome
+(<code>limit</code>, <code>incomplete</code>, <code>no_progress</code>, <code>stalled</code>, <code>failed</code>) hands the card to
+the next chain entry, or fails the card if the chain is exhausted.
+<code>auth_failed</code> and <code>launch_failed</code> never advance the chain either way: a
+human fixes the environment and presses Rerun. The signal fixtures behind
+this table are in <code>fixtures/limits/</code> and documented per-CLI in
+<a href="/docs/cli-contracts">cli-contracts.md</a>.</p>
+<h2 id="handoff-bundles"><a class="anchor" href="#handoff-bundles">Handoff bundles</a></h2>
+<p>When a leg needs to hand off, <code>src/handoff.mjs</code> calls the
+<code>context-handoff-bundle</code> CLI as an argv subprocess (never re-implementing
+its format): it writes a structured notes file, saves the bundle
+repo-local in the worktree (<code>.context-handoffs/</code>), and validates it. The
+notes carry six sections in the bundle&#39;s own vocabulary:</p>
+<ul>
+<li><strong>Scope</strong>: the task, and which card/station/leg/adapter stopped with which
+outcome.</li>
+<li><strong>Projects mentioned</strong>: the card id.</li>
+<li><strong>Findings</strong>: <code>.baton/PROGRESS.md</code>&#39;s lines, the previous agent&#39;s last
+message, the diff summary, the touched files.</li>
+<li><strong>Opportunities</strong>: read <code>.baton/PROGRESS.md</code> and <code>.baton/CONTRACT.md</code>,
+continue from the last done step, then write <code>.baton/DONE</code>.</li>
+<li><strong>Open questions</strong>: the outcome, the exit code, any bounce reason.</li>
+<li><strong>Evidence anchors</strong>: the touched files, <code>.baton/PROGRESS.md</code>,
+<code>.baton/CONTRACT.md</code>.</li>
+</ul>
+<p>The next leg&#39;s prompt starts with the bundle&#39;s <code>load</code> output (the resume
+text) followed by the same contract.</p>
+<h2 id="worktrees"><a class="anchor" href="#worktrees">Worktrees</a></h2>
+<p>Every card runs in its own git worktree: <code>&lt;repo&gt;/.baton-worktrees/&lt;card-id&gt;</code>
+on branch <code>baton/&lt;card-id&gt;</code> (<code>src/worktree.mjs</code>). The repo root is never
+touched by an agent directly. Every git call sets <code>MSYS_NO_PATHCONV=1</code> so
+Git Bash on Windows does not rewrite absolute path arguments. Baton never
+pushes, opens a remote, or removes a path outside
+<code>&lt;repo&gt;/.baton-worktrees/</code>.</p>
+<p>Terminal sessions use the same layout when they would collide. A <code>baton &lt;agent&gt;</code> started in a checkout where another session is live gets
+<code>&lt;repo&gt;/.baton-worktrees/&lt;session-id&gt;</code> on <code>baton/&lt;session-id&gt;</code>, cut from the
+branch the checkout has out (<code>isolate</code> in <code>src/attach.mjs</code>); its <code>repo</code> stays
+the checkout, so the board groups it with the others. Its Land button runs the
+same merge queue as a card&#39;s land station, with one difference: the checkout
+is a live terminal and may have local changes of its own. Those are left alone,
+and a fast-forward that would overwrite one bounces <code>dirty-trunk</code> naming the
+files. <code>~/.baton/landings.jsonl</code> records every landing (session, agent, who
+pressed Land, the commits) for the landed-on-trunk list.</p>
+<h2 id="leases-and-the-scheduler"><a class="anchor" href="#leases-and-the-scheduler">Leases and the scheduler</a></h2>
+<p>A card can declare <strong>leases</strong>: path globs it claims for the duration of its
+run (default <code>**</code>, meaning the whole repo). <code>src/leases.mjs</code> decides whether
+two cards&#39; leases could touch the same files; the check is a deliberate
+approximation biased toward false positives, because a wrongly serialized
+card costs minutes and a wrongly parallel card can corrupt a merge.</p>
+<p><code>src/scheduler.mjs</code> ticks once a second by default: it reads every card&#39;s
+<code>card.json</code> (never in-memory state), starts queued cards whose leases do not
+overlap any running card&#39;s leases, up to <code>BATON_MAX_CONCURRENT</code> (default 2)
+running at once, and records one <code>blocked_by</code> ledger event whenever a
+card&#39;s blocker changes.</p>
+<h2 id="the-land-station"><a class="anchor" href="#the-land-station">The land station</a></h2>
+<p>A pipeline ending in a <code>land</code> station lands continuously. <code>src/mergequeue.mjs</code>
+runs one land at a time per repo root, FIFO, and does, in order:</p>
+<ol>
+<li>checks the repo root is on the trunk branch and clean; otherwise bounces
+<code>dirty-trunk</code> without touching the root;</li>
+<li>commits whatever the agents left uncommitted in the worktree, then
+rebases the card&#39;s branch onto trunk; a conflict aborts the rebase and
+bounces <code>rebase-conflict</code> with the conflicting file list (a rebase git
+refuses for any other reason, a hook say, bounces <code>rebase-failed</code> with
+git&#39;s own words);</li>
+<li>runs the test command (the card&#39;s <code>test_command</code>, else <code>npm test</code> from
+<code>package.json</code>, else <code>pytest</code> when there is a <code>pyproject.toml</code>, else it
+lands untested with a <code>land_warning</code>); red bounces <code>tests-red</code> with the
+last lines;</li>
+<li>fast-forwards trunk from the repo root (<code>git merge --ff-only</code>); if trunk
+moved while the tests ran, it rebases once more and retries, then
+bounces <code>trunk-moved</code>;</li>
+<li>on success, records a <code>landed</code> event with the sha, files, and line
+counts.</li>
+</ol>
+<p>A bounce sends the card back to the nearest earlier <code>build</code> agent station
+(or the first agent station) with the failure written into the next
+handoff bundle&#39;s Open questions. <code>BATON_MAX_LAND_ATTEMPTS</code> (default 3) is a
+shared cap: the <code>test</code> station&#39;s own bounces and the <code>land</code> station&#39;s
+bounces both increment <code>land_attempts</code>, so a card that never goes green
+cannot loop forever.</p>
+<h2 id="the-ledger-and-actors"><a class="anchor" href="#the-ledger-and-actors">The ledger and actors</a></h2>
+<p><code>src/ledger.mjs</code> is the only writer of a card&#39;s on-disk state
+(<code>$BATON_HOME/cards/&lt;id&gt;/</code>). Every event names an <strong>actor</strong>: <code>{type: &#39;agent&#39;, adapter}</code>, <code>{type: &#39;human&#39;, id}</code>, or <code>{type: &#39;baton&#39;}</code>. Each actor
+writes to its own <code>events-&lt;actor-key&gt;.jsonl</code> file (append-only); reading a
+card&#39;s events merges every writer&#39;s file, sorted by timestamp. The board and
+CLI read only these files; there is no separate in-memory state to fall out
+of sync with a restart.</p>
+<h2 id="card-status-state-diagram"><a class="anchor" href="#card-status-state-diagram">Card status state diagram</a></h2>
+<p>Generated from <code>src/chain.mjs</code> <code>TRANSITIONS</code>. Two rules are not drawn as
+per-state arrows because they apply broadly: <code>kill</code> moves any non-terminal
+status (<code>backlog</code>, <code>queued</code>, <code>running</code>, <code>handing_off</code>, <code>waiting_human</code>,
+<code>needs_approval</code>, <code>paused</code>) straight to <code>killed</code>, and <code>rerun</code> moves any
+terminal status (<code>done</code>, <code>failed</code>, <code>killed</code>) back to <code>queued</code> (station 0,
+leg 0). <code>reassign</code> also applies to any non-terminal status when the current
+station is an agent station, staying in <code>queued</code>.</p>
+<pre><code class="language-mermaid">stateDiagram-v2
+    [*] --&gt; backlog
+    backlog --&gt; queued: enqueue
+    queued --&gt; running: start
+    running --&gt; queued: leg:completed (next station)
+    running --&gt; done: leg:completed (last station)
+    running --&gt; waiting_human: leg:completed (next is human)
+    running --&gt; handing_off: leg:handoff (chain has a next leg)
+    running --&gt; failed: leg:handoff (chain exhausted)
+    running --&gt; failed: leg:auth_failed
+    running --&gt; failed: leg:launch_failed
+    running --&gt; killed: leg:killed
+    handing_off --&gt; queued: bundle_written
+    handing_off --&gt; needs_approval: bundle_written (next leg approve:true)
+    running --&gt; queued: test:green (next station)
+    running --&gt; done: test:green (last station)
+    running --&gt; queued: test:red (bounce)
+    running --&gt; done: land:landed
+    running --&gt; queued: land:bounced
+    running --&gt; failed: land:failed
+    running --&gt; paused: pause
+    paused --&gt; queued: resume
+    needs_approval --&gt; queued: approve
+    waiting_human --&gt; queued: approve (next station)
+    waiting_human --&gt; done: approve (last station)
+    done --&gt; [*]
+    failed --&gt; [*]
+    killed --&gt; [*]
+</code></pre>
+<h2 id="see-also"><a class="anchor" href="#see-also">See also</a></h2>
+<ul>
+<li><a href="/docs/board-guide">board-guide.md</a>: what each of these states looks like on
+the board.</li>
+<li><a href="/docs/adapters">adapters.md</a>: the exact CLI shape behind each adapter.</li>
+<li><a href="/docs/configuration">configuration.md</a>: the environment variables named
+above (<code>BATON_MAX_CONCURRENT</code>, <code>BATON_MAX_LAND_ATTEMPTS</code>, ...).</li>
+</ul>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

@@ -1,4 +1,9 @@
 User-agent: *
 Allow: /
-Disallow: /og$
+Disallow: /og
+Disallow: /og.html
+Disallow: /thanks
+Disallow: /thanks.html
+Disallow: /api/
+
 Sitemap: https://baton-agents.vercel.app/sitemap.xml

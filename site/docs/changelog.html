@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baton changelog</title>
+<meta name="description" content="Every released version of Baton and what changed in it.">
+<link rel="canonical" href="https://baton-agents.vercel.app/docs/changelog">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/docs/changelog">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="Baton changelog">
+<meta property="og:description" content="Every released version of Baton and what changed in it.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Baton changelog">
+<meta name="twitter:description" content="Every released version of Baton and what changed in it.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog" aria-current="page">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
+<h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
+<h2 id="061-2026-09-15"><a class="anchor" href="#061-2026-09-15">0.6.1 (2026-09-15)</a></h2>
+<ul>
+<li><strong>The documentation is on the web.</strong> The repository is private and stays
+private, which meant every &quot;read the source&quot;, README, FAQ and changelog link
+on the site and in the package pointed at a 404 for anyone who is not the
+owner — the first click a stranger makes. <code>npm run docs</code> renders the public
+subset of <code>docs/</code> plus the README and this changelog to static pages under
+<code>/docs</code>, committed to the repo because Vercel serves <code>site/</code> with no build
+step. CI regenerates them and fails if the committed output has drifted.
+Working files (DECISIONS, DEVIATIONS, ERRORS, REUSE, ROADMAP-v2, DEMO) stay
+out.</li>
+<li><strong>Nothing dangles at a 404.</strong> The clone instructions in the README and
+getting-started are replaced by where the source actually is for a buyer:
+<code>$(npm root -g)/baton-agents/src</code>, plain <code>.mjs</code>, nothing bundled. Links to
+files with a public home go there; links to files that only ship inside the
+package point at the package. The README&#39;s images are now absolute URLs,
+because npm rewrites relative image paths to <code>raw.githubusercontent.com</code>,
+which 404s for a private repository — the hero image on the npm page had been
+broken.</li>
+<li><strong>A support page</strong>, at <code>/support</code>: one address, the refund terms, license-key
+troubleshooting, what to put in a bug report, and the security reporting path.
+A private repository has no issue tracker to point at, so this is the whole
+path. <code>SECURITY.md</code> said only <code>0.1.x</code> was supported, four minor versions late,
+and pointed at a GitHub advisory form strangers cannot reach.</li>
+<li><strong>The claims check themselves.</strong> <code>fixtures/verified.json</code> pins the verified
+CLI versions, the verification date and the test count. <code>npm test</code> now asserts
+every public surface agrees with it, and a weekly job
+(<code>npm run claims:drift</code>) compares the pins against what those CLIs publish
+now, because &quot;verified against Claude Code 2.1.268&quot; quietly stops being true.
+On its first run it found <code>llms.txt</code> claiming 463 tests and the landing page
+claiming 406 while the suite reported 454, and that all three pinned CLIs had
+already moved.</li>
+<li><strong>The handoff is on film.</strong> The landing page carries the 53-second recording
+of a real run — claude&#39;s five-hour gauge reaching 100 percent, the headline
+turning to <em>at the wall</em>, the terminal continuing on codex — and the README
+leads with a GIF of the same moment. <code>preload=&quot;none&quot;</code>, so the page weight is
+unchanged until someone presses play.</li>
+<li><strong>macOS is in CI.</strong> The matrix was Ubuntu and Windows only.</li>
+<li>Removed a stray <code>hello-fake.txt</code> that a fake-agent run had committed to the
+repository root.</li>
+</ul>
+<h2 id="060-2026-09-15"><a class="anchor" href="#060-2026-09-15">0.6.0 (2026-09-15)</a></h2>
+<ul>
+<li><strong>Removed: the 14-day trial.</strong> Baton is bought up front, and the risk
+reversal is a <strong>30-day money-back guarantee</strong> instead. A trial suits a product
+used daily by habit; Baton&#39;s value is bursty — it pays off in the one moment a
+limit lands mid-flow, which a fortnight of evaluation does not reliably
+contain, and a fortnight in which it never fires reads as &quot;meh&quot;. The buyer is
+already paying for two or three agent subscriptions, so at $79 they are not
+price-sensitive, they are trust-sensitive, and a trial does not answer trust.
+<code>trial.json</code>, <code>TRIAL_DAYS</code> and the trial branch in <code>entitlement()</code> are gone;
+<code>baton &lt;agent&gt;</code> without a key exits 4 and names the buy URL and the guarantee.</li>
+<li><strong>Fixed: the card row was never ported to the dark product surface.</strong> <code>.r1</code>
+through <code>.r4</code> — the card row&#39;s whole four-column layout — carried no rule in
+<code>board.css</code>, so Background tasks rendered on browser defaults while every
+other row had been redesigned. <code>.row-title</code> never reset the native button
+either, which put the board&#39;s near-white text on the user agent&#39;s light-grey
+fill and made the card title unreadable.</li>
+<li><strong>Fixed: a finished card named the wrong agent.</strong> <code>summarize()</code> read its
+adapter off <code>chain[card.leg]</code>, which is reset when a station ends, so a card
+that handed off from one agent to the next and finished reported the agent
+that <em>started</em> the work. A finished card also showed <code>--:--</code> where its run
+time belongs, and now shows how long it took.</li>
+<li><strong>Fixed: the settings panel asked for a token no one could need.</strong> On a
+loopback board with share off, <code>src/auth.mjs</code> lets the request in with no
+token at all, so the API token field is no longer drawn there. It comes back
+for a token already stored, for a guest, for an off-loopback bind, and
+whenever health has not answered. No message names an address the server did
+not give: a refused or redacted health call used to print <code>127.0.0.1:4747</code> at
+someone looking at a different machine, and the owner of a shared board was
+told their requests were &quot;unauthenticated&quot; when auth had recognised them.</li>
+<li><strong>Fixed: three places set a flat <code>.chip</code> against other text with no gap</strong>
+(<code>claudeclaude-2fbf</code>, <code>Files2 changed</code>, <code>10:40 AMstarted</code>), the floor printed
+<code>blocked by blocked by card &quot;X&quot;</code>, and it showed the raw key <code>needs_approval</code>
+where the board says <code>needs approval</code>.</li>
+<li>All nineteen screenshots in <code>docs/screenshots/</code> retaken against the current
+build. <code>scripts/seed-wes-board.mjs</code> and the new
+<code>scripts/seed-floor-board.mjs</code> produce the fixtures they need.</li>
+<li>The landing page shows a real handoff and the real board, not only
+recreations, and says what a second agent gets without assuming the reader
+knows git worktrees.</li>
+</ul>
+<h2 id="051-2026-09-15"><a class="anchor" href="#051-2026-09-15">0.5.1 (2026-09-15)</a></h2>
+<ul>
+<li><strong>Fixed: &quot;All the terminal is on claude&quot;.</strong> The verdict&#39;s plural sentence is
+about everything riding on one login, and with a single terminal there is no
+&quot;all&quot; to make. One terminal now reads <code>Your terminal is on claude, and claude has 1% left.</code> Caught by rendering the real board rather than the seeded one.</li>
+<li>The tab mark is grey, not the accent blue, and the board and the site carry
+the same mark. The site favicon had spent the one colour that means &quot;this is
+the action to take&quot; on a browser tab, and the board carried a third, older
+mark from before the identity colours settled.</li>
+<li><strong>Fixed: a merge to <code>main</code> did not deploy the site.</strong>
+<code>ignoreCommand: git diff --quiet HEAD^ HEAD .</code> asks whether the single most
+recent commit touched <code>site/</code>. A push is not a commit: five commits landed
+with <code>site/</code> changed in the first, so Vercel cancelled the build and reported
+it as a green tick. Removed; every push to <code>main</code> deploys.</li>
+</ul>
+<h2 id="050-2026-09-15"><a class="anchor" href="#050-2026-09-15">0.5.0 (2026-09-15)</a></h2>
+<ul>
+<li><p><strong>The board is a dark product surface, and the largest thing on it is a
+sentence.</strong> The instrument that shipped through 0.4.3 was built against a
+brief in <code>DESIGN.md</code> reading &quot;exact, unhurried, mechanical, the printed
+operator&#39;s manual for a piece of test equipment&quot;: a saturated navy ground,
+hairline rules as the only structure, 2px radii, no elevation, and a monospace
+face for prose. Six rounds were built against it and all six were rejected.
+The brief, not the execution, was the defect, and it has been rewritten. What
+ships instead:</p>
+<ul>
+<li>The board opens with the finding, not the data: &quot;All 4 terminals are on
+claude, and claude has 5% left&quot;, at 52px, written from the live view. Under
+it sits the age of the reading and which direction it is wrong in — &quot;Measured
+2h 13m ago. 4 terminals have been running since, so the real figure is higher
+than 95 percent, never lower.&quot; A reading taken two hours ago is a floor, and
+saying so is the whole reason to print its age.</li>
+<li>Size encodes importance. The login carrying the terminals gets a wide panel
+lit from above with both of its gauges; a login with one fact to report gets
+a half panel; a login that publishes no figure draws no instrument at all,
+because an empty track reads as a measurement of zero. Previously every login
+got an identical row, so the layout said nothing before you read it.</li>
+<li>A terminal is a row inside one panel, not a card of its own: state, where,
+the prompt, elapsed, and its buttons in a fixed 2x2 grid so every row&#39;s
+controls sit in the same place. Land is the primary action only when it can
+actually run; when it is blocked the accent goes to Hand off now, because a
+disabled control should not wear the one accent colour in the design.</li>
+<li>Finished terminals, what landed on trunk and background tasks leave the live
+area entirely and become three counts on the ground that open on click. On a
+real board after a day&#39;s work those were most of the list and they buried the
+one or two terminals that were live.</li>
+<li>A fact true of every terminal is said once, at the region, instead of once
+per row. The per-row copy stays in the DOM, visually hidden, so each Land
+button&#39;s <code>aria-describedby</code> still resolves to its own reason.</li>
+<li>Ground <code>#0E1012</code> neutral near-black, panels raised with a 1px top highlight
+and a shadow beneath, 16px radii, type from 13 to 52px (it ran 13 to 21,
+which is why it read as a spreadsheet), one accent blue spent on the primary
+action and nowhere else, and severity painted inside a gauge track rather
+than used as the colour of a word.</li>
+<li>Measured against a board shaped like a real one — mostly <code>lost</code> and <code>ended</code>
+terminals with long absolute paths — the page went from 3,302px to 2,107px at
+1280 and from 6,530px to 3,937px at 400, with terminal rows from 180-277px
+down to 135-165px.</li>
+</ul>
+</li>
+<li><p><strong>Prompts, file lists and the trunk log stop printing machine noise.</strong> A pasted
+screenshot arrived in the prompt as an <code>&lt;image name=... path=...&gt;</code> tag carrying
+an absolute temp path with the operator&#39;s home directory in it, and printed as
+two lines of noise in front of the sentence; it now reads <code>(image)</code> and the
+text. A touched file prints its basename, not 90 characters of temp path. The
+trunk log shows what landed as a count that opens, instead of eighteen rows of
+<code>git log</code> at the same visual weight as the live terminals.</p>
+</li>
+<li><p><strong>The marketing site runs on the board&#39;s own hex values.</strong> <code>site/</code> was a light
+page recreating the board in a different palette, from the card anatomy the
+board stopped having two commits earlier. Both recreations are rebuilt against
+what the board actually renders now, the page is on the same ramp as the
+product, emphasis between folds is elevation rather than a slab of hue, and the
+brand mark, favicon and OG card follow. <code>llms.txt</code> and every &quot;card&quot; in the copy
+corrected. A marketing page that recreates the product in a different palette
+is a picture of a different product.</p>
+</li>
+<li><p><code>DESIGN.md</code> rewritten to describe what ships, opening with what it replaced and
+why it must not come back, and covering both surfaces from one set of tokens.</p>
+</li>
+<li><p><code>README.md</code> and its screenshot recaptured against the board that now exists.</p>
+</li>
+<li><p><strong>A resume pointer that cannot describe a picture that is no longer true.</strong>
+<code>.baton/RESUME.md</code> used to be an unowned convenience copy: written once per
+hand-off, never touched again, with no stamp and no expiry, so a terminal that
+exited normally left hours old text sitting there looking live. Four changes,
+in <code>src/resume.mjs</code>:</p>
+<ul>
+<li>Every resume file Baton writes carries a stamp (an HTML comment, invisible
+in rendered markdown) of the commit, branch, working-tree fingerprint and
+live terminals it was written against. The fingerprint is a count and a
+12-character hash of the sorted paths, never the file names, so a shared
+board cannot leak what someone is working on.</li>
+<li>Baton owns <code>RESUME.md</code>. A session ending rewrites it to &quot;nothing in flight&quot;,
+naming the last hand-off, its date and where its full text still lives; the
+board rewrites it at start for any checkout whose pointer describes a
+terminal that is gone, or that no Baton stamped. A terminal that is still
+running keeps its own hand-off text.</li>
+<li><code>baton resume [--check] [--json] [--path &lt;dir&gt;]</code> recomputes freshness from
+git at read time and never from the file: exit 0 current, 1 stale or
+unstamped, 3 no pointer in this checkout. Stale still prints the body behind
+a loud banner, because a stale hand-off beats nothing when a human chooses
+to read it; the exit code is what scripts and hooks key on.</li>
+<li>The terminal drawer&#39;s &quot;What happens next&quot; section carries the same verdict,
+recomputed on every poll.</li>
+</ul>
+</li>
+<li><p><strong>The terminal drawer reads newest first.</strong> The conversation and the timeline
+both put the last thing that happened at the top, so the drawer can be left
+open beside the work without scrolling to find the current state.</p>
+</li>
+<li><p><strong>Fixed: a scrolled box in the drawer snapped back to the top every three
+seconds.</strong> The panel is rebuilt on every poll so relative timestamps stay
+honest, which threw away where the reader had scrolled inside the task box, a
+message or the timeline. Every scrollable box now carries a stable key and its
+offset is carried across the rebuild.</p>
+</li>
+</ul>
+<h2 id="043-2026-09-14"><a class="anchor" href="#043-2026-09-14">0.4.3 (2026-09-14)</a></h2>
+<ul>
+<li><strong>Choose terminal handoff order.</strong> Settings stores the priority order copied
+by new terminals, and each newly attached terminal can change its own order
+while it is running. The order is absolute, not a rotation anchored on the
+agent running now: an agent moved to the bottom (agy, say) is the last option
+from every starting agent instead of jumping to the front of the list for the
+agents above it. The card shows Now, the exact fallback candidates, the
+preferred next option, and the first currently eligible option. Missing CLIs,
+usage walls, same-agent account fallback, all-out waiting, owner controls,
+and normal-exit behavior are unchanged. Older terminals say that a restart
+is required and can save the next-launch default.</li>
+<li><strong>See what a terminal is doing.</strong> <strong>Details</strong> on a terminal card (or a click
+on its prompt) opens a drawer: the agent&#39;s last turn, the prompt the terminal
+started from, its last eight messages, every file it changed with the line
+counts and a diff per file, the event timeline, and the handoff order that
+comes next. It refreshes every three seconds while open and pauses with the
+tab or the button. Transcripts and diffs are scrubbed for secrets before they
+leave the machine, and a terminal that belongs to another human on a shared
+board stays refused.</li>
+<li><strong>The terminal is left the way the agent found it.</strong> An agent killed by End,
+Hand off now or the usage limit never runs its own cleanup, so its terminal
+modes outlived it: the mouse wheel printed raw mouse reports into the shell
+after the session ended, and a leftover scrolling region made the next leg&#39;s
+output land on top of the lines already on screen. The restore now turns off
+every mouse reporting mode, bracketed paste and focus events, puts cursor
+keys, the keypad and autowrap back, resets the scrolling region without
+moving the cursor, and clears only the dead agent&#39;s half-drawn frame.</li>
+<li><strong>Clearer background cards.</strong> The New background card form leads with repo,
+task, and a real first agent; explains its separate worktree and Run now
+versus draft; and puts workflow, fallback, permissions, approvals, limits,
+leases, landing, tests, titles, and labeled test/demo adapters under Advanced
+options. Build only explicitly says it does not merge, while workflows with
+an automatic merge say so in their labels.</li>
+</ul>
+<h2 id="042-2026-09-14"><a class="anchor" href="#042-2026-09-14">0.4.2 (2026-09-14)</a></h2>
+<ul>
+<li><strong>Automatic npm publication.</strong> A successful push to <code>main</code> now waits for the
+complete Ubuntu and Windows CI matrix, validates package and lock metadata,
+and publishes only when the exact version is missing and newer than npm&#39;s
+stable <code>latest</code>. It uses npm trusted publishing with OIDC and no repository
+token secret; stale versions and registry errors fail closed.</li>
+</ul>
+<h2 id="041-2026-09-14"><a class="anchor" href="#041-2026-09-14">0.4.1 (2026-09-14)</a></h2>
+<ul>
+<li><strong>Codex quota and account display.</strong> Codex usage now comes from the read-only
+app-server <code>account/rateLimits/read</code> response, polled every 60 seconds by the
+board and active attach. Returned 300- and 10080-minute windows map to 5h
+and 7d; an explicit backend available answer clears an old wall. The board
+says <code>&lt;n&gt;% used</code> and labels stale readings instead of implying current data.</li>
+<li><strong>Session and landing safety.</strong> The board offers <strong>Remove record</strong> with a
+confirmation that preserves an own worktree, branch, unmerged commits, and
+dirty files. Normal removal remains a safe prune. Concurrent End and Hand off
+use the session file lock; landing rejects the wrong base branch, proves a
+merged branch before pruning, reruns tests after a retry rebase, and recovers
+orphaned <code>handing_off</code> cards.</li>
+<li><strong>Board freshness and roles.</strong> Switching from a guest token back to an owner
+restores pipeline controls without a reload; guest tokens still reconnect the
+terminal stream. Card-list, drawer, log, Floor, and SSE responses now reject
+stale asynchronous completions.</li>
+<li><strong>Loopback board authorization.</strong> Tokenless owner access now requires both a
+loopback peer and a loopback <code>Host</code>, preventing DNS-rebound hostnames from
+inheriting owner access to read and state-changing API routes.</li>
+<li><strong>License delivery.</strong> Team refresh is a signed-key POST: an expired signed
+Team key can refresh while its subscription is active, without individual-seat
+revocation. Webhooks accept rotated Stripe <code>v1</code> signatures; Resend receives a
+stable event-and-delivery idempotency key, retained by Resend for 24 hours.</li>
+</ul>
+<h2 id="040-2026-09-11"><a class="anchor" href="#040-2026-09-11">0.4.0 (2026-09-11)</a></h2>
+<p>Baton is a paid product as of 14 September 2026: a 14-day trial, then a Personal
+license ($79 once, 12 months of releases) or Team ($12 per seat per month,
+adds <code>baton share</code>). The license is the Baton License Agreement (commercial, source readable);
+0.2.0 and 0.3.0 remain published under MIT and are not deprecated.</p>
+<ul>
+<li><strong>License gate.</strong> <code>src/license.mjs</code>: Ed25519-signed keys checked offline
+against the embedded public key; a Personal key is a window over release
+dates (<code>RELEASE_DATE</code>), a Team key expires and <code>baton license refresh</code>
+renews it; the trial is recorded under <code>$BATON_HOME</code>. <code>baton &lt;agent&gt;</code> exits
+4 once nothing is left; <code>baton share on</code> needs Team (the trial counts).
+<code>baton license status|activate|deactivate|refresh</code>. <code>scripts/license-sign.mjs</code>
+signs a key by hand. Ten tests.</li>
+<li><strong>The npm package runs.</strong> <code>files</code> now ships <code>fixtures/limits</code> and
+<code>fixtures/live</code>, which <code>src/limits.mjs</code> and <code>src/live-capture.mjs</code> read at
+load; 0.3.0 from npm crashed on every command for that reason. A lessons
+test packs the tarball and checks it.</li>
+<li><strong>Checkout.</strong> Stripe payment links, a <code>site/api/key</code> function that turns a
+paid checkout into a key (deterministic per purchase), a webhook that emails
+it through Resend, and <code>site/thanks</code> that shows it. <code>scripts/stripe-setup.mjs</code>
+creates the plans, links and webhook idempotently; <code>scripts/vercel-env.mjs</code>
+pushes the secrets.</li>
+<li><strong>A marketing site.</strong> <code>site/</code> holds a static page for the product (hero, the handoff played in a recreated terminal, the board and the two-session cards recreated in HTML, the changeover, what is never touched, install), with the SEO floor (title from measured search volume, description, canonical, OG image, robots.txt, sitemap.xml, llms.txt) and Vercel headers. PRODUCT.md and DESIGN.md at the root carry the brief and the design tokens; docs/DECISIONS.md records why cobalt. Not part of the npm package.</li>
+</ul>
+<h2 id="032-2026-09-11"><a class="anchor" href="#032-2026-09-11">0.3.2 (2026-09-11)</a></h2>
+<p>A second adversarial review over 0.3.1, this time of the whole tree: 49
+confirmed bugs fixed, each with a regression test seen red first (340 tests).</p>
+<ul>
+<li><strong>Cards no longer wedge or double-launch.</strong> Hand off now and Reassign on a
+running leg used to throw out of the orchestrator and leave the card in
+<code>handing_off</code> holding a concurrency slot with no bundle; both now stop the
+leg, write the bundle, and continue in the same driver. A card is claimed by
+a <code>driver.lock</code> for the whole of <code>runCard</code>, so a <code>card run</code> beside the board&#39;s
+scheduler (or two schedulers: <code>scheduler start</code> now refuses when one runs and
+the pidfile is created atomically) can never launch two legs into one
+worktree; <code>runner launch</code> writes <code>run.json</code> with its driver before spawning
+the supervisor. Kill during the launching window kills the supervisor tree
+instead of nothing. A card left running at a test or land station by a crash
+is recovered by the scheduler. Kill or Pause during a test or land station is
+no longer undone by the late result. A land bounce with no agent station, and
+a red test whose only agent station comes later, fail the card instead of
+throwing or skipping ahead. Hand off now is offered only when a next leg
+exists. <code>--model &lt;adapter&gt;=&lt;name&gt;</code> (and a chain entry&#39;s <code>network</code>) now reach
+the agent argv; they were dropped on the way to the runner.</li>
+<li><strong>The board stays up.</strong> The test station ran the repo&#39;s suite with
+<code>spawnSync</code> inside the board server, freezing HTTP, SSE, the scheduler and
+the merge queue for its whole duration; it is async now. The drawer no
+longer refetches on every log byte, the log tail refreshes when the run
+changes, an open drawer is refetched after an SSE reconnect, and the floor
+stops polling on a 401 and shows a way back.</li>
+<li><strong>No lost writes.</strong> <code>run.json</code> and <code>card.json</code> are read-modify-written under
+a cross-process lock (a human Kill was silently reverted by a driver&#39;s status
+write). <code>withFileLock</code> itself treated Windows&#39; EPERM during a sibling&#39;s
+unlink as &quot;give up and run unlocked&quot;: it now retries, which also closes the
+hole in the 0.3.1 session and usage locks. <code>ledger sync</code> renames the buffer
+before flushing so a record buffered mid-flush survives, and refuses clearly
+when sync is off. The merge queue&#39;s turn is a file lock keyed on the
+canonical repo root, so two spellings of one checkout, or two processes,
+never land into it at once.</li>
+<li><strong><code>baton share</code> and the launcher.</strong> <code>share add sam</code> before <code>share on</code> no
+longer makes the guest the owner. A non-loopback board no longer falls open
+to everyone the moment share.json reads as off (<code>share off</code> stops the
+listener first, and the bind is re-checked per request). Share off no longer
+promotes a guest&#39;s live SSE stream; a stale tab repeating one rotated token
+no longer locks the machine out; <code>share on|off</code> no longer kill every running
+agent; <code>share rm</code> refuses to take the last owner; the SSE health frame is
+filtered for guests; a redacted session names its branch. The pidfile is
+confirmed by a probe, so <code>status</code> cannot report a dead board as running and
+<code>down</code> cannot kill whatever reused the PID. Card removal with <code>?branch=delete</code>
+no longer escalates to <code>git branch -D</code> without <code>?force=1</code>, a status check
+that fails no longer reads as clean, and <code>sessions rm</code> refuses mid-land.</li>
+<li><strong>The limit path.</strong> codex&#39;s rollout is found for a session started in the
+local evening (the day directory is local, the filter compared UTC). agy&#39;s
+wall is seen behind non-ASCII log lines (a byte count was used as a string
+index) and an old wall is not re-fired by a second agy leg. After a hand-off
+the previous agent&#39;s usage bars are cleared, the near-limit warning fires
+again, the chain shown as &quot;next&quot; is recomputed, <code>all_out</code> clears after the
+wait, an agy leg adds to the turn count, and a board Hand off with the other
+agents walled restarts the current agent instead of waiting. The resume
+prompt names the absolute RESUME file.</li>
+<li>Smaller: an agent-created <code>.env.example</code> is no longer dropped from a land;
+a card whose trunk does not exist is refused at <code>card add</code> naming the repo&#39;s
+default branch (it used to burn every land attempt); a rebase git refuses for
+a non-conflict reason bounces <code>rebase-failed</code> with git&#39;s words, and a
+conflicting retry is no longer reported as <code>trunk-moved</code>; <code>sk-</code> no longer
+matches ordinary hyphenated words (a task saying &quot;risk-free&quot; was refused as a
+secret); <code>OPENAI_BASE_URL</code> is stripped from agent legs; with share off and a
+token, the rate limit is per address, not one shared bucket.</li>
+</ul>
+<h2 id="031-2026-09-11"><a class="anchor" href="#031-2026-09-11">0.3.1 (2026-09-11)</a></h2>
+<p>A security and correctness pass over 0.3.0, after an adversarial review. No new
+features; 44 fixes, all covered by the test suite (281 tests).</p>
+<ul>
+<li><strong><code>baton share</code> security.</strong> A guest could read the owner&#39;s pipeline through
+<code>/api/trunk</code> (now on the guest deny-list) and through the SSE stream (the
+card/removed broadcasts now carry the per-viewer filter, and every push
+re-checks the viewer against the live roster). <code>share add|rotate|rm</code> now take
+effect on a live board instead of after a restart: the server re-reads
+<code>share.json</code> per request, so a removed or rotated link stops at once and a new
+one works at once. <code>baton share add</code> before <code>baton share on</code> can no longer
+make a guest the board&#39;s owner. A non-loopback bind also listens on 127.0.0.1
+so the owner keeps a tokenless URL while a remote peer still needs a token.
+Cross-origin state-changing requests are refused. New <code>test/share-security.test.mjs</code>
+sends a missing, wrong, other-human, rotated and removed token to every route
+including SSE.</li>
+<li><strong>No lost work.</strong> Land refuses a worktree with a rebase/merge already in
+progress (it used to commit the half-state and then abort it, deleting the
+human&#39;s uncommitted files). Remove and <code>baton sessions rm</code> no longer drop a
+session record while its worktree still holds unlanded commits. <code>git branch -d</code>
+before <code>-D</code>. A Land never commits a <code>.env</code>. A git failure during a Land no
+longer crashes the board process.</li>
+<li><strong>No lost writes.</strong> <code>session.json</code> and the usage files are written under a
+cross-process lock with a reducer form, so concurrent hooks, taps and pollers
+stop losing files, turns and limit walls to a last-writer-wins race.</li>
+<li><strong>The limit path.</strong> The handoff chooser skips agents that are not installed
+(a missing next agent used to kill the session exit 127), the all-out wait
+counts down to the true soonest reset including the current agent, a weekly
+wall is no longer recorded as a 5-hour one, and agy reset durations with more
+than one unit (<code>71h19m42s</code>) are summed, not truncated. <code>live-capture</code> now
+redacts the home and repo paths, not only secret shapes. The env sanitizer
+also strips the Google/Gemini keys the agy leg kept.</li>
+<li>A hung test command no longer leaves a card in <code>landing</code> forever and wedging
+the repo&#39;s merge queue. A crash during <code>git worktree add</code> no longer orphans a
+worktree with no card. Two sessions in one checkout get their own
+<code>RESUME-&lt;id&gt;.md</code>.</li>
+</ul>
+<h2 id="030-2026-09-11"><a class="anchor" href="#030-2026-09-11">0.3.0 (2026-09-11)</a></h2>
+<p>Closing the gaps against the two tweets: a limit path proved live, waiting
+instead of quitting, collisions stopped instead of flagged, and more than one
+human on the board.</p>
+<ul>
+<li><code>baton sessions simulate-limit &lt;id&gt;</code>: a <code>StopFailure</code> <code>rate_limit</code> payload in
+the shape Claude Code sends (marked simulated) goes through Baton&#39;s hook, so
+the whole path runs for real (limit status, bundle, agent stopped, the next
+agent started in the same terminal). Verified live: a haiku session handed
+off to codex, which read <code>.baton/RESUME.md</code> on its first turn. The simulated
+wall clears after two minutes and is never kept as evidence. agy: the
+RESOURCE_EXHAUSTED line is appended to the session&#39;s own log. codex is
+refused (use <code>handoff</code>).</li>
+<li>The first real claude <code>StopFailure</code> is saved with secrets scrubbed under
+<code>fixtures/live/&lt;agent&gt;/</code> in a dev clone (outside a clone it goes to
+<code>~/.baton/live/</code>, a path nothing has written yet), and the docs row for it
+flips from docs-only to observed-live (<code>scripts/live-limits.mjs</code>). The same
+capture is wired for codex <code>usage_limit_exceeded</code> and agy
+<code>RESOURCE_EXHAUSTED</code>; no real payload for either has been kept yet, and
+their rows are still docs-only.</li>
+<li><code>BATON_CLAUDE_ARGS</code>, <code>BATON_CODEX_ARGS</code>, <code>BATON_AGY_ARGS</code>: extra arguments
+for a leg Baton starts after a hand-off (keep a chain on cheap models).</li>
+<li>codex&#39;s card no longer shows the injected AGENTS.md block as the task.</li>
+<li>When every option is out the terminal no longer exits 3: it prints the reset
+times, counts down to the first one, and starts that agent from the bundle
+when it arrives (<code>src/wait.mjs</code>). The card shows <code>waiting for &lt;agent&gt; at &lt;time&gt;</code>. End on the card quits with exit 3; Ctrl-C is wired to the same exit
+(the End path is the one under test). Verified live: with codex walled for
+80 s and agy for 200 s, a simulated limit on a haiku session waited and then
+started codex from <code>.baton/RESUME.md</code>.</li>
+<li>A second live session in a checkout that already has one gets its own git
+worktree, <code>&lt;repo&gt;/.baton-worktrees/&lt;session-id&gt;</code> on branch
+<code>baton/&lt;session-id&gt;</code>, cut from the branch the checkout has out; the terminal
+prints one line saying where. <code>--no-worktree</code> shares the checkout (the flag
+never reaches the agent).</li>
+<li><strong>Land</strong> on the card of a session with its own worktree sends its branch
+through the merge queue: commit what the agent left, rebase onto the base,
+run the tests, fast-forward only, or bounce with the reason
+(<code>rebase-conflict</code> with the files, <code>tests-red</code> with the output tail,
+<code>dirty-trunk</code> when the checkout has local changes the landing would
+overwrite). The landed-on-trunk list says who landed each commit
+(<code>~/.baton/landings.jsonl</code>). Remove takes the worktree and branch along only
+when the worktree is clean and the branch is already on its base. Verified
+live: three haiku sessions in a throwaway repo, the second and third in
+worktrees both appending to README.md; Land on one ran the tests and
+fast-forwarded main, Land on the other bounced with <code>rebase-conflict</code> on
+README.md.</li>
+<li><code>baton share</code>: more than one human on the board, off by default. <code>baton share on</code> binds the Tailscale address (or <code>--bind lan</code>, or one you name) and gives
+every human a name and their own token, kept as a sha256 hash and printed
+once (<code>baton share rotate &lt;name&gt;</code> issues a new one). A terminal belongs to
+the human who started it (<code>BATON_PERSON</code>). Another human&#39;s card is
+read-only: no prompt, no file names, no paths, no limit message, no bundle,
+no events, no logs — the agent, the branch, the usage bars and the reset
+time still show — and one <strong>Request handoff</strong> button that the owner
+approves or dismisses on their own card; the pipeline side stays the
+owner&#39;s. The security pass: a token on every <code>/api</code> route including the
+event stream (which is computed per viewer), 403 for a guest on anything
+that is not theirs, a lockout after repeated wrong tokens from one address
+and a per-human request ceiling (defaults 20 failures and 600 requests a
+minute, <code>src/ratelimit.mjs</code>; the tests drive both at lower thresholds), and
+tests that send a bad and a missing token to every route. Verified live
+over Tailscale with two terminals on one machine, one wes&#39;s and one sam&#39;s:
+sam&#39;s board redacted wes&#39;s card, and sam&#39;s <strong>Request handoff</strong> reached
+wes&#39;s board (the approve-then-hand-off step is covered by tests).</li>
+<li>The merge queue runs its tests through an async spawn instead of a blocking
+one, so a Land no longer parks the board&#39;s event loop.</li>
+<li>Fixed: a board that asks for a token answered <code>ensureBoard</code>&#39;s health probe
+with 401, and Baton read that as &quot;no board&quot; and started a second one.</li>
+<li><code>/api/health</code> asks each adapter where its binary is instead of running the
+bare name, so the board no longer says <code>codex: false</code> while the runner starts
+codex fine.</li>
+<li>When the claude usage endpoint 404s, answers with something that is not JSON,
+or changes shape, the card says <code>usage unknown (&lt;why&gt;) · the limit still hands off</code> instead of showing empty bars; the wall still arrives through the
+<code>StopFailure</code> hook. <code>BATON_CLAUDE_USAGE_URL</code> (or <code>fetchClaudeUsage({ url })</code>)
+accepts an http test double.</li>
+<li>Fixed: the first dirty file on a card (and in the bundle notes) lost its
+first letter (<code>EADME.md</code>) because the porcelain status was trimmed;
+<code>.dashclaw-local/</code> no longer counts as a file being touched, and it joins
+<code>.baton/</code>, <code>.baton-worktrees/</code> and <code>.context-handoffs/</code> in
+<code>.git/info/exclude</code> so a landing never commits it.</li>
+<li><code>BATON_NO_BOARD=1</code> runs a session without the board; a stub-agent end-to-end
+test (<code>test/attach-e2e.test.mjs</code>) now runs <code>baton claude</code> through the hook,
+the hand-off, the wait and the restart in CI.</li>
+</ul>
+<h2 id="020-2026-09-11"><a class="anchor" href="#020-2026-09-11">0.2.0 (2026-09-11)</a></h2>
+<p>The way in is now <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code>: the normal
+interactive agent in your terminal, with Baton alongside it. The v0.1 form,
+pipelines, leases and merge queue stay as extras.</p>
+<ul>
+<li><code>baton &lt;agent&gt; [args…]</code> starts the real interactive CLI with your settings,
+hooks and skills; extra args pass straight through. API-key variables are
+stripped; Baton writes its own per-session settings file
+(<code>~/.baton/sessions/&lt;id&gt;/claude-settings.json</code>) and passes it with
+<code>--settings</code>, instead of editing <code>~/.claude</code>, <code>~/.codex</code> or agy&#39;s home.</li>
+<li>The board opens once and is reused; every session in every terminal is a
+card: agent, account, repo@branch, task, turns, files being touched, 5h/7d
+usage, warning/limit/handoff state. Two live sessions editing the same file
+in one repo are flagged on both cards. A &quot;landed on trunk&quot; list per repo.
+Buttons: Hand off now, End, Remove.</li>
+<li>Usage tracking per agent and account. claude: Claude Code&#39;s usage endpoint
+with the stored login (a status-line JSON route is written as a fallback;
+on the build machine, Claude Code 2.1.268 was not seen running a custom
+status line — see docs/adapters.md) plus the <code>StopFailure</code> <code>rate_limit</code>
+hook. codex: the session rollout file
+(<code>token_count.rate_limits</code>, <code>usage_limit_exceeded</code>). agy: its log
+(<code>RESOURCE_EXHAUSTED</code>, &quot;it resets in&quot;); no percentage is exposed.</li>
+<li>A context-handoff-bundle per session, refreshed every two minutes and at
+every warning/limit/handoff (<code>save --update &lt;slug&gt;</code>).</li>
+<li>Hand-off on limit or on request: bundle, stop the agent, restore the
+terminal, start the next option in the same terminal from <code>.baton/RESUME.md</code>.
+Order: other logins of the same agent, then the next agents (claude → codex
+→ agy). When every option is out: each reset time, soonest first, then exit<ol start="3">
+<li>(0.3.0 waits for the first reset instead.)</li>
+</ol>
+</li>
+<li>Optional second logins: <code>baton accounts add &lt;claude|codex&gt; &lt;name&gt;</code> (config-dir
+junctions for the shared harness, one login line to paste). Both vendors&#39;
+terms are in the README and are printed by <code>baton accounts terms</code>.</li>
+<li><code>baton uninstall</code> removes only <code>~/.baton</code> (it prints what it will remove and
+asks for confirmation).</li>
+<li>gemini removed everywhere (Google retired Gemini CLI in favour of agy).</li>
+<li>0 runtime dependencies still. New modules: src/attach.mjs, src/sessions.mjs,
+src/usage.mjs, src/accounts.mjs, src/bundle.mjs, src/hook.mjs, src/taps/*.</li>
+</ul>
+<h2 id="010-2026-09-10"><a class="anchor" href="#010-2026-09-10">0.1.0 (2026-09-10)</a></h2>
+<p>First public release (source on GitHub; not on npm yet).</p>
+<ul>
+<li>Ported the detached runner, the append-only ledger and the git snapshot tool
+from a private ucsandman repository (team tooling) under the same MIT license,
+with Telegram delivery, chat identifiers and machine paths removed (see
+NOTICE, docs/REUSE.md, docs/DEVIATIONS.md).</li>
+<li>Adapters for claude, codex, gemini and agy, each spawned as argv with a
+sanitized child environment (subscription logins only, no YOLO flags); grok
+written from <code>--help</code> but unregistered until a live probe passes.</li>
+<li>Limit detector built from 25 recorded signals (docs/cli-contracts.md keeps
+the observed-live vs docs-only tag per row); DONE-marker completion contract.</li>
+<li>Handoffs through context-handoff-bundle (repo-local bundles, <code>load</code> resume
+prompt); pipeline presets factory / build / build-land; scheduler with path
+leases; land station as a merge queue (rebase → test → ff-only, bounce with
+the failure in the bundle); <code>pr</code> land mode stub.</li>
+<li>Board (kanban from the pipeline, every judgment a button, detail drawer) and
+floor view (running cards, leases, trunk lane) over a ledger-backed server
+with SSE and a BATON_BIND / BATON_TOKEN seam.</li>
+<li>Launcher: <code>npm start</code> = <code>baton up</code> (preflight, health check, prefixed
+redacted logs, Ctrl-C teardown), <code>up --dry</code>, <code>down</code>, <code>status</code>, <code>open</code>.</li>
+<li>Optional syncs, off by default: OpenClaw Workboard (argv) and DashClaw action
+recording (verified live once).</li>
+<li>Demo (fake limit on the board, five screenshots) and one real run: claude
+hit <code>--max-turns 2</code>, codex finished from the bundle, tests green in 2 m 50 s.</li>
+<li>Polish pass: a missing CLI ends the card <code>failed</code> (was stuck <code>running</code>);
+runs re-attach after <code>baton down</code> instead of relaunching; bounce and
+blocked chips name their reason; repo path must be a git root outside
+BATON_HOME; SSE re-reads only the changed card; reduced-motion and contrast
+checks; docs/VOCABULARY.md.</li>
+</ul>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

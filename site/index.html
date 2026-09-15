@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude Code usage limit handoff and usage monitor | Baton</title>
+<title>Claude usage limit monitor for Claude Code and Codex | Baton</title>
 <meta name="description" content="A usage monitor and board beside Claude Code, Codex or agy, a private copy of the repo for a second agent, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, $79 once with a 30-day money-back guarantee.">
 <link rel="canonical" href="https://baton-agents.vercel.app/">
 <meta name="theme-color" content="#1b4fbf">
@@ -36,7 +36,7 @@
   "name": "Baton",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Windows, macOS, Linux",
-"softwareVersion": "0.6.0",
+"softwareVersion": "0.6.1",
   "license": "https://baton-agents.vercel.app/license",
   "url": "https://baton-agents.vercel.app/",
   "downloadUrl": "https://www.npmjs.com/package/baton-agents",
@@ -65,6 +65,7 @@
       <a href="#touched" class="hide-sm">What is touched</a>
       <a href="#pricing">Pricing</a>
       <a href="#install">Install</a>
+      <a href="/docs">Docs</a>
       <a class="repo" href="https://www.npmjs.com/package/baton-agents">npm</a>
     </nav>
   </div>
@@ -140,6 +141,24 @@
            alt="A Baton card mid-handoff: the agent now reads fake-codex, the status is needs approval, the chain says fake-claude handed off, fake-codex pending, and the buttons are Approve, Reassign and Kill.">
       <figcaption>And the same moment on the board, from a real run. The first agent hit its limit, Baton wrote the bundle and moved the card to the next agent; the chain line reads <code>fake-claude handed off · fake-codex pending</code> and it is waiting for you to approve the start. The two <code>fake-</code> agents are the scripted ones the test suite uses, so this run spends no subscription usage.</figcaption>
     </figure>
+
+    <figure class="demo">
+      <figcaption>
+        <h3>And here it is on a real machine.</h3>
+        <p class="muted">Fifty-three seconds, recorded off the board, not a mockup: three agents running, claude's five-hour gauge filling to 100 percent, the headline turning to <b>at the wall</b>, and the terminal continuing on codex without a restart.</p>
+      </figcaption>
+      <video
+        controls
+        preload="none"
+        playsinline
+        width="1536"
+        height="864"
+        poster="/video/baton-handoff-poster.jpg"
+        aria-label="Screen recording of the Baton board: claude reaches its five-hour usage limit and the terminal is handed to codex, which continues the same task">
+        <source src="/video/baton-handoff.mp4" type="video/mp4">
+        <p>Your browser cannot play this video. <a href="/video/baton-handoff.mp4">Download the recording</a> (6.5&nbsp;MB, MP4).</p>
+      </video>
+    </figure>
   </div>
 </section>
 
@@ -171,6 +190,7 @@
         <p class="small muted">Each tap was read from the CLI's source or documentation and checked on a real machine on 11 September 2026: Claude Code 2.1.268, codex-cli 0.153.4, agy 1.2.0. Nothing is screen-scraped.</p>
       </div>
     </div>
+
   </div>
 </section>
 
@@ -403,7 +423,7 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
       <div class="cmd"><code>cd &lt;any repo&gt; &amp;&amp; baton claude</code><button class="copy" type="button" data-copy="baton claude">Copy</button></div>
     </div>
-    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 406 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
+    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 472 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
     <div class="links">
       <a href="https://www.npmjs.com/package/baton-agents">README and changelog on npm</a>
       <a href="license">License agreement</a>
@@ -416,8 +436,8 @@
 
 <footer>
   <div class="wrap">
-    <span>Baton is by <a href="https://github.com/ucsandman">Wes Sander</a>. <a href="license">License agreement</a>.</span>
-    <span><a href="mailto:wes@practicalsystems.io">wes@practicalsystems.io</a> · <a href="llms.txt">llms.txt</a></span>
+    <span>Baton is by <a href="https://github.com/ucsandman">Wes Sander</a>. <a href="/docs">Docs</a> · <a href="license">License agreement</a> · <a href="/support">Support and refunds</a>.</span>
+    <span><a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a> · <a href="llms.txt">llms.txt</a></span>
   </div>
 </footer>
 

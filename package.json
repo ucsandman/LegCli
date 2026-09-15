@@ -1,7 +1,7 @@
 {
   "name": "baton-agents",
-  "version": "0.6.0",
-  "description": "baton claude|codex|agy: your interactive coding agent with a board alongside, usage-limit tracking, a live context handoff bundle, and a hand-off to the next agent in the same terminal when the limit hits. 14-day trial, then a license.",
+  "version": "0.6.1",
+  "description": "Claude Code and Codex usage limit monitor with an automatic handoff. Type baton claude|codex|agy and get the same interactive agent with a board alongside, usage tracking per agent and account, a live context handoff bundle, and at the limit the next agent continuing in the same terminal. $79 once, 30-day money-back guarantee.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://baton-agents.vercel.app",
@@ -9,15 +9,22 @@
     "type": "git",
     "url": "https://github.com/ucsandman/baton.git"
   },
+  "bugs": {
+    "url": "https://baton-agents.vercel.app/support",
+    "email": "baton@practicalsystems.io"
+  },
   "keywords": [
-    "kanban",
-    "coding-agents",
+    "claude-usage-limit",
+    "claude-code-usage-limit",
+    "codex-usage-limit",
+    "usage-monitor",
+    "usage-limits",
     "claude-code",
     "codex",
+    "coding-agents",
     "agent-harness",
-    "usage-limits",
-    "antigravity",
     "handoff",
+    "kanban",
     "worktree",
     "local-first"
   ],
@@ -35,22 +42,27 @@
     "CHANGELOG.md",
     "docs",
     "fixtures/limits",
-    "fixtures/live"
+    "fixtures/live",
+    "fixtures/verified.json"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env bin/baton.mjs up",
-    "test": "node --test --test-concurrency=1 && node scripts/privacy-check.mjs",
+    "test": "node --test --test-concurrency=1 && node scripts/privacy-check.mjs && node scripts/check-claims.mjs",
     "lint": "eslint .",
     "privacy": "node scripts/privacy-check.mjs",
+    "claims": "node scripts/check-claims.mjs",
+    "claims:drift": "node scripts/check-claims.mjs --strict",
+    "docs": "node scripts/build-docs-site.mjs",
     "dev": "node --env-file-if-exists=.env bin/baton.mjs up --no-open",
     "stop": "node bin/baton.mjs down"
   },
   "devDependencies": {
-    "eslint": "^9",
     "@eslint/js": "^9",
-    "globals": "^16"
+    "eslint": "^9",
+    "globals": "^16",
+    "marked": "^18.0.13"
   }
 }

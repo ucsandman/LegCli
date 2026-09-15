@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Baton reads from Claude Code, Codex and agy</title>
+<meta name="description" content="The exact usage endpoints, hooks, log lines and limit strings Baton reads from Claude Code, Codex and agy, each cited to its source.">
+<link rel="canonical" href="https://baton-agents.vercel.app/docs/cli-contracts">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://baton-agents.vercel.app/docs/cli-contracts">
+<meta property="og:site_name" content="Baton">
+<meta property="og:title" content="What Baton reads from Claude Code, Codex and agy">
+<meta property="og:description" content="The exact usage endpoints, hooks, log lines and limit strings Baton reads from Claude Code, Codex and agy, each cited to its source.">
+<meta property="og:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="What Baton reads from Claude Code, Codex and agy">
+<meta name="twitter:description" content="The exact usage endpoints, hooks, log lines and limit strings Baton reads from Claude Code, Codex and agy, each cited to its source.">
+<meta name="twitter:image" content="https://baton-agents.vercel.app/og.png?v=2">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Baton</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/cli-contracts" aria-current="page">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#claude">claude</a></li><li><a href="#codex">codex</a></li><li><a href="#agy">agy</a></li><li><a href="#grok">grok</a></li><li><a href="#interactive-taps">Interactive taps</a></li><li><a href="#limit-signals">Limit signals</a></li><li><a href="#runner-facts-that-apply-to-every-cli-observed-live-in-phase-23-tests">Runner facts that apply to every CLI (observed-live in phase 2/3 tests)</a></li></ul></nav>
+<h1 id="cli-contracts"><a class="anchor" href="#cli-contracts">CLI contracts</a></h1>
+<p>What Baton knows about each coding-agent CLI, where every fact came from, and
+which facts were observed live on the build machine versus read from <code>--help</code>
+or docs. Two contracts per CLI: the headless argv a pipeline leg spawns
+(§ per CLI below), and the interactive tap <code>baton &lt;agent&gt;</code> reads
+(§ <a href="#interactive-taps">Interactive taps</a>). Evidence:
+<code>fixtures/help/&lt;cli&gt;.txt</code> (raw <code>--help</code>), <code>fixtures/live/&lt;cli&gt;/</code> (one real tiny
+task per CLI, run through <code>src/runner.mjs launch</code> on 2026-09-11 UTC, the
+evening of 2026-09-10 locally; paths under the local home directory are
+replaced with <code>~</code>), and the interactive checks run on 2026-09-11.</p>
+<p>Every fact line ends with <code>(source: …)</code>. <code>observed-live</code> means the build machine
+did it; <code>docs-only</code> means the CLI&#39;s own <code>--help</code> or documentation says so and
+Baton has not seen it happen.</p>
+<p>Probe task (identical for every CLI, <code>scripts/probe.mjs</code>): &quot;Create a file named
+hello-<name>.txt in the current directory containing exactly the word hi.
+Then create the directory .baton if it is missing and write the file
+.baton/DONE containing the single line: done. Do nothing else. Do not ask
+questions.&quot;</p>
+<table>
+<thead>
+<tr>
+<th>CLI</th>
+<th>version</th>
+<th>probe result</th>
+<th>adapter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>claude</td>
+<td>2.1.268</td>
+<td>exit 0, file yes, DONE yes, 20 s</td>
+<td><code>src/adapters/claude.mjs</code></td>
+</tr>
+<tr>
+<td>codex</td>
+<td>codex-cli 0.153.4</td>
+<td>exit 0, file yes, DONE yes, 28 s</td>
+<td><code>src/adapters/codex.mjs</code></td>
+</tr>
+<tr>
+<td>agy</td>
+<td>1.2.0</td>
+<td>attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (<code>--add-dir</code>) exit 0, file yes, DONE yes, 41 s</td>
+<td><code>src/adapters/agy.mjs</code></td>
+</tr>
+<tr>
+<td>grok</td>
+<td>0.2.51</td>
+<td>exit 0, <code>stopReason: Cancelled</code>, no file: not logged in (device-code prompt)</td>
+<td><code>src/adapters/grok.mjs</code> exists, NOT registered</td>
+</tr>
+</tbody></table>
+<p>The auth-source check: the build shell carried <code>ANTHROPIC_API_KEY</code> and
+<code>OPENAI_API_KEY</code> (injected by the shell profile). Every adapter&#39;s <code>env()</code> deletes
+them (<code>src/env.mjs</code>). No fixture contains &quot;another auth source&quot;
+(<code>grep -ril &quot;another auth source&quot; fixtures/live</code> is empty), claude&#39;s and agy&#39;s
+stderr are 0 bytes, and codex&#39;s is the one stdin notice. observed-live.</p>
+<h2 id="claude"><a class="anchor" href="#claude">claude</a></h2>
+<ul>
+<li><p>Version 2.1.268 (source: <code>claude --version</code>, fixtures/help/claude.version.txt).</p>
+</li>
+<li><p>Binary: <code>~/.local/bin/claude.exe</code> (native exe, 211 MB); Baton resolves it
+there first, else <code>claude</code> on PATH; <code>BATON_CLAUDE_BIN</code> overrides (source: <code>ls ~/.local/bin/claude.exe</code>; src/adapters/claude.mjs <code>resolve()</code>).</p>
+</li>
+<li><p>Headless argv (exact, from fixtures/live/claude/cmd.txt):
+<code>claude.exe -p --output-format json --permission-mode acceptEdits</code>
+with the prompt on <strong>stdin</strong> (stdin: <code>pipe</code>). Optional: <code>--max-turns N</code>,
+<code>--resume &lt;session-id&gt;</code>, <code>--model &lt;alias|name&gt;</code>, <code>--allowedTools a,b</code>
+(source: <code>claude --help</code> lines for each flag; observed-live for the base argv).</p>
+</li>
+<li><p>Output: ONE JSON object on stdout, printed only when the session ends
+(test/lessons.test.mjs <code>json-only-at-end</code>; observed-live: 20 s of silence
+then the object). Top-level
+keys observed: <code>type:&quot;result&quot;</code>, <code>subtype:&quot;success&quot;</code>, <code>is_error</code>,
+<code>stop_reason:&quot;end_turn&quot;</code>, <code>terminal_reason:&quot;completed&quot;</code>, <code>api_error_status</code>,
+<code>session_id</code>, <code>num_turns</code>, <code>result</code> (final text), <code>permission_denials</code> (array),
+<code>usage{input_tokens,output_tokens,cache_read_input_tokens,…}</code>, <code>modelUsage</code>,
+<code>total_cost_usd</code>, <code>duration_ms</code> (source: fixtures/live/claude/out.log).
+Baton reads <code>session_id</code>, <code>result</code>, <code>stop_reason</code>, <code>subtype</code>, <code>is_error</code>,
+<code>terminal_reason</code>, <code>api_error_status</code>, <code>permission_denials.length</code>.</p>
+</li>
+<li><p>Model: with no <code>--model</code>, the account&#39;s default model answered
+(<code>modelUsage</code> names claude-fable-5-1 and claude-haiku-4-5). A chain entry
+should name <code>model</code> to control spend; Baton passes it through as <code>--model</code>
+(source: fixtures/live/claude/out.log <code>modelUsage</code>; <code>claude --help --model</code>).</p>
+</li>
+<li><p>Exit codes:</p>
+<table>
+<thead>
+<tr>
+<th>exit</th>
+<th>meaning</th>
+<th>source</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>completed, JSON printed</td>
+<td>observed-live, fixtures/live/claude/run.json</td>
+</tr>
+<tr>
+<td>non-zero</td>
+<td>launch or fatal error; JSON may be absent</td>
+<td>docs-only (<code>claude --help</code> does not enumerate codes; phase 4 records the fixture cases)</td>
+</tr>
+</tbody></table>
+</li>
+<li><p>Permission modes (<code>--permission-mode</code> choices in 2.1.268): <code>acceptEdits</code>,
+<code>auto</code>, <code>bypassPermissions</code>, <code>manual</code>, <code>dontAsk</code>, <code>plan</code> (source: <code>claude --help</code>). Baton: default <code>acceptEdits</code>; allowed <code>acceptEdits</code>, <code>auto</code>, <code>plan</code>,
+<code>manual</code>, <code>dontAsk</code>; forbidden <code>bypassPermissions</code>,
+<code>--dangerously-skip-permissions</code>, <code>--allow-dangerously-skip-permissions</code>.
+<code>acceptEdits</code> allowed the file write headless (observed-live). The Agent tool
+is never disallowed (test/lessons.test.mjs <code>agent-tool-never-disallowed</code>).
+<code>--permission-prompts none</code> exists
+(&quot;anything that would prompt is denied automatically&quot;) and is not passed;
+headless <code>-p</code> has no host to answer prompts anyway (source: <code>claude --help</code>).</p>
+</li>
+<li><p>Resume: <code>--resume &lt;session-id&gt;</code> (docs-only until phase 5 exercises it);
+<code>--fork-session</code> creates a new id on resume (source: <code>claude --help</code>).</p>
+</li>
+<li><p>Child-process rules: <code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>,
+<code>ANTHROPIC_BASE_URL</code>, <code>CLAUDECODE</code>, <code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code>,
+<code>CLAUDE_PLUGIN_DATA</code> deleted; <code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0</code> set
+(source: src/env.mjs; the &quot;another auth source&quot; check above, observed-live).</p>
+</li>
+<li><p>Limit signals: see § Limit signals (phase 4).</p>
+</li>
+</ul>
+<h2 id="codex"><a class="anchor" href="#codex">codex</a></h2>
+<ul>
+<li><p>Version codex-cli 0.153.4 (source: <code>codex --version</code>).</p>
+</li>
+<li><p>Binary: npm package <code>@openai/codex</code> whose <code>bin/codex.js</code> only spawns the
+platform package&#39;s native exe. Baton spawns that exe directly:
+<code>~/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe</code>
+(one process to kill); falls back to <code>node &lt;bin/codex.js&gt;</code> via
+<code>resolveNpmCliEntry</code>, then <code>codex</code> on PATH; <code>BATON_CODEX_BIN</code> overrides
+(source: <code>bin/codex.js</code> read 2026-09-10; fixtures/live/codex/cmd.txt).</p>
+</li>
+<li><p>Headless argv (exact, from cmd.txt):
+<code>codex.exe exec --json -s workspace-write -C &lt;worktree&gt; -c sandbox_workspace_write.network_access=false -o &lt;run&gt;/last.md &quot;&lt;prompt&gt;&quot;</code>.
+Prompt is the last positional argument; <strong>stdin is <code>ignore</code></strong>: <code>codex exec</code>
+reads stdin whenever it is not a TTY and hangs on an open pipe (&quot;Reading
+additional input from stdin...&quot;; plan-time probe hung 170 s with a pipe,
+finished in 20 s with stdin closed; observed-live). <code>-o</code> writes the final
+agent message to a file (observed-live: fixtures/live/codex/last.md).</p>
+</li>
+<li><p>Output: JSONL events on stdout (source: fixtures/live/codex/out.log):
+<code>thread.started{thread_id}</code>, <code>turn.started</code>, <code>item.started/item.completed{item{type: agent_message|command_execution|error, text|command|message}}</code>,
+<code>turn.completed{usage{input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens}}</code>.
+An <code>item.type:&quot;error&quot;</code> is a non-fatal notice (observed: &quot;Skill descriptions
+were shortened…&quot;). Baton reads <code>thread_id</code> as the session id, the last
+<code>agent_message</code> text, <code>turn.completed</code> as the stop reason, and the error
+messages.</p>
+</li>
+<li><p>Exit codes:</p>
+<table>
+<thead>
+<tr>
+<th>exit</th>
+<th>meaning</th>
+<th>source</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>turn completed</td>
+<td>observed-live, fixtures/live/codex/run.json</td>
+</tr>
+<tr>
+<td>(none)</td>
+<td>hangs with an open stdin pipe until it is killed</td>
+<td>observed at plan time; no artifact kept, the behaviour is pinned by test/lessons.test.mjs <code>codex-stdin-ignored</code></td>
+</tr>
+<tr>
+<td>non-zero</td>
+<td>launch/auth/fatal</td>
+<td>docs-only</td>
+</tr>
+</tbody></table>
+</li>
+<li><p>Sandbox modes (<code>-s</code>): <code>read-only</code>, <code>workspace-write</code>, <code>danger-full-access</code>
+(source: <code>codex exec --help</code>). Baton: default <code>workspace-write</code>; allowed
+<code>read-only</code>, <code>workspace-write</code>; forbidden <code>danger-full-access</code>,
+<code>--dangerously-bypass-approvals-and-sandbox</code>, <code>--dangerously-bypass-hook-trust</code>,
+<code>--approve-for-me</code> (routes approvals through automatic review), <code>--full-auto</code>
+(not present in 0.153.4 <code>exec --help</code>; kept on the forbidden list). Blast
+radius is <code>-C &lt;worktree&gt;</code>; network off unless the chain entry sets
+<code>network: true</code> (PROTOCOL sandbox ladder). <code>workspace-write</code> allowed the
+write headless (observed-live).</p>
+</li>
+<li><p>Resume: <code>codex exec resume [SESSION_ID] [PROMPT]</code> with <code>--last</code> for the newest
+(source: <code>codex exec resume --help</code>). Baton&#39;s adapter emits
+<code>exec … resume &lt;thread_id&gt; &lt;prompt&gt;</code>; docs-only until phase 5 exercises it.</p>
+</li>
+<li><p>Limit signals: see § Limit signals (phase 4).</p>
+</li>
+</ul>
+<h2 id="agy"><a class="anchor" href="#agy">agy</a></h2>
+<ul>
+<li><p>Version 1.2.0 (source: <code>agy --version</code>).</p>
+</li>
+<li><p>Binary: <code>~/AppData/Local/agy/bin/agy.exe</code> (native); <code>BATON_AGY_BIN</code> overrides
+(source: <code>where agy</code>; src/adapters/agy.mjs).</p>
+</li>
+<li><p>Headless argv (exact, from cmd.txt):
+<code>agy.exe -p &quot;&lt;working-directory preamble + prompt&gt;&quot; --output-format json --mode accept-edits --add-dir &lt;worktree&gt; --print-timeout 90m</code>;
+stdin <code>ignore</code>.</p>
+<ul>
+<li><strong>agy does not work in the process cwd.</strong> Attempt 1 (no <code>--add-dir</code>) exited
+0 and wrote <code>hello-agy.txt</code> under <code>~/.gemini/antigravity-cli/scratch/</code>
+(observed-live, fixtures/live/agy/attempt-1-scratch-workspace.out.log).
+Attempt 2 adds <code>--add-dir &lt;worktree&gt;</code> and prefixes the prompt with
+&quot;Working directory: <worktree>&quot;; it wrote both files in the repo
+(observed-live).</li>
+<li><code>--print-timeout</code> defaults to 5m0s; Baton sets it from the kill timer in Go
+duration syntax so the supervisor decides what a runaway is (source: <code>agy --help</code>).</li>
+</ul>
+</li>
+<li><p>Output: one JSON object: <code>conversation_id</code>, <code>status:&quot;SUCCESS&quot;</code>, <code>response</code>,
+<code>duration_seconds</code>, <code>num_turns</code>, <code>usage{input_tokens,output_tokens,thinking_tokens,cache_read_tokens,total_tokens}</code>
+(observed-live, fixtures/live/agy/out.log). Baton reads <code>conversation_id</code> as
+the session id, <code>response</code>, <code>status</code>.</p>
+</li>
+<li><p>Exit codes:</p>
+<table>
+<thead>
+<tr>
+<th>exit</th>
+<th>meaning</th>
+<th>source</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td><code>status: SUCCESS</code></td>
+<td>observed-live (both attempts; attempt 1 was a success in the wrong directory)</td>
+</tr>
+<tr>
+<td>non-zero</td>
+<td>fatal/auth</td>
+<td>docs-only</td>
+</tr>
+</tbody></table>
+</li>
+<li><p>Modes (<code>--mode</code>): <code>accept-edits</code>, <code>plan</code> (source: <code>agy --help</code>). Baton: default
+<code>accept-edits</code>; forbidden <code>--dangerously-skip-permissions</code>. <code>accept-edits</code>
+allowed the write headless (observed-live).</p>
+</li>
+<li><p>Resume: <code>--conversation &lt;id&gt;</code> (by id) or <code>--continue</code> (most recent) (source:
+<code>agy --help</code>; docs-only until phase 5).</p>
+</li>
+<li><p>Limit signals: see § Limit signals (phase 4).</p>
+</li>
+</ul>
+<h2 id="grok"><a class="anchor" href="#grok">grok</a></h2>
+<ul>
+<li><p>Version grok 0.2.51 (f4f85a649) [stable] (source: <code>grok --version</code>).</p>
+</li>
+<li><p>Binary: <code>~/.grok/bin/grok.exe</code> (native; also an npm shim on PATH);
+<code>BATON_GROK_BIN</code> overrides (source: <code>where grok</code>).</p>
+</li>
+<li><p>Headless argv (from cmd.txt): <code>grok.exe -p &quot;&lt;prompt&gt;&quot; --output-format json --permission-mode acceptEdits</code>; stdin <code>ignore</code>.
+<code>--prompt-file &lt;path&gt;</code> also exists (source: <code>grok --help</code>).</p>
+</li>
+<li><p>Output: one JSON object <code>{text, stopReason, sessionId, requestId, thought}</code>
+(observed-live, fixtures/live/grok/out.log).</p>
+</li>
+<li><p>Exit codes:</p>
+<table>
+<thead>
+<tr>
+<th>exit</th>
+<th>meaning</th>
+<th>source</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>printed JSON with <code>stopReason:&quot;Cancelled&quot;</code> and did no work: the CLI was not logged in, printed a device-code prompt on stderr (<code>https://accounts.x.ai/oauth2/device?user_code=…</code>, &quot;Waiting for authorization...&quot;) and gave up after ~58 s</td>
+<td>observed-live, fixtures/live/grok/err.log</td>
+</tr>
+</tbody></table>
+<p>A zero exit with no DONE marker and no diff is exactly the <code>no_progress</code> class
+the completion contract exists for.</p>
+</li>
+<li><p>Permission modes: <code>default</code>, <code>acceptEdits</code>, <code>auto</code>, <code>dontAsk</code>,
+<code>bypassPermissions</code>, <code>plan</code> (source: <code>grok --help</code>). Baton: default
+<code>acceptEdits</code>; forbidden <code>bypassPermissions</code>, <code>--always-approve</code>.</p>
+</li>
+<li><p>Login: <code>grok login</code> (source: <code>grok --help</code> Commands).</p>
+</li>
+<li><p><strong>Verdict: not verified, no adapter registered.</strong> <code>src/adapters/grok.mjs</code> is
+built from <code>--help</code> and unit-tested for shape and forbidden flags, but stays
+out of <code>src/adapters/index.mjs</code> until <code>grok login</code> has been completed on the
+machine and <code>node scripts/probe.mjs --adapter grok --repo &lt;toy&gt;</code> passes.</p>
+</li>
+</ul>
+<h2 id="interactive-taps"><a class="anchor" href="#interactive-taps">Interactive taps</a></h2>
+<p>What <code>baton claude|codex|agy</code> reads while the real interactive CLI runs. Same
+tagging rule: <code>observed-live 2026-09-11</code> means the build machine did it;
+<code>docs-only</code> means the CLI&#39;s own source or documentation says so and Baton has
+not seen it happen. Machine: Claude Code 2.1.268, codex-cli 0.153.4, agy 1.2.0.</p>
+<p>Shared: the agent is spawned with stdio inherited and the user&#39;s arguments
+passed through (<code>src/attach.mjs</code> <code>spawnSpec</code>); the child environment is
+<code>sanitizeEnv(process.env, { interactive: true })</code> plus the account&#39;s config-dir
+variable and <code>BATON_SESSION</code> (source: src/attach.mjs, src/env.mjs).</p>
+<h3 id="claude-tap"><a class="anchor" href="#claude-tap">claude tap</a></h3>
+<ul>
+<li>Attach: <code>claude &lt;args&gt; --settings &lt;BATON_HOME&gt;/sessions/&lt;id&gt;/claude-settings.json</code>
+(source: src/attach.mjs <code>spawnSpec</code>; src/taps/claude.mjs <code>writeSettings</code>).
+Hooks in a <code>--settings</code> file merge with the user&#39;s rather than replacing
+them; <code>statusLine</code> is the one key that replaces, so Baton runs the user&#39;s own
+command first (source: code.claude.com/docs/en/settings;
+src/taps/claude.mjs <code>userStatusLine</code>). observed-live 2026-09-11: a Baton
+session ran with every user hook still firing.</li>
+<li>Hooks written (source: src/taps/claude.mjs <code>settingsFor</code>): <code>SessionStart</code>,
+<code>UserPromptSubmit</code>, <code>PostToolUse</code> with matcher <code>Edit|Write|MultiEdit|NotebookEdit</code>,
+<code>Stop</code>, <code>StopFailure</code>, <code>SessionEnd</code>, each
+<code>node &lt;src&gt;/hook.mjs claude-hook --session &lt;id&gt;</code> with a 20 s timeout.
+observed-live 2026-09-11 (hook.log in the session directory).</li>
+<li><code>autoContinueAtUsageLimit: false</code> in the same file, because Baton owns the
+hand-off (source: src/taps/claude.mjs <code>settingsFor</code>).</li>
+<li>Usage: <code>GET https://api.anthropic.com/api/oauth/usage</code>
+(<code>BATON_CLAUDE_USAGE_URL</code> overrides) with <code>Authorization: Bearer &lt;accessToken&gt;</code>
+from <code>&lt;CLAUDE_CONFIG_DIR&gt;/.credentials.json</code> key <code>claudeAiOauth</code>, and header
+<code>anthropic-beta: oauth-2025-04-20</code>; response fields <code>five_hour</code> and
+<code>seven_day</code>, each <code>{ utilization, resets_at }</code>; polled every
+<code>BATON_USAGE_POLL_MS</code> ms, default 60000 (source: src/taps/claude-usage.mjs).
+observed-live 2026-09-11: real windows came back and were written to
+<code>&lt;BATON_HOME&gt;/usage/claude--default.json</code>; a seven_day window at 93 %
+raised the amber warning.</li>
+<li>The wall: <code>StopFailure</code> hook with <code>error: rate_limit</code> (source:
+<a href="https://code.claude.com/docs/en/hooks#stopfailure">https://code.claude.com/docs/en/hooks#stopfailure</a>).
+<strong>observed-live 2026-09-11</strong> <!-- live:claude/rate_limit -->: a real
+<code>StopFailure</code> with <code>error: rate_limit</code> (a 429 <code>rate_limit_error</code>) arrived
+at 07:46:37Z and is kept, scrubbed, as
+<code>fixtures/live/claude/limit-rate_limit.json</code> (src/live-capture.mjs). The
+path can also be run live with <code>baton sessions simulate-limit</code> (the same
+payload through <code>src/hook.mjs</code>, marked <code>baton_simulated</code>, never kept as
+evidence).</li>
+<li>Status line, not usable on 2.1.268: a custom <code>statusLine</code> command passed
+through <code>--settings</code>, and again through a project
+<code>.claude/settings.local.json</code>, was not run at all when it was tried; an
+<code>echo</code> command at both levels left the built-in status line in place while
+hooks from the same <code>--settings</code> file fired (no artifact kept; note in the
+src/taps/claude-usage.mjs header, 2026-09-11). Baton still writes the
+<code>statusLine</code> entry, which records the
+same <code>rate_limits.five_hour</code> / <code>seven_day</code> fields
+(<a href="https://code.claude.com/docs/en/statusline">https://code.claude.com/docs/en/statusline</a>), so the endpoint poll becomes a
+fallback if a later build honours it.</li>
+</ul>
+<h3 id="codex-tap"><a class="anchor" href="#codex-tap">codex tap</a></h3>
+<ul>
+<li>Attach: nothing injected. <code>codex &lt;args&gt;</code> runs as it always does, and Baton
+finds the session&#39;s rollout file afterwards (source: src/attach.mjs
+<code>spawnSpec</code>). Reason: injecting a hook makes codex show its hooks-review
+prompt on every Baton session.</li>
+<li>Which file: <code>&lt;CODEX_HOME&gt;/sessions/YYYY/MM/DD/rollout-*.jsonl</code>, matched on
+<code>session_meta.payload.cwd</code> equal to the session&#39;s cwd with a birth time or
+mtime at or after the spawn time, five seconds of slack (source:
+src/taps/codex.mjs <code>findRollout</code>). observed-live 2026-09-11: the right
+rollout was found for a real hand-off. The file&#39;s mtime is not a content
+clock on Windows — six rollouts from that day had mtimes 7 s to 9 min
+behind their last line — so nothing depends on the two matching.</li>
+<li>Usage: read-only app-server <code>account/rateLimits/read</code>, polled every 60
+seconds by the board and active attach. Baton maps windows by duration,
+including 300 minutes to 5h and 10080 minutes to 7d, rather than assuming
+<code>primary</code> or <code>secondary</code> names. It sends no model turn and does not hardcode
+a quota; only explicit backend availability clears a previous wall (sources:
+<code>src/taps/codex.mjs</code>, <code>src/attach.mjs</code>, <code>src/server.mjs</code>, <code>src/usage.mjs</code>).</li>
+<li>The wall: <code>event_msg.task_complete.error</code> with
+<code>codex_error_info: &quot;usage_limit_exceeded&quot;</code> and message &quot;You&#39;ve hit your usage
+limit … try again at &lt;date&gt;&quot; (source:
+github.com/openai/codex <code>codex-rs/protocol/src/error.rs</code>
+<code>UsageLimitReachedError</code>). The event shape was read from local rollouts;
+the error itself is <strong>observed-live 2026-09-15</strong> <!-- live:codex/usage_limit_exceeded -->.
+A <code>task_complete.error</code> with <code>codex_error_info: usage_limit_exceeded</code> walled
+a codex leg once, but no scrubbed payload was kept, so
+<code>fixtures/live/codex/limit-usage_limit_exceeded.json</code> is still the slot for
+the first one.</li>
+<li>Transcript: <code>response_item.message</code> with <code>role: user</code> and
+<code>content[].type: input_text</code> for prompts; <code>output_text</code> and
+<code>task_complete.last_agent_message</code> for assistant text (source:
+src/taps/codex.mjs; observed-live 2026-09-11).</li>
+<li>Edited files: the <code>*** Add File:</code> / <code>*** Update File:</code> / <code>*** Delete File:</code>
+lines of an <code>apply_patch</code> payload (source: src/taps/codex.mjs; observed-live
+2026-09-11).</li>
+</ul>
+<h3 id="agy-tap"><a class="anchor" href="#agy-tap">agy tap</a></h3>
+<ul>
+<li>Attach: <code>agy &lt;args&gt; --log-file &lt;BATON_HOME&gt;/sessions/&lt;id&gt;/agy.log</code> (source:
+src/attach.mjs <code>spawnSpec</code>). agy 1.2.0 is a closed Go binary with no hook
+surface.</li>
+<li>Usage: none. No percentage is written to any file agy owns; its own status
+line fetches a quota summary from the backend and stores nothing (source:
+src/taps/agy.mjs header).</li>
+<li>The wall: <code>RESOURCE_EXHAUSTED</code>, &quot;it resets in %s&quot;, &quot;out of quota&quot;, and
+&quot;quota exhausted/exceeded&quot; in the log, plus a relative reset parsed out of
+&quot;resets in &lt;n&gt;&lt;s|m|h|d&gt;&quot; (source: strings present in <code>agy.exe</code>;
+src/taps/agy.mjs <code>scanLog</code>).
+<strong>docs-only</strong> <!-- live:agy/agy-resource-exhausted -->:
+<code>RESOURCE_EXHAUSTED (code 429): Individual quota reached … Resets in 71h19m42s.</code> appeared in a session&#39;s <code>agy.log</code> at 08:02:42Z, <code>scanLog</code> read
+the relative reset, and the agent was walled. No payload was kept — the
+capture call in <code>src/attach.mjs</code> was added while that session&#39;s runner was
+already running — so <code>fixtures/live/agy/limit-agy-resource-exhausted.json</code>
+is still the slot for the next one.</li>
+<li>Prompts and conversation id: <code>~/.gemini/antigravity-cli/history.jsonl</code>, one
+<code>{ display, timestamp, workspace, conversationId }</code> per prompt (source:
+src/taps/agy.mjs <code>historyFile</code>; shape observed on disk, last written
+2026-09-09 — the 2026-09-11 agy leg produced no history entry).</li>
+<li>One account only: agy 1.2.0 has no config-directory override, so
+<code>LAYOUT.agy.env</code> is <code>null</code> and <code>accounts add agy</code> is refused (source:
+src/accounts.mjs).</li>
+</ul>
+<h3 id="usage-store-and-the-chooser"><a class="anchor" href="#usage-store-and-the-chooser">Usage store and the chooser</a></h3>
+<ul>
+<li><code>&lt;BATON_HOME&gt;/usage/&lt;agent&gt;--&lt;account&gt;.json</code>:
+<code>{ five_hour: {pct, resets_at}, seven_day: {…}, limited_until, limited_reason, source, updated_at }</code> (source: src/usage.mjs).</li>
+<li>Warning threshold <code>WARN_PCT</code>, default 85, from <code>BATON_WARN_PCT</code>; the warning
+is an amber card, an event, and one terminal bell (source: src/usage.mjs,
+src/attach.mjs).</li>
+<li><code>markLimited()</code> takes the reset the CLI reported; failing that the soonest
+known window reset; failing that now + 5 h (source: src/usage.mjs
+<code>DEFAULT_LIMIT_S</code>).</li>
+<li><code>candidates()</code> yields the other accounts of the same agent first, then the
+remaining agents in the order claude, codex, agy, wrapping, so every option
+is tried once. <code>chooseNext()</code> skips any option still walled and returns the
+walled ones sorted by reset (source: src/usage.mjs).</li>
+</ul>
+<h3 id="session-store"><a class="anchor" href="#session-store">Session store</a></h3>
+<p><code>&lt;BATON_HOME&gt;/sessions/&lt;id&gt;/</code> holds <code>session.json</code>, <code>events.jsonl</code>,
+<code>hook.log</code>, and, per agent, <code>claude-settings.json</code> or <code>agy.log</code>;
+<code>control.json</code> appears only once the board has asked for a hand-off or an
+end (source: src/sessions.mjs header, src/attach.mjs). Statuses and event
+types are listed
+in <a href="/docs/vocabulary">VOCABULARY.md</a>. Board routes: <code>GET /api/sessions</code>,
+<code>GET /api/sessions/:id</code>, <code>POST /api/sessions/:id/handoff</code>,
+<code>POST /api/sessions/:id/end</code>, <code>DELETE /api/sessions/:id</code>, with the list pushed
+as the SSE <code>sessions</code> event (source: src/server.mjs, src/board/sessions.js).</p>
+<h2 id="limit-signals"><a class="anchor" href="#limit-signals">Limit signals</a></h2>
+<p>Recorded in <code>fixtures/limits/&lt;group&gt;/&lt;id&gt;.json</code> and classified by
+<code>src/limits.mjs</code> (<code>classify()</code>); the runner writes the outcome into
+<code>run.json.outcome</code> with the matched <code>signal</code>. Every <code>limit</code> row below is
+still <strong>docs-only</strong>: its text comes from the CLI&#39;s own documentation or
+source, cited in &quot;produced by&quot;. Real limits from all three agents were seen
+on 2026-09-11, but only the claude payload was kept as evidence
+(<code>fixtures/live/claude/limit-rate_limit.json</code>); the codex and agy ones went
+to the session ledger, not to <code>fixtures/limits/</code>. The observed-live rows are
+the non-limit cases the probes actually hit and the detector must never
+mistake for a limit.</p>
+<p>Outcome precedence (<code>src/limits.mjs</code>): spawn error → <code>launch_failed</code>; stderr
+&quot;another auth source is set&quot; or an <code>auth</code> fixture → <code>auth_failed</code> (wins over
+any limit text, even with exit 0); killed from the board → <code>killed</code>; kill timer
+→ <code>stalled</code>; exit 0 + <code>.baton/DONE</code> → <code>completed</code>; adapter-specific then
+generic <code>limit</code> fixture → <code>limit</code>; <code>launch</code> fixture → <code>launch_failed</code>; exit 0 +
+changes, no DONE → <code>incomplete</code>; exit 0, nothing changed → <code>no_progress</code>;
+non-zero exit → <code>failed</code>. Every outcome except <code>completed</code>, <code>auth_failed</code> and
+<code>killed</code> asks the chain to hand off.</p>
+<!-- limits-table:start -->
+<p>Generated by <code>node scripts/limits-table.mjs</code> from 21 fixtures (4 observed-live, 17 docs-only). Classification <code>limit</code> hands the card to the next agent as a usage limit; <code>auth</code> is a failed launch (never a limit); <code>launch</code> is a failed launch that the next agent may still try; <code>budget</code> is a turn or spend cap set by Baton itself; <code>info</code> must never classify as a limit.</p>
+<table>
+<thead>
+<tr>
+<th>id</th>
+<th>adapter</th>
+<th>class</th>
+<th>where</th>
+<th>source</th>
+<th>text (excerpt)</th>
+<th>produced by</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>agy-resource-exhausted</td>
+<td>agy</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>resource-exhausted</td>
+<td><code>agy changelog</code> (&quot;Fixed personal accounts hitting a resource-exhausted error at startup&quot;); agy --help documents no limit wording; falls back to the generic matchers</td>
+</tr>
+<tr>
+<td>claude-budget-limit</td>
+<td>claude</td>
+<td>budget</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>Budget limit reached</td>
+<td><a href="https://code.claude.com/docs/en/cli-reference">https://code.claude.com/docs/en/cli-reference</a> (--max-budget-usd)</td>
+</tr>
+<tr>
+<td>claude-max-turns</td>
+<td>claude</td>
+<td>budget</td>
+<td>stdout</td>
+<td><strong>observed-live</strong></td>
+<td>{&quot;type&quot;:&quot;result&quot;,&quot;subtype&quot;:&quot;error_max_turns&quot;,&quot;is_error&quot;:true,&quot;stop_reason&quot;:&quot;tool_use&quot;,&quot;ter</td>
+<td>fixtures/real-run/leg1/out.log: <code>claude -p --max-turns 2</code> on the real run, 2026-09-10 (docs: <a href="https://code.claude.com/docs/en/cli-reference">https://code.claude.com/docs/en/cli-reference</a> --max-turns &quot;Exits with an error when the limit is reached&quot;)</td>
+</tr>
+<tr>
+<td>claude-model-limit</td>
+<td>claude</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>You’ve hit your Opus limit</td>
+<td><a href="https://code.claude.com/docs/en/costs">https://code.claude.com/docs/en/costs</a> (&quot;You’ve hit your Opus limit&quot; / &quot;You’ve hit your Sonnet limit&quot;)</td>
+</tr>
+<tr>
+<td>claude-session-limit</td>
+<td>claude</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>You’ve hit your session limit</td>
+<td><a href="https://code.claude.com/docs/en/costs">https://code.claude.com/docs/en/costs</a> (section: When a developer asks about a limit)</td>
+</tr>
+<tr>
+<td>claude-weekly-limit</td>
+<td>claude</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>You’ve hit your weekly limit</td>
+<td><a href="https://code.claude.com/docs/en/costs">https://code.claude.com/docs/en/costs</a> (section: When a developer asks about a limit)</td>
+</tr>
+<tr>
+<td>codex-quota-exceeded</td>
+<td>codex</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>quota exceeded</td>
+<td>github.com/openai/codex codex-rs/response-debug-context/src/lib.rs (ApiError::QuotaExceeded =&gt; &quot;quota exceeded&quot;)</td>
+</tr>
+<tr>
+<td>codex-rate-limit-exceeded</td>
+<td>codex</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>rate limit exceeded:</td>
+<td>github.com/openai/codex codex-rs/codex-api/src/error.rs (#[error(&quot;rate limit exceeded: {message}&quot;)])</td>
+</tr>
+<tr>
+<td>codex-skills-notice</td>
+<td>codex</td>
+<td>info</td>
+<td>stdout</td>
+<td><strong>observed-live</strong></td>
+<td>Skill descriptions were shortened to fit the skills context budget. Codex can still see ev</td>
+<td>fixtures/live/codex/out.log (item.completed, item.type=error) from scripts/probe.mjs --adapter codex, 2026-09-10</td>
+</tr>
+<tr>
+<td>codex-usage-limit-reached</td>
+<td>codex</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>Usage limit reached. You&#39;ve reached your usage limit. Increase your limits to continue</td>
+<td>github.com/openai/codex codex-rs/tui/src/chatwidget/turn_runtime.rs (WorkspaceOwnerUsageLimitReached)</td>
+</tr>
+<tr>
+<td>codex-usage-limit</td>
+<td>codex</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>You’ve hit your usage limit for {limit_name}. Switch to another model now,</td>
+<td>github.com/openai/codex codex-rs/protocol/src/error.rs (gh search code &quot;usage limit&quot; --repo openai/codex, 2026-09-10)</td>
+</tr>
+<tr>
+<td>generic-429</td>
+<td>*</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>429 Too Many Requests</td>
+<td>generic HTTP matcher (429 Too Many Requests); lowest priority</td>
+</tr>
+<tr>
+<td>generic-overloaded</td>
+<td>*</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>overloaded_error</td>
+<td>generic matcher (Anthropic API 529 overloaded_error); lowest priority</td>
+</tr>
+<tr>
+<td>generic-quota</td>
+<td>*</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>quota</td>
+<td>generic matcher; lowest priority</td>
+</tr>
+<tr>
+<td>generic-rate-limit</td>
+<td>*</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>rate limit</td>
+<td>generic matcher; lowest priority</td>
+</tr>
+<tr>
+<td>generic-resource-exhausted</td>
+<td>*</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>RESOURCE_EXHAUSTED</td>
+<td>generic matcher (gRPC RESOURCE_EXHAUSTED); lowest priority</td>
+</tr>
+<tr>
+<td>generic-usage-limit</td>
+<td>*</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>docs-only</strong></td>
+<td>usage limit</td>
+<td>generic matcher; lowest priority</td>
+</tr>
+<tr>
+<td>grok-not-logged-in</td>
+<td>grok</td>
+<td>auth</td>
+<td>stderr</td>
+<td><strong>observed-live</strong></td>
+<td>To sign in, open this URL in your browser:    <a href="https://accounts.x.ai/oauth2/device?user_cod">https://accounts.x.ai/oauth2/device?user_cod</a></td>
+<td>fixtures/live/grok/err.log from scripts/probe.mjs --adapter grok, 2026-09-10 (stdout JSON stopReason: Cancelled, exit 0)</td>
+</tr>
+<tr>
+<td>auth-source-set</td>
+<td>*</td>
+<td>auth</td>
+<td>stderr</td>
+<td><strong>docs-only</strong></td>
+<td>another auth source is set</td>
+<td>project brief (Wes, 2026-09-10): stderr saying &quot;another auth source is set&quot; counts as a failed launch; wording not yet observed live</td>
+</tr>
+<tr>
+<td>compile-error</td>
+<td>*</td>
+<td>info</td>
+<td>stderr</td>
+<td><strong>docs-only</strong></td>
+<td>SyntaxError: Unexpected token )     at compileSourceTextModule (node:internal/modules/esm/</td>
+<td>synthetic negative fixture (a crashed agent is not a limit)</td>
+</tr>
+<tr>
+<td>empty-stdout-exit-0</td>
+<td>*</td>
+<td>info</td>
+<td>stdout</td>
+<td><strong>observed-live</strong></td>
+<td></td>
+<td>fixtures/live/grok (exit 0, no work): silence is not a limit</td>
+</tr>
+</tbody></table>
+<!-- limits-table:end --><h2 id="runner-facts-that-apply-to-every-cli-observed-live-in-phase-23-tests"><a class="anchor" href="#runner-facts-that-apply-to-every-cli-observed-live-in-phase-23-tests">Runner facts that apply to every CLI (observed-live in phase 2/3 tests)</a></h2>
+<ul>
+<li>The supervisor is detached (<code>detached: true, windowsHide: true</code>) and survives
+the launcher; <code>run.json</code> moves <code>launching → running → exited|killed|failed</code>.</li>
+<li>Kill is <code>taskkill /PID &lt;pid&gt; /T /F</code> on Windows with one verify-retry
+(<code>BATON_TIMERS_MS=notify,kill,verify</code>, default 30 min / 90 min / 30 s).</li>
+<li>No adapter ever sets <code>shell: true</code>; every spawn is <code>spawn(bin, argv)</code> with a
+native exe or <code>node &lt;entry.js&gt;</code> (test/lessons.test.mjs <code>no-shell-spawn</code>).</li>
+<li>A chain entry naming a forbidden mode or flag makes <code>argv()</code> throw
+<code>forbidden flag: …</code>; the supervisor records the refusal and exits 13 without
+spawning (test/adapters.test.mjs, test/runner.test.mjs).</li>
+</ul>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Baton is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:baton@practicalsystems.io">baton@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>
