@@ -334,7 +334,12 @@
     } else if (onOneLogin && known) {
       // C's framing: one login, one point of failure. The number is what is
       // LEFT, because that is the quantity the reader is deciding against.
-      line = `All ${liveSessions.length === 1 ? 'the' : liveSessions.length} terminal${liveSessions.length === 1 ? '' : 's'} ${liveSessions.length === 1 ? 'is' : 'are'} on ${accountLabel(subject)}, and ${accountLabel(subject)} has ${left}% left.`
+      // One terminal is not "all the terminal": the plural sentence is about
+      // everything riding on one login, and with a single terminal there is no
+      // "all" to make, so it says the plainer thing.
+      line = liveSessions.length === 1
+        ? `Your terminal is on ${accountLabel(subject)}, and ${accountLabel(subject)} has ${left}% left.`
+        : `All ${liveSessions.length} terminals are on ${accountLabel(subject)}, and ${accountLabel(subject)} has ${left}% left.`
     } else if (known) {
       line = `${accountLabel(subject)} has ${left}% left, and ${liveSessions.length} terminal${liveSessions.length === 1 ? ' is' : 's are'} working.`
     } else {

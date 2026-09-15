@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.1 (2026-09-15)
+
+- **Fixed: "All the terminal is on claude".** The verdict's plural sentence is
+  about everything riding on one login, and with a single terminal there is no
+  "all" to make. One terminal now reads `Your terminal is on claude, and claude
+  has 1% left.` Caught by rendering the real board rather than the seeded one.
+- The tab mark is grey, not the accent blue, and the board and the site carry
+  the same mark. The site favicon had spent the one colour that means "this is
+  the action to take" on a browser tab, and the board carried a third, older
+  mark from before the identity colours settled.
+- **Fixed: a merge to `main` did not deploy the site.**
+  `ignoreCommand: git diff --quiet HEAD^ HEAD .` asks whether the single most
+  recent commit touched `site/`. A push is not a commit: five commits landed
+  with `site/` changed in the first, so Vercel cancelled the build and reported
+  it as a green tick. Removed; every push to `main` deploys.
+
 ## 0.5.0 (2026-09-15)
 
 - **The board is a dark product surface, and the largest thing on it is a
