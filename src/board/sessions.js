@@ -23,7 +23,6 @@
   }
   const WIN_WORDS = { '5h': '5 hour', '7d': '7 day' }
   const IDS = ['claude', 'codex', 'agy', 'fake']
-  const FIVE_HOUR_MS = 5 * 3600 * 1000
 
   let view = null
   const NO_BRANCH_BLOCKER = 'this terminal works in the checkout itself: there is no branch of its own to land'

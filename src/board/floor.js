@@ -123,7 +123,6 @@
 
   const WIN_WORDS = { '5h': '5 hour', '7d': '7 day' }
   const IDS = ['claude', 'codex', 'agy', 'fake']
-  const FIVE_HOUR_MS = 5 * 3600 * 1000
 
   // ---- times. The head prints `Times are local.` once, so no row repeats it ----
   // THIS FILE OWNS THE TIME GRAMMAR FOR THE WHOLE BOARD. ago(), clockAt(),
@@ -159,6 +158,14 @@
     if (out < 20 * 3600000) return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     if (out < 6 * 86400000) return d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
+  function elapsedClock(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000))
+    const pad = (n) => String(n).padStart(2, '0')
+    const mm = pad(Math.floor(s / 60) % 60)
+    const ss = pad(s % 60)
+    const h = Math.floor(s / 3600)
+    return h ? `${pad(h)}:${mm}:${ss}` : `${mm}:${ss}`
   }
   function until(epochS) { return Number.isFinite(epochS) ? clockAt(epochS * 1000) : 'unknown' }
 
