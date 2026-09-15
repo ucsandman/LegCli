@@ -536,7 +536,7 @@ Baton is commercial software under the [Baton License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.4.3; see
+and remain available. The version in this source tree is 0.5.0; see
 [npm](https://www.npmjs.com/package/baton-agents) for published versions and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
 

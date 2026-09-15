@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-09-15)
 
 - **The board is a dark product surface, and the largest thing on it is a
   sentence.** The instrument that shipped through 0.4.3 was built against a
