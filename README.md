@@ -390,7 +390,7 @@ baton sessions rm <id>                 forget an ended session
 baton sessions simulate-limit <id>     the real limit path without a real wall (claude, agy)
 baton accounts ls                      logins and their 5h/7d usage
 baton accounts add <claude|codex> <name> | rm <agent> <name> | terms
-baton license                          trial days left, or the license on this machine
+baton license                          the license on this machine, or where to buy one
 baton license activate <key> | deactivate | refresh   (refresh renews a Team key)
 baton share                            who is on the board (off by default; Team plan)
 baton share on [--bind tailscale|lan|<addr>] [--port N] | off
@@ -540,12 +540,13 @@ and remain available. The version in this source tree is 0.5.1; see
 [npm](https://www.npmjs.com/package/baton-agents) for published versions and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
 
-Using it: a 14-day trial starts the first time you type `baton <agent>`,
-every feature on, no card. After that a license: **Personal, $79 once**, one
-human on any number of machines, every release for 12 months and the version
-you have keeps working after that; **Team, $12 per seat per month**,
-Personal plus `baton share` for more than one human on the board. Buy at
-the site, then `baton license activate <key>`. A key is a signed token
+Using it needs a license: **Personal, $79 once**, one human on any number of
+machines, every release for 12 months and the version you have keeps working
+after that; **Team, $12 per seat per month**, Personal plus `baton share` for
+more than one human on the board. Buy at the site, then
+`baton license activate <key>`. There is no trial; there is a **30-day
+money-back guarantee**, so the way to evaluate Baton is to use it on real work
+and ask for a refund if it does not earn its place. A key is a signed token
 checked offline with the public key in `src/license.mjs`; only a Team key
 renewal talks to the site. The bare agent CLIs are never affected by any of
 this; only what Baton adds is licensed.

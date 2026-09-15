@@ -417,6 +417,12 @@ table.reads .sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .rc-ledger span { display: block; margin-top: 4px; font-size: 14px; color: var(--on-blue-faint); }
 
 figure.recreated > figcaption { margin-top: 14px; font-size: 14px; color: var(--muted); max-width: 70ch; }
+/* a real screenshot, not a recreation: the board's own surface is dark, so it
+   sits on the page as its own plate rather than borrowing the band's colour */
+figure.shot { margin-top: 40px; }
+figure.shot img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid rgba(255,255,255,.10); }
+figure.shot > figcaption { margin-top: 14px; font-size: 14px; color: var(--muted); max-width: 70ch; }
+.blue figure.shot > figcaption { color: var(--on-blue-muted); }
 .blue figure.recreated > figcaption { color: var(--on-blue-muted); }
 
 /* Two-session pair */

@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+- **Removed: the 14-day trial.** Baton is bought up front, and the risk
+  reversal is a **30-day money-back guarantee** instead. A trial suits a product
+  used daily by habit; Baton's value is bursty — it pays off in the one moment a
+  limit lands mid-flow, which a fortnight of evaluation does not reliably
+  contain, and a fortnight in which it never fires reads as "meh". The buyer is
+  already paying for two or three agent subscriptions, so at $79 they are not
+  price-sensitive, they are trust-sensitive, and a trial does not answer trust.
+  `trial.json`, `TRIAL_DAYS` and the trial branch in `entitlement()` are gone;
+  `baton <agent>` without a key exits 4 and names the buy URL and the guarantee.
+- **Fixed: the card row was never ported to the dark product surface.** `.r1`
+  through `.r4` — the card row's whole four-column layout — carried no rule in
+  `board.css`, so Background tasks rendered on browser defaults while every
+  other row had been redesigned. `.row-title` never reset the native button
+  either, which put the board's near-white text on the user agent's light-grey
+  fill and made the card title unreadable.
+- **Fixed: a finished card named the wrong agent.** `summarize()` read its
+  adapter off `chain[card.leg]`, which is reset when a station ends, so a card
+  that handed off from one agent to the next and finished reported the agent
+  that *started* the work. A finished card also showed `--:--` where its run
+  time belongs, and now shows how long it took.
+- **Fixed: the settings panel asked for a token no one could need.** On a
+  loopback board with share off, `src/auth.mjs` lets the request in with no
+  token at all, so the API token field is no longer drawn there. It comes back
+  for a token already stored, for a guest, for an off-loopback bind, and
+  whenever health has not answered. No message names an address the server did
+  not give: a refused or redacted health call used to print `127.0.0.1:4747` at
+  someone looking at a different machine, and the owner of a shared board was
+  told their requests were "unauthenticated" when auth had recognised them.
+- **Fixed: three places set a flat `.chip` against other text with no gap**
+  (`claudeclaude-2fbf`, `Files2 changed`, `10:40 AMstarted`), the floor printed
+  `blocked by blocked by card "X"`, and it showed the raw key `needs_approval`
+  where the board says `needs approval`.
+- All nineteen screenshots in `docs/screenshots/` retaken against the current
+  build. `scripts/seed-wes-board.mjs` and the new
+  `scripts/seed-floor-board.mjs` produce the fixtures they need.
+- The landing page shows a real handoff and the real board, not only
+  recreations, and says what a second agent gets without assuming the reader
+  knows git worktrees.
+
 ## 0.5.1 (2026-09-15)
 
 - **Fixed: "All the terminal is on claude".** The verdict's plural sentence is

@@ -200,7 +200,7 @@ async function main() {
     }
     if (cmd === 'on') {
       const a = parseArgs(rest)
-      // more than one human is the Team plan; the trial has it too
+      // more than one human is the Team plan
       const ent = entitlement()
       if (!allows(ent, 'share')) die(2, ent.ok ? `baton share is part of the Team plan (per seat); this machine has a ${ent.plan} license. ${BUY_URL}` : describeLicense(ent))
       try {
@@ -289,7 +289,7 @@ async function main() {
       const ent = entitlement()
       out(describeLicense(ent))
       if (ent.source === 'license') out(`stored at ${licensePath()}`)
-      if (ent.plan === 'trial') out(`Buy: ${BUY_URL}   then: baton license activate <key>`)
+      if (!ent.ok) out(`Buy: ${BUY_URL}   then: baton license activate <key>`)
       return
     }
     if (cmd === 'activate') {
@@ -301,7 +301,7 @@ async function main() {
       } catch (err) { die(2, err.message) }
       return
     }
-    if (cmd === 'deactivate') return out(deactivateLicense() ? `removed ${licensePath()}; the trial clock is unchanged` : 'no license was stored')
+    if (cmd === 'deactivate') return out(deactivateLicense() ? `removed ${licensePath()}; Baton needs a key again before it will run` : 'no license was stored')
     if (cmd === 'refresh') {
       try { const p = await refreshLicense(); out(`renewed ${p.plan} license ${p.id}, valid through ${p.expires}`) } catch (err) { die(2, err.message) }
       return

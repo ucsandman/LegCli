@@ -457,11 +457,10 @@ export function claimHandoffChoice({ sid, agent, account, installed, bundle = nu
 // ---- the command ----
 export async function attach(agent, args = [], { open = true } = {}) {
   if (!AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy)`)
-  // the paid gate: a valid key, or the 14-day trial, or no session (exit 4).
-  // The bare agent is never affected; only what Baton adds is licensed.
+  // the paid gate: a valid key, or no session (exit 4). The bare agent is never
+  // affected; only what Baton adds is licensed.
   const ent = entitlement()
   if (!allows(ent, 'run')) { say(describeLicense(ent)); return 4 }
-  if (ent.plan === 'trial' && process.env.BATON_QUIET !== '1') say(describeLicense(ent))
   // --no-worktree is Baton's flag, not the agent's: it never passes through
   const shareCheckout = args.includes('--no-worktree')
   args = args.filter((a) => a !== '--no-worktree')

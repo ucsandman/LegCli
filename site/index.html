@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Code usage limit handoff and usage monitor | Baton</title>
-<meta name="description" content="A usage monitor and board beside Claude Code, Codex or agy, a worktree per second session, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, 14-day trial.">
+<meta name="description" content="A usage monitor and board beside Claude Code, Codex or agy, a private copy of the repo for a second agent, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, $79 once with a 30-day money-back guarantee.">
 <link rel="canonical" href="https://baton-agents.vercel.app/">
 <meta name="theme-color" content="#1b4fbf">
 <meta name="google-site-verification" content="Eok1iYyy78qZjURJX8m1WEFQJk3H3vKkpwPaFhl5znc">
@@ -45,7 +45,7 @@
     { "@type": "Offer", "name": "Personal", "price": "79", "priceCurrency": "USD", "url": "https://baton-agents.vercel.app/#pricing" },
     { "@type": "Offer", "name": "Team", "price": "12", "priceCurrency": "USD", "url": "https://baton-agents.vercel.app/#pricing", "description": "per seat per month" }
   ],
-  "description": "A local wrapper for Claude Code, Codex and agy: a board and usage monitor beside the agent, a worktree per second session, and a handoff to the next agent in the same terminal when the usage limit hits."
+  "description": "A local wrapper for Claude Code, Codex and agy: a board and usage monitor beside the agent, a private copy of the repo for a second agent, and a handoff to the next agent in the same terminal when the usage limit hits."
 }
 </script>
 </head>
@@ -81,7 +81,7 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
     </div>
     <p>Then type <code>baton claude</code> where you would have typed <code>claude</code>. Same session, same flags.</p>
-    <p class="facts">Node 22 or newer. Zero runtime dependencies. 14-day trial, no card; then $79 once. Binds 127.0.0.1 and leaves your settings files alone.</p>
+    <p class="facts">Node 22 or newer. Zero runtime dependencies. $79 once, with 30 days to ask for your money back. Binds 127.0.0.1 and leaves your settings files alone.</p>
   </div>
 </section>
 
@@ -134,6 +134,12 @@
       <span>The pointer prompt is the one Baton sends; it also appends the task as you first stated it. The bundle carries the rest: the task, the last messages, <code>git diff --stat</code>, dirty files, recent commits, why it stopped.</span>
       <button class="replay" id="replay" type="button" hidden>Replay the handoff</button>
     </div>
+
+    <figure class="shot">
+      <img src="/img/handoff-row.png" width="2080" height="770" loading="lazy" decoding="async"
+           alt="A Baton card mid-handoff: the agent now reads fake-codex, the status is needs approval, the chain says fake-claude handed off, fake-codex pending, and the buttons are Approve, Reassign and Kill.">
+      <figcaption>And the same moment on the board, from a real run. The first agent hit its limit, Baton wrote the bundle and moved the card to the next agent; the chain line reads <code>fake-claude handed off · fake-codex pending</code> and it is waiting for you to approve the start. The two <code>fake-</code> agents are the scripted ones the test suite uses, so this run spends no subscription usage.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -243,6 +249,12 @@
       </div>
       <figcaption>The board, recreated in HTML from the same sample session as the terminal above. The layout, the wording and the colours are the real ones; the tasks are illustrative.</figcaption>
     </figure>
+
+    <figure class="shot">
+      <img src="/img/terminals-1280.png" width="1280" height="2149" loading="lazy" decoding="async"
+           alt="The real Baton board at 1280 pixels: the headline reading that all four terminals are on claude and claude has five percent left, panels for claude, codex and agy, four terminal rows with their prompts and buttons, and counts for finished terminals, landed commits and background tasks.">
+      <figcaption>And the real one, unedited, from a running board. Same page, same words, actual work.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -250,8 +262,9 @@
   <div class="wrap">
     <div class="cols">
       <div class="stack">
-        <h2 id="two-h">A second session gets its own worktree. Nothing merges.</h2>
-        <p>Start <code>baton codex</code> in a checkout where <code>baton claude</code> is already live and the new session gets its own git worktree, <code>.baton-worktrees/&lt;id&gt;</code> on branch <code>baton/&lt;id&gt;</code>, cut from the branch the checkout has out. The terminal prints one line saying where it is.</p>
+        <h2 id="two-h">Two agents in one repo, without either one stepping on the other.</h2>
+        <p>Run a second agent in a repo where one is already working and they would normally fight over the same files. Baton gives the second one its own private copy of the checkout instead, on its own branch, so both edit freely and neither sees the other's half-finished work. Nothing is merged until you say so.</p>
+        <p class="small muted">Under the hood that private copy is a git worktree at <code>.baton-worktrees/&lt;id&gt;</code> on branch <code>baton/&lt;id&gt;</code>, cut from whatever branch the checkout has out. The terminal prints one line saying where it is. If you have never used worktrees, you do not need to: Baton makes it and cleans it up.</p>
         <p>The board's second lane is for background cards: work an agent does with no interactive terminal, each in its own worktree. Build stops with the changes sitting in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. You pick the first agent, and the fallback agents under Advanced options are the same handoff order.</p>
         <p>Its row has a <b>Land</b> button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the row says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of the output, <code>dirty-trunk</code> when the checkout has local changes the landing would overwrite. Nothing is ever pushed.</p>
       </div>
@@ -350,8 +363,8 @@
 <section id="pricing" class="band light" aria-labelledby="pricing-h">
   <div class="wrap">
     <div class="stack" style="margin-bottom: 44px">
-      <h2 id="pricing-h">Fourteen days on trial, then one price for one human.</h2>
-      <p>The trial starts the first time you type <code>baton claude</code>. No card, nothing to sign up for, every feature on. When it ends, Baton stops adding itself and the bare agent keeps working as before.</p>
+      <h2 id="pricing-h">One price for one human, and 30 days to change your mind.</h2>
+      <p>There is no trial, because Baton does not pay off on a schedule. It pays off in the one moment a limit lands in the middle of something, which may be day two or day twenty. So buy it, use it on real work, and if it has not earned its place inside 30 days, reply to your receipt and we refund it in full. No reason required.</p>
     </div>
     <div class="plans">
       <div class="plan plate">
@@ -377,7 +390,7 @@
         <a class="buy" href="https://buy.stripe.com/3cIaEX0DJ3X61qW1erew80k" data-plan="team">Buy Team, $12 a seat</a>
       </div>
     </div>
-    <p class="small muted" style="margin-top: 28px">A key is a signed token checked on your machine with the public key that ships in Baton; the CLI talks to this site only to renew a Team key. After paying you land on a page with the key and it is emailed to you: <code>baton license activate &lt;key&gt;</code>. Prices are before tax; Stripe adds what your country charges. Fourteen-day refund, reply to the receipt.</p>
+    <p class="small muted" style="margin-top: 28px">A key is a signed token checked on your machine with the public key that ships in Baton; the CLI talks to this site only to renew a Team key. After paying you land on a page with the key and it is emailed to you: <code>baton license activate &lt;key&gt;</code>. Prices are before tax; Stripe adds what your country charges. <b>30-day money-back guarantee</b>: reply to the receipt, no reason needed, refunded in full.</p>
   </div>
 </section>
 

@@ -11,7 +11,9 @@ import { makeHome, testEnv, baton, batonFail, ROOT, BATON, sleep } from './helpe
 test('--version and -v print the package version without initializing BATON_HOME', () => {
   const home = makeHome()
   const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
-  for (const args of [['--version'], ['-v']]) assert.equal(baton(args, testEnv(home)).trim(), version)
+  // BATON_UNLICENSED: testEnv would otherwise put a license.json in the home,
+  // and this test is about the home staying empty
+  for (const args of [['--version'], ['-v']]) assert.equal(baton(args, testEnv(home, { BATON_UNLICENSED: '1' })).trim(), version)
   assert.deepEqual(readdirSync(home), [])
 })
 

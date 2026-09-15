@@ -1,6 +1,7 @@
 // Shared test helpers: a throwaway BATON_HOME, a toy git repo, and the CLI.
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
+import { generateKeyPairSync, sign as cryptoSign, createHash, createPrivateKey } from 'node:crypto'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,11 +13,48 @@ export function makeHome() {
   return mkdtempSync(join(tmpdir(), 'baton-home-'))
 }
 
+// Baton is a licensed product with no trial, so an unlicensed throwaway home
+// refuses every session and most of the suite would be testing the refusal
+// instead of the thing it names. Each test home gets a Team key signed by this
+// pair, and BATON_PUBLIC_KEY_B64 points the spawned CLI at its public half. A
+// test that wants the refusal passes BATON_UNLICENSED=1 and gets an empty home.
+const TEST_PAIR = generateKeyPairSync('ed25519')
+export const TEST_PUBLIC_KEY_B64 = TEST_PAIR.publicKey.export({ type: 'spki', format: 'der' }).toString('base64')
+const TEST_PRIVATE_KEY_B64 = TEST_PAIR.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64')
+
+// The key format is reproduced here rather than imported from src/license.mjs:
+// that module pulls in store.mjs, which reads BATON_HOME once at import time,
+// and helpers.mjs is imported by every test file BEFORE it sets BATON_HOME.
+// Importing it here pinned the ledger to whatever home happened to be set.
+// It is four lines; the shape is pinned by test/license.test.mjs.
+export function signTestLicense(payload = {}) {
+  const emailHash = (e) => createHash('sha256').update(String(e).trim().toLowerCase()).digest('hex').slice(0, 16)
+  const full = {
+    v: 1, id: 'lic_test', plan: 'team', seats: 9, email_hash: emailHash('suite@baton.test'),
+    issued: '2026-01-01', expires: '2099-12-31', sub: 'sub_test', ...payload,
+  }
+  const body = Buffer.from(JSON.stringify(full), 'utf8')
+  const key = createPrivateKey({ key: Buffer.from(TEST_PRIVATE_KEY_B64, 'base64'), format: 'der', type: 'pkcs8' })
+  const b64u = (b) => Buffer.from(b).toString('base64url')
+  return `BATON-${b64u(body)}.${b64u(cryptoSign(null, body, key))}`
+}
+
+export function licenseHome(home, payload = {}) {
+  // some tests point BATON_HOME at a path the CLI has not created yet
+  mkdirSync(home, { recursive: true })
+  const body = { key: signTestLicense(payload), activated_at: new Date().toISOString(), id: 'lic_test', plan: payload.plan ?? 'team' }
+  writeFileSync(join(home, 'license.json'), JSON.stringify(body, null, 2) + '\n')
+  return home
+}
+
 export function testEnv(home, extra = {}) {
   // BATON_TRUST=never: a test spawns agents in throwaway repos, and without
   // this the suite would write a trust record for every one of them into the
   // developer's own ~/.claude.json, ~/.codex/config.toml and ~/.gemini.
-  const env = { ...process.env, BATON_HOME: home, BATON_TIMERS_MS: '60000,120000', BATON_POLL_MS: '250', BATON_QUIET: '1', BATON_TRUST: 'never', ...extra }
+  const { BATON_UNLICENSED, ...rest } = extra
+  const base = { BATON_HOME: home, BATON_TIMERS_MS: '60000,120000', BATON_POLL_MS: '250', BATON_QUIET: '1', BATON_TRUST: 'never', BATON_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64 }
+  const env = Object.assign({}, process.env, base, rest)
+  if (BATON_UNLICENSED !== '1') licenseHome(home)
   delete env.DASHCLAW_URL
   delete env.DASHCLAW_API_KEY
   delete env.FAKE_MODE

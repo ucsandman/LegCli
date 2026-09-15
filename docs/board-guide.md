@@ -13,45 +13,50 @@ The visual system, and why it is what it is, is `DESIGN.md` at the repo root.
 ## Screenshots
 
 `docs/screenshots/` (listed here so you know what exists before you look for
-one). These two were taken on 2026-09-15 against the current build:
+one). All nineteen were retaken on 2026-09-15 against the current build, after
+the dark-product-surface redesign and the card-row port that followed it:
 
 ```
 terminals-1280.png        the board at 1280 px, four terminals on one login
 board-400px.png           the same board at 400 px
-```
-
-Every other file in that directory predates the 2026-09-15 redesign and shows
-an anatomy the board no longer has. To retake one, seed a board with the shape a
-real one has and drive it to the state the shot needs:
-
-```
-node scripts/seed-wes-board.mjs                       # 4 live, 5 finished, long paths
-BATON_HOME=%TEMP%/baton-seed-board BATON_TRUST=never node -e "..." # serve on a spare port
-node scripts/board-shots.mjs <port> <tag>             # shoot 1280 and 400, print the numbers
-```
-
-Measure against that seed and never against a board of healthy terminals: styling
-scoped to live rows and measured on a clean board reported 40px terminal rows
-while the real screen showed 400px. Never use port 4747 — that is the live board. Each needs a run that produces its state
-before it can be retaken:
-
-```
 board-details-open.png    a terminal with its expansion open
-floor.png, floor-final-1280.png, floor-final-400.png, floor-landing.png
-share-owner-1280.png, share-guest-1280.png
-board-done.png, board-drawer.png, board-empty.png, board-handoff.png, board-running.png
+board-empty.png           no background tasks at all
+board-running.png         one card running its first agent
+board-handoff.png         the limit hit, the card waiting on you
+board-drawer.png          that card expanded: bundle, runs, timeline
+board-done.png            the card finished, on the agent that finished it
+floor.png                 /floor with nothing queued
+floor-landing.png         /floor with every lane full
+floor-final-1280.png      /floor after a card finished
+floor-final-400.png       the same at 400 px
+share-owner-1280.png      a shared board as its owner
+share-guest-1280.png      the same board as a guest: prompts and repos redacted
+demo-1-claude-running.png  leg 1 running on fake-claude
+demo-2-limit-hit.png       limit hit, bundle written, the row waiting on you
+demo-3-handoff-bundle.png  the row expanded: bundle path, run signal, timeline
+demo-4-codex-running.png   leg 2 running on fake-codex
+demo-5-done.png            done, both legs on the chain
 ```
 
-These five were taken on 2026-09-15, one demo run of the sequence walked through
-in [DEMO.md](DEMO.md), all at 1280x800:
+The five `demo-*.png` are one run of the sequence in [DEMO.md](DEMO.md), all at
+1280 px.
+
+To retake one, seed a board with the shape a real one has and drive it to the
+state the shot needs:
 
 ```
-demo-1-claude-running.png   leg 1 running on fake-claude
-demo-2-limit-hit.png        limit hit, bundle written, the row waiting on you
-demo-3-handoff-bundle.png   the row expanded: bundle path, run signal, timeline
-demo-4-codex-running.png    leg 2 running on fake-codex
-demo-5-done.png             done, both legs on the chain
+node scripts/seed-wes-board.mjs     # 4 live terminals, 5 finished, long paths
+node scripts/seed-floor-board.mjs   # cards in every floor lane, plus a landing
+node scripts/board-shots.mjs <port> <tag>   # shoot 1280 and 400, print the numbers
 ```
+
+Each seeder writes a throwaway `BATON_HOME` under the OS temp dir; serve it on a
+spare port with `BATON_TRUST=never`. **Never use port 4747** — that is the live
+board, with real sessions on it.
+
+Measure against those seeds and never against a board of healthy terminals:
+styling scoped to live rows and measured on a clean board reported 40px terminal
+rows while the real screen showed 400px.
 
 ## The verdict and the logins
 

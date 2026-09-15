@@ -8,19 +8,28 @@
 //   team      per-seat subscription; the key carries an expiry a few days past
 //             the billing period, `baton license refresh` fetches a renewed one
 //
-// Before any key there is a 14-day trial, started on first use and recorded
-// under $BATON_HOME. Key shape: BATON-<base64url payload>.<base64url signature>
-// where the signature is Ed25519 over the payload bytes exactly as encoded.
+// There is no trial. Baton pays off in the moment a limit lands mid-flow, which
+// is not a thing a fortnight of evaluation reliably contains; the risk reversal
+// is a 30-day money-back guarantee instead, which costs no code and no expiry
+// machinery. Key shape: BATON-<base64url payload>.<base64url signature> where
+// the signature is Ed25519 over the payload bytes exactly as encoded.
 import { createPublicKey, createPrivateKey, verify as cryptoVerify, sign as cryptoSign, createHash } from 'node:crypto'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { home } from './store.mjs'
 
 export const PUBLIC_KEY_B64 = 'MCowBQYDK2VwAyEAIpVQymHHJAkIrZHv0u4o0bgfFmtW3Crm7uMwYHP53X8='
+// The suite has to exercise the gate itself — `baton share on` refusing a
+// Personal key, `baton <agent>` refusing nothing at all — and it cannot sign a
+// key for the real public key, which is the point of the real public key. This
+// env seam lets a spawned CLI verify against a throwaway pair. It weakens
+// nothing: Baton ships as readable JavaScript, so anyone who would set this
+// could edit the constant above instead.
+const ACTIVE_PUBLIC_KEY = process.env.BATON_PUBLIC_KEY_B64 || PUBLIC_KEY_B64
 // The date this release was cut. A personal key activates when this is on or
 // before its updates_until. Bumped with every published version.
 export const RELEASE_DATE = '2026-09-14'
-export const TRIAL_DAYS = 14
+export const GUARANTEE_DAYS = 30
 export const SITE = process.env.BATON_SITE || 'https://baton-agents.vercel.app'
 export const BUY_URL = `${SITE}/#pricing`
 export const PLANS = {
@@ -53,7 +62,7 @@ export function parseLicense(key) {
 
 // { ok, reason, payload }. reason is one of: malformed, bad-signature,
 // unknown-plan, personal-updates-ended, team-expired.
-export function verifyLicense(key, { publicKeyB64 = PUBLIC_KEY_B64, today = isoToday(), releaseDate = RELEASE_DATE } = {}) {
+export function verifyLicense(key, { publicKeyB64 = ACTIVE_PUBLIC_KEY, today = isoToday(), releaseDate = RELEASE_DATE } = {}) {
   let parsed
   try { parsed = parseLicense(key) } catch (e) { return { ok: false, reason: e.message } }
   const pub = createPublicKey({ key: Buffer.from(publicKeyB64, 'base64'), format: 'der', type: 'spki' })
@@ -68,7 +77,6 @@ export function verifyLicense(key, { publicKeyB64 = PUBLIC_KEY_B64, today = isoT
 }
 
 export function licensePath() { return join(home(), 'license.json') }
-export function trialPath() { return join(home(), 'trial.json') }
 
 function readJson(f) { try { return JSON.parse(readFileSync(f, 'utf8')) } catch { return null } }
 function writeJson(f, obj) {
@@ -95,35 +103,18 @@ export function deactivate() {
   return had
 }
 
-// The trial starts the first time anything asks. Deleting $BATON_HOME resets
-// it; that is a known and accepted limit of an offline trial.
-export function trial({ today = isoToday(), start = true } = {}) {
-  let t = readJson(trialPath())
-  if (!t?.started && start) { t = { started: today }; writeJson(trialPath(), t) }
-  if (!t?.started) return { started: null, daysLeft: TRIAL_DAYS, expired: false }
-  const used = Math.floor((Date.parse(today) - Date.parse(t.started)) / 86400000)
-  const daysLeft = Math.max(0, TRIAL_DAYS - used)
-  return { started: t.started, daysLeft, expired: used >= TRIAL_DAYS || used < 0 }
-}
-
-// What this machine may do right now. A valid key wins; otherwise the trial;
-// otherwise nothing, with the reason the key (if any) was refused.
-export function entitlement({ today = isoToday(), releaseDate = RELEASE_DATE, startTrial = true } = {}) {
+// What this machine may do right now: a valid key, or nothing, with the reason
+// the stored key (if any) was refused.
+export function entitlement({ today = isoToday(), releaseDate = RELEASE_DATE } = {}) {
   const lic = readLicense()
-  let refused = null
-  if (lic) {
-    const v = verifyLicense(lic.key, { today, releaseDate })
-    if (v.ok) return { ok: true, plan: v.payload.plan, seats: v.payload.seats ?? 1, payload: v.payload, source: 'license' }
-    refused = v.reason
-  }
-  const t = trial({ today, start: startTrial })
-  if (!t.expired) return { ok: true, plan: 'trial', daysLeft: t.daysLeft, source: 'trial', refused }
-  return { ok: false, plan: 'none', reason: refused ?? 'trial-expired', refused }
+  if (!lic) return { ok: false, plan: 'none', reason: 'no-license', refused: null }
+  const v = verifyLicense(lic.key, { today, releaseDate })
+  if (v.ok) return { ok: true, plan: v.payload.plan, seats: v.payload.seats ?? 1, payload: v.payload, source: 'license' }
+  return { ok: false, plan: 'none', reason: v.reason, refused: v.reason }
 }
 
 export function allows(ent, gate) {
   if (!ent.ok) return false
-  if (ent.plan === 'trial') return true
   return (PLANS[ent.plan]?.gates ?? []).includes(gate)
 }
 
@@ -134,14 +125,13 @@ export function explain(reason, payload) {
     case 'unknown-plan': return `the key names a plan this version does not know (${payload?.plan})`
     case 'personal-updates-ended': return `this Personal key covers releases up to ${payload?.updates_until}; this release is dated ${RELEASE_DATE}. Keep the version you have, or renew at ${BUY_URL}`
     case 'team-expired': return `this Team key expired on ${payload?.expires}; run "baton license refresh" (the subscription renews it) or see ${BUY_URL}`
-    case 'trial-expired': return `the 14-day trial has ended. Buy a license at ${BUY_URL}, then: baton license activate <key>`
+    case 'no-license': return `Baton needs a license key. Buy one at ${BUY_URL} (${GUARANTEE_DAYS}-day money-back guarantee), then: baton license activate <key>`
     default: return String(reason)
   }
 }
 
 export function describe(ent) {
   if (!ent.ok) return `no license: ${explain(ent.reason)}`
-  if (ent.plan === 'trial') return `trial: ${ent.daysLeft} day${ent.daysLeft === 1 ? '' : 's'} left · ${BUY_URL}${ent.refused ? ` (stored key refused: ${ent.refused})` : ''}`
   const p = ent.payload
   const until = p.plan === 'personal' ? `updates through ${p.updates_until}` : `renews; valid through ${p.expires}`
   return `${PLANS[p.plan].label} license ${p.id}${p.seats > 1 ? ` · ${p.seats} seats` : ''} · ${until}`
