@@ -16,8 +16,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { dirname, join } from 'node:path'
-import { canonPath, realPath } from './fsx.mjs'
+import { dirname, join, resolve } from 'node:path'
+import { canonPath } from './fsx.mjs'
 import { isActive, listSessions, reapLost, workRoot } from './sessions.mjs'
 
 export const STAMP_PREFIX = '<!-- baton-resume '
@@ -69,7 +69,14 @@ export function perSessionFile(cwd, id) { return join(cwd, '.baton', `RESUME-${i
 
 // An agent started deeper in the tree still finds its checkout's pointer.
 export function findResume(startDir) {
-  let dir = realPath(startDir)
+  // resolve(), not realPath(). The walk only needs an absolute path, and
+  // realPath() also rewrites the spelling: on a Windows host whose temp
+  // directory is reached by an 8.3 short name it returns C:\Users\runneradmin
+  // for a caller who said C:\Users\RUNNER~1, so the root handed back names a
+  // path the caller never used. Two spellings of one checkout are reconciled by
+  // canonPath() at the points that compare them, not by quietly renaming the
+  // directory the caller asked about.
+  let dir = resolve(startDir)
   for (;;) {
     const file = resumeFile(dir)
     if (existsSync(file)) return { root: dir, file }
@@ -239,7 +246,10 @@ export function refreshPointers() {
     // replaced even when some OTHER terminal happens to be live in the
     // checkout, which is the case that left three day old text sitting there.
     if (v.session?.active) continue
-    try { writeIdlePointer(root, { sessions }); touched.push(realPath(root)) } catch { /* a checkout that moved or went read-only */ }
+    // the raw root, the way the session recorded it: this list is deduped by
+    // canonPath() above and then only logged, so normalising the spelling here
+    // renamed the checkout in the log line for no gain
+    try { writeIdlePointer(root, { sessions }); touched.push(root) } catch { /* a checkout that moved or went read-only */ }
   }
   return touched
 }

@@ -133,3 +133,27 @@ occurrence has to be written down or a repeat is never countable.
 - **The lesson that generalises.** Before rewriting a shared stylesheet, list
   every page that links it and open each one. A grep for the class names would
   also have caught this; rendering the page is what actually did.
+
+## 2026-09-15: two pre-existing CI failures, one hiding behind the other
+
+- **Symptom.** Three trust tests failed on the ubuntu job; the windows job showed
+  `cancelled`. Fixing ubuntu revealed three *different* failures on windows, in
+  resume, that had been there for two commits.
+- **Root cause.** A failing matrix leg cancels its siblings, so windows had not
+  run to completion since `1f61414` introduced `test/resume.test.mjs`. Every run
+  after that reported `win=cancelled`, which reads like "not the problem" and is
+  actually "not measured". Both underlying bugs were the same shape: a function
+  describing a path asked the *host* to resolve it. On ubuntu, `resolve()` on
+  `C:\cfg` prepended the runner's cwd; on windows, `realPath()` expanded the 8.3
+  short name in `tmpdir()`, so `C:\Users\RUNNER~1\...` came back as
+  `C:\Users\runneradmin\...` and no longer matched the path the caller passed in.
+- **Fix.** `src/trust.mjs` treats a drive-letter path as already absolute and
+  recognises the older Windows spelling by its spelling rather than by asking the
+  host to resolve it. `src/resume.mjs` walks with `resolve()` instead of
+  `realPath()` and returns the root in the caller's own spelling; two spellings
+  of one checkout are reconciled by `canonPath()` where they are compared.
+- **The lesson that generalises.** `cancelled` on a CI matrix leg is not a pass
+  and not a failure — it is no information, and it stays that way for as long as
+  a sibling keeps failing. Read the per-job conclusions, not the run's, and treat
+  a leg that has not completed since a feature landed as unmeasured. Locally,
+  `npm test` does not run `npm run lint` here: both are needed before a push.
