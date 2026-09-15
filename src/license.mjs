@@ -28,7 +28,7 @@ export const PUBLIC_KEY_B64 = 'MCowBQYDK2VwAyEAIpVQymHHJAkIrZHv0u4o0bgfFmtW3Crm7
 const ACTIVE_PUBLIC_KEY = process.env.BATON_PUBLIC_KEY_B64 || PUBLIC_KEY_B64
 // The date this release was cut. A personal key activates when this is on or
 // before its updates_until. Bumped with every published version.
-export const RELEASE_DATE = '2026-09-14'
+export const RELEASE_DATE = '2026-09-15'
 export const GUARANTEE_DAYS = 30
 export const SITE = process.env.BATON_SITE || 'https://baton-agents.vercel.app'
 export const BUY_URL = `${SITE}/#pricing`

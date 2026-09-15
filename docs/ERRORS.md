@@ -197,3 +197,53 @@ occurrence has to be written down or a repeat is never countable.
   different questions for anything a third party caches by URL. An asset that
   will ever be revised needs a version in its URL from the first ship, not after
   someone notices the old one is still going out.
+
+## The card row was never ported, and nothing noticed for four days (2026-09-15)
+
+- **Symptom.** Retaking `docs/screenshots/` showed the Background tasks rows
+  rendering as unstyled markup: the card title unreadable, chips welded to the
+  text beside them, the four-column layout stacked into blocks. The rest of the
+  board had been redesigned on 2026-09-15 and looked right.
+- **Root cause.** `.r1` `.r2` `.r3` `.r4` — the card row's whole layout — had no
+  rule in `board.css`. `.row-title` had a rule, but it set only `font-size` and
+  `color`, never resetting the native button, so the browser's own
+  `rgb(240,240,240)` fill sat under the board's near-white text. Two separate
+  misses in the same region, neither of which fails a test, a lint, or a build.
+- **Fix.** Both rules written against `.term-row`, the terminal row they are
+  supposed to mirror. `test/board-a11y.test.mjs` now fails if any class that
+  reaches the DOM from `board.js`, `sessions.js`, `floor.js`, `index.html` or
+  `floor.html` has no rule in `board.css`, with a named exception list for the
+  ones queried as selectors only. Verified by deleting the `.r1` rules and
+  watching the test name `.r1`.
+- **The lesson that generalises.** A redesign that lands region by region has no
+  natural signal for the region nobody opened. CSS has no undefined-variable
+  error: an unstyled class renders, it just renders wrong, and it renders wrong
+  only where someone looks. The check that would have caught it is cheap and
+  mechanical — every class the code emits must resolve to a rule — and it should
+  exist before the redesign starts, not after the screenshots expose it.
+
+## Removing the trial turned the test suite red in three unrelated files (2026-09-15)
+
+- **Symptom.** After deleting the 14-day trial from `src/license.mjs`,
+  `share.test.mjs`, `cards.test.mjs` and `launcher.test.mjs` failed with
+  licensing errors, none of which mention licensing in their test names.
+- **Root cause.** The trial opened every gate for free, so ~470 tests had been
+  passing the licence check without ever declaring they needed to. Removing it
+  made the suite's dependence on it visible all at once.
+- **Fix.** `testEnv()` writes a Team key into each throwaway home, signed by a
+  pair generated per run, with `BATON_PUBLIC_KEY_B64` pointing the spawned CLI
+  at its public half. `BATON_UNLICENSED=1` opts a test back into the refusal.
+- **A second bug inside the fix.** The first version imported `src/license.mjs`
+  from `test/helpers.mjs` to reuse `signLicense`. That pulls in `store.mjs`,
+  which reads `BATON_HOME` once at import time, and `helpers.mjs` is imported by
+  every test file *before* it sets `BATON_HOME` — so the ledger was pinned to
+  whatever home happened to be set, which on a developer machine is the real
+  `~/.baton`. Caught because `server.test.mjs` started failing on a card it had
+  just written. The key format is now reproduced in `helpers.mjs` instead.
+  Checked `~/.baton` afterwards: no test cards, no `license.json`, nothing
+  written.
+- **The lesson that generalises.** A permissive default in test setup is load
+  bearing and invisible; you find out how much only when you remove it. And a
+  module that reads the environment at import time cannot be imported from a
+  helper that runs before the environment is set, no matter how small the thing
+  you wanted from it.

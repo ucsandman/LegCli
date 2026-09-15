@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-09-15)
 
 - **Removed: the 14-day trial.** Baton is bought up front, and the risk
   reversal is a **30-day money-back guarantee** instead. A trial suits a product
