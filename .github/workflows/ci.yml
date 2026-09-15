@@ -46,22 +46,38 @@ jobs:
       - name: Test
         run: npm test
 
-      # The docs site is generated and committed, because Vercel serves site/
-      # as static files and runs no build step. An edit to docs/ that never got
-      # rebuilt would ship a public page contradicting the package.
+  # The docs site is generated and committed, because Vercel serves site/ as
+  # static files and runs no build step. An edit to docs/ that never got rebuilt
+  # would ship a public page contradicting the package.
+  #
+  # Its own job so the three-OS test matrix does not each rebuild it. The build
+  # reads only the repo's files, never git history, so a shallow checkout is
+  # enough and two builds of the same tree are byte-identical.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: The committed docs site matches docs/
-        if: runner.os == 'Linux'
         run: |
           npm run docs
           if ! git diff --quiet -- site/; then
             echo "site/ is out of date. Run 'npm run docs' and commit the result."
-            git diff --stat -- site/
+            git diff -- site/
             exit 1
           fi
           echo "site/ is current"
 
   publish-npm:
-    needs: test
+    needs: [test, docs]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

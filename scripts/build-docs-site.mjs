@@ -12,7 +12,6 @@
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync, rmSync, existsSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { execFileSync } from 'node:child_process'
 import { marked } from 'marked'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -281,35 +280,26 @@ ${cards}
 // The sitemap has to list every page that is now indexable, or the new docs
 // are invisible to search and to the AI crawlers that read sitemaps.
 //
-// lastmod comes from git, not from the clock: this file is generated and
-// committed, and a build stamped with today's date would show up as a diff on
-// every CI run and tell search engines the whole site changed daily.
-const commitDate = (path) => {
-  try {
-    const out = execFileSync('git', ['log', '-1', '--format=%cs', '--', path], { cwd: root, encoding: 'utf8' }).trim()
-    return /^\d{4}-\d{2}-\d{2}$/.test(out) ? out : null
-  } catch {
-    return null
-  }
-}
-const fallbackDate = commitDate('.') || '2026-09-15'
-const lastmodFor = (source) => (source ? commitDate(source) : null) || fallbackDate
-
+// No `lastmod`. It is optional, and here it cannot be made honest: this file is
+// generated and committed alongside the pages it describes, so a date read from
+// the clock changes on every build, and a date read from git changes the moment
+// the sources are committed — the sitemap would always describe the commit
+// before the one containing it. Search engines discount a lastmod they cannot
+// trust, so an absent one is worth more than a wrong one.
 const urls = [
-  { loc: `${ORIGIN}/`, priority: '1.0', changefreq: 'weekly', lastmod: lastmodFor('site/index.html') },
-  { loc: `${ORIGIN}/docs`, priority: '0.9', changefreq: 'weekly', lastmod: fallbackDate },
+  { loc: `${ORIGIN}/`, priority: '1.0', changefreq: 'weekly' },
+  { loc: `${ORIGIN}/docs`, priority: '0.9', changefreq: 'weekly' },
   ...PAGES.filter((p) => p.slug !== 'index').map((p) => ({
     loc: `${ORIGIN}/docs/${p.slug}`,
     priority: '0.7',
     changefreq: 'weekly',
-    lastmod: lastmodFor(p.source),
   })),
-  { loc: `${ORIGIN}/support`, priority: '0.5', changefreq: 'monthly', lastmod: lastmodFor('site/support.html') },
-  { loc: `${ORIGIN}/license`, priority: '0.3', changefreq: 'yearly', lastmod: lastmodFor('site/license.html') },
+  { loc: `${ORIGIN}/support`, priority: '0.5', changefreq: 'monthly' },
+  { loc: `${ORIGIN}/license`, priority: '0.3', changefreq: 'yearly' },
 ]
 writeFileSync(join(root, 'site', 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${u.lastmod}</lastmod><changefreq>${u.changefreq}</changefreq><priority>${u.priority}</priority></url>`).join('\n')}
+${urls.map((u) => `  <url><loc>${u.loc}</loc><changefreq>${u.changefreq}</changefreq><priority>${u.priority}</priority></url>`).join('\n')}
 </urlset>
 `)
 
