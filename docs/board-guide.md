@@ -21,7 +21,18 @@ board-400px.png           the same board at 400 px
 ```
 
 Every other file in that directory predates the 2026-09-15 redesign and shows
-an anatomy the board no longer has. Each needs a run that produces its state
+an anatomy the board no longer has. To retake one, seed a board with the shape a
+real one has and drive it to the state the shot needs:
+
+```
+node scripts/seed-wes-board.mjs                       # 4 live, 5 finished, long paths
+BATON_HOME=%TEMP%/baton-seed-board BATON_TRUST=never node -e "..." # serve on a spare port
+node scripts/board-shots.mjs <port> <tag>             # shoot 1280 and 400, print the numbers
+```
+
+Measure against that seed and never against a board of healthy terminals: styling
+scoped to live rows and measured on a clean board reported 40px terminal rows
+while the real screen showed 400px. Never use port 4747 — that is the live board. Each needs a run that produces its state
 before it can be retaken:
 
 ```
