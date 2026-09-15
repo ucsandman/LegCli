@@ -235,3 +235,85 @@ test('a later floor refresh wins over an older deferred response', async () => {
   await first
   assert.equal(app.els.get('count-running').textContent, '2')
 })
+
+// The API token field: a board nothing but this machine can reach has no use
+// for one, and the question "what do I put here" has no answer on 127.0.0.1.
+test('the token field is drawn only when something other than this machine can reach the board', () => {
+  const local = { bind: '127.0.0.1:4747', shareOn: false, isOwner: true, token: '', healthKnown: true, bindKnown: true }
+
+  const off = board.tokenPanel(local)
+  assert.equal(off.hidden, true, 'a loopback board with share off hides the field')
+  assert.match(off.meta, /Local only/)
+  assert.doesNotMatch(off.meta, /unauthenticated/, 'the meta line stops offering a token nobody needs')
+
+  // a stored token must stay clearable, or the only way to sign out is devtools
+  assert.equal(board.tokenPanel({ ...local, token: 'abc' }).hidden, false)
+  assert.match(board.tokenPanel({ ...local, token: 'abc' }).meta, /API token set/)
+
+  // anything that lets a second machine in puts the field back
+  assert.equal(board.tokenPanel({ ...local, shareOn: true }).hidden, false, 'share on')
+  assert.equal(board.tokenPanel({ ...local, isOwner: false }).hidden, false, 'a guest, or health never answered')
+  assert.equal(board.tokenPanel({ ...local, bind: '100.71.2.9:4747' }).hidden, false, 'a Tailscale bind')
+  assert.match(board.tokenPanel({ ...local, bind: '100.71.2.9:4747' }).meta, /unauthenticated/)
+})
+
+test('every loopback spelling auth.mjs accepts is read as local, and a bracketed IPv6 host survives the port strip', () => {
+  for (const host of ['127.0.0.1', 'localhost', '[::1]', '[::ffff:127.0.0.1]']) {
+    const panel = board.tokenPanel({ bind: `${host}:4747`, shareOn: false, isOwner: true, token: '', healthKnown: true, bindKnown: true })
+    assert.equal(panel.hidden, true, `${host} is loopback`)
+  }
+  assert.equal(board.bindHost('[::1]:4747'), '::1')
+  assert.equal(board.bindHost('127.0.0.1:4747'), '127.0.0.1')
+  // a hostname that merely starts the same is not loopback
+  assert.equal(board.tokenPanel({ bind: '127.0.0.1.evil.com:4747', shareOn: false, isOwner: true, token: '', healthKnown: true, bindKnown: true }).hidden, false)
+})
+
+// A board that answered nothing has told this page no address at all, so the
+// panel must not print DEFAULT_BIND at a viewer looking at another server.
+test('a board that never answered names no address and still offers the field', () => {
+  const blind = { bind: '127.0.0.1:4747', shareOn: false, isOwner: false, token: '', healthKnown: false, bindKnown: false }
+
+  const fresh = board.tokenPanel(blind)
+  assert.equal(fresh.hidden, false, 'the only way in is the field, so it is drawn')
+  assert.doesNotMatch(fresh.meta, /127\.0\.0\.1/, 'no invented address')
+  assert.match(fresh.meta, /token/i)
+
+  const refused = board.tokenPanel({ ...blind, token: 'wrong' })
+  assert.equal(refused.hidden, false)
+  assert.match(refused.meta, /refused/i, 'a stored token that still gets 401 is named as the problem')
+  assert.doesNotMatch(refused.meta, /127\.0\.0\.1/)
+})
+
+// With share on, auth.mjs still lets the machine's own browser in as the owner
+// over loopback. The panel used to tell that owner their requests were
+// "unauthenticated", on their own board.
+test('a shared board tells the owner they are recognised, not that they are anonymous', () => {
+  const shared = { bind: '192.168.1.6:4881', shareOn: true, isOwner: true, token: '', healthKnown: true, bindKnown: true }
+  const owner = board.tokenPanel(shared)
+  assert.equal(owner.hidden, false, 'the field stays, so the owner can sign in from elsewhere')
+  assert.match(owner.meta, /owner/i)
+  assert.doesNotMatch(owner.meta, /unauthenticated/)
+
+  // a guest carries a token and is told where it goes
+  const guest = board.tokenPanel({ ...shared, isOwner: false, token: 'abc' })
+  assert.match(guest.meta, /API token set/)
+  assert.match(guest.meta, /192\.168\.1\.6:4881/)
+})
+
+// A guest's /api/health is redacted: no bind, no port, no home. The panel used
+// to fall back to DEFAULT_BIND and tell Priya her token was going to
+// 127.0.0.1:4747, a machine that is not the one she is looking at.
+test('a guest, whose health carries no address, is told no address', () => {
+  const guest = board.tokenPanel({ bind: '127.0.0.1:4747', shareOn: true, isOwner: false, token: 'abc', healthKnown: true, bindKnown: false })
+  assert.equal(guest.hidden, false)
+  assert.match(guest.meta, /API token set/)
+  assert.doesNotMatch(guest.meta, /127\.0\.0\.1/, 'never name the default bind at someone who was told nothing')
+
+  // and a board that did name its address still says it
+  const owner = board.tokenPanel({ bind: '192.168.1.6:4881', shareOn: true, isOwner: false, token: 'abc', healthKnown: true, bindKnown: true })
+  assert.match(owner.meta, /192\.168\.1\.6:4881/)
+
+  // a bind nobody confirmed is never "local only" either
+  const unconfirmed = board.tokenPanel({ bind: '127.0.0.1:4747', shareOn: false, isOwner: true, token: '', healthKnown: true, bindKnown: false })
+  assert.equal(unconfirmed.hidden, false, 'without a confirmed bind the field stays')
+})

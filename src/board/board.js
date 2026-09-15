@@ -59,6 +59,9 @@
   const AGENT_IDS = ['claude', 'codex', 'agy']
   const DEFAULT_BIND = '127.0.0.1:4747'
   const TIMELINE_CAP = 12
+  // mirrors LOOPBACK in src/auth.mjs; state.bind is "<host>:<port>" and an IPv6
+  // host arrives bracketed
+  const LOOPBACK_HOSTS = ['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1']
 
   const state = {
     cards: new Map(),
@@ -86,6 +89,17 @@
     logRequests: new Map(),
     nextLogRequest: 0,
     bind: DEFAULT_BIND,
+    // health answers "can anything but this machine reach the board": a
+    // loopback bind with share off is local only, and a token there is a field
+    // nobody can ever have a use for
+    shareOn: false,
+    isOwner: true,
+    // state.bind is DEFAULT_BIND until health says otherwise, so a board that
+    // 401s the first request would otherwise name 127.0.0.1:4747 to someone
+    // looking at a different server entirely. A guest's health is redacted and
+    // carries no bind at all, so answering is not the same as knowing where.
+    healthKnown: false,
+    bindKnown: false,
     lastHello: null,
   }
   // a card push while an agent writes its log only moves these two
@@ -202,9 +216,19 @@
 
   // an idle card has no run to measure, and a run whose start did not parse is
   // not a zero-length run: both print the placeholder rather than a number
+  // A running card counts up from its current run. A card that has finished
+  // still owes the reader the number: created_at to updated_at is what it took,
+  // and `--:--` in that column was three of the five demo stills saying nothing.
+  // Only a card that has never started keeps the placeholder.
   function runElapsed(card) {
     const from = card.active_run ? Date.parse(card.active_run.started_at) : NaN
-    return Number.isFinite(from) ? elapsedClock(Date.now() - from) : '--:--'
+    if (Number.isFinite(from)) return elapsedClock(Date.now() - from)
+    if (!card.runs_count) return '--:--'
+    const started = Date.parse(card.created_at)
+    const ended = Date.parse(card.updated_at)
+    return Number.isFinite(started) && Number.isFinite(ended) && ended >= started
+      ? elapsedClock(ended - started)
+      : '--:--'
   }
 
   function clockAt(ms) {
@@ -320,6 +344,8 @@
   // fail against a name that is in scope everywhere else in the file
   function guestMode() {
     document.body.classList.add('guest')
+    state.isOwner = false
+    renderTokenMeta()
     for (const node of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.masthead a[href="/floor"]')]) if (node) node.hidden = true
   }
 
@@ -351,7 +377,10 @@
     try {
       const data = await api('/api/health')
       if (request !== state.authRequest) return false
-      if (data.bind) state.bind = `${data.bind}:${data.port}`
+      if (data.bind) { state.bind = `${data.bind}:${data.port}`; state.bindKnown = true }
+      state.shareOn = !!(data.you && data.you.share && data.you.share.on)
+      state.isOwner = !(data.you && data.you.role && data.you.role !== 'owner')
+      state.healthKnown = true
       renderBoardFacts(data)
       renderTokenMeta()
       // a guest is told who they are by health, which is open to them
@@ -362,6 +391,13 @@
     } catch (err) {
       if (request !== state.authRequest) return false
       if (ownerOnly(err)) return guestMode()
+      // health is the only thing that can say this board is local; without it
+      // the token field stays on screen, or a viewer whose token is missing or
+      // wrong has no way to type one
+      state.isOwner = false
+      state.healthKnown = false
+      state.bindKnown = false
+      renderTokenMeta()
       toast(err.message)
       return false
     }
@@ -1138,12 +1174,52 @@
   }
 
   // ---- 6.10 settings: the last region of the page, in flow ----
+  // "<host>:<port>", possibly "[::1]:4747"
+  function bindHost(bind) {
+    const s = String(bind ?? '').trim()
+    const bracketed = s.match(/^\[(.+)\]:\d+$/)
+    if (bracketed) return bracketed[1].toLowerCase()
+    return s.replace(/:\d+$/, '').toLowerCase()
+  }
+
+  // A loopback bind with share off can only ever be reached from this machine,
+  // and src/auth.mjs lets that request in with no token at all. Asking for one
+  // there is a question with no answer, so the field is not drawn. Three things
+  // put it back: a token already stored (which has to stay clearable), a guest
+  // or a health call that never answered (neither has established local), and
+  // any bind or share that lets a second machine in.
+  function tokenPanel({ bind, shareOn, isOwner, token, healthKnown, bindKnown }) {
+    const at = bindKnown ? ` to ${bind}` : ''
+    // nothing has been heard back from the server: do not name an address that
+    // is only this file's default, and do not claim the board is local
+    if (!healthKnown) {
+      return {
+        hidden: false,
+        meta: token ? 'That token was refused. Check it, or clear the field to sign out.' : 'This board wants a token before it will say anything.',
+      }
+    }
+    const localOnly = bindKnown && LOOPBACK_HOSTS.includes(bindHost(bind)) && !shareOn && isOwner && !token
+    if (localOnly) return { hidden: true, meta: `Local only, ${bind} answers this machine and nothing else` }
+    // share on, no token, and the server still called us the owner: auth.mjs
+    // recognised this browser by its loopback address. Saying "unauthenticated"
+    // there was wrong, and it was the line the owner read on their own board.
+    if (shareOn && isOwner && !token) {
+      return { hidden: false, meta: `Signed in as the owner from this machine. A token is only needed from somewhere else.` }
+    }
+    return {
+      hidden: false,
+      meta: token
+        ? `API token set, sent${at} as a bearer token`
+        : `No API token set, requests reach${at || ' this board'} unauthenticated`,
+    }
+  }
+
   function renderTokenMeta() {
+    const panel = tokenPanel({ bind: state.bind, shareOn: state.shareOn, isOwner: state.isOwner, token: getToken(), healthKnown: state.healthKnown, bindKnown: state.bindKnown })
+    const field = document.getElementById('token-field')
+    if (field) field.hidden = panel.hidden
     const meta = document.querySelector('.region-settings .region-meta')
-    if (!meta) return
-    meta.textContent = getToken()
-      ? `API token set, sent to ${state.bind} as a bearer token`
-      : `No API token set, requests reach ${state.bind} unauthenticated`
+    if (meta) meta.textContent = panel.meta
   }
 
   function renderBoardFacts(health) {
@@ -1226,5 +1302,5 @@
 
   // test seam: node:test runs this file with a stub document and reads the
   // pure update decisions back out; in a browser there is no `module`
-  if (typeof module !== 'undefined') module.exports = { drawerRefreshNeeded, staleLogTail }
+  if (typeof module !== 'undefined') module.exports = { drawerRefreshNeeded, staleLogTail, tokenPanel, bindHost }
 })()

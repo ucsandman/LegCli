@@ -391,3 +391,26 @@ test('/api/health asks each adapter where its binary is, so a CLI the runner can
   const tools = (await api('/api/health')).json.tools
   for (const k of ['claude', 'codex', 'agy', 'git', 'chb']) assert.equal(typeof tools[k], 'boolean', k)
 })
+
+// A handoff card finished on its SECOND agent, but card.leg is reset when the
+// station ends, so summarize() read chain[0] and reported the agent that
+// started the work as the one that did it. On a product whose whole claim is
+// "the next one keeps your place", the finished row named the wrong next one.
+test('a card that finished after a handoff names the agent that finished it', async () => {
+  const { ledgerAppend, ledgerUpdate } = await import('../src/store.mjs')
+  const r = await api('/api/cards', { method: 'POST', body: { repo, task: 'Handed off then done', chain: 'fake-claude,fake-codex', title: 'H1', queue: true } })
+  assert.equal(r.status, 201)
+  const id = r.json.card.card_id
+  assert.equal(r.json.card.active_adapter, 'fake-claude', 'before anything runs the first agent is the active one')
+
+  // both legs ran at the build station, then the station ended and leg reset
+  ledgerAppend(id, { type: 'leg_started', summary: 'leg started: adapter=fake-claude', station: 'build', leg: 0 })
+  ledgerAppend(id, { type: 'leg_started', summary: 'leg started: adapter=fake-codex', station: 'build', leg: 1 })
+  ledgerUpdate(id, { status: 'done', station: 'build', leg: 0 })
+
+  const list = await api('/api/cards')
+  const card = list.json.cards.find((c) => c.card_id === id)
+  assert.equal(card.status, 'done')
+  assert.equal(card.active_adapter, 'fake-codex', 'the finished card names the agent that finished it, not chain[0]')
+  assert.deepEqual(card.chain_view.map((x) => x.state), ['handed', 'done'])
+})

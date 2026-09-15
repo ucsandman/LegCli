@@ -109,14 +109,15 @@
       <button type="button" class="btn btn-secondary disclosure" aria-expanded="false" aria-controls="settings-body">Show settings</button>
     </div>
     <div class="drawer settings-body" id="settings-body" hidden>
-      <div class="field">
+      <div class="field" id="token-field" hidden>
         <label for="token-input">API token</label>
         <input type="password" id="token-input" autocomplete="off" spellcheck="false">
         <button type="button" class="btn btn-secondary" id="token-show">Show</button>
         <!-- the address belongs to the region meta above, which board.js writes
              from the live bind. Naming it twice from two sources printed two
-             different servers in one panel. -->
-        <p class="field-help">Stored in this browser's localStorage and sent as a bearer token to the server named above. Clear the field to sign out.</p>
+             different servers in one panel, and on a board that refused the
+             first request there is no address above to point at. -->
+        <p class="field-help">Stored in this browser's localStorage and sent as a bearer token with every request. Clear the field to sign out.</p>
       </div>
       <fieldset class="default-order" id="default-order" hidden>
         <legend>New terminal handoff order</legend>

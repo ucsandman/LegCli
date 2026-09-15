@@ -1026,7 +1026,7 @@
   function fileRow(f) {
     const wrap = el('div', {})
     const pre = el('pre', { class: 'drawer-diff', hidden: '', 'data-scroll-key': `diff:${f.path}` })
-    const row = el('button', { type: 'button', class: 'btn btn-text', 'aria-expanded': 'false', 'data-focus-key': `file:${f.path}` }, [
+    const row = el('button', { type: 'button', class: 'btn btn-text file-row', 'aria-expanded': 'false', 'data-focus-key': `file:${f.path}` }, [
       el('span', { class: 'mono', title: f.path }, [f.path]),
       f.dirty ? el('span', { class: 'chip chip-state-warn' }, ['uncommitted']) : null,
       Number.isFinite(f.adds) ? el('span', { class: 'chip chip-state-ok' }, [`+${f.adds}`]) : null,

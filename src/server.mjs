@@ -62,7 +62,6 @@ export function columnOf(card) {
 
 export function summarize(card) {
   const st = (card.pipeline ?? []).find((s) => s.name === card.station) ?? null
-  const entry = st?.kind === 'agent' ? st.chain[card.leg] ?? null : null
   const last = lastEventOf(card.card_id)
   const runs = readRuns(card.card_id)
   const activeRun = runs.find((r) => ['launching', 'running'].includes(r.status)) ?? null
@@ -73,6 +72,10 @@ export function summarize(card) {
     ? readEvents(card.card_id).filter((ev) => ev.type === 'leg_started' && ev.station === card.station).map((ev) => ev.leg)
     : []
   const lastLeg = startedLegs.length ? Math.max(...startedLegs) : card.leg
+  // card.leg is reset when the station ends, so a finished card read its adapter
+  // off chain[0] and reported the agent that STARTED the work as the one that
+  // did it. On a handoff card that is the wrong name on the finished row.
+  const entry = st?.kind === 'agent' ? st.chain[terminal ? lastLeg : card.leg] ?? null : null
   const legState = (i) => {
     if (terminal) {
       if (!startedLegs.includes(i)) return 'pending'

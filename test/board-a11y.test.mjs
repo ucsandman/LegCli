@@ -229,3 +229,85 @@ function checkJsControls(t, src, name) {
 
 test('board.js: every control it creates has an accessible name', (t) => checkJsControls(t, BOARD_JS, 'board.js'))
 test('floor.js: every control it creates has an accessible name', (t) => checkJsControls(t, FLOOR_JS, 'floor.js'))
+
+// .chip is flat by design: no padding, no background, colour only. Anything
+// that sets one beside other text therefore has to supply the gap itself, or
+// the two render welded — `claudeclaude-2fbf`, `Files2 changed`, `10:40 AMstarted`.
+// This has now been fixed three times in three different containers, so the
+// rule is pinned rather than remembered.
+test('every container that puts a flat chip beside other text declares a gap', () => {
+  const flat = CSS.match(/^\.chip \{([^}]*)\}/m)
+  assert.ok(flat, 'expected a .chip rule in board.css')
+  assert.doesNotMatch(flat[1], /padding|background/, '.chip is flat: if it gains padding, these gaps can go')
+
+  for (const sel of ['.detail-heading', '.cap-line', '.file-row']) {
+    const body = extractCssBlock(CSS, `${sel} {`)
+    assert.match(body, /display:\s*(inline-)?flex/, `${sel} must lay its children out with flex`)
+    assert.match(body, /gap:\s*\d/, `${sel} must declare a gap, or its chips weld to the text before them`)
+  }
+
+  // the timeline row keeps its summary on its own line, so it spaces the two
+  // inline spans directly instead of going flex
+  assert.match(CSS, /\.turn-when \+ \.turn-role \{[^}]*margin-left:\s*\d/, 'the kind word needs space after the clock')
+})
+
+test('the file row carries the class its gap is written against', () => {
+  const SESSIONS_JS = readFileSync(join(ROOT, 'src/board/sessions.js'), 'utf8')
+  assert.match(SESSIONS_JS, /class: 'btn btn-text file-row'/, 'fileRow must keep the file-row class')
+})
+
+// The card row shipped with .r1 .r2 .r3 .r4 carrying no rule at all, so the
+// Background tasks rows rendered on browser defaults while every other row on
+// the board had been ported. A class that reaches the DOM and has no rule is
+// either dead or a miss; both are worth knowing about, so the exceptions are
+// listed by name with a reason rather than left to a grep.
+const NO_RULE_NEEDED = new Set([
+  // queried from JS as selectors, never styled
+  'region-settings', 'region-terminals', 'region-finished', 'region-trunk',
+  'disclosure', 'default-order', 'finished-list', 'trunk-list',
+  'region', 'region-title', 'lease-blocked-row',
+  // floor table columns: the cells are styled through table/th/td
+  'c-agent', 'c-blocked', 'c-card', 'c-event', 'c-lease', 'c-leases',
+  'c-station', 'c-status', 'c-summary',
+])
+
+const CLASS_TOKEN = /^[A-Za-z][\w-]*$/
+function classesUsedIn(src) {
+  const used = new Set()
+  for (const m of src.matchAll(/class: [`'"]([^`'"]+)[`'"]/g)) {
+    for (const c of m[1].split(/\s+/)) if (CLASS_TOKEN.test(c)) used.add(c)
+  }
+  for (const m of src.matchAll(/class="([^"]+)"/g)) {
+    for (const c of m[1].split(/\s+/)) if (CLASS_TOKEN.test(c)) used.add(c)
+  }
+  return used
+}
+
+test('every class the board puts in the DOM has a rule in board.css', () => {
+  const declared = new Set()
+  for (const m of CSS.matchAll(/\.([a-zA-Z][\w-]*)/g)) declared.add(m[1])
+
+  const SESSIONS_JS = readFileSync(join(ROOT, 'src/board/sessions.js'), 'utf8')
+  const sources = {
+    'board.js': BOARD_JS, 'sessions.js': SESSIONS_JS, 'floor.js': FLOOR_JS,
+    'index.html': INDEX_HTML, 'floor.html': FLOOR_HTML,
+  }
+  const missing = []
+  for (const [name, src] of Object.entries(sources)) {
+    for (const c of classesUsedIn(src)) {
+      if (declared.has(c) || NO_RULE_NEEDED.has(c)) continue
+      missing.push(`${name}: .${c}`)
+    }
+  }
+  assert.deepEqual(missing, [], `these classes reach the DOM with no rule in board.css: ${missing.join(', ')}`)
+})
+
+// scheduler.mjs writes `blocked by <holder> on <lease> (against <lease>)` as the
+// event summary, and the floor's column is already headed "Blocked by". Adding
+// a second prefix printed `blocked by blocked by card "X" on src/**`, which sat
+// in docs/screenshots/floor-landing.png for four days before anyone read it.
+test('the floor does not re-prefix a blocked_by summary that already says it', () => {
+  const cell = FLOOR_JS.split('\n').find((l) => l.includes("'data-label': 'Blocked by'"))
+  assert.ok(cell, "expected the floor's Blocked by cell in floor.js")
+  assert.doesNotMatch(cell, /blocked by \$\{/, 'the summary already opens with "blocked by"')
+})

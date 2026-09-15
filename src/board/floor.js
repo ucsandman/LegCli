@@ -76,6 +76,14 @@
     message.text = null
   }
 
+  // the same words the board prints (board.js STATUS_LABELS): these two files
+  // have no module system, so the map is carried rather than imported
+  const STATUS_LABELS = {
+    running: 'running', handing_off: 'handing off', waiting_human: 'waiting human',
+    needs_approval: 'needs approval', paused: 'paused', queued: 'queued',
+    backlog: 'backlog', done: 'done', failed: 'failed', killed: 'killed',
+  }
+
   function toast(msg, tone = 'danger') {
     const text = String(msg)
     const box = document.getElementById('toast')
@@ -443,7 +451,7 @@
       return el('tr', {}, [
         el('td', { 'data-label': 'Card', title: w.title || w.card_id }, [w.title || w.card_id]),
         el('td', { 'data-label': 'Station' }, [w.station || '']),
-        el('td', { 'data-label': 'Status' }, [w.status]),
+        el('td', { 'data-label': 'Status' }, [STATUS_LABELS[w.status] || w.status]),
         el('td', { 'data-label': 'Since' }, [el('span', { class: 'chip' }, [formatTs(w.since)])]),
         el('td', { class: 'row-actions', 'data-label': 'Actions' }, btns),
       ])
@@ -455,7 +463,10 @@
       el('td', { 'data-label': 'Card', title: q.title || q.card_id }, [q.title || q.card_id]),
       el('td', { 'data-label': 'Station' }, [q.station || '']),
       el('td', { 'data-label': 'Leases' }, [el('span', { class: 'chip' }, [(q.leases && q.leases.length ? q.leases : ['**']).join(', ')])]),
-      el('td', { 'data-label': 'Blocked by', title: q.blocked_by || '' }, [q.blocked_by ? `blocked by ${q.blocked_by}` : '']),
+      // the scheduler's blocked_by summary already opens with "blocked by"
+      // (scheduler.mjs), and the column is headed "Blocked by": prefixing it
+      // here printed `blocked by blocked by card "X" on src/**`
+      el('td', { 'data-label': 'Blocked by', title: q.blocked_by || '' }, [q.blocked_by || '']),
     ]), 'Nothing queued. New card on the board queues one; it waits here until a slot and its leases are free.')
   }
 
