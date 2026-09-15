@@ -7,9 +7,9 @@
 [![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](https://baton-agents.vercel.app/docs)
 [![Local first](https://img.shields.io/badge/runs-on%20your%20machine-informational.svg)](https://baton-agents.vercel.app/docs/configuration)
 
-![Claude's five-hour gauge fills to 100 percent, the board headline changes to "at the wall", and the terminal that was running claude is handed to codex and keeps going without a restart](https://baton-agents.vercel.app/img/baton-handoff.gif)
+![The Baton board mid-handoff: claude's terminal row changes to "handing off" and reads "handing off to codex, 5h limit reached", while the codex row above it shows what it landed on main](https://baton-agents.vercel.app/img/baton-handoff.gif)
 
-*Claude hits the five-hour wall. The terminal is handed to codex and keeps going. Nothing is retyped. ([the full 53-second run](https://baton-agents.vercel.app/#handoff))*
+*Claude hits the five-hour wall. The terminal reads `handing off to codex`, and codex carries on there. Nothing is retyped. ([the full 53-second run](https://baton-agents.vercel.app/#handoff))*
 
 ![The Baton board at 1280px: a headline reading "All 4 terminals are on claude, and claude has 5% left", under it the staleness of the reading; a lit claude panel with its 7 day gauge at 95 percent past the reserve notch and its 5 hour gauge at 38; half panels for codex, at the wall, and agy, which publishes no figure; four terminal rows with their prompts and buttons; and counts for finished terminals, what landed and background tasks](https://baton-agents.vercel.app/img/docs/terminals-1280.png)
 
