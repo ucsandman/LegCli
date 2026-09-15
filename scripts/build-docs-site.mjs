@@ -176,7 +176,7 @@ function page ({ slug, title, description, body, headings }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(/leg/i.test(title) ? title : `${title} | Leg`)}</title>
+<title>${escapeHtml(/legcli/i.test(title) ? title : `${title} | LegCli`)}</title>
 <meta name="description" content="${escapeHtml(description)}">
 <link rel="canonical" href="${url}">
 <meta name="theme-color" content="#0E1012">
