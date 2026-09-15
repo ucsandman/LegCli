@@ -1,7 +1,7 @@
 // Shared test helpers: a throwaway BATON_HOME, a toy git repo, and the CLI.
 import { execFileSync, spawn } from 'node:child_process'
 import { generateKeyPairSync, sign as cryptoSign, createHash, createPrivateKey } from 'node:crypto'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +10,7 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const BATON = join(ROOT, 'bin', 'baton.mjs')
 
 export function makeHome() {
-  return mkdtempSync(join(tmpdir(), 'baton-home-'))
+  return realpathSync(mkdtempSync(join(tmpdir(), 'baton-home-')))
 }
 
 // Baton is a licensed product with no trial, so an unlicensed throwaway home
@@ -66,7 +66,7 @@ export function git(repo, args) {
 }
 
 export function initRepo(prefix = 'toy-') {
-  const repo = mkdtempSync(join(tmpdir(), prefix))
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
   git(repo, ['init', '-q', '-b', 'main'])
   git(repo, ['config', 'user.email', 'test@example.com'])
   git(repo, ['config', 'user.name', 'Test User'])

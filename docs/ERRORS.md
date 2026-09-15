@@ -3,6 +3,25 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-15: macOS `/var` symlink broke two e2e tests
+
+**Fixed in `test/helpers.mjs`.**
+
+`initRepo` and `makeHome` returned the path from `mkdtempSync(join(tmpdir(),
+...))` verbatim. On macOS, `tmpdir()` returns `/var/folders/…` but `/var` is a
+symlink to `/private/var`. Baton stores paths through `canonPath` (which calls
+`realpathSync`), so `s.cwd` was `/private/var/…` while the test's `repo` was
+`/var/…`. Two `attach-e2e` assertions failed: `assert.equal(codex.cwd, repo)`
+and the `.find(s => s.cwd === repo)` that guards the "End from board" test.
+
+The fix wraps both helpers in `realpathSync` so the returned path matches what
+baton stores. This is a test-infrastructure bug, not a production-code bug:
+`canonPath` was already doing the right thing.
+
+The lesson: any path created from `os.tmpdir()` that will be compared against a
+path stored by production code must be resolved first, because macOS `tmpdir()`
+returns the unresolved symlink form.
+
 ## 2026-09-15: Land could not run the tests on macOS
 
 **Fixed in `src/adapters/resolve.mjs`.**
