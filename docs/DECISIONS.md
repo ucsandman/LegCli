@@ -71,3 +71,39 @@ Durable product and design decisions that the code does not explain on its own. 
 - **Not every push.** `site/vercel.json` carries `ignoreCommand: git diff --quiet HEAD^ HEAD .`, which Vercel maps to the Ignored Build Step. A commit that touches nothing under `site/` cancels the build. The command failing (a shallow clone with no `HEAD^`) exits non-zero, which builds, so the failure mode is a redundant deploy rather than a missed one.
 - **Agent sessions cannot do this part.** `vercel --prod` and `vercel git connect` are both denied by the harness classifier as production deploys, and the CLI auth token cannot be read. Wes ran both.
 
+
+## 2026-09-15: the board is a dark product surface, and DESIGN.md was the defect
+
+- **Six rejected rounds had one cause, and it was not taste.** Every attempt was
+  built against `DESIGN.md`'s brief — "exact, unhurried, mechanical, the printed
+  operator's manual for a piece of test equipment", with a sharp radius stance
+  ("2px on controls, 3px on plates, never 8px"), hairline rules as the only
+  structure, and "no cards as layout". That brief cannot produce the
+  consumer-product finish that was asked for from the first message. The brief
+  was rewritten before anything else, because leaving it is how the next session
+  rebuilds the rejected look.
+- **What replaced it.** Mock B, "dark product surface", with two grafts: mock C's
+  headline framing (the verdict names which login everything is on and how much
+  is left, rather than restating the number the panel beneath it prints) and
+  mock A's staleness sentence (the age of a reading plus which direction it is
+  wrong in). Neutral near-black ground, panels raised with a top highlight and a
+  shadow, 16px radii, type 13 to 52px, one accent on the primary action.
+- **Size encodes importance.** The login carrying the terminals gets the wide lit
+  panel; a login with one fact gets a half panel; a login with no figure draws no
+  instrument. Previously every login got an identical row, so the layout said
+  nothing before you read it. This is the single decision that does the most work
+  on the page.
+- **History leaves the live area.** Finished terminals, landed commits and
+  background tasks became three counts on the ground that open on click. On a
+  real board they are most of the list, and at equal visual weight they buried
+  the one or two terminals that were live.
+- **The site runs on the board's hex values, not an approximation.** A marketing
+  page that recreates the product in a different palette is a picture of a
+  different product. `site/style.css` carries the same numbers as
+  `src/board/board.css`, and both recreations were rebuilt against what the board
+  actually renders.
+- **Design agents must be spawned as `general-purpose`.** The lean agent types
+  (`sonnet-implementer`, `opus-owner`, `haiku-scout`) have no Skill tool at all,
+  so a design subagent spawned as one of them works from a paraphrase in its
+  prompt instead of from `frontend-design` and `impeccable`. That was the second,
+  independent reason the v3 mocks failed.

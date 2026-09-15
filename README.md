@@ -7,7 +7,7 @@
 [![Runtime deps: 0](https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg)](package.json)
 [![Local first](https://img.shields.io/badge/runs-on%20your%20machine-informational.svg)](#network-exposure)
 
-![The Baton board at 1280px: the instrument head with one row per login, a 96% five-hour rail on claude and codex at the wall; three terminal panels, two of them raised and reading "waiting on you" because codex and claude are both changing src/server.mjs in separate checkouts; the Landed on main list; the empty Background tasks region](docs/screenshots/terminals-1280.png)
+![The Baton board at 1280px: a headline reading "All 4 terminals are on claude, and claude has 5% left", under it the staleness of the reading; a lit claude panel with its 7 day gauge at 95 percent past the reserve notch and its 5 hour gauge at 38; half panels for codex, at the wall, and agy, which publishes no figure; four terminal rows with their prompts and buttons; and counts for finished terminals, what landed and background tasks](docs/screenshots/terminals-1280.png)
 
 You keep using your coding agents exactly as you do today, in any terminal,
 from your own config directory: Baton adds its hooks in a separate per-session

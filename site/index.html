@@ -52,7 +52,7 @@
 <header class="nav">
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Baton, home">
-      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="3" fill="#0f2a6e"/><rect x="7" y="14" width="18" height="4" rx="1" transform="rotate(-35 16 16)" fill="#ffffff"/><circle cx="8" cy="21" r="3" fill="#e08a62"/><circle cx="24" cy="11" r="3" fill="#3fc9a0"/></svg>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2C2F34"/><rect x="7" y="14" width="18" height="4" rx="2" transform="rotate(-35 16 16)" fill="#F3F4F7"/><circle cx="8" cy="21" r="3" fill="#FCA169"/><circle cx="24" cy="11" r="3" fill="#69DBBA"/></svg>
       baton
     </a>
     <nav class="nav-links" aria-label="Sections">
@@ -90,7 +90,7 @@
     </div>
 
     <div class="marker" aria-hidden="true">
-      <span class="tab warn"><code>85%</code><span>the card turns amber and the terminal bell rings once</span></span>
+      <span class="tab warn"><code>85%</code><span>the gauge crosses its reserve notch and the terminal bell rings once</span></span>
     </div>
 
     <figure class="term" id="term" data-owner="claude" aria-label="Terminal transcript of a handoff from claude to codex">
@@ -168,53 +168,77 @@
 <section id="board" class="band light" aria-labelledby="board-h">
   <div class="wrap">
     <div class="cols rev" style="margin-bottom: 40px">
-      <h2 id="board-h">One page that knows what every session is doing.</h2>
-      <p>Every Baton session in every terminal is a card on it: agent and account, repo and branch, the task, the files being touched, the 5h and 7d bars, and what has landed on trunk. Two live sessions touching the same file are flagged red on both cards. Buttons: <b>Land</b>, <b>Hand off now</b>, <b>End</b>.</p>
+      <h2 id="board-h">One page that says what to do next, in a sentence.</h2>
+      <p>The biggest thing on the board is not a number, it is the finding: which login your terminals are all on, and how much of it is left. Under it, each login is a panel sized by how much it matters — the one carrying the work gets the instrument, the ones with a single fact get a line. Each terminal is one row: what it is doing, where, how long, and the buttons that apply to it. Finished terminals and what landed sit at the bottom as counts you can open, because they are history.</p>
     </div>
 
     <figure class="recreated">
-      <div class="board" role="img" aria-label="The Baton board with three live sessions: claude handing off, codex running in its own worktree, agy running">
-        <div class="board-top"><span class="live-dot">live</span><span>3 sessions</span><span class="url">http://127.0.0.1:4747</span></div>
-        <div class="accounts">
-          <span class="pill"><span class="who claude">claude</span><span class="bar" data-state="limit"><span>5h</span><i style="--p:1"></i><b>100%</b></span><span class="bar"><span>7d</span><i style="--p:0.41"></i><b>41%</b></span><span class="walled">limit · back 4:15 PM</span></span>
-          <span class="pill"><span class="who codex">codex</span><span class="bar"><span>5h</span><i style="--p:0.18"></i><b>18%</b></span><span class="bar"><span>7d</span><i style="--p:0.12"></i><b>12%</b></span></span>
-          <span class="pill"><span class="who agy">agy</span><span class="muted">no percentages</span></span>
-        </div>
-        <div class="cards">
-          <div class="card">
-            <div class="card-head"><span class="tag claude">claude</span><span class="tag hand">handed off</span><span class="age">2h 40m</span></div>
-            <div class="task">add an idempotency key to the refund path and cover it with tests</div>
-            <div class="meta"><span>acme/api@main</span><span>31 turns</span><span>9c1e2a4</span></div>
-            <div class="chips"><span class="chip">src/refunds/create.ts</span><span class="chip">src/refunds/idempotency.ts</span></div>
-            <div class="bars"><span class="bar" data-state="limit"><span>5h</span><i style="--p:1"></i><b>100%</b></span><span class="bar"><span>7d</span><i style="--p:0.41"></i><b>41%</b></span></div>
-            <div class="flag warn">↷ handed off to codex · bundle saved</div>
-            <div class="btns"><span>Remove</span></div>
+      <div class="board" role="img" aria-label="The Baton board: a headline reading that all four terminals are on claude and claude has five percent left, a claude panel showing 95 percent of the 7 day window used, codex at the wall, agy publishing no figure, four terminal rows, and counts for finished and landed work">
+        <p class="rc-verdict">All 4 terminals are on claude, and claude has 5% left.</p>
+        <p class="rc-sub">Measured 2h 13m ago. Four terminals have been running since, so the real figure is higher than 95 percent, never lower.</p>
+
+        <div class="rc-logins">
+          <div class="rc-panel rc-lit">
+            <div class="rc-head"><span class="rc-who"><i class="rc-dot claude"></i>claude</span><span class="rc-note">4 terminals working</span></div>
+            <div class="rc-gauge">
+              <span class="rc-label">7 day</span>
+              <span class="rc-track"><i class="claude" style="--p:95%;--stop:89.5%"></i><u style="left:85%"></u></span>
+              <span class="rc-read">95%</span>
+            </div>
+            <div class="rc-gauge rc-minor">
+              <span class="rc-label">5 hour</span>
+              <span class="rc-track"><i class="claude" style="--p:38%;--stop:100%"></i><u style="left:85%"></u></span>
+              <span class="rc-read">38%</span>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-head"><span class="tag codex">codex</span><span class="tag run">running</span><span class="age">6m</span></div>
-            <div class="task">add an idempotency key to the refund path and cover it with tests</div>
-            <div class="meta"><span>acme/api@main</span><span>4 turns</span><span>9c1e2a4</span></div>
-            <div class="chips"><span class="chip">src/refunds/idempotency.ts</span><span class="chip">test/refunds/idempotency.test.ts</span></div>
-            <div class="bars"><span class="bar"><span>5h</span><i style="--p:0.18"></i><b>18%</b></span><span class="bar"><span>7d</span><i style="--p:0.12"></i><b>12%</b></span></div>
-            <div class="flag ok">✓ continued from .baton/RESUME-claude-a3f8.md</div>
-            <div class="btns"><span>Hand off now</span><span>Change order</span><span class="end">End</span></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><span class="tag agy">agy</span><span class="tag run">running</span><span class="age">48m</span></div>
-            <div class="task">rewrite the install page for the docs site</div>
-            <div class="meta"><span>acme/docs@main</span><span>12 turns</span><span>4b77e10</span></div>
-            <div class="chips"><span class="chip">docs/install.md</span></div>
-            <div class="flag">usage unknown · agy exposes none; the wall is still caught</div>
-            <div class="btns"><span>Hand off now</span><span>Change order</span><span class="end">End</span></div>
+          <div class="rc-pair">
+            <div class="rc-panel">
+              <div class="rc-head"><span class="rc-who"><i class="rc-dot codex"></i>codex</span><span class="rc-note">no terminals</span></div>
+              <p class="rc-reading">At the wall</p>
+              <p class="rc-readsub">Back Saturday 10:11 PM. Nothing runs on codex until then.</p>
+            </div>
+            <div class="rc-panel">
+              <div class="rc-head"><span class="rc-who"><i class="rc-dot agy"></i>agy</span><span class="rc-note">no terminals</span></div>
+              <p class="rc-readsub rc-lead">agy publishes no usage figure, ever. Baton shows its terminals and their elapsed time instead.</p>
+            </div>
           </div>
         </div>
-        <div class="landed">
-          <span class="h">landed on main · acme/api</span>
-          <span><span class="sha">9c1e2a4</span> refunds: extract the charge lookup · 2 hours ago</span>
-          <span><span class="sha">4b77e10</span> refunds: idempotency table migration · yesterday</span>
+
+        <div class="rc-terms">
+          <div class="rc-term">
+            <div class="rc-body">
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark bad"></i>near limit</span><span class="rc-where">acme/api on main</span></div>
+              <p class="rc-prompt">add an idempotency key to the refund path and cover it with tests</p>
+              <p class="rc-files">create.ts, idempotency.ts</p>
+            </div>
+            <div class="rc-clock"><span>2h 40m</span><span class="rc-id">a3f8</span></div>
+            <div class="rc-btns"><b>Hand off now</b><span>Details</span></div>
+          </div>
+          <div class="rc-term">
+            <div class="rc-body">
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">acme/docs on main</span></div>
+              <p class="rc-prompt">rewrite the install page for the docs site</p>
+            </div>
+            <div class="rc-clock"><span>48m</span><span class="rc-id">4b77</span></div>
+            <div class="rc-btns"><b>Land</b><span>Details</span></div>
+          </div>
+          <div class="rc-term">
+            <div class="rc-body">
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">C:\Projects</span></div>
+              <p class="rc-prompt rc-empty">No prompt yet. This terminal has been open 6 minutes without a first turn.</p>
+            </div>
+            <div class="rc-clock"><span>6m</span><span class="rc-id">8e8a</span></div>
+            <div class="rc-btns"><b>Land</b><span>Details</span></div>
+          </div>
+        </div>
+
+        <div class="rc-ledger">
+          <div><b>8 finished</b><span>4 lost, 4 ended, in acme/api, acme/docs</span></div>
+          <div><b>18 landed</b><span>newest 38 minutes ago, across three repos</span></div>
+          <div><b>No background tasks</b><span>Nothing is queued.</span></div>
         </div>
       </div>
-      <figcaption>The board, recreated in HTML from the same sample session as the terminal above. The card anatomy and labels are the real ones; the task is illustrative.</figcaption>
+      <figcaption>The board, recreated in HTML from the same sample session as the terminal above. The layout, the wording and the colours are the real ones; the tasks are illustrative.</figcaption>
     </figure>
   </div>
 </section>
@@ -226,29 +250,32 @@
         <h2 id="two-h">A second session gets its own worktree. Nothing merges.</h2>
         <p>Start <code>baton codex</code> in a checkout where <code>baton claude</code> is already live and the new session gets its own git worktree, <code>.baton-worktrees/&lt;id&gt;</code> on branch <code>baton/&lt;id&gt;</code>, cut from the branch the checkout has out. The terminal prints one line saying where it is.</p>
         <p>The board's second lane is for background cards: work an agent does with no interactive terminal, each in its own worktree. Build stops with the changes sitting in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. You pick the first agent, and the fallback agents under Advanced options are the same handoff order.</p>
-        <p>Its card has a <b>Land</b> button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the card says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of the output, <code>dirty-trunk</code> when the checkout has local changes the landing would overwrite. Nothing is ever pushed.</p>
+        <p>Its row has a <b>Land</b> button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the row says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of the output, <code>dirty-trunk</code> when the checkout has local changes the landing would overwrite. Nothing is ever pushed.</p>
       </div>
       <figure class="recreated">
-        <div class="pair" role="img" aria-label="Two claude session cards on one repo: one landed on main, one bounced with a rebase conflict on README.md">
-          <div class="card overlap">
-            <div class="card-head"><span class="tag claude">claude</span><span class="tag run">running</span><span class="age">1m</span></div>
-            <div class="task">Append exactly one line to the end of README.md that says: session B was here. Change nothing else, do not commit, then reply done.</div>
-            <div class="meta"><span>gap3@baton/s-20260911-083321-claude-ae85</span><span>1 turn</span><span>98f8880</span></div>
-            <div class="chips"><span class="chip">own worktree · from main</span><span class="chip hot">README.md</span></div>
-            <div class="flag bad">⚠ claude (claude-a3f8) is changing README.md in another checkout; whoever lands second rebases</div>
-            <div class="flag ok">✓ landed on main · 98f8880 · 1 file +1/-0</div>
-            <div class="btns"><span>Land</span><span>Hand off now</span><span>Change order</span><span class="end">End</span></div>
+        <div class="pair rc-terms" role="img" aria-label="Two claude terminals on one repo, both changing README.md: the first landed on main, the second bounced with a rebase conflict">
+          <div class="rc-term">
+            <div class="rc-body">
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">gap3 on baton/s-20260911-083321-claude-ae85</span><span class="rc-chip">own worktree, from main</span></div>
+              <p class="rc-prompt">Append exactly one line to the end of README.md that says: session B was here. Change nothing else, do not commit, then reply done.</p>
+              <p class="rc-files"><span class="hot">README.md</span></p>
+              <p class="rc-note-ok">landed on main, 98f8880, 1 file +1/-0</p>
+            </div>
+            <div class="rc-clock"><span>1m</span><span class="rc-id">ae85</span></div>
+            <div class="rc-btns"><b>Land</b><span>Details</span></div>
           </div>
-          <div class="card overlap">
-            <div class="card-head"><span class="tag claude">claude</span><span class="tag run">running</span><span class="age">59s</span></div>
-            <div class="task">Append exactly one line to the end of README.md that says: session C was here. Change nothing else, do not commit, then reply done.</div>
-            <div class="meta"><span>gap3@baton/s-20260911-083341-claude-a3f8</span><span>1 turn</span><span>1897ebf</span></div>
-            <div class="chips"><span class="chip">own worktree · from main</span><span class="chip hot">README.md</span></div>
-            <div class="flag bad">⚠ claude (claude-ae85) is changing README.md in another checkout; whoever lands second rebases</div>
-            <div class="flag bad">✗ bounced (rebase-conflict): rebase onto main conflicted in: README.md</div>
-            <div class="btns"><span>Land</span><span>Hand off now</span><span>Change order</span><span class="end">End</span></div>
+          <div class="rc-term">
+            <div class="rc-body">
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">gap3 on baton/s-20260911-083341-claude-a3f8</span><span class="rc-chip">own worktree, from main</span></div>
+              <p class="rc-prompt">Append exactly one line to the end of README.md that says: session C was here. Change nothing else, do not commit, then reply done.</p>
+              <p class="rc-files"><span class="hot">README.md</span></p>
+              <p class="rc-note-bad">bounced (rebase-conflict): rebase onto main conflicted in README.md</p>
+            </div>
+            <div class="rc-clock"><span>59s</span><span class="rc-id">a3f8</span></div>
+            <div class="rc-btns"><b>Land</b><span>Details</span></div>
           </div>
         </div>
+        <p class="rc-hoisted">Both terminals are changing README.md in separate checkouts. Whoever lands second rebases.</p>
         <figcaption>From a live run on 11 September 2026: three claude sessions in a throwaway repo, the second and third in their own worktrees. Land on the second ran the tests and fast-forwarded main; Land on the third bounced and kept its commit on its branch.</figcaption>
       </figure>
     </div>
@@ -259,7 +286,7 @@
   <div class="wrap stack" style="--gap: 40px">
     <h2 id="change-h">Between the warning and the wall, four things happen. You watch them.</h2>
     <div class="steps" style="margin-top: 40px">
-      <div class="step warn"><code>85%</code><p>The card turns amber and the terminal bell rings once. Get to a stopping point, or keep typing.</p></div>
+      <div class="step warn"><code>85%</code><p>The gauge crosses its reserve notch and the terminal bell rings once. Get to a stopping point, or keep typing.</p></div>
       <div class="step bad"><code>limit</code><p>Baton saves the bundle it has been refreshing every two minutes: the task, the last messages, <code>git diff --stat</code>, dirty files, recent commits, and why it stopped.</p></div>
       <div class="step"><code>stop</code><p>The agent process is stopped and the terminal is put back the way it was, down to the mouse modes and scroll margins a killed agent leaves behind, so the next agent starts on a clean line under your history. The next option starts in it: another login of the same agent if you added one, otherwise the next agent in your order.</p></div>
       <div class="step ok"><code>first turn</code><p>The new agent reads <code>.baton/RESUME.md</code>, checks <code>git status</code> and <code>git diff</code>, and carries on with the same task.</p></div>
@@ -267,11 +294,11 @@
     <div class="cols" style="margin-top: 56px">
       <div class="stack-tight">
         <h3>The order</h3>
-        <p class="muted">You set it. Other logins of the same agent come first, then the other agents in the order you saved, each tried once. It is a priority list, not a rotation: put agy at the bottom and agy is the last option from a claude terminal and from a codex terminal alike. Settings holds the default new terminals copy, and <b>Change order</b> on a card changes that one terminal while it runs. An option whose CLI is missing or whose wall has not reset is skipped.</p>
+        <p class="muted">You set it. Other logins of the same agent come first, then the other agents in the order you saved, each tried once. It is a priority list, not a rotation: put agy at the bottom and agy is the last option from a claude terminal and from a codex terminal alike. Settings holds the default new terminals copy, and <b>Change order</b> in a terminal's details changes that one terminal while it runs. An option whose CLI is missing or whose wall has not reset is skipped.</p>
       </div>
       <div class="stack-tight">
         <h3>When every option is out</h3>
-        <p class="muted">The terminal prints each option with its reset time, soonest first, then stays open with a countdown to the first reset and starts that agent from the bundle when it arrives. Ctrl-C, or End on the card, quits instead.</p>
+        <p class="muted">The terminal prints each option with its reset time, soonest first, then stays open with a countdown to the first reset and starts that agent from the bundle when it arrives. Ctrl-C, or End on the row, quits instead.</p>
       </div>
     </div>
   </div>
@@ -341,7 +368,7 @@
         <ul>
           <li>Everything in Personal, for each person on the board</li>
           <li><code>baton share on</code>: the board on Tailscale or your LAN, a token per human</li>
-          <li>Guests see redacted cards and can request a handoff; you approve it</li>
+          <li>Guests see redacted rows and can request a handoff; you approve it</li>
           <li>The key renews with the subscription; <code>baton license refresh</code> fetches it</li>
         </ul>
         <a class="buy" href="https://buy.stripe.com/3cIaEX0DJ3X61qW1erew80k" data-plan="team">Buy Team, $12 a seat</a>

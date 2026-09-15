@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Baton floor</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="board.css">
 </head>
 <body>
 
-<header class="topbar">
-  <div class="shell">
+<header class="masthead wrap">
+  <div class="masthead-left">
     <h1 class="brand">Baton floor</h1>
     <!-- the connection state sits second, immediately after the brand, the same
          place it sits on the board: the two bars are read as one bar. -->
@@ -18,16 +18,17 @@
       <span class="sse-word" id="sse-text">connecting</span>
       <span class="sse-rule is-connecting" id="sse-dot" aria-hidden="true"></span>
     </div>
-    <div class="repos-status">repos: <span id="repos-list">-</span></div>
     <div class="sched-status" id="sched-status"></div>
+  </div>
+  <div class="masthead-right">
+    <div class="repos-status">repos: <span id="repos-list">-</span></div>
     <div class="counts-status">
       running <span id="count-running">0</span>
       queued <span id="count-queued">0</span>
       waiting <span id="count-waiting">0</span>
       done <span id="count-done">0</span>
     </div>
-    <div class="spacer"></div>
-    <a class="board-link" href="/">Board</a>
+    <a class="floor-link" href="/">Board</a>
   </div>
 </header>
 
@@ -37,16 +38,14 @@
      address. -->
 <div class="banner" id="banner" role="status" hidden>Connecting to Baton.</div>
 
-<main class="shell">
+<main class="wrap">
 
-  <section class="head" aria-label="Accounts and usage">
-    <div id="floor-accounts"></div>
-    <p class="head-caption">Times are local.</p>
-  </section>
+  <section class="logins" id="floor-accounts" aria-label="Logins"></section>
+  <p class="head-caption">Times are local.</p>
 
-  <section class="region" aria-labelledby="running-head">
-    <div class="region-head">
-      <h2 class="region-title" id="running-head">Running</h2>
+  <section class="region-floor" aria-labelledby="running-head">
+    <div class="section-head">
+      <h2 id="running-head">Running</h2>
       <p class="region-meta"></p>
     </div>
     <table class="ftable">
@@ -60,9 +59,9 @@
     </table>
   </section>
 
-  <section class="region" aria-labelledby="waiting-head">
-    <div class="region-head">
-      <h2 class="region-title" id="waiting-head">Waiting on humans</h2>
+  <section class="region-floor" aria-labelledby="waiting-head">
+    <div class="section-head">
+      <h2 id="waiting-head">Waiting on humans</h2>
       <p class="region-meta"></p>
     </div>
     <table class="ftable">
@@ -75,9 +74,9 @@
     </table>
   </section>
 
-  <section class="region" aria-labelledby="queued-head">
-    <div class="region-head">
-      <h2 class="region-title" id="queued-head">Queued</h2>
+  <section class="region-floor" aria-labelledby="queued-head">
+    <div class="section-head">
+      <h2 id="queued-head">Queued</h2>
       <p class="region-meta"></p>
     </div>
     <table class="ftable">
@@ -90,9 +89,9 @@
     </table>
   </section>
 
-  <section class="region" aria-labelledby="leases-head">
-    <div class="region-head">
-      <h2 class="region-title" id="leases-head">Leases</h2>
+  <section class="region-floor" aria-labelledby="leases-head">
+    <div class="section-head">
+      <h2 id="leases-head">Leases</h2>
       <p class="region-meta"></p>
     </div>
     <table class="ftable">
@@ -105,9 +104,9 @@
     </table>
   </section>
 
-  <section class="region" aria-labelledby="trunk-lane-head">
-    <div class="region-head">
-      <h2 class="region-title" id="trunk-lane-head">Trunk lane</h2>
+  <section class="region-floor" aria-labelledby="trunk-lane-head">
+    <div class="section-head">
+      <h2 id="trunk-lane-head">Trunk lane</h2>
       <p class="region-meta"></p>
     </div>
     <table class="ftable">
@@ -119,7 +118,7 @@
     </table>
   </section>
 
-</main><!-- /.shell -->
+</main><!-- /.wrap -->
 
 <div class="sysmsg" id="toast" aria-live="polite"></div>
 

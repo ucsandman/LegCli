@@ -2,25 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Baton</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="board.css">
 </head>
 <body>
-
-<header class="topbar">
-  <div class="shell">
-    <h1 class="brand">Baton</h1>
-    <div class="sse-status" role="status">
-      <span class="sse-word" id="sse-text">connecting</span>
-      <span class="sse-rule is-connecting" id="sse-dot" aria-hidden="true"></span>
-    </div>
-    <div class="sched-status" id="sched-status"></div>
-    <div class="spacer"></div>
-    <a class="floor-link" href="/floor">Floor</a>
-  </div>
-</header>
 
 <!-- board.js rewrites this line from the live bind address the moment the SSE
      hello lands. The markup is static and cannot know the port, so it names
@@ -28,51 +15,100 @@
      sentence that says nothing about where. -->
 <div class="banner" id="banner" role="status" hidden>Connecting to Baton.</div>
 
-<div class="shell">
+<div class="wrap">
 
-  <section class="head" aria-label="Accounts and usage">
-    <div id="accounts"></div>
-    <p class="head-caption">Times are local.</p>
+  <header class="masthead">
+    <p class="brand">Baton</p>
+    <div class="masthead-right">
+      <div class="sse-status" role="status">
+        <span class="sse-word" id="sse-text">connecting</span>
+        <span class="sse-rule is-connecting" id="sse-dot" aria-hidden="true"></span>
+      </div>
+      <div class="sched-status" id="sched-status"></div>
+      <a class="floor-link" href="/floor">Floor</a>
+    </div>
+  </header>
+
+  <!-- The largest thing on the board is a sentence, not a number. sessions.js
+       writes both lines from the live view: the headline names the one fact
+       that decides what happens next, and the line under it carries the
+       staleness, because a reading taken two hours ago is a floor and never a
+       measurement. -->
+  <section class="verdict" aria-label="What the board says">
+    <h1 id="verdict-line">Reading the logins.</h1>
+    <p id="verdict-sub"></p>
   </section>
 
-  <section class="region region-terminals" aria-labelledby="terminals-head">
-    <div class="region-head">
-      <h2 class="region-title" id="terminals-head">Terminals</h2>
+  <section class="logins" id="accounts" aria-label="Logins"></section>
+  <p class="head-caption" id="head-caption">Times are local.</p>
+
+  <section class="region-terminals" aria-labelledby="terminals-head">
+    <div class="section-head">
+      <h2 id="terminals-head">Terminals</h2>
       <!-- the one ranked verdict for the whole region, and the only live region
            on the board that carries product signal rather than connection
            state. It changes only when the counts change, so it cannot chatter. -->
       <p class="region-meta" role="status" aria-atomic="true"></p>
+      <!-- a fact true of every terminal is a property of the board, not of any
+           row, so it is said once here instead of once per row -->
+      <p class="hoisted" id="terminals-hoisted" hidden></p>
       <span class="chip" id="whoami" hidden></span>
     </div>
-    <div class="session-list" id="session-grid"></div>
+    <div class="panel terms" id="session-grid"></div>
     <p class="empty-line" hidden>No terminal is running. Start one in any repo: <code>baton claude</code>, <code>baton codex</code> or <code>baton agy</code>. It appears here within a second of the agent's first turn.</p>
   </section>
 
-  <section class="region region-trunk" aria-labelledby="trunk-head">
-    <div class="region-head">
-      <h2 class="region-title" id="trunk-head">Landed on main</h2>
+  <!-- Finished terminals, what landed, and what is queued are all history or
+       background. They sit on the ground rather than on a panel, because a
+       raised surface here would compete with the terminals that are live. -->
+  <section class="ledger" aria-label="Finished and background work">
+
+    <div class="ledger-cell region-finished">
+      <h3 id="finished-head">No finished terminals</h3>
       <p class="region-meta"></p>
+      <div class="ledger-actions" id="finished-actions"></div>
     </div>
-    <div class="trunk-list" id="trunk"></div>
+
+    <div class="ledger-cell region-trunk">
+      <h3 id="trunk-head">Nothing landed yet</h3>
+      <p class="region-meta"></p>
+      <div class="ledger-actions" id="trunk-actions"></div>
+    </div>
+
+    <div class="ledger-cell" id="board">
+      <h3 id="cards-head">No background tasks</h3>
+      <p class="region-meta"></p>
+      <div class="ledger-actions">
+        <button type="button" class="btn btn-secondary" id="new-card-btn">New card</button>
+      </div>
+      <p class="empty-line" id="empty-state" hidden>A card runs an agent headless in its own worktree. <button type="button" class="btn btn-text" id="empty-new-card-btn">New card</button> queues one.</p>
+    </div>
+
   </section>
 
-  <main class="region" id="board" aria-labelledby="cards-head">
-    <div class="region-head">
-      <h2 class="region-title" id="cards-head">Background tasks</h2>
-      <p class="region-meta"></p>
-      <button type="button" class="btn btn-primary" id="new-card-btn">New card</button>
-    </div>
-    <p class="empty-line" id="empty-state" hidden>No background task. <button type="button" class="btn btn-text" id="empty-new-card-btn">New card</button> queues one. They run headless in their own worktree and report on the floor.</p>
-    <div class="card-list" id="columns"></div>
-  </main>
+  <div class="drawer" id="finished-drawer" hidden>
+    <h3 class="drawer-head" id="finished-drawer-head">Finished terminals</h3>
+    <div class="finished-list" id="finished-list"></div>
+    <p class="drawer-note">A terminal is lost when the board stops hearing from it. Its handoff bundle is kept either way.</p>
+  </div>
 
-  <section class="region region-settings" aria-labelledby="settings-head">
-    <div class="region-head">
-      <h2 class="region-title" id="settings-head">Settings</h2>
+  <div class="drawer" id="trunk-drawer" hidden>
+    <h3 class="drawer-head" id="trunk-drawer-head">Landed on main</h3>
+    <div class="trunk-list" id="trunk"></div>
+  </div>
+
+  <div class="drawer" id="cards-drawer" hidden>
+    <h3 class="drawer-head">Background tasks</h3>
+    <div class="card-list" id="columns"></div>
+  </div>
+
+  <section class="region-settings" aria-labelledby="settings-head">
+    <div class="section-head section-head--quiet">
+      <h2 id="settings-head">Settings</h2>
       <p class="region-meta"></p>
-      <button type="button" class="btn btn-text disclosure" aria-expanded="false" aria-controls="settings-body">Show settings</button>
+      <button type="button" class="btn btn-secondary disclosure" aria-expanded="false" aria-controls="settings-body">Show settings</button>
     </div>
-    <div class="settings-body" id="settings-body" hidden>
+    <div class="drawer settings-body" id="settings-body" hidden>
       <div class="field">
         <label for="token-input">API token</label>
         <input type="password" id="token-input" autocomplete="off" spellcheck="false">
@@ -93,7 +129,7 @@
     </div>
   </section>
 
-</div><!-- /.shell -->
+</div><!-- /.wrap -->
 
 <div class="detail" id="drawer" hidden aria-hidden="true">
   <div class="detail-inner">
@@ -107,7 +143,7 @@
 </div>
 
 <dialog id="new-card-dialog" aria-label="New card">
-  <h2 class="region-title">New background card</h2>
+  <h2 class="dialog-title">New background card</h2>
   <p class="dialog-intro">An agent works without an interactive terminal in a separate git worktree. The default Build workflow stops with changes in that worktree and does not merge them.</p>
   <form id="new-card-form">
     <div class="form-error" id="new-card-error" hidden></div>

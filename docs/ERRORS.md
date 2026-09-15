@@ -96,3 +96,40 @@ occurrence has to be written down or a repeat is never countable.
   copy change inside one needs the render measured afterwards, and legal or
   pricing strings in marketing assets need checking against `LICENSE` and
   `package.json`, which are the only sources that are actually true.
+
+## 2026-09-15: a redesign measured on a board of healthy terminals
+
+- **Symptom.** Compact row styling was reported as producing 40px terminal rows.
+  Wes's actual screen showed 400px rows and he rejected the result.
+- **Root cause.** The styling was scoped to `.panel.is-running` and measured
+  against a board of live, healthy terminals. A real board after a day's work is
+  mostly `lost` and `ended` terminals with long absolute temp paths, and none of
+  them matched the selector, so the measurement was taken on the minority of rows
+  the change actually touched.
+- **Fix.** `scratchpad/seed-wes.mjs` seeds a board with the real shape — 4 live,
+  3 lost, 2 ended, long temp paths, an image tag in a prompt — served on an
+  isolated port with a throwaway `BATON_HOME`. Run against it, the *pre-change*
+  board reproduced the defect exactly: 3,302px page and 180-277px rows at 1280,
+  6,530px and 307-585px at 400. That is the check being observed failing before
+  it was trusted.
+- **The lesson that generalises.** A UI measurement is only worth what its
+  fixture is worth. Before trusting a number about a redesign, seed the state the
+  operator actually has and confirm the instrument reproduces the complaint.
+  Never 4747 for that board: that port is the live one with real sessions on it.
+
+## 2026-09-15: a CSS rewrite silently broke the page that shares the stylesheet
+
+- **Symptom.** `/floor` rendered unstyled account rows and threw
+  `ReferenceError: narrowQuery is not defined` after the board redesign.
+- **Root cause.** `floor.html` and `floor.js` share `board.css` and carry a
+  ported copy of the board's head block. Rewriting `board.css` removed the
+  classes that copy emits (`.acct`, `.rail`, `.track`, `.fill`, `.num`, `.tier`),
+  and removing helpers from `sessions.js` left the copy in `floor.js` referencing
+  names that no longer existed on its own page.
+- **Fix.** The head block is now extracted from `sessions.js` mechanically rather
+  than transcribed, so the "character for character" claim in its comment stays
+  true; `floor.html` moved onto the new shell; the floor's table styles were
+  added to the new system.
+- **The lesson that generalises.** Before rewriting a shared stylesheet, list
+  every page that links it and open each one. A grep for the class names would
+  also have caught this; rendering the page is what actually did.

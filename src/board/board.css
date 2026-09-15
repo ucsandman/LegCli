@@ -1,8 +1,23 @@
 /* Baton board: dark-only operator UI. Shared by index.html and floor.html.
  *
- * The design this implements is .design/BOARD-DESIGN.md (3 tokens,
- * 4 typography, 5 layout, 6 components, 7 motion). The DOM and class contract
- * the rest of the build works to is .design/BUILD-CONTRACT.md.
+ * The design this implements is .design/BOARD-V4-DIRECTION.md: mock B,
+ * "dark product surface", with C's headline framing and A's staleness
+ * sentence. It replaces the printed-operator's-manual brief that produced six
+ * rejected rounds. The shape of that brief was hairline rules as the only
+ * structure, a flat single plane, 2px radii, a saturated navy ground and a
+ * monospace face for prose. None of it survives here on purpose.
+ *
+ * What the design is, in one line each:
+ *   - the ground is neutral near-black, and the panels are raised objects on
+ *     it, lit from above with a 1px top highlight and a shadow beneath
+ *   - size encodes importance: the login that is the problem gets the wide
+ *     lit panel, the ones that are not get half panels under it
+ *   - the largest thing on the board is a sentence, not a number
+ *   - one accent, one blue, on the primary action and nowhere else
+ *   - severity paints inside a gauge track and marks a state dot; it is never
+ *     the colour of a word
+ *   - history sits on the ground, unpanelled, so it cannot compete with what
+ *     is live
  *
  * ---------------------------------------------------------------------------
  * SHAPES THE TEST SUITE PINS. Each item names the test file that goes red if
@@ -23,8 +38,7 @@
  *  2. The literal two-selector rule for the html and body elements, carrying
  *     both a text colour and a background. board-a11y finds it by matching
  *     the trimmed selector exactly, so no comment may sit between the
- *     previous rule's closing brace and that selector. Measured 15.08:1
- *     (--text on --e0) against a 4.5:1 floor.
+ *     previous rule's closing brace and that selector.
  *  3. At least six rules whose selector contains "chip" or "pill" and that
  *     set a text colour, none of them inside a media or keyframes block,
  *     which the flat parser does not descend into. board-a11y measures each
@@ -62,508 +76,437 @@
 @font-face{font-family:"Azeret Mono";src:url("fonts/azeret-board.woff2") format("woff2");font-weight:400 600;font-style:normal;font-display:swap}
 
 :root {
-  /* families */
+  /* families. Atkinson is self-hosted and stays: it is a real face with a
+     purpose rather than the system stack, and a board read at a glance all day
+     is exactly what hyperlegible letterforms are for. Azeret is demoted to
+     true data tokens only, never prose */
   --sans: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Azeret Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* ground and elevation, hue 258 */
-  --e1: #030f24;         /* oklch(0.170 0.048 258) sunken. rail tracks, diffs, log blocks, inputs, inert panels */
-  --e0: #07172e;         /* oklch(0.205 0.052 258) ground. the plate everything sits on */
-  --e2: #122239;         /* oklch(0.250 0.050 258) panel. instrument head, a terminal running normally, table body */
-  --e3: #1d2d44;         /* oklch(0.295 0.048 258) raised. this needs you, and row hover. nothing else */
-  --e4: #2a3a51;         /* oklch(0.345 0.045 258) near. system message and inline confirm row. at most two at once */
-  --selected: #112d55;   /* oklch(0.300 0.080 258) selected. same lightness as e3, more chroma */
+  /* ground and elevation, hue 258 at a chroma low enough never to read as
+     navy. The old ramp was the same hue at four times this chroma */
+  --e0: #0E1012;         /* oklch(0.170 0.006 258) page ground, unlit */
+  --e1: #171A1D;         /* oklch(0.215 0.007 258) recessed well, tracks, wells, inputs */
+  --e2: #212427;         /* oklch(0.258 0.008 258) the raised panel */
+  --panel-2: #212427;    /* oklch(0.258 0.008 258) the panel again, under the name the contrast test reads */
+  --e3: #2C2F34;         /* oklch(0.305 0.009 258) quiet control */
+  --e4: #363A40;         /* oklch(0.345 0.010 258) control hover */
+  --selected: #2A3340;   /* oklch(0.300 0.020 258) selected row */
+  --track: #2B2E32;      /* oklch(0.300 0.008 258) gauge track */
 
-  /* edges */
-  --line: #2f3e53;        /* oklch(0.360 0.042 258) hairline between rows inside one region */
-  --line-strong: #475973; /* oklch(0.460 0.048 258) region rule, table header rule, rail graduations */
-  --edge-hi: #4b5f7b;     /* oklch(0.480 0.052 258) the 1px top edge that catches the light */
+  /* edges. --line separates siblings INSIDE one panel and is the only rule
+     left in the design. --edge is the panel boundary, barely there */
+  --line: #35383D;        /* oklch(0.335 0.008 258) sibling separator inside one panel */
+  --line-strong: #4A4E55; /* oklch(0.420 0.009 258) section rule on the ground */
+  --edge: #2A2D31;        /* oklch(0.285 0.008 258) panel boundary */
+  --edge-hi: #4B5058;     /* oklch(0.430 0.010 258) the top edge that catches light */
+  --control-edge: #686D75; /* oklch(0.540 0.010 258) quiet control boundary, 3.00:1 on the panel */
 
   /* text */
-  --text: #e6ecf3;       /* oklch(0.940 0.012 258) primary. prompts, sentences, numerals, primary labels */
-  --text-2: #b5becc;     /* oklch(0.800 0.022 258) secondary. meta sentences, commit subjects */
-  --text-3: #9aa6b7;     /* oklch(0.720 0.028 258) meta. mono labels, column headers, provenance, times */
-  --text-dim: #5e6a7b;   /* oklch(0.520 0.030 258) disabled only, on e1 only, 3.48:1. never encodes state */
+  --text: #F3F4F7;       /* oklch(0.960 0.004 258) primary, 14.18:1 on the panel */
+  --text-2: #B9BEC6;     /* oklch(0.800 0.010 258) secondary, 8.35:1 on the panel */
+  --text-3: #9399A1;     /* oklch(0.680 0.012 258) meta, 5.43:1 on the panel */
+  --text-dim: #6B7079;   /* oklch(0.540 0.012 258) disabled only, never encodes state */
 
-  /* state. fills live inside the rail track, on e1. marks and words use the -text variant */
-  --calm: #5072a6;        /* oklch(0.550 0.090 258) rail segment 0 to 60. a healthy rail is quiet, not green */
-  --ok: #2a9754;          /* oklch(0.600 0.140 152) success fill. landed, tests green. the rail never uses it */
-  --ok-text: #7cd591;     /* oklch(0.800 0.130 150) success mark and sentence */
-  --warn: #da950b;        /* oklch(0.720 0.150 75) rail segment 60 to 85 */
-  --warn-text: #f9bf60;   /* oklch(0.840 0.130 78) warning mark, numeral, sentence, and the 85 percent post */
-  --danger: #c43e49;      /* oklch(0.560 0.170 20) rail segment past 85, and the walled fill */
-  --danger-text: #f68486; /* oklch(0.740 0.140 20) error mark, numeral and sentence */
+  /* the one accent. It means: this is the action to take. Nowhere else */
+  --accent: #5C91FF;     /* oklch(0.680 0.185 264) */
+  --accent-hi: #7CADFF;  /* oklch(0.760 0.150 264) */
+  --on-accent: #070D1A;  /* oklch(0.150 0.030 264) 6.43:1 on the accent */
 
-  /* interaction and identity. no identity hue sits within 25 degrees of a state hue */
-  --focus: #e8eff9;      /* oklch(0.950 0.015 258) focus ring, 15.50:1 on e0. appears nowhere else */
-  --id-claude: #f4a077;  /* oklch(0.780 0.115 46) terracotta, 6 degrees off red */
-  --id-codex: #75dac4;   /* oklch(0.820 0.100 178) retuned toward aqua so it cannot read as success */
-  --id-agy: #bd9ff2;     /* oklch(0.760 0.120 300) violet */
-  --id-fake: #979fab;    /* oklch(0.700 0.020 258) the scripted adapter, neutral in hue */
+  /* state. A fill paints inside a track and a mark is a dot. The -text
+     variants exist for the few places a word must carry the state itself */
+  --calm: #5F6670;        /* oklch(0.520 0.012 258) a healthy gauge is quiet, not green */
+  --ok: #3FA463;          /* oklch(0.620 0.140 152) success fill */
+  --ok-text: #6FD68F;     /* oklch(0.800 0.130 150) success mark and sentence */
+  --warn: #E0A33C;        /* oklch(0.760 0.140 75) gauge segment 60 to 85 */
+  --warn-text: #F0BE6E;   /* oklch(0.830 0.110 78) warning mark and sentence */
+  --danger: #E64343;      /* oklch(0.620 0.200 25) gauge segment past 85, and the walled fill */
+  --danger-text: #FF8A8A; /* oklch(0.760 0.150 22) error mark and sentence */
 
-  /* type scale. fixed rem, ratio 1.125, anchored at 15px body on a 16px root */
-  --t--1: 0.833rem;      /* 13.33px mono meta. desktop only, floored to 15px in the narrow breakpoint */
-  --t-0: 0.938rem;       /* 15.00px body default, table cells, secondary buttons, the narrow floor */
-  --t-1: 1.055rem;       /* 16.88px the prompt, the one sentence, primary buttons, panel head */
-  --t-2: 1.187rem;       /* 18.98px region headings, the 7d numeral, the walled reset time */
-  --t-3: 1.335rem;       /* 21.36px the elapsed clock */
-  --t-4: 1.502rem;       /* 24.03px the brand, the condensed narrow 5h numeral */
-  --t-5: 1.690rem;       /* 27.04px reserved, a single-account 5h numeral at 1600px and up */
-  --t-6: 1.901rem;       /* 30.42px the 5h numeral. the largest type on the board */
+  /* interaction and identity. Identity is a dot beside a printed name and the
+     gauge fill. It is never text colour on a row and never a border */
+  --focus: #EDF2FA;      /* oklch(0.960 0.010 258) focus ring, appears nowhere else */
+  --id-claude: #FCA169;  /* oklch(0.790 0.130 52) warm */
+  --id-codex: #69DBBA;   /* oklch(0.815 0.115 172) cool green */
+  --id-agy: #CC97F3;     /* oklch(0.760 0.140 310) violet, 46 degrees clear of the accent */
+  --id-fake: #A0A6AE;    /* oklch(0.720 0.010 258) the scripted adapter, neutral in hue */
 
-  /* weights, named. no others, no italics, no uppercase runs */
-  --w-text: 400;         /* prose, sentences, prompts, table cells */
-  --w-data: 500;         /* numerals, mono values, elapsed clocks */
-  --w-head: 600;         /* agent names, region headings, primary button labels, table headers */
-  --w-alarm: 700;        /* the sentence slot only when its rank is danger. at most once per panel */
+  /* type scale. Fixed rem, range 13 to 52. The old board ran 13 to 21, which
+     is why it read as a spreadsheet */
+  --t--1: 0.8125rem;     /* 13px the row register and the scaffolding strip */
+  --t-0: 0.9375rem;      /* 15px labels, meta, controls, the narrow floor */
+  --t-1: 1.0625rem;      /* 17px prompts, panel heads, body default */
+  --t-2: 1.3125rem;      /* 21px section heads, secondary readings */
+  --t-3: 2.125rem;       /* 34px the gauge numeral */
+  --t-4: 3.25rem;        /* 52px the verdict */
 
-  /* space */
-  --s-1: 4px;
-  --s-2: 8px;
-  --s-3: 12px;
-  --s-4: 16px;
-  --s-5: 20px;
-  --s-6: 24px;
-  --s-7: 32px;
-  --gutter: clamp(16px, 2.5vw, 32px);
+  --w-text: 400;
+  --w-head: 700;
 
-  /* radius stance, sharp. 2px on controls, 3px on plates, never 8px */
-  --r-control: 2px;
-  --r-plate: 3px;
+  --r-panel: 16px;
+  --r-well: 12px;
+  --r-control: 10px;
 
-  /* motion. one decelerate curve with no overshoot, everywhere */
-  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease: cubic-bezier(.2,0,0,1);
 
-  /* the one surviving alias. No rule in this file reads it. It exists because
-     test/board-a11y.test.mjs resolves var(--panel-2) as the background every
-     chip colour is measured against, and that parser resolves one level only,
-     so the value has to be literal hex rather than a var() pointing at --e3.
-     Its value must track --e3, the raised plate a chip actually sits on. The
-     eight other aliases that used to sit here were read by nothing. */
-  --panel-2: #1d2d44;       /* raised. the background the chip contrast check assumes */
+  /* one raised object, lit from above. The inset highlight is the top edge and
+     the two shadows are contact and ambient */
+  --lift: inset 0 1px 0 rgba(255,255,255,.05), 0 1px 2px rgba(0,0,0,.45), 0 18px 44px -14px rgba(0,0,0,.70);
+  --lift-hi: inset 0 1px 0 rgba(255,255,255,.10), 0 1px 2px rgba(0,0,0,.45), 0 22px 52px -14px rgba(0,0,0,.75);
+  --sink: inset 0 1px 3px rgba(0,0,0,.50);
 }
-
-/* ---------------------------------------------------------------------------
- * COMPONENT LAYER. Section numbers are BOARD-DESIGN.md; class names are
- * BUILD-CONTRACT.md section 4. No rule below sets a font-size in px, and the
- * one em-relative size is .pct, overridden by name in the narrow breakpoint.
- * Declarations keep the space after the colon: board-drawer matches the
- * literal "overflow-y: auto", and board-a11y needs the trailing semicolon on
- * every color and background declaration it measures.
- * --------------------------------------------------------------------------- */
-
-[hidden] { display: none !important; }
 
 * { box-sizing: border-box; }
 
-html, body {
+html, body { color: var(--text); background: var(--e0); }
+
+body {
   margin: 0;
-  padding: 0;
-  background: var(--e0);
-  color: var(--text);
   font-family: var(--sans);
+  font-size: var(--t-1);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* The scale is rem against a 16px root, so the body size is set on body and
-   never on html: a font-size on the root element rescales every rem in the
-   file and lands the 0.938rem body at 14.08px instead of 15px. */
-body { display: flex; flex-direction: column; min-height: 100vh; font-size: var(--t-0); }
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button { font: inherit; color: inherit; margin: 0; }
+code { font-family: var(--mono); font-size: 0.94em; }
 
-/* The head is sticky, so anything the browser scrolls into view - a Tab target
-   below the fold, an anchor - lands underneath it unless that height is
-   reserved here. CSS cannot read an element's height, so --head-h is the
-   measured head at each breakpoint, and it is deliberately a custom property
-   on the root element: board.js or floor.js can publish the exact height as an
-   inline style on documentElement and that wins over every value below. */
-html { --head-h: 312px; scroll-padding-top: calc(var(--head-h) + var(--s-2)); }
+[hidden] { display: none !important; }
 
-/* ---- base ---- */
-a { color: var(--text); }
-p, h1, h2, h3, pre, figure { margin: 0; }
-h1, h2, h3 { font-size: inherit; font-weight: var(--w-head); }
-.mono, code { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.muted { color: var(--text-3); }
-.spacer { flex: 1 1 auto; }
-button, a, input, select, textarea { font-family: inherit; font-size: var(--t-0); }
-a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-input, select, textarea { min-height: 44px; padding: 8px 10px; background: var(--e1); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-control); }
-input[type="checkbox"] { min-height: 0; accent-color: var(--calm); }
+/* one focus treatment for every control on the board */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-control); }
+.panel-prompt:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: var(--r-control); }
 
-/* tone. The word always prints beside the colour, so no state is hue alone. */
-.tone-ok { color: var(--ok-text); }
-.tone-warn { color: var(--warn-text); }
-.tone-danger { color: var(--danger-text); }
-.tone-muted { color: var(--text-3); }
+/* ---- shell ------------------------------------------------------------- */
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: clamp(20px, 4vw, 40px); padding-bottom: 72px; }
 
-/* ---- 5.1 the four-register grid. Every row type lays its fields into the
-   same four x positions. The selector list repeats in each breakpoint so a row
-   is a register grid whether or not its markup also carries .grid. ---- */
-.shell { width: 100%; max-width: 1464px; margin: 0 auto; padding: 0 var(--gutter); }
+.banner { background: var(--e1); border-bottom: 1px solid var(--edge); color: var(--text-2); font-size: var(--t-0); padding: 10px clamp(20px, 4vw, 40px); padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
 
-.grid, .acct, .panel, .row, .trunk-row {
-  display: grid;
-  grid-template-columns: 176px minmax(320px, 1fr) 208px 264px;
-  column-gap: var(--s-6);
-  align-items: center;
+.masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-block: 28px 0; }
+.brand { font-size: var(--t-1); font-weight: var(--w-head); letter-spacing: -.01em; }
+.masthead-right { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; font-size: var(--t-0); color: var(--text-3); }
+.floor-link { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line-strong); padding-bottom: 1px; }
+.floor-link:hover { color: var(--text); border-bottom-color: var(--text-2); }
+
+.sse-status { display: inline-flex; align-items: center; gap: 8px; }
+.sse-word { color: var(--text-3); }
+.sse-rule { width: 8px; height: 8px; border-radius: 999px; background: var(--ok); flex: none; }
+.sse-rule.is-connecting { background: var(--warn); }
+.sse-rule.is-down { background: var(--danger); }
+.sched-status { color: var(--text-3); }
+
+/* ---- the verdict: the largest thing on the board is a sentence ---------- */
+.verdict { padding-block: 56px 56px; }
+.verdict h1 { font-size: var(--t-4); font-weight: var(--w-head); line-height: 1.08; letter-spacing: -.028em; max-width: 26ch; text-wrap: balance; }
+.verdict p { margin-top: 16px; font-size: var(--t-2); line-height: 1.5; color: var(--text-2); max-width: 54ch; text-wrap: pretty; }
+.verdict p:empty { display: none; }
+
+/* ---- panel: a raised object, not a drawn rectangle ---------------------- */
+.panel { position: relative; background: var(--e2); border: 1px solid var(--edge); border-radius: var(--r-panel); padding: 32px; box-shadow: var(--lift); }
+.panel--lit { box-shadow: var(--lift-hi); }
+
+.panel-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+.who { display: inline-flex; align-items: center; gap: 10px; font-size: var(--t-1); font-weight: var(--w-head); }
+.who-note { font-size: var(--t-0); color: var(--text-3); }
+
+.dot { width: 8px; height: 8px; border-radius: 999px; flex: none; background: var(--id-fake); }
+.dot.id-claude { background: var(--id-claude); }
+.dot.id-codex { background: var(--id-codex); }
+.dot.id-agy { background: var(--id-agy); }
+
+/* ---- logins ------------------------------------------------------------- */
+.logins { display: grid; gap: 20px; }
+.logins-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.head-caption { margin-top: 16px; font-size: var(--t-0); color: var(--text-3); }
+
+/* ---- the gauge: the instrument ------------------------------------------ */
+.gauge-block + .gauge-block { margin-top: 26px; }
+.gauge { display: flex; align-items: center; gap: 20px; }
+.gauge-label { flex: none; width: 62px; font-size: var(--t-0); color: var(--text-3); }
+.gauge--none .gauge-label { width: auto; }
+.gauge-track { flex: 1 1 auto; min-width: 0; position: relative; height: 16px; background: var(--track); border-radius: 999px; box-shadow: inset 0 1px 2px rgba(0,0,0,.45); overflow: hidden; }
+.gauge--minor .gauge-track { height: 8px; }
+.gauge-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--calm); }
+/* the reserve notch: a 2px gap cut through the bar where 85 percent sits */
+.gauge-post { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--e1); }
+.gauge-readout { flex: none; width: 168px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.gauge--noread::after { content: ""; flex: none; width: 96px; }
+.gauge-read { text-align: right; font-size: var(--t-3); font-weight: var(--w-head); letter-spacing: -.02em; line-height: 1; }
+.gauge--minor .gauge-read { font-size: var(--t-2); }
+.gauge-read--none { font-size: var(--t-2); font-weight: var(--w-text); color: var(--text-3); }
+.gauge-note { font-size: var(--t-0); color: var(--text-3); white-space: nowrap; }
+
+.reading { margin-top: 22px; font-size: var(--t-2); font-weight: var(--w-head); line-height: 1.3; letter-spacing: -.012em; }
+.reading-sub { margin-top: 8px; font-size: var(--t-0); color: var(--text-2); max-width: 46ch; }
+.reading-sub--lead { margin-top: 22px; }
+
+/* ---- section heads ------------------------------------------------------ */
+.section-head { padding-block: 56px 20px; }
+.section-head h2 { font-size: var(--t-2); font-weight: var(--w-head); letter-spacing: -.012em; }
+.section-head .region-meta { margin-top: 8px; font-size: var(--t-0); color: var(--text-3); }
+.section-head--quiet { padding-block: 56px 16px; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.section-head--quiet .region-meta { margin-top: 0; }
+.hoisted { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: var(--t-0); }
+.hoisted-note { color: var(--text-2); }
+.hoisted-note.tone-warn { color: var(--warn-text); }
+.hoisted-note.tone-danger { color: var(--danger-text); }
+.hoisted-note.tone-muted { color: var(--text-3); }
+
+/* ---- terminals: rows inside one panel, separated by the only rule left --- */
+.terms { padding: 4px 0; }
+.term { padding: 26px 32px; }
+.term + .term { border-top: 1px solid var(--line); }
+.term.is-urgent { background: linear-gradient(to right, rgba(230,67,67,.07), transparent 40%); }
+.term-row { display: flex; align-items: center; gap: 28px; }
+.term-body { flex: 1 1 auto; min-width: 0; }
+.term-row > .term-body { flex-basis: 24ch; }
+.term-clock { flex: none; display: flex; align-items: baseline; justify-content: flex-end; gap: 14px; font-size: var(--t--1); color: var(--text-3); white-space: nowrap; }
+.term-register { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; font-size: var(--t--1); color: var(--text-3); }
+.term-where { color: var(--text-2); }
+.term-when { color: var(--text-3); min-width: 6ch; text-align: right; }
+.term-id { color: var(--text-3); min-width: 4ch; text-align: right; font-family: var(--mono); }
+.term-actions { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 272px; }
+.term-actions .btn { white-space: nowrap; width: 100%; }
+/* a row with one or three controls keeps the grid honest rather than stretching
+   the odd one across both columns */
+.term-actions .btn:only-child { grid-column: 1 / -1; }
+
+.state { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); font-weight: var(--w-head); }
+.mark { width: 8px; height: 8px; border-radius: 999px; flex: none; background: var(--text-3); }
+.mark.tone-ok { background: var(--ok); }
+.mark.tone-warn { background: var(--warn); }
+.mark.tone-danger { background: var(--danger); }
+.mark.state-active { background: var(--text); }
+@media (prefers-reduced-motion: no-preference) {
+  .mark.state-active { animation: breathe 2400ms var(--ease) infinite; }
 }
+@keyframes breathe { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
 
-.r1, .r2, .r3, .r4 { min-width: 0; }
-.r3 { color: var(--text-3); }
+.term-prompt { margin-top: 14px; font-size: var(--t-1); line-height: 1.45; max-width: 62ch; color: var(--text); }
+.term-prompt--empty { color: var(--text-3); }
+.panel-prompt { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 0; margin-top: 14px; font-size: var(--t-1); line-height: 1.45; max-width: 62ch; color: var(--text); cursor: pointer; }
+.panel-prompt:hover { color: var(--accent-hi); }
 
-/* ---- 5.2 region, and the 6.8 one-line empty state ---- */
-.region { padding: var(--s-5) 0 var(--s-2); }
-.region-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s-3); padding-bottom: var(--s-2); border-bottom: 1px solid var(--line-strong); }
-.region-title { font-size: var(--t-2); font-weight: var(--w-head); color: var(--text); }
-.region-meta { font-size: var(--t-0); color: var(--text-2); }
-.region-head .btn, .region-head .disclosure { margin-left: auto; }
-.empty-line { max-width: 74ch; padding: var(--s-4) 0; line-height: 1.55; color: var(--text-2); }
-.empty-line code { padding: 1px 5px; background: var(--e1); border: 1px solid var(--line); border-radius: var(--r-control); }
-
-/* ---- 6.12 topbar: 40px, ground --e0, not sticky. The bar itself runs the
-   full width for its ground and its rule; its contents sit in the same .shell
-   as everything else, so the brand starts on the same x as the region rules
-   instead of 228px to their left once the page is wider than the shell. ---- */
-.topbar { background: var(--e0); border-bottom: 1px solid var(--line); }
-.topbar > .shell { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-4); min-height: 40px; }
-.brand { font-size: var(--t-4); font-weight: var(--w-head); }
-.sse-status { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
-.sse-word { color: var(--text-2); }
-.sse-rule { display: block; width: 24px; height: 2px; background: var(--text-3); }
-.sse-rule.is-live { background: var(--text-2); }
-.sse-rule.is-connecting, .sse-rule.is-reconnecting { background: var(--warn-text); }
-.sched-status, .repos-status, .counts-status { color: var(--text-3); }
-.counts-status span, .repos-status span { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text-2); }
-.floor-link, .board-link { display: inline-flex; align-items: center; min-height: 40px; padding: 0 var(--s-2); color: var(--text-2); }
-.floor-link:hover, .board-link:hover { color: var(--text); }
-.banner { padding: 6px var(--gutter); background: var(--e1); border-bottom: 1px solid var(--line); color: var(--warn-text); text-align: center; }
-
-/* ---- 6.1 the window rail. The head bleeds into both gutters so the sticky
-   plate stays continuous.
-   5.2 budgets the head at 248px at 1280: 75px per account x3, two hairlines,
-   the caption, the rule. That arithmetic assumes R3 (the burn caption and the
-   provenance line) fits inside the 59px the two rail rows span. It does not.
-   5.2's own example caption is 80 characters, which is four lines of mono
-   --t--1 inside a 208px R3 column, and the tallest register sets the row
-   height: three accounts came to 410px, 51% of a 1280x900 viewport.
-   R3 therefore runs UNDER the rails, from R2's x to the right edge, which is
-   where 5.2's own mock draws it and where the same sentence costs one line
-   instead of four. An account row is two grid rows: R1 and R4 span both, R2
-   holds the rails on row 1, R3 runs wide on row 2. ---- */
-.head { position: sticky; top: 0; z-index: 20; margin: 0 calc(var(--gutter) * -1); padding: var(--s-1) var(--gutter); background: var(--e2); border-bottom: 1px solid var(--line-strong); }
-.acct { grid-template-rows: auto auto; align-items: start; row-gap: var(--s-1); padding: var(--s-2) 0; }
-.acct + .acct { border-top: 1px solid var(--line); }
-.acct-name { font-size: var(--t-1); font-weight: var(--w-head); }
-.acct > .r1 { grid-column: 1; grid-row: 1 / span 2; }
-.acct > .r2 { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; row-gap: var(--s-1); }
-.acct > .r3 { grid-column: 2 / -1; grid-row: 2; display: flex; flex-wrap: wrap; column-gap: var(--s-5); row-gap: 2px; }
-.acct > .r4 { grid-column: 4; grid-row: 1 / span 2; }
-.head-caption { padding-top: var(--s-1); color: var(--text-3); }
-/* G7 wants the numeral and its reset in one horizontal run and one fixation,
-   so the reset cell is wide enough for the longest string the board can print
-   (`resets Sat 10:11 PM, in 4d 22h`, 222px) and never wraps. Below 1280 R2
-   cannot hold four cells and a readable track, so the breakpoint under this
-   one drops the reset to its own line instead of shrinking the track. */
-.rail { display: grid; grid-template-columns: 24px minmax(0, 1fr) 88px 224px; column-gap: var(--s-2); align-items: center; }
-.win { font-family: var(--mono); font-size: var(--t--1); color: var(--text-3); text-align: right; }
-
-/* 6.1.2 two tick layers span the whole track, one under the fill in light ink
-   and one over it in dark ink clipped to the filled part, so the 10 percent
-   graduations read at every fill level including 0. */
-.track { position: relative; height: 12px; border-radius: 1px; background: var(--e1); box-shadow: inset 0 1px 0 var(--line); overflow: hidden; }
-.track.h12 { height: 12px; }
-.track.h8 { height: 8px; }
-.track::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 50%; z-index: 1; background-image: repeating-linear-gradient(to right, var(--line-strong) 0 1px, transparent 1px 10%); }
-.track::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 50%; z-index: 3; background-image: repeating-linear-gradient(to right, var(--e0) 0 1px, transparent 1px 10%); clip-path: inset(0 calc(100% - var(--pct, 0%)) 0 0); }
-
-/* 6.1.1 one element, one gradient, hard stops from the value: the fill shows
-   the zones it crossed and red is confined to the part past 85. */
-.fill { position: absolute; left: 0; top: 0; bottom: 0; z-index: 2; width: var(--pct, 0%); background-image: linear-gradient(to right, var(--calm) 0 var(--s60, 100%), var(--warn) var(--s60, 100%) var(--s85, 100%), var(--danger) var(--s85, 100%) 100%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12); transition: width 220ms var(--ease); }
-
-/* the 85 percent post: a light core with a dark keyline each side, so it reads
-   on the empty track and on every fill colour, greyscale included. */
-.post { position: absolute; top: 0; bottom: 0; left: 85%; z-index: 4; width: 3px; margin-left: -1px; background-image: linear-gradient(to right, var(--e1) 0 1px, var(--warn-text) 1px 2px, var(--e1) 2px 3px); }
-
-/* 88px cell, right aligned: the ones digit of 4, 45 and 96 lands on one x. */
-.num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: var(--w-data); line-height: 1.02; text-align: right; color: var(--text); }
-.num-5h { font-size: var(--t-6); }
-.num-7d { font-size: var(--t-2); }
-.num.is-warn { color: var(--warn-text); }
-.num.is-danger { color: var(--danger-text); }
-.num.is-none { font-family: var(--sans); font-size: var(--t-0); font-weight: var(--w-text); line-height: 1.3; color: var(--text-3); }
-/* the unit marker stays on the type scale rather than on the numeral it sits
-   beside: at 0.62em it computed to 11.78px on the 7d numeral at every width
-   from 620 up, which is the one place the 14px floor leaked. */
-.pct { font-size: var(--t--1); color: var(--text-3); padding-left: 0.1em; }
-.reset { color: var(--text-2); }
-/* 1.35 is 18px on --t--1, the line metric 5.2's head arithmetic is written in.
-   overflow-wrap matches .where and .files: a provenance line can carry an
-   unbreakable machine token (`account/rateLimits/read`) wider than R3. */
-.in, .burn, .prov { font-family: var(--mono); font-size: var(--t--1); line-height: 1.35; color: var(--text-3); overflow-wrap: anywhere; }
-.prov.is-stale { color: var(--warn-text); }
-.tier { color: var(--text-2); }
-.tier.is-warn { color: var(--warn-text); }
-.tier.is-danger { color: var(--danger-text); }
-.tier.is-none { color: var(--text-3); }
-.tier.is-walled { display: block; font-size: var(--t-2); font-weight: var(--w-head); color: var(--danger-text); }
-
-/* 6.1.5 walled is an extra state, never a replacement: both percentages stay
-   rendered under the hatch. No reading draws the face and nothing else.
-   The no-reading suppression is keyed on the RAIL, not on the account: an
-   account can be at its wall with one window read and the other not, and the
-   walled fill was painting a full graded bar next to the words `no reading`.
-   .rail.is-none is set by rail() in sessions.js and floor.js on any rail whose
-   numeral is a refusal rather than a number. It is the only rule that says
-   "this window has no reading, so it draws no fill and no post"; the
-   account-level is-noreading / is-notshared / is-loading twins that used to
-   sit here said the same thing for the subset where BOTH windows are blank. */
-.acct.is-walled .rail:not(.is-none) .fill { width: 100%; background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--danger) 20%, transparent) 0 3px, transparent 3px 6px), linear-gradient(to right, var(--calm) 0 var(--s60, 100%), var(--warn) var(--s60, 100%) var(--s85, 100%), var(--danger) var(--s85, 100%) 100%); }
-.rail.is-none .fill, .rail.is-none .post { display: none; }
-
-/* ---- 6.3 a 7px square plus a word. The mark is aria-hidden. ---- */
-.mark { display: inline-block; flex: none; width: 7px; height: 7px; background: currentColor; color: var(--text-2); }
-.mark.tone-idle { background: transparent; box-shadow: inset 0 0 0 1px currentColor; color: var(--text-3); }
-.status-word { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
-@keyframes annunciate { 0%, 100% { opacity: 1; } 50% { opacity: 0.12; } }
-.mark.state-active { animation: annunciate 300ms var(--ease) 3; }
-
-/* ---- 6.2 the session panel: a full-width band, elevation by urgency ---- */
-.session-list { display: flex; flex-direction: column; overflow-anchor: auto; }
-.panel { align-items: start; margin: 0 calc(var(--gutter) * -1); padding: var(--s-4) var(--gutter); background: var(--e2); transition: background-color 180ms var(--ease), box-shadow 180ms var(--ease); }
-.panel + .panel { border-top: 1px solid var(--line); }
-/* needs-you is 1.15:1 of background against a running panel, so the elevation
-   is never the only carrier: the 2px inset bar is a shape, it survives
-   greyscale, and it is the same idiom .row.is-selected already uses. */
-.panel.needs-you { background: var(--e3); box-shadow: inset 2px 0 0 var(--text), inset 0 1px 0 var(--edge-hi); }
-.panel.is-running { background: var(--e2); }
-.panel.is-inert { background: var(--e1); }
-/* the panel is the most-interacted row on the board and was the only row type
-   with no hover state, while it declared the transition for one. */
-.panel:hover { background: var(--e3); }
-.panel.needs-you:hover { background: var(--selected); }
-.panel .r1, .row .r1, .panel .r3 { display: flex; flex-direction: column; gap: var(--s-1); }
-.panel .r2, .row .r2, .panel .r4, .row .r4 { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); }
-.panel-prompt, .row-title { display: block; width: 100%; min-height: 24px; margin: 0; padding: 0; border: 0; background: none; color: var(--text); font-size: var(--t-1); line-height: 1.35; text-align: left; cursor: pointer; }
-.panel-prompt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
-.panel-prompt:hover, .row-title:hover { text-decoration: underline; }
-.panel-prompt:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.sentence { font-size: var(--t-1); line-height: 1.4; color: var(--text); transition: opacity 90ms var(--ease); }
-.sentence.tone-danger { font-weight: var(--w-alarm); }
-.files { font-family: var(--mono); line-height: 1.5; color: var(--text-3); overflow-wrap: anywhere; }
+.sentence { margin-top: 10px; font-size: var(--t-0); color: var(--text-2); max-width: 64ch; }
+.sentence.tone-warn { color: var(--warn-text); }
+.sentence.tone-danger { color: var(--danger-text); }
+.sentence.tone-ok { color: var(--ok-text); }
+.sentence.tone-muted { color: var(--text-3); }
+.files { margin-top: 10px; font-size: var(--t--1); color: var(--text-3); }
+.file { color: var(--text-3); }
 .file.is-overlap { color: var(--warn-text); }
-.where { font-family: var(--mono); font-size: var(--t--1); line-height: 1.4; color: var(--text-3); overflow-wrap: anywhere; }
-.worktree { color: var(--text-2); }
-.elapsed { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: var(--t-3); font-weight: var(--w-data); color: var(--text-2); }
-.actions, .row-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
-.blocker { line-height: 1.4; color: var(--text-3); }
+.blocker { margin-top: 10px; font-size: var(--t-0); color: var(--text-3); max-width: 64ch; }
+.blocker.is-hoisted { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* ---- 6.5 buttons: 44px, 2px radius. Red never sits idle, so a destructive
-   label turns red on hover and focus only. ---- */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 44px; padding: 0 var(--s-4); border: 1px solid transparent; border-radius: var(--r-control); background: none; color: var(--text-2); cursor: pointer; transition: background-color 120ms var(--ease), color 120ms var(--ease), box-shadow 90ms var(--ease); }
-.btn-primary { background: var(--e3); box-shadow: inset 0 1px 0 var(--edge-hi); color: var(--text); font-size: var(--t-1); font-weight: var(--w-head); }
-.btn-primary:hover { background: var(--e4); }
-.btn-primary:active { background: var(--e2); box-shadow: inset 0 -1px 0 var(--edge-hi); }
-.btn-secondary { border-color: var(--line); }
-.btn-secondary:hover { background: var(--e2); color: var(--text); }
-.btn-secondary:active, .btn-danger:active { background: var(--e1); }
-.btn-danger:hover, .btn-danger:focus-visible { color: var(--danger-text); text-decoration: underline; }
-/* a text button carries no border and no background, so at --text-3 with no
-   underline it rested dimmer than the prose beside it and read as meta rather
-   than as a control. The underline is the resting affordance; hover lifts the
-   colour. The `also:` disclosure is one of these and needs no rule of its own:
-   `btn btn-text` is the whole of its styling. */
-.btn-text { min-height: 24px; padding: 0; color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }
-.btn-text:hover { color: var(--text); }
-.btn[disabled], .btn.is-loading { background: var(--e1); border-color: transparent; box-shadow: none; color: var(--text-dim); cursor: default; text-decoration: none; }
-.confirm-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-3); padding: var(--s-2) var(--s-3); background: var(--e4); border-radius: var(--r-plate); color: var(--text); }
-
-/* ---- 6.6 the detail region, in flow under its row, never an overlay ---- */
-.detail { margin: 0 calc(var(--gutter) * -1); background: var(--e3); }
-body > .detail { margin-inline: 0; }
-.detail-inner { display: flex; flex-direction: column; gap: var(--s-5); padding: var(--s-4) var(--gutter) var(--s-6); }
-.detail-section { display: flex; flex-direction: column; gap: var(--s-2); }
-.detail-heading { display: flex; align-items: baseline; gap: var(--s-2); padding-bottom: var(--s-1); border-bottom: 1px solid var(--line); font-size: var(--t-1); font-weight: var(--w-head); }
-.detail-sub { font-size: var(--t-0); font-weight: var(--w-text); color: var(--text-3); }
-.well { padding: var(--s-3); background: var(--e1); border: 1px solid var(--line); border-radius: var(--r-plate); }
-.kv { display: grid; grid-template-columns: 132px minmax(0, 1fr); column-gap: var(--s-3); row-gap: var(--s-1); }
-.kv-key { color: var(--text-3); }
-.kv-val { font-family: var(--mono); color: var(--text-2); overflow-wrap: anywhere; }
-.turn, .drawer-msg { padding: var(--s-2) 0; border-top: 1px solid var(--line); line-height: 1.5; }
-/* the role and the summary are adjacent inlines with no separator in the
-   markup, so without this margin they render glued: `lostrunner pid 999002`. */
-.turn-role, .drawer-msg-role { margin-right: var(--s-2); color: var(--text-3); }
-.turn-when, .drawer-msg-when { float: right; font-family: var(--mono); font-size: var(--t--1); color: var(--text-3); }
-.cap-line { display: flex; align-items: baseline; gap: var(--s-2); color: var(--text-3); }
-
-/* The four scroll boxes. board-drawer.test.mjs line-scans board.css for a line
-   whose FIRST TOKEN is the class and whose rule carries overflow on the same
-   line. Keep each on its own line, class first, and keep each ahead of any
-   later rule whose selector starts with the same string. */
-.drawer-task { margin: 0; line-height: 1.5; white-space: pre-wrap; max-height: 22em; overflow-y: auto; }
-.drawer-msg p { margin: var(--s-1) 0 0; white-space: pre-wrap; max-height: 24em; overflow-y: auto; }
-.drawer-timeline { display: flex; flex-direction: column; max-height: 30em; overflow-y: auto; }
-.drawer-diff { margin: 0; padding: var(--s-2) var(--s-3); background: var(--e1); border: 1px solid var(--line); border-radius: var(--r-plate); overflow-x: auto; overflow-y: auto; max-height: 30em; font-family: var(--mono); font-size: var(--t--1); line-height: 1.5; }
-
-/* a diff spends no red: the minus glyph carries the deletion. */
-.add { color: var(--ok-text); }
-.del, .hunk { color: var(--text-3); }
-.log-pre { margin: 0; padding: var(--s-2); background: var(--e1); border: 1px solid var(--line); border-radius: var(--r-plate); font-family: var(--mono); font-size: var(--t--1); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.reassign-picker { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); padding: var(--s-2); background: var(--e1); border: 1px solid var(--line); border-radius: var(--r-plate); }
-
-/* ---- 6.7 /floor tables. No zebra, and no table scrolls sideways. ---- */
-.ftable { width: 100%; table-layout: fixed; border-collapse: collapse; background: var(--e2); }
-.ftable th { padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line-strong); font-size: var(--t--1); font-weight: var(--w-head); color: var(--text-3); text-align: left; }
-.ftable td { padding: 10px var(--s-3); border-bottom: 1px solid var(--line); color: var(--text-2); vertical-align: top; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.ftable tbody tr { transition: background-color 120ms var(--ease); }
-.ftable tbody tr:hover, .ftable tbody tr:focus-within { background: var(--e3); }
-.ftable tbody tr:focus-within, .ftable tbody tr.is-selected { box-shadow: inset 2px 0 0 var(--text); }
-.ftable tbody tr.is-selected { background: var(--selected); }
-.c-card { width: 24%; } .c-station { width: 12%; } .c-agent { width: 14%; }
-.c-leases { width: 12%; } .c-event { width: 18%; } .c-elapsed { width: 8%; }
-.c-actions { width: 12%; } .c-status { width: 26%; } .c-since { width: 14%; }
-.c-blocked { width: 30%; } .c-lease { width: 26%; } .c-time { width: 14%; }
-.c-summary { width: 46%; }
-
-/* ---- 4.9 background tasks: rows, not columns ---- */
-.card-list { display: flex; flex-direction: column; }
-.row { align-items: start; margin: 0 calc(var(--gutter) * -1); padding: var(--s-3) var(--gutter); background: var(--e2); transition: background-color 120ms var(--ease); }
-.row + .row { border-top: 1px solid var(--line); }
-.row:hover, .row:focus-within { background: var(--e3); }
-.row:focus-within, .row.is-selected { box-shadow: inset 2px 0 0 var(--text); }
-.row.is-selected { background: var(--selected); }
-.row-meta { color: var(--text-3); }
-.chain-rail { display: flex; flex-wrap: wrap; gap: var(--s-2); }
-.chain-rail, .leases { font-family: var(--mono); font-size: var(--t--1); color: var(--text-3); overflow-wrap: anywhere; }
-.trunk-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
-.trunk-row { padding: var(--s-2) 0; color: var(--text-2); }
-.trunk-row + .trunk-row { border-top: 1px solid var(--line); }
-.landed-by { color: var(--ok-text); }
-
-/* ---- 6.9 the system message. Severity is the mark plus the word, never a
-   border colour, so the item text stays --text whatever its tone. ---- */
-.sysmsg { position: fixed; left: 50%; bottom: var(--s-5); z-index: 60; transform: translateX(-50%); display: flex; flex-direction: column; gap: var(--s-2); width: min(520px, calc(100vw - 2 * var(--gutter))); pointer-events: none; }
-.sysmsg-item { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-4); background: var(--e4); border: 1px solid var(--line); border-radius: var(--r-control); pointer-events: auto; transition: opacity 160ms var(--ease), transform 160ms var(--ease); }
-.sysmsg-item.tone-ok, .sysmsg-item.tone-warn, .sysmsg-item.tone-danger { color: var(--text); }
-.sysmsg-item .btn { margin-left: auto; }
-
-/* ---- 6.10 settings: the last region of the page, in flow ---- */
-.settings-body { display: flex; flex-direction: column; gap: var(--s-5); margin: 0 calc(var(--gutter) * -1); padding: var(--s-4) var(--gutter); background: var(--e2); }
-.field { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-3); }
-.field label { min-width: 132px; color: var(--text-2); }
-.field input { flex: 1 1 260px; max-width: 420px; font-family: var(--mono); }
-.field-help { flex: 1 1 100%; max-width: 74ch; line-height: 1.5; color: var(--text-3); }
-.field-status { color: var(--text-3); }
-.field-status.ok { color: var(--ok-text); }
-.field-status.bad { color: var(--danger-text); }
-.default-order { margin: 0; padding: var(--s-4) 0 0; border: 0; border-top: 1px solid var(--line); }
-.default-order legend { padding: 0; color: var(--text-2); }
-.order-row { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-1) 0; }
-.order-row-name { min-width: 96px; font-weight: var(--w-head); }
-.order-row .btn { min-width: 44px; padding: 0 var(--s-2); }
-.board-facts { display: block; line-height: 1.6; color: var(--text-3); }
-
-/* ---- 6.11 the flat data token. Not a capsule: mono, no border, no background,
-   no radius, separated by a middot. board-a11y measures the colour of every
-   rule whose selector matches chip or pill, so these eight are all real, all in
-   use, and none of them may move inside a media block. ---- */
-.chip { font-family: var(--mono); font-size: var(--t--1); color: var(--text-3); }
-.chip + .chip::before { content: "\00b7"; padding: 0 var(--s-1); color: var(--text-3); }
+/* the flat inline data token. Not a capsule: a chip here is a word set in the
+   meta colour beside the thing it qualifies */
+.chip { font-size: var(--t--1); color: var(--text-2); font-family: var(--mono); }
+.chip.is-stale { color: var(--text-3); }
 .chip-id-claude { color: var(--id-claude); }
 .chip-id-codex { color: var(--id-codex); }
 .chip-id-agy { color: var(--id-agy); }
 .chip-id-fake { color: var(--id-fake); }
 .chip-state-ok { color: var(--ok-text); }
 .chip-state-warn { color: var(--warn-text); }
-.chip-state-bad { color: var(--danger-text); }
 
-/* ---- the one surviving modal: the twelve-field New card form ---- */
-dialog#new-card-dialog { width: min(640px, 92vw); max-height: 90vh; padding: var(--s-4); background: var(--e2); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-plate); overflow-y: auto; }
-dialog#new-card-dialog::backdrop { background: rgb(3 15 36 / 0.7); }
-.dialog-intro { max-width: 58ch; margin: var(--s-1) 0 var(--s-4); line-height: 1.5; color: var(--text-3); }
-.form-row { display: flex; flex-direction: column; gap: var(--s-1); margin-bottom: var(--s-3); }
-.form-row label, .fallback-row-title { color: var(--text-2); }
-.form-error { margin: var(--s-2) 0; color: var(--danger-text); }
-.advanced-options { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
-.advanced-options summary { margin-bottom: var(--s-3); font-weight: var(--w-head); cursor: pointer; }
-.fallback-row { margin-bottom: var(--s-3); padding-left: var(--s-3); border-left: 2px solid var(--line); }
-.chain-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-2); }
-.dialog-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-3); }
+.acct-name { font-weight: var(--w-head); }
+.acct-name.id-claude { color: var(--id-claude); }
+.acct-name.id-codex { color: var(--id-codex); }
+.acct-name.id-agy { color: var(--id-agy); }
+.acct-name.id-fake { color: var(--id-fake); }
 
-/* ---- 5 the breakpoints. Four blocks cover the five measured widths: 1920 and
-   1280 in the base, 1100 and 900 in the first, 620 in the second, 400 in the
-   third. R2 is the only register that grows and the track absorbs the growth
-   one for one: track = R2 - 320 at four registers, R2 - 140 at three. ---- */
-/* Under 1280 the four-cell rail leaves the track under 100px once the reset
-   cell is wide enough not to wrap, so the reset takes its own line under the
-   track and the track keeps the width. This is also where the register grid
-   still has four columns, which is why it is its own block. */
-@media (max-width: 1279px) {
-  html { --head-h: 376px; }
-  .rail { grid-template-columns: 24px minmax(0, 1fr) 88px; }
-  .rail > .reset { grid-column: 1 / -1; text-align: right; }
+/* ---- controls ----------------------------------------------------------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 16px; border-radius: var(--r-control); font-size: var(--t-0); font-weight: var(--w-head); letter-spacing: -.005em; cursor: pointer; border: 1px solid transparent; background: none; transition: background-color 150ms var(--ease), border-color 150ms var(--ease), transform 150ms var(--ease), color 150ms var(--ease); }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-hi); }
+.btn-secondary { background: var(--e3); color: var(--text); border-color: var(--control-edge); }
+.btn-secondary:hover { background: var(--e4); border-color: #7D828A; }
+.btn-danger { background: var(--e3); color: var(--danger-text); border-color: var(--control-edge); }
+.btn-danger:hover { background: var(--e4); }
+.btn-text { min-height: 32px; padding: 0 2px; background: none; color: var(--text-2); border: 0; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.btn-text:hover { color: var(--text); text-decoration-color: var(--text-2); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { color: var(--text-dim); background: var(--e1); border-color: var(--edge); cursor: not-allowed; }
+.btn:disabled:hover { background: var(--e1); }
+
+/* ---- disclosure wells --------------------------------------------------- */
+.drawer { margin-top: 22px; background: var(--e1); border-radius: var(--r-well); padding: 24px; box-shadow: var(--sink); }
+.drawer-head { font-size: var(--t-1); font-weight: var(--w-head); margin-bottom: 18px; }
+.drawer-note { margin-top: 18px; font-size: var(--t-0); color: var(--text-2); max-width: 64ch; }
+.drawer-actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* the four scroll boxes board-drawer.test.mjs scans for by line prefix. Each
+   class is the first token on its line, in this order, and no earlier line in
+   this file begins with any of the four */
+.drawer-task { max-height: 22rem; overflow: auto; font-size: var(--t-0); color: var(--text-2); }
+.drawer-msg p { max-height: 18rem; overflow-y: auto; font-size: var(--t-0); color: var(--text-2); }
+.drawer-timeline { max-height: 22rem; overflow: auto; font-size: var(--t-0); }
+.drawer-diff { max-height: 26rem; overflow: auto; font-family: var(--mono); font-size: var(--t--1); }
+
+.drawer-msg { margin-top: 14px; }
+.drawer-msg-role { font-size: var(--t--1); color: var(--text-3); font-weight: var(--w-head); }
+.drawer-msg-when { font-size: var(--t--1); color: var(--text-3); }
+
+/* ---- ledger: on the ground, unpanelled --------------------------------- */
+.ledger { margin-top: 56px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; padding-top: 32px; border-top: 1px solid var(--edge); }
+.ledger-cell h3 { font-size: var(--t-2); font-weight: var(--w-head); letter-spacing: -.012em; }
+.ledger-cell .region-meta { margin-top: 6px; font-size: var(--t-0); color: var(--text-3); }
+.ledger-actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+.ledger-cell .empty-line { margin-top: 12px; font-size: var(--t-0); color: var(--text-3); }
+
+.list { margin-top: 20px; }
+.list li { padding: 14px 0; font-size: var(--t-0); }
+.list li + li { border-top: 1px solid var(--line); }
+.line { display: grid; grid-template-columns: 72px 1fr auto; gap: 8px 20px; align-items: baseline; }
+.line--commit { grid-template-columns: 1fr auto; }
+.line-main { color: var(--text); }
+.line-meta { color: var(--text-2); }
+.line-when { color: var(--text-3); text-align: right; }
+.group-head { display: flex; align-items: baseline; gap: 10px; margin-top: 24px; margin-bottom: 4px; font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
+.group-head:first-child { margin-top: 0; }
+.group-head span { font-weight: var(--w-text); color: var(--text-3); }
+
+.trunk-row { display: grid; grid-template-columns: 1fr auto; gap: 6px 20px; align-items: baseline; padding: 14px 0; font-size: var(--t-0); }
+.trunk-row + .trunk-row { border-top: 1px solid var(--line); }
+.landed-by { color: var(--text-3); }
+.finished-line { padding: 14px 0; font-size: var(--t-0); }
+.finished-names { margin-left: 10px; color: var(--text-3); }
+
+/* ---- cards -------------------------------------------------------------- */
+.card-list { display: grid; gap: 14px; }
+.row { display: grid; gap: 6px; padding: 16px; background: var(--e2); border: 1px solid var(--edge); border-radius: var(--r-well); }
+.row:hover { background: var(--e3); }
+.row.is-selected { background: var(--selected); }
+.row-title { font-size: var(--t-1); color: var(--text); }
+.row-meta { font-size: var(--t-0); color: var(--text-3); display: flex; gap: 14px; flex-wrap: wrap; }
+.row-actions { margin-top: 8px; display: flex; gap: 10px; flex-wrap: wrap; }
+.status-word { font-weight: var(--w-head); color: var(--text-2); }
+.elapsed { font-family: var(--mono); color: var(--text-3); }
+.where { color: var(--text-2); }
+.worktree { color: var(--text-3); }
+
+/* ---- detail panes ------------------------------------------------------- */
+.detail { margin-top: 22px; background: var(--e1); border-radius: var(--r-well); box-shadow: var(--sink); }
+.detail-inner { padding: 24px; }
+.detail-heading { font-size: var(--t-1); font-weight: var(--w-head); margin-bottom: 12px; }
+.detail-section { margin-top: 20px; }
+.detail-sub { font-size: var(--t-0); color: var(--text-3); margin-bottom: 8px; }
+.kv { display: grid; grid-template-columns: 148px 1fr; gap: 10px 20px; font-size: var(--t-0); }
+.kv-key { color: var(--text-3); }
+.kv-val { color: var(--text); }
+.well { background: var(--e0); border-radius: var(--r-control); padding: 14px; }
+.log-pre { font-family: var(--mono); font-size: var(--t--1); white-space: pre-wrap; color: var(--text-2); max-height: 26rem; overflow: auto; }
+.hunk { font-family: var(--mono); font-size: var(--t--1); white-space: pre-wrap; }
+.turn { padding: 12px 0; }
+.turn + .turn { border-top: 1px solid var(--line); }
+.turn-role { font-size: var(--t--1); color: var(--text-3); font-weight: var(--w-head); }
+.turn-when { font-size: var(--t--1); color: var(--text-3); }
+
+/* ---- chain rail, order rows, confirm ------------------------------------ */
+.chain-rail { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--t-0); color: var(--text-3); }
+.cap-line { font-size: var(--t-0); color: var(--text-3); margin-top: 8px; }
+.order-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: var(--t-0); }
+.order-row-name { flex: 1 1 auto; }
+.confirm-row { margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--e4); border-radius: var(--r-control); padding: 12px 14px; font-size: var(--t-0); }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ---- the floor: the scheduler's view, tables on the same ground --------- */
+.masthead-left { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.repos-status, .counts-status { color: var(--text-3); }
+.counts-status span { color: var(--text-2); font-weight: var(--w-head); margin-left: 2px; }
+.region-floor { margin-top: 12px; }
+.ftable { width: 100%; border-collapse: collapse; background: var(--e2); border: 1px solid var(--edge); border-radius: var(--r-panel); box-shadow: var(--lift); overflow: hidden; font-size: var(--t-0); }
+.ftable th, .ftable td { text-align: left; vertical-align: top; padding: 14px 18px; }
+.ftable thead th { color: var(--text-3); font-weight: var(--w-head); font-size: var(--t--1); border-bottom: 1px solid var(--line); }
+.ftable tbody tr + tr td { border-top: 1px solid var(--line); }
+.ftable tbody tr:hover td { background: var(--e3); }
+.ftable td.c-elapsed, .ftable td.c-since, .ftable td.c-time { font-family: var(--mono); color: var(--text-3); white-space: nowrap; }
+.ftable .c-actions { text-align: right; }
+.ftable .c-actions .btn { white-space: nowrap; }
+.ftable-wrap { overflow-x: auto; }
+.ftable td.is-empty { color: var(--text-3); }
+
+/* ---- settings and forms ------------------------------------------------- */
+.settings-body { display: grid; gap: 24px; }
+.field { display: grid; gap: 8px; }
+.field label, .form-row label { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
+.field-help { font-size: var(--t-0); color: var(--text-3); max-width: 64ch; }
+.field-status { font-size: var(--t-0); color: var(--text-3); }
+.board-facts { font-size: var(--t-0); color: var(--text-3); }
+input[type="text"], input[type="password"], textarea, select { font: inherit; font-size: var(--t-0); color: var(--text); background: var(--e0); border: 1px solid var(--control-edge); border-radius: var(--r-control); padding: 9px 12px; min-height: 36px; }
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+fieldset { border: 1px solid var(--edge); border-radius: var(--r-well); padding: 18px; display: grid; gap: 12px; }
+legend { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); padding-inline: 6px; }
+.form-row { display: grid; gap: 8px; margin-top: 18px; }
+.form-error { background: var(--e1); border-left: 3px solid var(--danger); border-radius: var(--r-control); padding: 12px 14px; font-size: var(--t-0); color: var(--danger-text); }
+.advanced-options { margin-top: 22px; }
+.advanced-options summary { cursor: pointer; font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
+.dialog-title { font-size: var(--t-2); font-weight: var(--w-head); }
+.dialog-intro { margin-top: 8px; font-size: var(--t-0); color: var(--text-3); max-width: 64ch; }
+.dialog-actions { margin-top: 26px; display: flex; gap: 10px; justify-content: flex-end; }
+dialog { background: var(--e2); color: var(--text); border: 1px solid var(--edge); border-radius: var(--r-panel); box-shadow: var(--lift-hi); padding: 32px; max-width: 640px; width: calc(100vw - 40px); }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+
+.empty-line { font-size: var(--t-0); color: var(--text-3); margin-top: 18px; max-width: 64ch; }
+.sysmsg { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: grid; gap: 8px; z-index: 50; }
+.sysmsg:empty { display: none; }
+.sysmsg-item { background: var(--e4); color: var(--text); border-radius: var(--r-control); padding: 12px 16px; font-size: var(--t-0); box-shadow: var(--lift); }
+.prov { font-size: var(--t--1); color: var(--text-3); }
+.prov.is-stale { color: var(--warn-text); }
+.tone-muted { color: var(--text-3); }
+.tone-warn { color: var(--warn-text); }
+.tone-danger { color: var(--danger-text); }
+.tone-ok { color: var(--ok-text); }
+
+/* ===========================================================================
+   narrow. One breakpoint, because the layout has one narrow form: everything
+   in a single column. --t--1 is redefined to the body size here, which is what
+   holds the 14px floor without every rule having to remember it.
+   =========================================================================== */
+@media (max-width: 760px) {
+  .wrap { --t-4: 2rem; --t-3: 1.75rem; --t-2: 1.1875rem; --t--1: 0.9375rem; }
+  .verdict { padding-block: 36px 32px; }
+  .verdict h1 { max-width: none; letter-spacing: -.02em; }
+  .verdict p { margin-top: 16px; }
+  .panel { padding: 22px; border-radius: 14px; }
+  .logins-pair { grid-template-columns: 1fr; }
+  .gauge { gap: 14px; flex-wrap: wrap; }
+  .gauge-label { width: 100%; }
+  .gauge-track { flex: 1 1 110px; }
+  .gauge-readout { display: contents; }
+  .gauge-read { width: 68px; }
+  .gauge-note { width: 100%; text-align: left; margin-top: 8px; }
+  .gauge--noread::after { width: 68px; }
+  .gauge-block + .gauge-block { margin-top: 22px; }
+  code { font-size: 1em; }
+  .section-head { padding-block: 40px 16px; }
+  .section-head--quiet { padding-block: 40px 16px; }
+  .term { padding: 22px; }
+  .term-row { flex-direction: column; align-items: stretch; gap: 14px; }
+  .term-clock { order: -1; width: auto; justify-content: flex-end; gap: 14px; }
+  .term-id { min-width: 0; }
+  .term-actions { width: auto; justify-content: flex-start; }
+  .term-actions .btn { flex: 1 1 auto; }
+  .term-register { gap: 10px 14px; }
+  .kv { grid-template-columns: 1fr; gap: 4px 0; }
+  .kv-val + .kv-key { margin-top: 12px; }
+  .ledger { grid-template-columns: 1fr; gap: 32px; margin-top: 40px; }
+  .line { grid-template-columns: 1fr auto; gap: 6px 14px; }
+  .line-main { grid-column: 1 / -1; }
+  .line-meta { grid-column: 1; }
+  .line--commit .line-main { grid-column: 1; }
+  .drawer { padding: 18px; }
+  dialog { padding: 22px; }
 }
 
-@media (max-width: 1099px) {
-  html { --head-h: 432px; }
-  .grid, .acct, .panel, .row, .trunk-row { grid-template-columns: 176px minmax(280px, 1fr) 236px; column-gap: var(--s-5); }
-  .r3 { grid-column: 3; grid-row: 1; }
-  .r4 { grid-column: 3; grid-row: 2; text-align: right; }
-  .acct > .r3 { grid-column: 2 / -1; grid-row: 2; }
-  .acct > .r4 { grid-column: 3; grid-row: 1; text-align: right; }
-  .panel .r4, .row .r4 { align-items: flex-end; }
-  .actions, .row-actions { justify-content: flex-end; }
-}
-
-@media (max-width: 779px) {
-  .grid, .acct, .panel, .row, .trunk-row { grid-template-columns: 128px minmax(0, 1fr) 176px; column-gap: var(--s-4); }
-}
-
-/* The 14px floor, by construction: the smallest token becomes the body size in
-   the narrow breakpoint, so no rule has to remember the floor. Every size in
-   the file, .pct included, is drawn from the --t-* scale, so there is nothing
-   left to override by name here. */
-@media (max-width: 619px) {
-  :root { --t--1: var(--t-0); }
-  /* a head that is 37% of the viewport collapsed and 96% expanded is not a
-     sticky header, and there is no second column for it to stay beside. */
-  html { --head-h: 0px; }
-  .head { position: static; }
-  .grid, .acct, .panel, .row, .trunk-row { grid-template-columns: 1fr; row-gap: var(--s-2); }
-  .r1, .r2, .r3, .r4 { grid-column: 1; grid-row: auto; text-align: left; }
-  .acct > .r1, .acct > .r2, .acct > .r3, .acct > .r4 { grid-column: 1; grid-row: auto; text-align: left; }
-  .acct > .r3 { flex-direction: column; }
-  /* 4px binds a rail's label line to its own track, 16px separates one rail
-     from the next: at one token for both, the four lines read as one stack. */
-  .rail { grid-template-columns: 28px auto minmax(0, 1fr); row-gap: var(--s-1); }
-  .acct > .r2 { row-gap: var(--s-4); }
-  .track { grid-column: 1 / -1; grid-row: 2; }
-  .num { text-align: left; }
-  .num-5h { font-size: var(--t-4); }
-  /* scoped to the rail: R4 borrows .reset for the wall's end, and there the
-     register is left aligned like the two lines it sits between. */
-  .rail > .reset { grid-column: 3; grid-row: 1; text-align: right; }
-  .btn-text { min-height: 44px; }
-  .panel .r4, .row .r4 { align-items: flex-start; }
-  .actions, .row-actions { justify-content: flex-start; }
-  .ftable, .ftable tbody, .ftable tr, .ftable td { display: block; width: auto; }
-  .ftable thead { display: none; }
-  .ftable tr { padding: var(--s-2) 0; border-bottom: 1px solid var(--line); }
-  .ftable td { padding: 2px 0; border-bottom: 0; white-space: normal; overflow: visible; }
-  .ftable td::before { content: attr(data-label) ": "; color: var(--text-3); }
-  .kv { grid-template-columns: 1fr; }
-  .detail-inner { padding: var(--s-3) var(--gutter) var(--s-5); }
-}
-
-/* ---- 7 motion. Nothing pulses. The one animation is the status mark
-   annunciating a transition into danger: three blinks, then solid. ---- */
 @media (prefers-reduced-motion: reduce) {
-  .mark.state-active {
-    animation: none;
-  }
-  /* !important because this rule has specificity 0,0,0 and every transition in
-     the file is class-scoped: without it the block neutralised the annunciator
-     and nothing else, while still reading as if it covered the page. */
-  * {
-    transition: none !important;
-    animation: none !important;
-  }
+  .mark.state-active { animation: none; }
+  * { transition: none !important; }
+  .btn:active { transform: none; }
 }

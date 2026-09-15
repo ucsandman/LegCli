@@ -320,12 +320,12 @@
   // fail against a name that is in scope everywhere else in the file
   function guestMode() {
     document.body.classList.add('guest')
-    for (const node of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (node) node.hidden = true
+    for (const node of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.masthead a[href="/floor"]')]) if (node) node.hidden = true
   }
 
   function ownerMode() {
     document.body.classList.remove('guest')
-    for (const node of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.topbar a[href="/floor"]')]) if (node) node.hidden = false
+    for (const node of [document.getElementById('board'), document.getElementById('new-card-btn'), document.querySelector('.masthead a[href="/floor"]')]) if (node) node.hidden = false
   }
 
   const isGuest = () => document.body.classList.contains('guest')
@@ -368,12 +368,18 @@
   }
 
   // ---- 6.12 step 8: one row per card, no columns ----
+  // Background tasks are the third ledger cell: a count, a line of detail and a
+  // disclosure, the same shape as finished terminals and what landed. Nothing
+  // headless is what the board is for, so the rows live behind the button.
+  let cardsOpen = false
   function toggleEmptyState() {
     const empty = document.getElementById('empty-state')
     const list = document.getElementById('columns')
+    const panel = document.getElementById('cards-drawer')
     const hasCards = state.cards.size > 0
     empty.hidden = hasCards
     list.hidden = !hasCards
+    if (panel) panel.hidden = !(hasCards && cardsOpen)
   }
 
   function countCards(...statuses) {
@@ -402,7 +408,19 @@
 
   function renderCardsMeta() {
     const meta = document.querySelector('#board .region-meta')
-    if (meta) meta.textContent = cardsMeta()
+    const head = document.getElementById('cards-head')
+    const slot = document.querySelector('#board .ledger-actions')
+    const total = state.cards.size
+    if (meta) meta.textContent = total ? cardsMeta() : 'Nothing is queued. Baton starts the next login only when a terminal hands off.'
+    if (head) head.textContent = total ? `${total} background task${total === 1 ? '' : 's'}` : 'No background tasks'
+    if (!slot) return
+    const existing = document.getElementById('cards-toggle')
+    if (!total) { if (existing) existing.remove(); return }
+    const label = cardsOpen ? `Hide the ${total}` : `View ${total} card${total === 1 ? '' : 's'}`
+    if (existing) { existing.textContent = label; existing.setAttribute('aria-expanded', cardsOpen ? 'true' : 'false'); return }
+    const btn = el('button', { type: 'button', class: 'btn btn-secondary', id: 'cards-toggle', 'aria-expanded': cardsOpen ? 'true' : 'false', 'aria-controls': 'cards-drawer' }, [label])
+    btn.addEventListener('click', () => { cardsOpen = !cardsOpen; toggleEmptyState(); renderCardsMeta() })
+    slot.appendChild(btn)
   }
 
   function rowRank(card) {

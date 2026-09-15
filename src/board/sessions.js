@@ -26,14 +26,16 @@
   const FIVE_HOUR_MS = 5 * 3600 * 1000
 
   let view = null
-  let headOpen = false
+  const NO_BRANCH_BLOCKER = 'this terminal works in the checkout itself: there is no branch of its own to land'
+  let hoisted = new Set()
+  let trunkOpen = false
+  let finishedOpen = false
   let pendingConfirm = null
   const sessionEditors = new Map()
   const alsoOpen = new Set()
   const actionNotes = new Map()
   const lastTone = new Map()
   const defaultEditor = { order: null, dirty: false, saving: false, status: '', statusClass: '' }
-  const narrowQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 619px)') : { matches: false }
 
   function getToken() { return localStorage.getItem('batonToken') || '' }
   async function api(path, opts = {}) {
@@ -109,6 +111,31 @@
     return h ? `${pad(h)}:${mm}:${ss}` : `${mm}:${ss}`
   }
 
+  // A pasted screenshot arrives in the prompt as a machine tag carrying an
+  // absolute temp path. On the board that is two lines of noise in front of the
+  // sentence the reader came to read, and it puts the operator's own home
+  // directory on screen. The tag is replaced by what it actually was.
+  function promptText(task) {
+    if (!task) return 'no prompt yet'
+    const cleaned = String(task)
+      .replace(/<image\b[^>]*>[\s\S]*?<\/image>/gi, ' ')
+      .replace(/<image\b[^>]*>/gi, ' ')
+      .replace(/\[Image #\d+\]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!cleaned) return 'an image, with no text'
+    return /^<image/i.test(String(task).trim()) || /\[Image #\d+\]/.test(String(task)) ? `(image) ${cleaned}` : cleaned
+  }
+
+  // A file is identified by its name. The directory above it is the same for
+  // every file in the list, and when the work happens in a temp directory the
+  // full path is 90 characters of noise per file with the operator's user name
+  // in the middle of it. The whole path stays on the title and in the detail.
+  function fileLabel(path) {
+    const parts = String(path).split(/[\\/]/).filter(Boolean)
+    return parts.length ? parts[parts.length - 1] + (/[\\/]$/.test(String(path)) ? '/' : '') : String(path)
+  }
+
   function accountLabel(a) { return a.label || (a.account === 'default' ? a.agent : `${a.agent}/${a.account}`) }
   function optionLabel(a) { return a ? (a.account && a.account !== 'default' ? `${a.agent}/${a.account}` : a.agent) : 'none' }
   function idOf(agent) { return IDS.includes(agent) ? agent : 'fake' }
@@ -134,11 +161,6 @@
     if (s === 'notshared' || s === 'loading') return s
     return w && Number.isFinite(w.pct) ? 'reading' : 'noreading'
   }
-  // 6.1.1: one element, one gradient, hard stops computed from the value, so the
-  // bar shows the zones it has crossed and red is confined to the part past 85.
-  function fillStops(pct) {
-    return { s60: pct <= 60 ? 100 : (60 / pct) * 100, s85: pct <= 85 ? 100 : (85 / pct) * 100 }
-  }
   // 6.1.6: a meter announces its name and its value text, so the whole answer
   // goes in one sentence instead of four separate visible cells.
   function railValueText(a, w, kind) {
@@ -160,48 +182,6 @@
     if (a.stale && a.agent !== 'agy' && Number.isFinite(observed)) parts.push(`Read at ${clockAt(observed)}, ${spoken(Date.now() - observed)} ago, stale.`)
     return parts.join(' ')
   }
-  // R4, one printed word beside both numerals. Colour never carries this alone.
-  function tierWord(a, w) {
-    const state = acctState(a)
-    if (state === 'notshared') return 'not shared'
-    if (state === 'walled') return 'at the wall'
-    if (state === 'loading') return 'reading'
-    if (!w || !Number.isFinite(w.pct)) return 'no reading'
-    // usage.mjs returns stale === true precisely when the observation time
-    // cannot be parsed, so this branch is reached with no timestamp; say what is
-    // true rather than printing `stale NaNd`
-    if (state === 'stale') {
-      const observed = Date.parse(a.observed_at || a.updated_at || '')
-      return Number.isFinite(observed) ? `stale ${ago(Date.now() - observed)}` : 'no reading'
-    }
-    const pct = Math.round(w.pct)
-    return pct >= 85 ? 'over 85' : pct >= 60 ? 'over 60' : 'under 60'
-  }
-  // 6.1.3, R3 line 1, under the 5h rail only. The rule, out loud: print nothing
-  // rather than a wrong number. A straight line drawn across the first tenth of
-  // a window describes the last turn, not the next four hours, so under 30
-  // minutes of elapsed window this returns null and the caption is absent.
-  function burnRate(a, w, now) {
-    if (!w || !Number.isFinite(w.pct) || !Number.isFinite(w.resets_at)) return null
-    const resetsMs = w.resets_at * 1000
-    const elapsedMs = FIVE_HOUR_MS - (resetsMs - now)
-    if (elapsedMs < 30 * 60 * 1000 || elapsedMs > FIVE_HOUR_MS) return null
-    if (!(w.pct > 0)) return `at this rate the ${until(w.resets_at)} reset arrives first`
-    const goneMs = now + ((100 - w.pct) / (w.pct / elapsedMs))
-    if (!Number.isFinite(goneMs) || goneMs <= now) return null
-    if (goneMs >= resetsMs) return `at this rate the ${until(w.resets_at)} reset arrives first`
-    return `at this rate the 5h window is gone about ${clockAt(goneMs)}, ${Math.round((resetsMs - goneMs) / 60000)} min before the ${until(w.resets_at)} reset`
-  }
-  // 6.1.4, R3 line 2. The number is checkable because the line says where and
-  // when Baton read it: source and observed_at ship in the payload today and
-  // print nowhere on the board.
-  function provenanceLine(a, now) {
-    const observed = Date.parse(a.observed_at || a.updated_at || '')
-    if (!Number.isFinite(observed)) return el('div', { class: 'prov' }, [`no reading yet from ${accountLabel(a)}`])
-    const line = el('div', { class: 'prov' }, [`read ${clockAt(observed)}, ${a.source || 'source not recorded'}`])
-    if (a.stale && a.agent !== 'agy') line.append(document.createTextNode(`, ${ago(now - observed)} ago, `), el('span', { class: 'prov is-stale' }, ['stale']))
-    return line
-  }
   function worstWindow(a) {
     const w = [a.five_hour, a.seven_day].filter((x) => x && Number.isFinite(x.pct)).sort((x, y) => y.pct - x.pct)
     return w[0] || a.five_hour || a.seven_day || null
@@ -218,33 +198,29 @@
     return [...accounts].sort((x, y) => (walled(y) - walled(x)) || (worst(y) - worst(x)) || (soonest(x) - soonest(y)))[0] || null
   }
 
-  function rail(account, win, kind) {
+  // The instrument. One track, one fill, one numeral, and a 2px notch cut
+  // through the bar where 85 percent sits. `minor` is the second window on a
+  // login: the same instrument at half the height and a smaller numeral, so
+  // the reader's eye lands on the window that is closest to a wall first.
+  function gauge(account, win, kind, { minor = false } = {}) {
     const state = windowState(account, win)
     const pct = state === 'reading' ? Math.max(0, Math.min(100, Math.round(win.pct))) : null
-    // Print nothing rather than a wrong number. A walled account paints its
-    // rails full (board.css .acct.is-walled .fill), which asserted a finished
-    // window for one that was never read: the numeral said `no reading` and the
-    // bar beside it said 100%. `is-none` on the rail itself is what suppresses
-    // the fill and the 85 post now, per window, not per account.
-    const stops = fillStops(pct === null ? 0 : pct)
-    const track = el('span', { class: `track ${kind === '5h' ? 'h12' : 'h8'}`, style: `--pct:${pct === null ? 0 : pct}%` }, [
-      pct === null ? null : el('span', { class: 'fill', style: `--s60:${stops.s60.toFixed(1)}%;--s85:${stops.s85.toFixed(1)}%` }),
-      pct === null ? null : el('span', { class: 'post' }),
-    ])
-    const tone = pct === null ? 'is-none' : pct >= 85 ? 'is-danger' : pct >= 60 ? 'is-warn' : ''
-    const num = el('span', { class: `num num-${kind} ${tone}`.trim() }, pct === null
-      ? [state === 'notshared' ? 'not shared' : state === 'loading' ? 'reading' : 'no reading']
-      : [String(pct), el('span', { class: 'pct' }, ['%'])])
-    // G7: the numeral and the reset time are one continuous run and one fixation
-    const reset = el('span', { class: 'reset' }, win && Number.isFinite(win.resets_at)
-      ? [`resets ${until(win.resets_at)}`, el('span', { class: 'in' }, [`, in ${ago(win.resets_at * 1000 - Date.now())}`])]
-      : [])
     const words = WIN_WORDS[kind] || kind
     const valueText = railValueText(account, win, kind)
+    const id = idOf(account.agent)
+    // severity paints INSIDE the track and nowhere else: the fill runs in the
+    // login's own identity colour up to 85 percent and in the over colour past
+    // it, so the bar shows the reserve it has eaten without colouring a word
+    const fill = pct === null ? null : el('span', {
+      class: 'gauge-fill',
+      style: pct <= 85
+        ? `width:${pct}%;background:var(--id-${id})`
+        : `width:${pct}%;background:linear-gradient(to right,var(--id-${id}) 0 ${((85 / pct) * 100).toFixed(2)}%,var(--danger) ${((85 / pct) * 100).toFixed(2)}% 100%)`,
+    })
     // 6.1.6: a meter with no value is not a meter. aria-valuenow is required by
     // role=meter, and an empty or absent one is announced as zero percent, which
     // is the fabricated reading the visible cell refuses to print. With no value
-    // the rail drops the role and carries the same sentence as its name.
+    // the track drops the role and carries the same sentence as its name.
     const semantics = pct === null
       ? { role: 'img', 'aria-label': `${accountLabel(account)}, ${words} window. ${valueText}` }
       : {
@@ -255,52 +231,135 @@
         'aria-label': `${accountLabel(account)}, ${words} window`,
         'aria-valuetext': valueText,
       }
-    return el('div', { class: `rail${pct === null ? ' is-none' : ''}`, ...semantics },
-      [el('span', { class: 'win' }, [kind]), track, num, reset])
-  }
-
-  function railR3(a, now) {
-    const state = acctState(a)
-    if (state === 'notshared') return [el('div', { class: 'prov' }, ['usage is not shared with guests'])]
-    if (state === 'loading') return [el('div', { class: 'prov' }, ['reading /api/sessions'])]
-    const out = []
-    if (!a.five_hour && !a.seven_day && a.agent === 'agy') out.push(el('div', { class: 'burn' }, ['agy publishes no usage percentage. Baton sees the wall when agy hits it.']))
-    else { const caption = burnRate(a, a.five_hour, now); if (caption) out.push(el('div', { class: 'burn' }, [caption])) }
-    out.push(provenanceLine(a, now))
-    return out
-  }
-
-  function railR4(a) {
-    const state = acctState(a)
-    const word = tierWord(a, worstWindow(a))
-    const tone = state === 'walled' ? 'is-walled'
-      : state === 'notshared' || state === 'loading' || word === 'no reading' ? 'is-none'
-        : word === 'over 85' ? 'is-danger'
-          : word === 'over 60' || state === 'stale' ? 'is-warn' : ''
-    const out = [el('div', { class: `tier ${tone}`.trim() }, [word])]
-    if (state === 'walled') {
-      out.push(el('div', { class: 'reset' }, [`back ${until(a.limited_until)}`]))
-      out.push(el('div', { class: 'in' }, [`in ${ago(a.limited_until * 1000 - Date.now())}`]))
+    if (pct === null && state !== 'reading') {
+      // no number exists, so no instrument is drawn. A track with nothing in it
+      // is a reading of zero to anyone glancing at it.
+      return el('div', { class: 'gauge gauge--none' }, [
+        el('span', { class: 'gauge-label' }, [words]),
+        el('span', { class: 'gauge-read--none', ...semantics }, [state === 'notshared' ? 'not shared' : state === 'loading' ? 'reading' : 'no reading']),
+      ])
     }
-    return out
+    const readout = [el('span', { class: 'gauge-read' }, [`${pct}%`])]
+    const observed = Date.parse(account.observed_at || account.updated_at || '')
+    if (!minor && account.stale && account.agent !== 'agy' && Number.isFinite(observed)) {
+      readout.push(el('span', { class: 'gauge-note' }, [`measured ${ago(Date.now() - observed)} ago`]))
+    } else if (!minor && win && Number.isFinite(win.resets_at)) {
+      readout.push(el('span', { class: 'gauge-note' }, [`resets ${until(win.resets_at)}`]))
+    }
+    return el('div', { class: `gauge${minor ? ' gauge--minor' : ''}` }, [
+      el('span', { class: 'gauge-label' }, [words]),
+      el('div', { class: 'gauge-track', ...semantics }, [fill, el('span', { class: 'gauge-post', style: 'left:85%' })]),
+      el('div', { class: 'gauge-readout' }, readout),
+    ])
   }
 
-  function acctRow(a, closest) {
-    const now = Date.now()
+  // A login is a raised object, and how much surface it gets is the design
+  // saying how much it matters. The login carrying the terminals gets the wide
+  // lit panel with both of its windows drawn; a login with one fact to report
+  // gets a half panel; a login that publishes no figure draws no instrument at
+  // all, because an empty track reads as a measurement of zero.
+  function loginPanel(a, { lit = false } = {}) {
     const state = acctState(a)
-    const nameCls = a.agent ? ` chip-id-${idOf(a.agent)}` : ''
-    const marks = []
-    if (a.live) marks.push(el('span', { class: 'chip' }, [`${a.live} live terminal${a.live === 1 ? '' : 's'}`]))
-    if (closest) marks.push(el('span', { class: 'chip' }, ['closest to a wall']))
-    return el('div', { class: `acct${state === 'ok' ? '' : ` is-${state}`}` }, [
-      el('div', { class: 'r1' }, [
-        el('span', { class: `acct-name${nameCls}` }, [accountLabel(a)]),
-        marks.length ? el('div', {}, marks) : null,
-      ]),
-      el('div', { class: 'r2' }, [rail(a, a.five_hour, '5h'), rail(a, a.seven_day, '7d')]),
-      el('div', { class: 'r3' }, railR3(a, now)),
-      el('div', { class: 'r4' }, railR4(a)),
-    ])
+    const id = idOf(a.agent)
+    const panel = el('article', { class: `panel${lit ? ' panel--lit' : ''}`, 'aria-label': `${accountLabel(a)} usage` })
+    const live = a.live ? `${a.live} terminal${a.live === 1 ? '' : 's'} working` : 'no terminals'
+    panel.appendChild(el('div', { class: 'panel-head' }, [
+      el('span', { class: 'who' }, [el('span', { class: `dot id-${id}` }), el('span', { class: `acct-name id-${id}` }, [accountLabel(a)])]),
+      el('span', { class: 'who-note' }, [live]),
+    ]))
+
+    if (state === 'notshared' || state === 'loading') {
+      panel.appendChild(gauge(a, null, '5h'))
+      panel.appendChild(el('p', { class: 'reading-sub reading-sub--lead' }, [state === 'notshared' ? 'Usage for this login is not shared with guests.' : 'Waiting for the first reading.']))
+      return panel
+    }
+
+    // A login at its wall is reporting the loudest fact it has, and it is a
+    // known one: say that instead of "no reading", whether or not a percentage
+    // ever came back.
+    if (state === 'walled' && !a.five_hour && !a.seven_day) {
+      panel.appendChild(el('p', { class: 'reading' }, ['At the wall']))
+      panel.appendChild(el('p', { class: 'reading-sub' }, [Number.isFinite(a.limited_until)
+        ? `Back ${until(a.limited_until)}. Nothing runs on ${accountLabel(a)} until then.`
+        : `Nothing runs on ${accountLabel(a)} until it resets.`]))
+      return panel
+    }
+
+    // agy publishes no usage figure, ever, so there is nothing to draw and the
+    // panel says so in a sentence instead of drawing an empty instrument
+    if (!a.five_hour && !a.seven_day) {
+      panel.appendChild(gauge(a, null, '5h'))
+      panel.appendChild(el('p', { class: 'reading-sub reading-sub--lead' }, [a.agent === 'agy'
+        ? 'agy publishes no usage figure, ever. Baton shows its terminals and their elapsed time instead.'
+        : `No reading has come back from ${accountLabel(a)} yet.`]))
+      return panel
+    }
+
+    // the window closest to a wall is drawn first and full size; the other is
+    // the same instrument at half height, so which one to read is not a question
+    const [first, second] = [a.seven_day, a.five_hour].every((w) => w && Number.isFinite(w.pct))
+      ? (a.seven_day.pct >= a.five_hour.pct ? [[a.seven_day, '7d'], [a.five_hour, '5h']] : [[a.five_hour, '5h'], [a.seven_day, '7d']])
+      : [[a.five_hour && Number.isFinite(a.five_hour.pct) ? a.five_hour : a.seven_day, a.five_hour && Number.isFinite(a.five_hour.pct) ? '5h' : '7d'], null]
+    panel.appendChild(el('div', { class: 'gauge-block' }, [gauge(a, first[0], first[1])]))
+    if (second) panel.appendChild(el('div', { class: 'gauge-block' }, [gauge(a, second[0], second[1], { minor: true })]))
+
+    if (state === 'walled') {
+      panel.appendChild(el('p', { class: 'reading' }, ['At the wall']))
+      panel.appendChild(el('p', { class: 'reading-sub' }, [`Back ${until(a.limited_until)}. Nothing runs on ${accountLabel(a)} until then.`]))
+    }
+    return panel
+  }
+
+  // The headline is the one fact that decides what happens next, said as a
+  // sentence. It is never the number that the panel under it already prints:
+  // the same figure in the two largest slots on the page is one fact taking up
+  // two, which is what the rejected head did.
+  function verdictLines(list, sessions) {
+    const liveSessions = (sessions || []).filter((s) => s.active)
+    const withReading = list.filter((a) => worstWindow(a) && Number.isFinite(worstWindow(a).pct))
+    if (!list.length) return { line: 'Reading the logins.', sub: '' }
+
+    const walled = list.filter((a) => acctState(a) === 'walled')
+    const busiest = [...list].sort((x, y) => (y.live || 0) - (x.live || 0))[0]
+    const onOneLogin = liveSessions.length > 0 && new Set(liveSessions.map((s) => s.agent)).size === 1
+    const subject = onOneLogin ? list.find((a) => a.agent === liveSessions[0].agent) || busiest : closestToWall(list)
+    const w = subject ? worstWindow(subject) : null
+    const known = w && Number.isFinite(w.pct)
+    const left = known ? Math.max(0, 100 - Math.round(w.pct)) : null
+
+    let line
+    if (!liveSessions.length) {
+      line = walled.length
+        ? `Nothing is running, and ${walled.map(accountLabel).join(' and ')} ${walled.length === 1 ? 'is' : 'are'} at the wall.`
+        : 'Nothing is running.'
+    } else if (onOneLogin && known) {
+      // C's framing: one login, one point of failure. The number is what is
+      // LEFT, because that is the quantity the reader is deciding against.
+      line = `All ${liveSessions.length === 1 ? 'the' : liveSessions.length} terminal${liveSessions.length === 1 ? '' : 's'} ${liveSessions.length === 1 ? 'is' : 'are'} on ${accountLabel(subject)}, and ${accountLabel(subject)} has ${left}% left.`
+    } else if (known) {
+      line = `${accountLabel(subject)} has ${left}% left, and ${liveSessions.length} terminal${liveSessions.length === 1 ? ' is' : 's are'} working.`
+    } else {
+      line = `${liveSessions.length} terminal${liveSessions.length === 1 ? ' is' : 's are'} working.`
+    }
+
+    // A's staleness sentence. A reading taken two hours ago with terminals
+    // running since is a floor, not a measurement, and saying which direction
+    // it is wrong in is the whole point of printing the age.
+    const parts = []
+    const observed = subject ? Date.parse(subject.observed_at || subject.updated_at || '') : NaN
+    if (subject && subject.stale && subject.agent !== 'agy' && Number.isFinite(observed) && known) {
+      parts.push(liveSessions.length
+        ? `Measured ${ago(Date.now() - observed)} ago. ${liveSessions.length} terminal${liveSessions.length === 1 ? ' has' : 's have'} been running since, so the real figure is higher than ${Math.round(w.pct)} percent, never lower.`
+        : `Measured ${ago(Date.now() - observed)} ago.`)
+    }
+    for (const a of walled) {
+      if (a === subject) continue
+      parts.push(Number.isFinite(a.limited_until)
+        ? `${accountLabel(a)} is at the wall until ${until(a.limited_until)}.`
+        : `${accountLabel(a)} is at the wall.`)
+    }
+    if (!withReading.length && liveSessions.length) parts.push('No login has reported a usage figure yet.')
+    return { line, sub: parts.slice(0, 2).join(' ') }
   }
 
   // 6.1.5, all eight states. The walled state is an ADDITIONAL state of the
@@ -311,41 +370,24 @@
     if (!box) return
     box.textContent = ''
     const list = accounts || []
-    const narrow = Boolean(narrowQuery.matches) && list.length > 1
-    // 5.5: the condensed head shows the account closest to a wall, with both of
-    // its windows, and hides only the others. At full width the head keeps the
-    // payload's own order, so no row moves for a reason the reader cannot see.
-    const worst = narrow ? closestToWall(list) : null
-    const ordered = worst ? [worst, ...list.filter((a) => a !== worst)] : list
-    ordered.forEach((a, i) => {
-      const row = acctRow(a, narrow && i === 0)
-      if (narrow && i > 0 && !headOpen) row.hidden = true
-      box.appendChild(row)
-    })
-    if (narrow) {
-      // G3: the demoted accounts are NAMED with their tier, never counted. `2
-      // more accounts` hid the fact that one of them was the 96% row, so the
-      // phone head carried neither the word `claude` nor the number 96.
-      const hidden = ordered.slice(1)
-      const named = hidden.map((a) => `${accountLabel(a)} ${tierWord(a, worstWindow(a))}`).join(', ')
-      const more = el('button', { type: 'button', class: 'btn btn-text', 'aria-expanded': headOpen ? 'true' : 'false' },
-        [headOpen ? `hide ${hidden.map((a) => accountLabel(a)).join(', ')}` : `also: ${named}`])
-      more.addEventListener('click', () => { headOpen = !headOpen; renderAccounts(accounts) })
-      box.appendChild(more)
-    }
-    publishHeadHeight()
-  }
 
-  // The head is sticky and its height moves with the width, with the number of
-  // accounts and with the condensed-head disclosure, so it is measured here and
-  // published for the stylesheet. Without it a control tabbed into from below is
-  // scrolled to the viewport edge and then covered by the plate (WCAG 2.2
-  // 2.4.11), and a region scrolled to its top parks its heading behind it.
-  function publishHeadHeight() {
-    const head = document.querySelector('.head')
-    if (!head || typeof head.getBoundingClientRect !== 'function' || !document.documentElement) return
-    const h = Math.round(head.getBoundingClientRect().height)
-    if (h) document.documentElement.style.setProperty('--head-h', `${h}px`)
+    const { line, sub } = verdictLines(list, view ? view.sessions : [])
+    const h1 = document.getElementById('verdict-line')
+    const p = document.getElementById('verdict-sub')
+    if (h1) h1.textContent = line
+    if (p) p.textContent = sub
+
+    if (!list.length) return
+    // Size encodes importance. The login the terminals are on gets the wide lit
+    // panel; the rest share the row beneath it. When every login is idle the
+    // one closest to a wall leads, because that is the one that decides whether
+    // the next terminal can start.
+    const liveSessions = (view ? view.sessions || [] : []).filter((s) => s.active)
+    const lead = (liveSessions.length && list.find((a) => a.agent === liveSessions[0].agent)) || closestToWall(list) || list[0]
+    const rest = list.filter((a) => a !== lead)
+    box.appendChild(loginPanel(lead, { lit: true }))
+    if (rest.length === 1) box.appendChild(loginPanel(rest[0]))
+    else if (rest.length) box.appendChild(el('div', { class: 'logins-pair' }, rest.map((a) => loginPanel(a))))
   }
 
   // Before the first /api/sessions comes back the rail draws its face and its
@@ -702,38 +744,51 @@
     return wrap
   }
 
-  // ---- 6.2 the session panel ---------------------------------------------
-  // A full-width band in the four-register grid, not a floating card. Elevation
-  // is assigned by urgency, not by nesting: a terminal that starts needing you
-  // rises, and that rise is the notification.
+  // One terminal, as a row inside the terminals panel rather than a card of its
+  // own. Cards made every terminal the same size whatever it was doing; a row
+  // lets the panel carry the group and leaves elevation free to mean one thing.
+  // Reading order across the row is what it is doing, what it is working on,
+  // how long it has been at it, and what you can do about it.
   function renderSession(s) {
     const notes = rankedNotes(s)
     const urgent = needsYou(s, notes)
     // the article is named so the accessibility tree does not hand the reader
     // three identical triples of Land / Hand off now / Details / End
-    const panel = el('article', { class: `panel ${s.hidden || !s.active ? 'is-inert' : urgent ? 'needs-you' : 'is-running'}`, 'data-session-id': s.session_id, 'aria-label': `${s.agent} ${tail(s.session_id)}` })
+    const term = el('article', { class: `term${urgent ? ' is-urgent' : ''}`, 'data-session-id': s.session_id, 'aria-label': `${s.agent} ${tail(s.session_id)}` })
+    const row = el('div', { class: 'term-row' })
+    const body = el('div', { class: 'term-body' })
 
-    const chips = []
-    if (s.account !== 'default') chips.push(el('span', { class: 'chip' }, [s.account]))
-    if (shared() && s.owner) chips.push(el('span', { class: 'chip' }, [isMine(s) ? `${s.owner}, you` : s.owner]))
-    if (s.lineage && s.lineage.from) chips.push(el('span', { class: 'chip' }, [`from ${s.lineage.from}`]))
-    panel.appendChild(el('div', { class: 'r1' }, [
-      el('div', {}, [el('span', { class: `acct-name chip-id-${idOf(s.agent)}` }, [s.agent]), ' ', el('span', { class: 'chip' }, [tail(s.session_id)])]),
+    // The register is the caption for the prompt underneath, not a column of
+    // its own: state first, then where the work is, then anything unusual about
+    // this terminal. One line, meta colour, the smallest type on the board.
+    const branch = s.worktree ? s.worktree.branch : s.branch
+    const register = el('div', { class: 'term-register' }, [
       statusMark(s.status, s.session_id, urgent ? 'waiting on you' : null),
-      chips.length ? el('div', {}, chips) : null,
-    ]))
+      el('span', { class: 'term-where', title: s.cwd || null }, [`${s.repo_name || s.cwd || 'unknown repo'}${branch ? ` on ${branch}` : ''}`]),
+    ])
+    if (s.account !== 'default') register.appendChild(el('span', { class: 'chip' }, [s.account]))
+    if (shared() && s.owner) register.appendChild(el('span', { class: 'chip' }, [isMine(s) ? `${s.owner}, you` : s.owner]))
+    if (s.lineage && s.lineage.from) register.appendChild(el('span', { class: 'chip' }, [`from ${s.lineage.from}`]))
+    if (s.worktree) register.appendChild(el('span', { class: 'chip' }, [`own worktree, from ${s.worktree.base || 'a detached HEAD'}`]))
+    body.appendChild(register)
 
-    const r2 = el('div', { class: 'r2' })
-    if (s.hidden) r2.appendChild(el('p', { class: 'sentence tone-muted' }, ['prompt hidden']))
+    if (s.hidden) body.appendChild(el('p', { class: 'term-prompt term-prompt--empty' }, ['prompt hidden']))
     else {
       // a real <button>, so Enter, Space, the focus ring and touch all come free
-      const prompt = el('button', { type: 'button', class: 'panel-prompt', title: s.task || 'no prompt yet', 'aria-expanded': drawer.id === s.session_id ? 'true' : 'false', 'data-focus-key': `prompt:${s.session_id}` }, [s.task || 'no prompt yet'])
+      const prompt = el('button', { type: 'button', class: `panel-prompt${s.task ? '' : ' term-prompt--empty'}`, title: s.task || 'no prompt yet', 'aria-expanded': drawer.id === s.session_id ? 'true' : 'false', 'data-focus-key': `prompt:${s.session_id}` }, [promptText(s.task)])
       prompt.addEventListener('click', () => (drawer.id === s.session_id ? closeSessionDrawer() : openSessionDrawer(s.session_id, 'prompt')))
-      r2.appendChild(prompt)
+      body.appendChild(prompt)
     }
-    // exactly one sentence, the highest-ranked note
-    if (notes[0]) r2.appendChild(el('p', { class: `sentence tone-${notes[0].tone}` }, [notes[0].text]))
-    const rest = notes.slice(1)
+
+    // Exactly one sentence, the highest-ranked note. A terminal that is merely
+    // running has nothing to say that its own row does not already show, and
+    // four rows each saying "activity" is four lines of noise that make the one
+    // row with something real to say harder to find. The sentence is kept for a
+    // row that needs the reader, and for anything not simply running.
+    const own = notes.filter((n) => !hoisted.has(n.text))
+    const quiet = !urgent && own[0] && own[0].tone === 'muted'
+    if (own[0] && !quiet) body.appendChild(el('p', { class: `sentence tone-${own[0].tone}` }, [own[0].text]))
+    const rest = quiet ? [] : own.slice(1)
     if (rest.length) {
       // G3: the demoted notes are NAMED, never counted. "2 more" tells the
       // reader nothing about whether the thing behind it matters.
@@ -742,8 +797,8 @@
       // the browser's grey bevelled box, label at 2.19:1 and invisible on hover
       const also = el('button', { type: 'button', class: 'btn btn-text also', 'aria-expanded': open ? 'true' : 'false', 'data-focus-key': `also:${s.session_id}` }, [`also: ${rest.map((n) => n.cat).join(', ')}`])
       also.addEventListener('click', () => { if (open) alsoOpen.delete(s.session_id); else alsoOpen.add(s.session_id); renderSessions(view) })
-      r2.appendChild(also)
-      if (open) for (const n of rest) r2.appendChild(el('p', { class: `sentence tone-${n.tone}` }, [n.text]))
+      body.appendChild(also)
+      if (open) for (const n of rest) body.appendChild(el('p', { class: `sentence tone-${n.tone}` }, [n.text]))
     }
     const touched = s.files || []
     if (!s.hidden && touched.length) {
@@ -753,28 +808,29 @@
       const line = el('p', { class: 'files' })
       touched.slice(0, 6).forEach((f, i) => {
         if (i) line.appendChild(document.createTextNode(', '))
-        line.appendChild(el('span', { class: `file${overlapFiles.has(f) ? ' is-overlap' : ''}`, title: f }, [f]))
+        line.appendChild(el('span', { class: `file${overlapFiles.has(f) ? ' is-overlap' : ''}`, title: f }, [fileLabel(f)]))
       })
       if (touched.length > 6) line.appendChild(document.createTextNode(`, and ${touched.length - 6} more`))
-      r2.appendChild(line)
+      body.appendChild(line)
     }
-    panel.appendChild(r2)
+    row.appendChild(body)
 
-    const branch = s.worktree ? s.worktree.branch : s.branch
-    panel.appendChild(el('div', { class: 'r3' }, [
-      el('div', { class: 'where', title: s.cwd || null }, [`${s.repo_name || s.cwd || 'unknown repo'}${branch ? `@${branch}` : ''}`]),
-      s.worktree ? el('div', { class: 'worktree' }, [`own worktree, from ${s.worktree.base || 'a detached HEAD'}`]) : null,
+    // elapsed and the short id, right-aligned and small: the two facts you scan
+    // down the column rather than read
+    row.appendChild(el('div', { class: 'term-clock' }, [
+      el('span', { class: 'term-when elapsed', 'data-elapsed-from': String(Date.parse(s.started_at) || 0), 'data-elapsed-format': 'compact', title: `started ${new Date(s.started_at).toLocaleString()}` }, [ago(s.elapsed_ms)]),
+      // the tail is `codex-99ab`, printed immediately after the word `codex`:
+      // the prefix is the agent name twice, and it is the half that squeezed
+      // the state word out of the identity column on a one-line row
+      el('span', { class: 'term-id', title: s.session_id }, [tail(s.session_id).replace(new RegExp(`^${s.agent}-`), '')]),
     ]))
 
-    const r4 = el('div', { class: 'r4' }, [
-      el('span', { class: 'elapsed', 'data-elapsed-from': String(Date.parse(s.started_at) || 0), title: `started ${new Date(s.started_at).toLocaleString()}` }, [elapsedClock(s.elapsed_ms)]),
-    ])
     if (pendingConfirm && pendingConfirm.id === s.session_id) {
-      r4.appendChild(confirmRow(pendingConfirm.question, pendingConfirm.verb, (btn) => act(s.session_id, pendingConfirm.action, btn)))
-      panel.appendChild(r4)
-      return panel
+      term.appendChild(row)
+      term.appendChild(confirmRow(pendingConfirm.question, pendingConfirm.verb, (btn) => act(s.session_id, pendingConfirm.action, btn)))
+      return term
     }
-    const actions = el('div', { class: 'actions' })
+    const actions = el('div', { class: 'term-actions' })
     const ask = (question, verb, action) => () => { pendingConfirm = { id: s.session_id, question, verb, action }; renderSessions(view) }
     if (s.hidden) {
       if (s.active) {
@@ -782,24 +838,25 @@
         q.addEventListener('click', () => act(s.session_id, 'request-handoff', q))
         actions.appendChild(q)
       }
-      r4.appendChild(actions)
-      panel.appendChild(r4)
-      return panel
+      row.appendChild(actions)
+      term.appendChild(row)
+      return term
     }
     // G10: the order is Land, Hand off now, Details, End, and it never reflows
     // by availability. A button that does not apply is omitted, never moved.
     const landing = Boolean(s.land && s.land.state === 'landing')
-    const blocker = s.worktree
-      ? s.land_blocker
-      : 'this terminal works in the checkout itself: there is no branch of its own to land'
+    const blocker = s.worktree ? s.land_blocker : NO_BRANCH_BLOCKER
     // G10 is disabled-with-its-reason, so the reason is attached to the control
     // as well as printed: the title used to be on the inverse condition, giving
     // the tooltip to the button that explains itself and none to the one that
     // needs it, and nothing connected the sentence below to the button above.
     const blockerId = blocker ? `land-blocker-${s.session_id}` : null
+    // Land is the primary action only when it can actually run. A disabled
+    // button painted in the one accent colour spends the loudest thing in the
+    // design on something the reader cannot do.
     const land = el('button', {
       type: 'button',
-      class: `btn btn-primary${landing ? ' is-loading' : ''}`,
+      class: `btn ${blocker ? 'btn-secondary' : 'btn-primary'}${landing ? ' is-loading' : ''}`,
       disabled: blocker || landing ? '' : null,
       'data-focus-key': `land:${s.session_id}`,
       'aria-describedby': blockerId,
@@ -808,7 +865,7 @@
     land.addEventListener('click', () => act(s.session_id, 'land', land))
     actions.appendChild(land)
     if (s.active) {
-      const h = el('button', { type: 'button', class: 'btn btn-secondary', title: 'save the bundle, stop this agent, start the next option in the same terminal', 'data-focus-key': `handoff:${s.session_id}` }, ['Hand off now'])
+      const h = el('button', { type: 'button', class: `btn ${blocker ? 'btn-primary' : 'btn-secondary'}`, title: 'save the bundle, stop this agent, start the next option in the same terminal', 'data-focus-key': `handoff:${s.session_id}` }, ['Hand off now'])
       h.addEventListener('click', () => act(s.session_id, 'handoff', h))
       actions.appendChild(h)
     }
@@ -838,11 +895,11 @@
       no.addEventListener('click', () => act(s.session_id, `requests/${encodeURIComponent(r.by)}/dismiss`, no))
       actions.append(ok, no)
     }
-    r4.appendChild(actions)
+    row.appendChild(actions)
+    term.appendChild(row)
     // the reason a disabled control is disabled is printed, never left in a title
-    if (blocker) r4.appendChild(el('p', { class: 'blocker', id: blockerId }, [blocker]))
-    panel.appendChild(r4)
-    return panel
+    if (blocker) term.appendChild(el('p', { class: 'blocker', id: blockerId }, [blocker]))
+    return term
   }
 
   // ---- 6.6 the detail region: an in-flow expansion, never an overlay ------
@@ -1150,6 +1207,93 @@
     meta.textContent = `${verdict}${landed ? `, last landed ${clockAt(landed)}` : ''}`
   }
 
+  // A fact that is true of every terminal on the board is a property of the
+  // board, not of any row. Printed per row it was the same sentence three
+  // times, which is three lines of noise around the one row that had something
+  // of its own to say. The per-row copy stays in the DOM, visually hidden, so
+  // the Land button's aria-describedby still resolves to its own reason.
+  function sharedBlocker(list) {
+    const shown = list.filter((s) => !s.hidden)
+    if (shown.length < 2) return null
+    const first = shown[0].worktree ? shown[0].land_blocker : NO_BRANCH_BLOCKER
+    if (!first) return null
+    return shown.every((s) => (s.worktree ? s.land_blocker : NO_BRANCH_BLOCKER) === first) ? first : null
+  }
+
+  // Any sentence two or more terminals would print identically is a fact about
+  // the board, not about a terminal. `near the 7d wall, next: codex` on three
+  // rows is one fact and two lines of noise, and it is set in the alarm weight,
+  // so the noise is the loudest thing on the page.
+  function sharedNotes(list, notesOf) {
+    const seen = new Map()
+    for (const s of list) {
+      for (const n of notesOf.get(s.session_id) || []) {
+        const at = seen.get(n.text) || { n, count: 0 }
+        at.count += 1
+        seen.set(n.text, at)
+      }
+    }
+    // only a note that carries a state worth acting on is worth saying at board
+    // level. `turn 12, last activity 1:04 AM` is per-terminal detail: shared by
+    // coincidence, not a fact about the board, and hoisting it put the quietest
+    // sentence on the page in the loudest position.
+    return [...seen.values()].filter((x) => x.count >= 2 && x.n.tone !== 'muted').map((x) => x.n)
+  }
+
+  function hoistShared(list, notesOf) {
+    const slot = document.getElementById('terminals-hoisted')
+    if (!slot) return
+    const shared = sharedBlocker(list)
+    const notes = notesOf ? sharedNotes(list, notesOf) : []
+    hoisted = new Set(notes.map((n) => n.text))
+    slot.textContent = ''
+    for (const n of notes) slot.appendChild(el('span', { class: `hoisted-note tone-${n.tone}` }, [n.text]))
+    if (shared) slot.appendChild(el('span', { class: 'hoisted-note tone-muted' }, [`every terminal here ${shared.replace(/^this terminal /, '')}`]))
+    slot.hidden = !slot.childNodes.length
+    for (const p of document.querySelectorAll('#session-grid .blocker')) p.classList.toggle('is-hoisted', Boolean(shared))
+  }
+
+  // Finished terminals are history. After a day of work they are most of the
+  // list, and drawn as full rows they bury the one or two that are live, so
+  // they leave the panel entirely and become a ledger cell with a drawer.
+  function renderFinished(finished, region) {
+    const head = document.getElementById('finished-head')
+    const meta = document.querySelector('.region-finished .region-meta')
+    const slot = document.getElementById('finished-actions')
+    const box = document.getElementById('finished-list')
+    const panel = document.getElementById('finished-drawer')
+    if (!head || !meta || !slot || !box || !panel) return
+    slot.textContent = ''
+    box.textContent = ''
+    if (!finished.length) {
+      head.textContent = 'No finished terminals'
+      meta.textContent = 'Every terminal Baton knows about is still live.'
+      panel.hidden = true
+      return
+    }
+    const counts = {}
+    for (const s of finished) counts[s.status] = (counts[s.status] || 0) + 1
+    head.textContent = `${finished.length} finished`
+    meta.textContent = Object.entries(counts).map(([k, n]) => `${n} ${(STATUS[k] && STATUS[k][0]) || k}`).join(', ')
+    // naming eight dead session ids is a wall of text nobody reads. The repos
+    // they were working in is the fact worth carrying.
+    const repos = [...new Set(finished.map((s) => s.repo_name).filter(Boolean))]
+    if (repos.length) meta.textContent += `, in ${repos.slice(0, 3).join(', ')}${repos.length > 3 ? ` and ${repos.length - 3} more` : ''}`
+    const btn = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-expanded': finishedOpen ? 'true' : 'false', 'aria-controls': 'finished-drawer', 'data-focus-key': 'finished-toggle' },
+      [finishedOpen ? `Hide the ${finished.length}` : `View all ${finished.length}`])
+    btn.addEventListener('click', () => { finishedOpen = !finishedOpen; renderSessions(view) })
+    slot.appendChild(btn)
+    panel.hidden = !finishedOpen
+    const headline = document.getElementById('finished-drawer-head')
+    if (headline) headline.textContent = `${finished.length} finished terminal${finished.length === 1 ? '' : 's'}`
+    if (!finishedOpen) return
+    for (const s of finished) {
+      const panelEl = renderSession(s)
+      box.appendChild(panelEl)
+      if (drawer.id === s.session_id && region) panelEl.after(region)
+    }
+  }
+
   function renderSessions(v) {
     const focus = takeFocus(document)
     const grid = document.getElementById('session-grid')
@@ -1172,13 +1316,29 @@
     // cursor for a reason the reader cannot see.
     list.sort((a, b) => (urgent(a) === urgent(b) ? Date.parse(a.started_at) - Date.parse(b.started_at) : urgent(a) ? -1 : 1))
     const empty = document.querySelector('.region-terminals .empty-line')
-    if (empty) empty.hidden = list.length > 0
-    terminalsMeta(list, notesOf)
-    for (const s of list) {
+    if (empty) empty.hidden = list.some((s) => s.active || needsYou(s, notesOf.get(s.session_id) || []))
+
+    // A terminal that has ended or been lost is history, and history does not
+    // belong in the panel that shows what is live. It moves to the ledger.
+    const done = (s) => !s.active && !urgent(s) && drawer.id !== s.session_id
+    const live = list.filter((s) => !done(s))
+    const finished = list.filter(done)
+    terminalsMeta(live, notesOf)
+    // computed over the rows that are actually drawn: a sentence shared only by
+    // terminals collapsed into the ledger is not on screen to be deduped
+    hoistShared(live, notesOf)
+    for (const s of live) {
       const panel = renderSession(s)
       grid.appendChild(panel)
       if (drawer.id === s.session_id && region) panel.after(region)
     }
+    // the per-row copies exist only now, so the pass that hides the ones the
+    // region already says runs after the rows are in the document
+    hoistShared(live, notesOf)
+    const section = document.querySelector('.region-terminals')
+    if (section) section.hidden = false
+    grid.hidden = live.length === 0
+    renderFinished(finished, region)
     // every control in a panel is a new element after this rebuild, and the
     // expanded region was moved out and back, which blurs whatever was focused
     // inside it and zeroes every box it could scroll: put the reader back on
@@ -1187,34 +1347,51 @@
     putFocus(document, focus)
   }
 
+  // What landed is history too. The full list was eighteen rows of git log at
+  // the same visual weight as the live terminals, so the loudest thing on the
+  // page was a commit from eleven days ago. It is a count and a disclosure now,
+  // and `git log` is one keystroke away in the terminal already open.
   function renderTrunk(v) {
     const box = document.getElementById('trunk')
-    if (!box) return
+    const head = document.getElementById('trunk-head')
+    const meta = document.querySelector('.region-trunk .region-meta')
+    const slot = document.getElementById('trunk-actions')
+    const panel = document.getElementById('trunk-drawer')
+    if (!box || !head || !meta || !slot || !panel) return
     box.textContent = ''
-    const branches = []
-    let count = 0
-    for (const t of v.trunk || []) {
-      if (!t.branch) continue
-      branches.push(`${t.repo_name}@${t.branch}`)
+    slot.textContent = ''
+    const all = (v.trunk || []).filter((t) => t.branch)
+    const branches = all.map((t) => `${t.repo_name}@${t.branch}`)
+    const total = all.reduce((n, t) => n + t.commits.length, 0)
+    if (!total) {
+      head.textContent = 'Nothing landed yet'
+      meta.textContent = 'Land commits a terminal\'s work, rebases it onto main, runs the tests and fast-forwards.'
+      panel.hidden = true
+      return
+    }
+    const newest = all.flatMap((t) => t.commits).map((c) => c.when).filter(Boolean)[0]
+    head.textContent = `${total} landed`
+    meta.textContent = `${newest ? `newest ${newest}, ` : ''}on ${branches.slice(0, 3).join(', ')}${branches.length > 3 ? ` and ${branches.length - 3} more` : ''}`
+    const btn = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-expanded': trunkOpen ? 'true' : 'false', 'aria-controls': 'trunk-drawer', 'data-focus-key': 'trunk-toggle' },
+      [trunkOpen ? `Hide the ${total}` : `View ${total} commit${total === 1 ? '' : 's'}`])
+    btn.addEventListener('click', () => { trunkOpen = !trunkOpen; renderTrunk(view) })
+    slot.appendChild(btn)
+    panel.hidden = !trunkOpen
+    const headline = document.getElementById('trunk-drawer-head')
+    if (headline) headline.textContent = `${total} commit${total === 1 ? '' : 's'} landed on ${branches.slice(0, 2).join(', ')}`
+    if (!trunkOpen) return
+    for (const t of all) {
+      box.appendChild(el('div', { class: 'group-head' }, [`${t.repo_name} on ${t.branch}`, el('span', {}, [`${t.commits.length} commit${t.commits.length === 1 ? '' : 's'}`])]))
       for (const c of t.commits) {
-        count++
         const lb = c.landed_by
         const by = lb && lb.by && lb.by !== 'local' ? ` for ${lb.by}` : ''
         box.appendChild(el('div', { class: 'trunk-row' }, [
-          el('div', { class: 'r1' }, [el('span', { class: 'mono' }, [c.sha])]),
-          el('div', { class: 'r2' }, [c.subject]),
-          el('div', { class: 'r3' }, [el('span', { class: 'chip' }, [`${t.repo_name}@${t.branch}`])]),
-          el('div', { class: 'r4' }, [lb
-            ? el('span', { class: 'landed-by', title: `Land pressed on the card of ${lb.agent} session ${lb.session_id}${by}${Number.isFinite(Date.parse(lb.at)) ? `, ${new Date(lb.at).toLocaleString()}` : ''}` }, [`${c.when}, landed by ${lb.agent} (${tail(lb.session_id)})${by}`])
-            : el('span', { class: 'chip' }, [`${c.when}, ${c.author}`])]),
+          el('span', { class: 'line-main', title: c.sha }, [c.subject]),
+          el('span', { class: 'line-when' }, [lb
+            ? el('span', { class: 'landed-by', title: `Land pressed on the card of ${lb.agent} session ${lb.session_id}${by}${Number.isFinite(Date.parse(lb.at)) ? `, ${new Date(lb.at).toLocaleString()}` : ''}` }, [`${c.when}, by ${lb.agent}${by}`])
+            : `${c.when}, ${c.author}`]),
         ]))
       }
-    }
-    const meta = document.querySelector('.region-trunk .region-meta')
-    if (meta) {
-      meta.textContent = count
-        ? `the last ${count} commit${count === 1 ? '' : 's'} on ${branches.join(', ')}`
-        : 'Nothing has landed on main from this board yet. The Land button commits this terminal\'s work, rebases it onto main, runs the tests and fast-forwards.'
     }
   }
 
@@ -1224,7 +1401,10 @@
   function tickElapsed() {
     for (const node of document.querySelectorAll('[data-elapsed-from]')) {
       const from = Number(node.getAttribute('data-elapsed-from'))
-      if (from) node.textContent = elapsedClock(Date.now() - from)
+      if (!from) continue
+      node.textContent = node.getAttribute('data-elapsed-format') === 'compact'
+        ? ago(Date.now() - from)
+        : elapsedClock(Date.now() - from)
     }
   }
 
@@ -1254,8 +1434,6 @@
     if (pendingConfirm) { pendingConfirm = null; if (view) renderSessions(view); return }
     if (drawer.id) closeSessionDrawer()
   })
-  if (narrowQuery.addEventListener) narrowQuery.addEventListener('change', () => { if (view) renderAccounts(view.accounts || []) })
-  window.addEventListener('resize', publishHeadHeight)
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('default-order-save')?.addEventListener('click', saveDefaultOrder)
     renderLoadingHead()

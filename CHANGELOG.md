@@ -2,61 +2,64 @@
 
 ## Unreleased
 
-- **The board is rebuilt as an instrument, not a dashboard.** The old board was a
-  generic dark panel: `--bg: #0f1115`, the exact colour `PRODUCT.md` names as an
-  anti-reference, with kanban columns 2,056px wide on a 1,280px viewport, raw
-  JSON printed inside every card, a chip around every noun, and warning red used
-  for six different meanings. It was replaced from a six-concept tournament
-  judged on four lenses (task fitness, craft, data truth, buildability). The
-  winning concept, Cobalt Instrument:
-  - A sticky instrument head with one row per login and two window rails each.
-    The ones digit of every percentage right-aligns onto the same x, so 4, 45 and
-    96 are one scan down a column, and the 85 percent post is painted into every
-    track at all times, including at 0 percent fill: you can see the wall before
-    you reach it. `role="meter"` carries the whole answer in one
-    `aria-valuetext`; a window with no reading is not a meter at all and paints
-    no bar, because printing nothing beats printing a number that does not exist.
-  - One four-column register (who / what / where / when-or-act) that accounts,
-    terminals, landed commits, background cards and floor rows all lay their
-    fields into, so five private layouts became one instrument face.
-  - Kanban columns became rows ordered needs-you first. The overlay drawer became
-    an in-flow expansion. The toast stack became one system message. Settings
-    left its popover and became the last region.
-  - Urgency is carried by luminance, not hue. Every status prints a word beside
-    its colour: `waiting on you`, `at the wall`, `over 85`, `no reading`.
-  - Self-hosted Atkinson Hyperlegible Next and Azeret Mono subsets (17 KB and
-    13 KB), so the board keeps its typography with no network at all.
-  - `/floor` shares the head verbatim, so a time, a percentage or a tier word can
-    never read two ways on the two pages.
-- **Both usage bars used to vanish at the moment they mattered.** `sessions.js`
-  guarded them with `!walled &&`, so hitting a limit hid the two numbers that
-  explain the limit. Deleted.
-- **The board no longer fights the reader's scroll.** The 3-second rebuild
-  restores focus so a tabbed control is not lost, but `focus()` scrolls its
-  element into view unless told not to, so clicking any button pinned the
-  viewport to it on every poll and the page could not be scrolled at all.
-  `preventScroll` on the rebuild path only; a focus move the reader asked for
-  still scrolls.
-- **A handoff no longer stalls on a first-run trust prompt.** The handoff fires
-  when the limit hits, which is usually when nobody is watching, and an agent
-  that had never run in that folder stopped on "Is this a project you trust?" and
-  waited for a keypress that was not coming. Baton now records the same answer
-  for the repository you chose by typing `baton claude` in it: claude's
-  `hasTrustDialogAccepted` in `~/.claude.json` (the remedy Claude Code's own
-  permissions guide prescribes), codex's `trust_level` in `~/.codex/config.toml`,
-  agy's entry in `~/.gemini/trustedFolders.json`. An external `CLAUDE.md` import
-  is approved with every path printed to the terminal and the session timeline.
-  Baton never creates one of those files, never rewrites one to say what it
-  already says, and never overrides an answer already on file: a recorded "no"
-  is an answer and stays. `BATON_TRUST=never` switches it all off.
-- **Guest boards no longer receive the owner's usage.** `sessionsView()` sent the
-  accounts array unredacted. It was invisible as a 56x6 pixel bar; the redesign
-  would have made it a 30px numeral at the top of the page. Guests see
-  `not shared`, and `share-security.test.mjs` gains a canary that fails if a
-  percentage ever reaches a guest board again.
-- The OG card advertised `MIT`. Baton ships under the Baton License Agreement.
-- `README.md`, `docs/board-guide.md` and `docs/DEMO.md` rewritten against the
-  board that now exists, and every screenshot recaptured.
+- **The board is a dark product surface, and the largest thing on it is a
+  sentence.** The instrument that shipped through 0.4.3 was built against a
+  brief in `DESIGN.md` reading "exact, unhurried, mechanical, the printed
+  operator's manual for a piece of test equipment": a saturated navy ground,
+  hairline rules as the only structure, 2px radii, no elevation, and a monospace
+  face for prose. Six rounds were built against it and all six were rejected.
+  The brief, not the execution, was the defect, and it has been rewritten. What
+  ships instead:
+  - The board opens with the finding, not the data: "All 4 terminals are on
+    claude, and claude has 5% left", at 52px, written from the live view. Under
+    it sits the age of the reading and which direction it is wrong in — "Measured
+    2h 13m ago. 4 terminals have been running since, so the real figure is higher
+    than 95 percent, never lower." A reading taken two hours ago is a floor, and
+    saying so is the whole reason to print its age.
+  - Size encodes importance. The login carrying the terminals gets a wide panel
+    lit from above with both of its gauges; a login with one fact to report gets
+    a half panel; a login that publishes no figure draws no instrument at all,
+    because an empty track reads as a measurement of zero. Previously every login
+    got an identical row, so the layout said nothing before you read it.
+  - A terminal is a row inside one panel, not a card of its own: state, where,
+    the prompt, elapsed, and its buttons in a fixed 2x2 grid so every row's
+    controls sit in the same place. Land is the primary action only when it can
+    actually run; when it is blocked the accent goes to Hand off now, because a
+    disabled control should not wear the one accent colour in the design.
+  - Finished terminals, what landed on trunk and background tasks leave the live
+    area entirely and become three counts on the ground that open on click. On a
+    real board after a day's work those were most of the list and they buried the
+    one or two terminals that were live.
+  - A fact true of every terminal is said once, at the region, instead of once
+    per row. The per-row copy stays in the DOM, visually hidden, so each Land
+    button's `aria-describedby` still resolves to its own reason.
+  - Ground `#0E1012` neutral near-black, panels raised with a 1px top highlight
+    and a shadow beneath, 16px radii, type from 13 to 52px (it ran 13 to 21,
+    which is why it read as a spreadsheet), one accent blue spent on the primary
+    action and nowhere else, and severity painted inside a gauge track rather
+    than used as the colour of a word.
+  - Measured against a board shaped like a real one — mostly `lost` and `ended`
+    terminals with long absolute paths — the page went from 3,302px to 2,107px at
+    1280 and from 6,530px to 3,937px at 400, with terminal rows from 180-277px
+    down to 135-165px.
+- **Prompts, file lists and the trunk log stop printing machine noise.** A pasted
+  screenshot arrived in the prompt as an `<image name=... path=...>` tag carrying
+  an absolute temp path with the operator's home directory in it, and printed as
+  two lines of noise in front of the sentence; it now reads `(image)` and the
+  text. A touched file prints its basename, not 90 characters of temp path. The
+  trunk log shows what landed as a count that opens, instead of eighteen rows of
+  `git log` at the same visual weight as the live terminals.
+- **The marketing site runs on the board's own hex values.** `site/` was a light
+  page recreating the board in a different palette, from the card anatomy the
+  board stopped having two commits earlier. Both recreations are rebuilt against
+  what the board actually renders now, the page is on the same ramp as the
+  product, emphasis between folds is elevation rather than a slab of hue, and the
+  brand mark, favicon and OG card follow. `llms.txt` and every "card" in the copy
+  corrected. A marketing page that recreates the product in a different palette
+  is a picture of a different product.
+- `DESIGN.md` rewritten to describe what ships, opening with what it replaced and
+  why it must not come back, and covering both surfaces from one set of tokens.
+- `README.md` and its screenshot recaptured against the board that now exists.
 
 - **A resume pointer that cannot describe a picture that is no longer true.**
   `.baton/RESUME.md` used to be an unowned convenience copy: written once per

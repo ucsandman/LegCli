@@ -1,24 +1,34 @@
 # Board guide
 
 For anyone using the Baton board day to day: what every element means and when
-it shows up. The board is one page, read top to bottom: a sticky instrument
-head with one row per login, then four regions in this order, **Terminals**,
-**Landed on main**, **Background tasks**, **Settings**. Start a session
+it shows up. The board is one page, read top to bottom: **the verdict** (one
+sentence saying what to do next), **the logins** (one panel each), **Terminals**
+(one row each), **the ledger** (finished terminals, what landed, background
+tasks, as three counts that open), then **Settings**. Start a session
 (`baton claude`) or the background-task board (`npm start`), see
 [getting-started.md](getting-started.md), then use this as a reference.
+
+The visual system, and why it is what it is, is `DESIGN.md` at the repo root.
 
 ## Screenshots
 
 `docs/screenshots/` (listed here so you know what exists before you look for
-one). These six were taken on 2026-09-14 against the current build:
+one). These two were taken on 2026-09-15 against the current build:
 
 ```
-terminals-1280.png        the board at 1280 px, three terminals
-board-400px.png           the same board at 400 px, condensed head
+terminals-1280.png        the board at 1280 px, four terminals on one login
+board-400px.png           the same board at 400 px
+```
+
+Every other file in that directory predates the 2026-09-15 redesign and shows
+an anatomy the board no longer has. Each needs a run that produces its state
+before it can be retaken:
+
+```
 board-details-open.png    a terminal with its expansion open
-floor.png                 /floor at 1280 px
-floor-final-1280.png      /floor at 1280 px
-floor-final-400.png       /floor at 400 px
+floor.png, floor-final-1280.png, floor-final-400.png, floor-landing.png
+share-owner-1280.png, share-guest-1280.png
+board-done.png, board-drawer.png, board-empty.png, board-handoff.png, board-running.png
 ```
 
 These five were taken on 2026-09-15, one demo run of the sequence walked through
@@ -32,55 +42,62 @@ demo-4-codex-running.png    leg 2 running on fake-codex
 demo-5-done.png             done, both legs on the chain
 ```
 
-The other files in that directory were taken on 2026-09-10 and 2026-09-11 and
-show the board as it was before the 2026-09-14 redesign. `board-done.png`,
-`board-drawer.png`, `board-empty.png`, `board-handoff.png` and
-`board-running.png` are background-task card states; `share-owner-1280.png` and
-`share-guest-1280.png` are a shared board seen by its owner and by a guest; and
-`floor-landing.png` is the floor's trunk lane with three landed commits. Each of
-those needs a run that produces the state before it can be retaken.
+## The verdict and the logins
 
-## The instrument head
+`src/board/sessions.js` draws both, from the `accounts` array of
+`GET /api/sessions` and the sessions beside it.
 
-`src/board/sessions.js` draws it on the board and `src/board/floor.js` draws the
-same head on the floor, from the `accounts` array of `GET /api/sessions`. It is
-sticky: it stays on screen while the page scrolls under it.
+**The verdict** is the largest thing on the page and it is a sentence, not a
+number. It names the one fact that decides what happens next:
 
-One row per login, `<agent>` for the default account and `<agent>/<name>` for a
-named one. Each row reads left to right in four registers:
+```
+All 4 terminals are on claude, and claude has 5% left.
+```
 
-- **Who**: the login name in its agent colour, and a chip counting the sessions
-  running on it, `1 live terminal` or `3 live terminals`.
-- **The rails**: the 5h window above the 7d window. Each rail is a track, a
-  percentage and a reset. The fill crosses its zones at 60 and 85, and the tick
-  at 85 is drawn only for a window that has been read. A window with no reading
-  prints `no reading` in place of the number and draws no fill, because a zero
-  is a reading and Baton does not print one it does not have. The reset reads
-  `resets 11:38 PM, in 6m`.
-- **How it is going, and where the number came from**: a burn-rate sentence
-  under the 5h rail, either `at this rate the 11:38 PM reset arrives first` or
-  `at this rate the 5h window is gone about 11:12 PM, 26 min before the 11:38 PM
-  reset`. It is absent under 30 minutes of elapsed window, because a rate drawn
-  from the first tenth of a window describes the last turn and not the next four
-  hours. Below it the provenance line, `read 11:03 PM, claude statusline, 28m
-  ago, stale`, naming the source Baton read and when it read it.
-- **The state in one word**: `under 60`, `over 60`, `over 85`, `stale 28m`,
-  `at the wall`, `no reading` or `not shared`. Colour never carries this alone.
+One login carrying every terminal is one point of failure, so that is what the
+sentence says. With the terminals spread across logins it names the one closest
+to a wall instead; with nothing running it says so, and names any login that is
+walled. The number it prints is what is **left**, because that is the quantity
+you are deciding against.
 
-A login at its wall keeps both rails and everything they were already printing.
-Nothing is replaced; the state register grows to three lines instead, `at the
-wall`, `back Sat 10:11 PM`, `in 4d 22h`, and the fill is hatched.
+Under it, one line carrying the age of the reading and which direction it is
+wrong in:
 
-agy publishes no percentage, so its row prints `agy publishes no usage
-percentage. Baton sees the wall when agy hits it.` where a burn rate would be.
+```
+Measured 2h 13m ago. 4 terminals have been running since, so the real figure is
+higher than 95 percent, never lower.
+```
 
-Nothing here is on hover: every number, its reset and its source are printed. A
-screen reader gets the same sentence from each rail's `aria-valuetext`.
+A reading taken two hours ago is a floor, not a measurement, and saying so is
+the entire reason to print its age. Any login at a wall other than the one in
+the headline is named on the same line.
 
-At 619 px and narrower the head shows one row, the login closest to a wall, with
-both of its windows, and names the rest rather than counting them:
-`also: claude stale 28m, agy no reading`. That button opens the others. The
-caption under the head reads `Times are local.`
+**The logins** sit under the verdict, one panel each, and how much surface a
+panel gets is the design saying how much it matters:
+
+- The login carrying the terminals gets a wide panel, lit one step brighter than
+  the rest, with both of its windows drawn. The window closest to a wall is the
+  full-size instrument; the other is the same instrument at half height with a
+  smaller numeral, so which one to read is not a question.
+- A login with a single fact to report gets a half panel: its gauge if it has a
+  reading, then the fact. A walled login reads `At the wall` and
+  `Back Saturday 10:11 PM. Nothing runs on codex until then.`
+- A login that publishes no figure draws no instrument at all. agy's panel says
+  `agy publishes no usage figure, ever. Baton shows its terminals and their
+  elapsed time instead.` An empty track reads as a measurement of zero to anyone
+  glancing at it, so none is drawn.
+
+**The gauge** is a track, a fill and a numeral. The fill runs in the login's own
+identity colour up to 85 percent and in the over colour past it, and a 2px notch
+is cut through the bar at 85 at all times, including at zero fill: you can see
+the reserve before you reach it. A window that has never been read draws no fill
+and prints `no reading`, because a zero is a reading and Baton does not print
+one it does not have.
+
+Nothing here is on hover. A screen reader gets the whole answer from each
+track's `aria-valuetext`, including the reset, the source and the staleness; a
+window with no value is not a `meter` at all and carries the same sentence as
+its label. The caption under the logins reads `Times are local.`
 
 For Codex, the board reads the app-server's read-only
 `account/rateLimits/read` response every 60 seconds and maps its 300- and
@@ -100,29 +117,56 @@ The region head carries one verdict with its volume: `3 running, 2 waiting on
 you`, or `3 running, nothing is waiting on you`, or `nothing is running`, with
 `, last landed 11:02 PM` appended when a terminal on the page has landed.
 
-### Terminal panel
+### Terminal row
 
-One full-width panel per session, not a card in a grid. Panels that need an
-answer come first; the rest follow in start order. A panel that needs you sits
-one elevation step up with a 2 px bar down its left edge and says `waiting on
-you` where its status word would be, so the state is never carried by elevation
-alone.
+One row per live session, inside a single panel, separated from its siblings by
+a hairline. Rows that need an answer come first; the rest follow in start order.
+A row that needs you says `waiting on you` where its status word would be, so
+the state is never carried by colour or position alone.
 
-- **Who**: the agent name in its colour, the session's id tail (`claude-7f3a`),
-  the status word, and chips for the account when it is not `default`, the owner
-  on a shared board, and `from <agent>` when this terminal was handed off from
-  another.
-- **What**: the first prompt as a button, clamped to three lines on screen and
-  carried in full in its tooltip and in the expansion. Under it exactly one
-  sentence, the highest-ranked thing true about this terminal, then
-  `also: <names>` naming every sentence it is holding back, then the files this
-  session is touching as comma-separated text, up to six, then `, and N more`. A
-  file another live session is also touching is printed in the warning colour
-  and named in the overlap sentence above it.
-- **Where**: `repo@branch`, and `own worktree, from main` when this session cut
-  its own worktree.
-- **When, and what you can do**: the elapsed clock since the session started,
-  the buttons, and, when Land is disabled, the reason printed under it.
+Reading across the row: what it is doing, what it is working on, how long it has
+been at it, and what you can do about it.
+
+- **The register**, one line of the smallest type on the board: the status word
+  with its dot, then where the work is (`baton on main`, or the folder when it
+  is not a repo), then anything unusual about this terminal as plain words — the
+  account when it is not `default`, the owner on a shared board, `from <agent>`
+  when it was handed off, `own worktree, from main` when it cut its own.
+- **The prompt**, as a button: the first prompt of the session, carried in full
+  in its tooltip and in the expansion. A pasted screenshot arrives as an
+  `<image name=... path=...>` tag with an absolute temp path in it; the tag is
+  replaced by `(image)` and the text, so the operator's home directory is not on
+  screen and the sentence starts where the sentence starts.
+- **Under the prompt**, exactly one sentence, the highest-ranked thing true
+  about this terminal, then `also: <names>` naming every sentence it is holding
+  back, then the files this session is touching as comma-separated **basenames**
+  up to six, then `, and N more`. The whole path stays on the title and in the
+  expansion; printed in full it was ninety characters of temp path per file. A
+  file another live session is also touching is printed in the warning colour.
+  A terminal that is merely running prints no sentence at all: its own row
+  already says so, and four rows each saying `activity` is four lines of noise.
+- **The clock**: elapsed since the session started (`4h 24m`), and the session's
+  short id. The id used to print as `claude-7f3a` immediately after the word
+  `claude`; the prefix is the agent name twice and it is gone.
+- **The buttons**, in a fixed 2x2 grid so every row's controls sit in the same
+  place: Land, Hand off now, Details, End. Land is the primary action only when
+  it can actually run — when it is blocked the accent moves to Hand off now,
+  because a disabled control should not wear the one accent colour in the
+  design. When Land is disabled its reason is printed, never left in a tooltip.
+
+**A fact true of every row is said once, at the region.** Three rows all reading
+`this terminal works in the checkout itself: there is no branch of its own to
+land` is one fact and two lines of noise, so it is hoisted to the region head as
+`every terminal here works in the checkout itself...`. The per-row copy stays in
+the DOM, visually hidden, so each Land button's `aria-describedby` still resolves
+to its own reason. The same applies to any sentence two or more terminals would
+print identically, except muted ones: `turn 12, last activity 1:04 AM` is shared
+by coincidence, not a fact about the board.
+
+**Finished terminals leave this panel.** A terminal that has ended or been lost
+is history, and after a day's work it is most of the list. It moves to the
+ledger (below) as part of a count that opens. A finished terminal that still
+needs you, or whose expansion you have open, stays in place.
 
 ### The one sentence
 
@@ -242,48 +286,60 @@ priority: an agent moved to the bottom is tried last from every starting agent.
 The editor previews the resulting priority, with the agent running now skipped,
 before saving.
 
-## Landed on main
+## The ledger
 
-Below the terminals, one flat list across every repo the board can see, newest
-first. One row per commit: the short sha, the subject, a `repo@branch` chip, and
-when plus who. A commit a Land put there says `3 hours ago, landed by claude
-(claude-7f3a)` in the ok colour, read from `~/.baton/landings.jsonl`, which
-outlives the session; any other commit shows its git author. The region head
-names the volume and the branches, `the last 12 commits on baton@main,
-callclaw@main`. With nothing landed it reads `Nothing has landed on main from
-this board yet. The Land button commits this terminal's work, rebases it onto
-main, runs the tests and fast-forwards.`
+Below the terminals, three counts sitting on the ground with no panel, because a
+raised surface here would compete with the terminals that are live. Each is a
+heading, a line of detail and a button that opens the detail below the row.
+
+- **N finished** — the terminals that have ended or been lost, `4 lost, 2 ended,
+  in baton, costclaw, declick`. **View all N** opens them as full rows. On a real
+  board after a day's work this is most of the list, which is exactly why it is a
+  count and not the list.
+- **N landed** — what has landed on trunk across every repo the board can see,
+  `newest 38 minutes ago, on baton@main, recruiting-tool@main`. **View N
+  commits** opens them grouped by repo, newest first: the subject and, for a
+  commit a Land put there, `3 hours ago, by claude`, read from
+  `~/.baton/landings.jsonl`, which outlives the session; any other commit shows
+  its git author. Shown in full it was eighteen rows of `git log` at the same
+  visual weight as the live terminals, so the loudest thing on the page was a
+  commit from eleven days ago. With nothing landed it reads `Nothing landed yet`
+  and explains what Land does.
+- **N background tasks** — the card runtime below, as a count with **View N
+  cards**, plus **New card**. With none it reads `Nothing is queued. Baton starts
+  the next login only when a terminal hands off.`
 
 ## A shared board (more than one human)
 
 With `baton share` on (off by default), the Terminals region head carries a chip
 reading `you are wes, 2 on this board`, with `, a guest` after the name for
-anyone who is not the owner, and every panel carries an owner chip: `wes, you`
-on yours, `wes` on someone else's. There is no colour difference between the
-two.
+anyone who is not the owner, and every row carries an owner word in its
+register: `wes, you` on yours, `wes` on someone else's. There is no colour
+difference between the two.
 
-A panel that belongs to someone else sits at the lowest elevation and carries
-exactly one sentence, `read-only: wes owns this terminal`. Its prompt reads
-`prompt hidden`; it has no file names, no path beyond `repo@branch`, no bundle
-and no event log; and its only button is **Request handoff**. The instrument
-head prints `not shared` in every percentage slot. The owner sees `sam asked to
-take this terminal at 11:04 PM` on their own panel, with **Approve sam** and
-**Dismiss sam**.
+A row that belongs to someone else carries exactly one sentence, `read-only: wes
+owns this terminal`. Its prompt reads `prompt hidden`; it has no file names, no
+path beyond the repo and branch, no bundle and no event log; and its only button
+is **Request handoff**. A guest's login panels say `Usage for this login is not
+shared with guests` and draw no instrument. The owner sees `sam asked to take
+this terminal at 11:04 PM` on their own row, with **Approve sam** and **Dismiss
+sam**.
 
-A guest's board has no Background tasks region, no New card button and no Floor
+A guest's board has no background tasks cell, no New card button and no Floor
 link: that side belongs to the owner of the machine, and the API answers 403.
 
 ## Background tasks: page layout
 
 Everything from here down is the v0.1 card runtime. Each card runs separately
-from the interactive terminal conversations, in its own git worktree. It sits
-below Landed on main.
+from the interactive terminal conversations, in its own git worktree. It is the
+third ledger cell, and its rows open in a drawer under the ledger.
 
-The top bar (`src/board/index.html`) has, left to right: the Baton brand, the
-connection word (`connecting` / `live` / `reconnecting…`) with a 24 px rule
-under it, the scheduler status (`scheduler running, 2 max`), then a spacer and
-the **Floor** link. **New card** is in the Background tasks region head, not the
-top bar, and **Settings** is the last region of the page, in flow.
+The masthead (`src/board/index.html`) has the Baton wordmark on the left and, on
+the right, the connection word (`connecting` / `live` / `reconnecting…`) with its
+dot, the scheduler status (`scheduler running, 2 max`), and the **Floor** link.
+**New card** is in the ledger cell, not the masthead, and **Settings** is the
+last region of the page, in flow. Nothing on the board is sticky: the verdict is
+what you came for and it is at the top, so there is nothing to pin.
 
 With no cards the region prints `No background task. New card queues one. They
 run headless in their own worktree and report on the floor.` With cards the

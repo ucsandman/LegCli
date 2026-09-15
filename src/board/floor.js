@@ -124,9 +124,13 @@
   const WIN_WORDS = { '5h': '5 hour', '7d': '7 day' }
   const IDS = ['claude', 'codex', 'agy', 'fake']
   const FIVE_HOUR_MS = 5 * 3600 * 1000
-  let headOpen = false
-  const narrowQuery = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 619px)') : { matches: false }
 
+  // ---- times. The head prints `Times are local.` once, so no row repeats it ----
+  // THIS FILE OWNS THE TIME GRAMMAR FOR THE WHOLE BOARD. ago(), clockAt(),
+  // until() and elapsedClock() below are copied character for character into
+  // src/board/floor.js and src/board/board.js, which cannot import from here.
+  // One fact must never print in two formats across the two pages, so a change
+  // to any of these four is a change to all three files in the same commit.
   function ago(ms) {
     const s = Math.max(0, Math.floor(ms / 1000))
     if (s < 60) return `${s}s`
@@ -157,20 +161,9 @@
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
   }
   function until(epochS) { return Number.isFinite(epochS) ? clockAt(epochS * 1000) : 'unknown' }
-  // G12: fixed form, zero padded, so a column of elapsed clocks aligns on its
-  // colon whether the terminal has run four minutes or four hours.
-  function elapsedClock(ms) {
-    const s = Math.max(0, Math.floor(ms / 1000))
-    const pad = (n) => String(n).padStart(2, '0')
-    const mm = pad(Math.floor(s / 60) % 60)
-    const ss = pad(s % 60)
-    const h = Math.floor(s / 3600)
-    return h ? `${pad(h)}:${mm}:${ss}` : `${mm}:${ss}`
-  }
 
   function accountLabel(a) { return a.label || (a.account === 'default' ? a.agent : `${a.agent}/${a.account}`) }
   function idOf(agent) { return IDS.includes(agent) ? agent : 'fake' }
-
 
   // ---- 6.1 the window rail ----------------------------------------------
   // One state value per account drives the .acct modifier, every rail cell, the
@@ -189,11 +182,6 @@
     const s = acctState(a)
     if (s === 'notshared' || s === 'loading') return s
     return w && Number.isFinite(w.pct) ? 'reading' : 'noreading'
-  }
-  // 6.1.1: one element, one gradient, hard stops computed from the value, so the
-  // bar shows the zones it has crossed and red is confined to the part past 85.
-  function fillStops(pct) {
-    return { s60: pct <= 60 ? 100 : (60 / pct) * 100, s85: pct <= 85 ? 100 : (85 / pct) * 100 }
   }
   // 6.1.6: a meter announces its name and its value text, so the whole answer
   // goes in one sentence instead of four separate visible cells.
@@ -216,48 +204,6 @@
     if (a.stale && a.agent !== 'agy' && Number.isFinite(observed)) parts.push(`Read at ${clockAt(observed)}, ${spoken(Date.now() - observed)} ago, stale.`)
     return parts.join(' ')
   }
-  // R4, one printed word beside both numerals. Colour never carries this alone.
-  function tierWord(a, w) {
-    const state = acctState(a)
-    if (state === 'notshared') return 'not shared'
-    if (state === 'walled') return 'at the wall'
-    if (state === 'loading') return 'reading'
-    if (!w || !Number.isFinite(w.pct)) return 'no reading'
-    // usage.mjs returns stale === true precisely when the observation time
-    // cannot be parsed, so this branch is reached with no timestamp; say what is
-    // true rather than printing `stale NaNd`
-    if (state === 'stale') {
-      const observed = Date.parse(a.observed_at || a.updated_at || '')
-      return Number.isFinite(observed) ? `stale ${ago(Date.now() - observed)}` : 'no reading'
-    }
-    const pct = Math.round(w.pct)
-    return pct >= 85 ? 'over 85' : pct >= 60 ? 'over 60' : 'under 60'
-  }
-  // 6.1.3, R3 line 1, under the 5h rail only. The rule, out loud: print nothing
-  // rather than a wrong number. A straight line drawn across the first tenth of
-  // a window describes the last turn, not the next four hours, so under 30
-  // minutes of elapsed window this returns null and the caption is absent.
-  function burnRate(a, w, now) {
-    if (!w || !Number.isFinite(w.pct) || !Number.isFinite(w.resets_at)) return null
-    const resetsMs = w.resets_at * 1000
-    const elapsedMs = FIVE_HOUR_MS - (resetsMs - now)
-    if (elapsedMs < 30 * 60 * 1000 || elapsedMs > FIVE_HOUR_MS) return null
-    if (!(w.pct > 0)) return `at this rate the ${until(w.resets_at)} reset arrives first`
-    const goneMs = now + ((100 - w.pct) / (w.pct / elapsedMs))
-    if (!Number.isFinite(goneMs) || goneMs <= now) return null
-    if (goneMs >= resetsMs) return `at this rate the ${until(w.resets_at)} reset arrives first`
-    return `at this rate the 5h window is gone about ${clockAt(goneMs)}, ${Math.round((resetsMs - goneMs) / 60000)} min before the ${until(w.resets_at)} reset`
-  }
-  // 6.1.4, R3 line 2. The number is checkable because the line says where and
-  // when Baton read it: source and observed_at ship in the payload today and
-  // print nowhere on the board.
-  function provenanceLine(a, now) {
-    const observed = Date.parse(a.observed_at || a.updated_at || '')
-    if (!Number.isFinite(observed)) return el('div', { class: 'prov' }, [`no reading yet from ${accountLabel(a)}`])
-    const line = el('div', { class: 'prov' }, [`read ${clockAt(observed)}, ${a.source || 'source not recorded'}`])
-    if (a.stale && a.agent !== 'agy') line.append(document.createTextNode(`, ${ago(now - observed)} ago, `), el('span', { class: 'prov is-stale' }, ['stale']))
-    return line
-  }
   function worstWindow(a) {
     const w = [a.five_hour, a.seven_day].filter((x) => x && Number.isFinite(x.pct)).sort((x, y) => y.pct - x.pct)
     return w[0] || a.five_hour || a.seven_day || null
@@ -274,33 +220,29 @@
     return [...accounts].sort((x, y) => (walled(y) - walled(x)) || (worst(y) - worst(x)) || (soonest(x) - soonest(y)))[0] || null
   }
 
-  function rail(account, win, kind) {
+  // The instrument. One track, one fill, one numeral, and a 2px notch cut
+  // through the bar where 85 percent sits. `minor` is the second window on a
+  // login: the same instrument at half the height and a smaller numeral, so
+  // the reader's eye lands on the window that is closest to a wall first.
+  function gauge(account, win, kind, { minor = false } = {}) {
     const state = windowState(account, win)
     const pct = state === 'reading' ? Math.max(0, Math.min(100, Math.round(win.pct))) : null
-    // Print nothing rather than a wrong number. A walled account paints its
-    // rails full (board.css .acct.is-walled .fill), which asserted a finished
-    // window for one that was never read: the numeral said `no reading` and the
-    // bar beside it said 100%. `is-none` on the rail itself is what suppresses
-    // the fill and the 85 post now, per window, not per account.
-    const stops = fillStops(pct === null ? 0 : pct)
-    const track = el('span', { class: `track ${kind === '5h' ? 'h12' : 'h8'}`, style: `--pct:${pct === null ? 0 : pct}%` }, [
-      pct === null ? null : el('span', { class: 'fill', style: `--s60:${stops.s60.toFixed(1)}%;--s85:${stops.s85.toFixed(1)}%` }),
-      pct === null ? null : el('span', { class: 'post' }),
-    ])
-    const tone = pct === null ? 'is-none' : pct >= 85 ? 'is-danger' : pct >= 60 ? 'is-warn' : ''
-    const num = el('span', { class: `num num-${kind} ${tone}`.trim() }, pct === null
-      ? [state === 'notshared' ? 'not shared' : state === 'loading' ? 'reading' : 'no reading']
-      : [String(pct), el('span', { class: 'pct' }, ['%'])])
-    // G7: the numeral and the reset time are one continuous run and one fixation
-    const reset = el('span', { class: 'reset' }, win && Number.isFinite(win.resets_at)
-      ? [`resets ${until(win.resets_at)}`, el('span', { class: 'in' }, [`, in ${ago(win.resets_at * 1000 - Date.now())}`])]
-      : [])
     const words = WIN_WORDS[kind] || kind
     const valueText = railValueText(account, win, kind)
+    const id = idOf(account.agent)
+    // severity paints INSIDE the track and nowhere else: the fill runs in the
+    // login's own identity colour up to 85 percent and in the over colour past
+    // it, so the bar shows the reserve it has eaten without colouring a word
+    const fill = pct === null ? null : el('span', {
+      class: 'gauge-fill',
+      style: pct <= 85
+        ? `width:${pct}%;background:var(--id-${id})`
+        : `width:${pct}%;background:linear-gradient(to right,var(--id-${id}) 0 ${((85 / pct) * 100).toFixed(2)}%,var(--danger) ${((85 / pct) * 100).toFixed(2)}% 100%)`,
+    })
     // 6.1.6: a meter with no value is not a meter. aria-valuenow is required by
     // role=meter, and an empty or absent one is announced as zero percent, which
     // is the fabricated reading the visible cell refuses to print. With no value
-    // the rail drops the role and carries the same sentence as its name.
+    // the track drops the role and carries the same sentence as its name.
     const semantics = pct === null
       ? { role: 'img', 'aria-label': `${accountLabel(account)}, ${words} window. ${valueText}` }
       : {
@@ -311,98 +253,104 @@
         'aria-label': `${accountLabel(account)}, ${words} window`,
         'aria-valuetext': valueText,
       }
-    return el('div', { class: `rail${pct === null ? ' is-none' : ''}`, ...semantics },
-      [el('span', { class: 'win' }, [kind]), track, num, reset])
-  }
-
-  function railR3(a, now) {
-    const state = acctState(a)
-    if (state === 'notshared') return [el('div', { class: 'prov' }, ['usage is not shared with guests'])]
-    if (state === 'loading') return [el('div', { class: 'prov' }, ['reading /api/sessions'])]
-    const out = []
-    if (!a.five_hour && !a.seven_day && a.agent === 'agy') out.push(el('div', { class: 'burn' }, ['agy publishes no usage percentage. Baton sees the wall when agy hits it.']))
-    else { const caption = burnRate(a, a.five_hour, now); if (caption) out.push(el('div', { class: 'burn' }, [caption])) }
-    out.push(provenanceLine(a, now))
-    return out
-  }
-
-  function railR4(a) {
-    const state = acctState(a)
-    const word = tierWord(a, worstWindow(a))
-    const tone = state === 'walled' ? 'is-walled'
-      : state === 'notshared' || state === 'loading' || word === 'no reading' ? 'is-none'
-        : word === 'over 85' ? 'is-danger'
-          : word === 'over 60' || state === 'stale' ? 'is-warn' : ''
-    const out = [el('div', { class: `tier ${tone}`.trim() }, [word])]
-    if (state === 'walled') {
-      out.push(el('div', { class: 'reset' }, [`back ${until(a.limited_until)}`]))
-      out.push(el('div', { class: 'in' }, [`in ${ago(a.limited_until * 1000 - Date.now())}`]))
+    if (pct === null && state !== 'reading') {
+      // no number exists, so no instrument is drawn. A track with nothing in it
+      // is a reading of zero to anyone glancing at it.
+      return el('div', { class: 'gauge gauge--none' }, [
+        el('span', { class: 'gauge-label' }, [words]),
+        el('span', { class: 'gauge-read--none', ...semantics }, [state === 'notshared' ? 'not shared' : state === 'loading' ? 'reading' : 'no reading']),
+      ])
     }
-    return out
-  }
-
-  function acctRow(a, closest) {
-    const now = Date.now()
-    const state = acctState(a)
-    const nameCls = a.agent ? ` chip-id-${idOf(a.agent)}` : ''
-    const marks = []
-    if (a.live) marks.push(el('span', { class: 'chip' }, [`${a.live} live terminal${a.live === 1 ? '' : 's'}`]))
-    if (closest) marks.push(el('span', { class: 'chip' }, ['closest to a wall']))
-    return el('div', { class: `acct${state === 'ok' ? '' : ` is-${state}`}` }, [
-      el('div', { class: 'r1' }, [
-        el('span', { class: `acct-name${nameCls}` }, [accountLabel(a)]),
-        marks.length ? el('div', {}, marks) : null,
-      ]),
-      el('div', { class: 'r2' }, [rail(a, a.five_hour, '5h'), rail(a, a.seven_day, '7d')]),
-      el('div', { class: 'r3' }, railR3(a, now)),
-      el('div', { class: 'r4' }, railR4(a)),
+    const readout = [el('span', { class: 'gauge-read' }, [`${pct}%`])]
+    const observed = Date.parse(account.observed_at || account.updated_at || '')
+    if (!minor && account.stale && account.agent !== 'agy' && Number.isFinite(observed)) {
+      readout.push(el('span', { class: 'gauge-note' }, [`measured ${ago(Date.now() - observed)} ago`]))
+    } else if (!minor && win && Number.isFinite(win.resets_at)) {
+      readout.push(el('span', { class: 'gauge-note' }, [`resets ${until(win.resets_at)}`]))
+    }
+    return el('div', { class: `gauge${minor ? ' gauge--minor' : ''}` }, [
+      el('span', { class: 'gauge-label' }, [words]),
+      el('div', { class: 'gauge-track', ...semantics }, [fill, el('span', { class: 'gauge-post', style: 'left:85%' })]),
+      el('div', { class: 'gauge-readout' }, readout),
     ])
   }
 
-  // 6.1.5, all eight states. The walled state is an ADDITIONAL state of the
-  // rail, never a replacement for it: both percentages, both reset times and
-  // both rails stay on screen while the account is at its wall, and R4 grows.
+  // A login is a raised object, and how much surface it gets is the design
+  // saying how much it matters. The login carrying the terminals gets the wide
+  // lit panel with both of its windows drawn; a login with one fact to report
+  // gets a half panel; a login that publishes no figure draws no instrument at
+  // all, because an empty track reads as a measurement of zero.
+  function loginPanel(a, { lit = false } = {}) {
+    const state = acctState(a)
+    const id = idOf(a.agent)
+    const panel = el('article', { class: `panel${lit ? ' panel--lit' : ''}`, 'aria-label': `${accountLabel(a)} usage` })
+    const live = a.live ? `${a.live} terminal${a.live === 1 ? '' : 's'} working` : 'no terminals'
+    panel.appendChild(el('div', { class: 'panel-head' }, [
+      el('span', { class: 'who' }, [el('span', { class: `dot id-${id}` }), el('span', { class: `acct-name id-${id}` }, [accountLabel(a)])]),
+      el('span', { class: 'who-note' }, [live]),
+    ]))
+
+    if (state === 'notshared' || state === 'loading') {
+      panel.appendChild(gauge(a, null, '5h'))
+      panel.appendChild(el('p', { class: 'reading-sub reading-sub--lead' }, [state === 'notshared' ? 'Usage for this login is not shared with guests.' : 'Waiting for the first reading.']))
+      return panel
+    }
+
+    // A login at its wall is reporting the loudest fact it has, and it is a
+    // known one: say that instead of "no reading", whether or not a percentage
+    // ever came back.
+    if (state === 'walled' && !a.five_hour && !a.seven_day) {
+      panel.appendChild(el('p', { class: 'reading' }, ['At the wall']))
+      panel.appendChild(el('p', { class: 'reading-sub' }, [Number.isFinite(a.limited_until)
+        ? `Back ${until(a.limited_until)}. Nothing runs on ${accountLabel(a)} until then.`
+        : `Nothing runs on ${accountLabel(a)} until it resets.`]))
+      return panel
+    }
+
+    // agy publishes no usage figure, ever, so there is nothing to draw and the
+    // panel says so in a sentence instead of drawing an empty instrument
+    if (!a.five_hour && !a.seven_day) {
+      panel.appendChild(gauge(a, null, '5h'))
+      panel.appendChild(el('p', { class: 'reading-sub reading-sub--lead' }, [a.agent === 'agy'
+        ? 'agy publishes no usage figure, ever. Baton shows its terminals and their elapsed time instead.'
+        : `No reading has come back from ${accountLabel(a)} yet.`]))
+      return panel
+    }
+
+    // the window closest to a wall is drawn first and full size; the other is
+    // the same instrument at half height, so which one to read is not a question
+    const [first, second] = [a.seven_day, a.five_hour].every((w) => w && Number.isFinite(w.pct))
+      ? (a.seven_day.pct >= a.five_hour.pct ? [[a.seven_day, '7d'], [a.five_hour, '5h']] : [[a.five_hour, '5h'], [a.seven_day, '7d']])
+      : [[a.five_hour && Number.isFinite(a.five_hour.pct) ? a.five_hour : a.seven_day, a.five_hour && Number.isFinite(a.five_hour.pct) ? '5h' : '7d'], null]
+    panel.appendChild(el('div', { class: 'gauge-block' }, [gauge(a, first[0], first[1])]))
+    if (second) panel.appendChild(el('div', { class: 'gauge-block' }, [gauge(a, second[0], second[1], { minor: true })]))
+
+    if (state === 'walled') {
+      panel.appendChild(el('p', { class: 'reading' }, ['At the wall']))
+      panel.appendChild(el('p', { class: 'reading-sub' }, [`Back ${until(a.limited_until)}. Nothing runs on ${accountLabel(a)} until then.`]))
+    }
+    return panel
+  }
+
   function renderAccounts(accounts) {
     // THE ONE LINE THAT DIFFERS FROM sessions.js: this page's head box
     const box = document.getElementById('floor-accounts')
     if (!box) return
     box.textContent = ''
     const list = accounts || []
-    const narrow = Boolean(narrowQuery.matches) && list.length > 1
-    // 5.5: the condensed head shows the account closest to a wall, with both of
-    // its windows, and hides only the others. At full width the head keeps the
-    // payload's own order, so no row moves for a reason the reader cannot see.
-    const worst = narrow ? closestToWall(list) : null
-    const ordered = worst ? [worst, ...list.filter((a) => a !== worst)] : list
-    ordered.forEach((a, i) => {
-      const row = acctRow(a, narrow && i === 0)
-      if (narrow && i > 0 && !headOpen) row.hidden = true
-      box.appendChild(row)
-    })
-    if (narrow) {
-      // G3: the demoted accounts are NAMED with their tier, never counted. `2
-      // more accounts` hid the fact that one of them was the 96% row, so the
-      // phone head carried neither the word `claude` nor the number 96.
-      const hidden = ordered.slice(1)
-      const named = hidden.map((a) => `${accountLabel(a)} ${tierWord(a, worstWindow(a))}`).join(', ')
-      const more = el('button', { type: 'button', class: 'btn btn-text', 'aria-expanded': headOpen ? 'true' : 'false' },
-        [headOpen ? `hide ${hidden.map((a) => accountLabel(a)).join(', ')}` : `also: ${named}`])
-      more.addEventListener('click', () => { headOpen = !headOpen; renderAccounts(accounts) })
-      box.appendChild(more)
-    }
-    publishHeadHeight()
-  }
-
-  // The head is sticky and its height moves with the width, with the number of
-  // accounts and with the condensed-head disclosure, so it is measured here and
-  // published for the stylesheet. Without it a control tabbed into from below is
-  // scrolled to the viewport edge and then covered by the plate (WCAG 2.2
-  // 2.4.11), and a region scrolled to its top parks its heading behind it.
-  function publishHeadHeight() {
-    const head = document.querySelector('.head')
-    if (!head || typeof head.getBoundingClientRect !== 'function' || !document.documentElement) return
-    const h = Math.round(head.getBoundingClientRect().height)
-    if (h) document.documentElement.style.setProperty('--head-h', `${h}px`)
+    if (!list.length) return
+    // The floor has no verdict sentence: it is the scheduler's view, and its own
+    // heading says what page you are on. The login panels are identical to the
+    // board's, which is the contract that matters — a percentage, a reset or a
+    // wall can never read two ways across the two pages.
+    // the same lead rule as the board: the login carrying the terminals, else
+    // the one closest to a wall. Leading with a walled login that has no reading
+    // put a panel with no instrument in the largest slot.
+    const lead = list.find((a) => a.live) || closestToWall(list) || list[0]
+    const rest = list.filter((a) => a !== lead)
+    box.appendChild(loginPanel(lead, { lit: true }))
+    if (rest.length === 1) box.appendChild(loginPanel(rest[0]))
+    else if (rest.length) box.appendChild(el('div', { class: 'logins-pair' }, rest.map((a) => loginPanel(a))))
   }
 
   // the head is kept so a breakpoint change can redraw it without a refetch,
@@ -694,7 +642,6 @@
       setInterval(() => { if (!document.hidden) { refreshTrunk(); refreshHead() } }, 2000),
     )
     document.addEventListener('visibilitychange', () => { if (!document.hidden && !state.stopped) { refreshFloor(); refreshTrunk(); refreshHead() } })
-    if (narrowQuery.addEventListener) narrowQuery.addEventListener('change', () => renderHead(null))
   }
 
   document.addEventListener('DOMContentLoaded', init)

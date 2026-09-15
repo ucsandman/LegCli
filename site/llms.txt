@@ -18,22 +18,22 @@ Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one logged
 
 ## What runs alongside the agent
 
-1. A board in the browser at http://127.0.0.1:4747, opened once and reused. Every Baton session in every terminal is a card: agent, account, repo and branch, the task, the files being touched, the 5h and 7d usage bars, what has landed on trunk. Buttons: Land, Hand off now, Change order, End.
+1. A board in the browser at http://127.0.0.1:4747, opened once and reused. It opens with one sentence saying what to do next: which login your terminals are on and how much of it is left, with the age of the reading when it is stale. Under it each login is a panel sized by how much it matters, carrying its 5h and 7d gauges. Each live terminal is one row: state, repo and branch, the prompt, the files being touched, how long it has run, and its buttons (Land, Hand off now, Details, End). Finished terminals and what landed on trunk are counts at the bottom that open on click.
 2. Usage tracking per agent and account, read from what each CLI already exposes. Claude Code: the usage endpoint the built-in status line uses, polled every 60 s, and the `StopFailure` hook for the wall. Codex: rate limits from the session's rollout file, `usage_limit_exceeded` for the wall. agy: no percentages exposed; `RESOURCE_EXHAUSTED` in the log for the wall. Nothing is screen-scraped.
 3. A context handoff bundle (context-handoff-bundle on PyPI) refreshed every two minutes: the task, the last messages, `git diff --stat`, dirty files, files edited this session, recent commits, why it stopped.
-4. The handoff. At 85 percent of a window the card turns amber and the terminal bell rings once. At the limit Baton saves the bundle, stops the agent, and starts the next option in the same terminal from that bundle: another login of the same agent if one was added, otherwise the next agent in the order you saved. That order is a priority list, not a rotation: an agent you put last is the last option from every starting agent. The default new terminals copy lives in the board's Settings, and Change order on a card repoints one running terminal. The next agent's first turn reads `.baton/RESUME.md`, checks `git status` and `git diff`, and continues; nothing is retyped. When every option is out, the terminal prints each reset time, waits with a countdown, and starts that agent when the reset arrives.
+4. The handoff. At 85 percent of a window the gauge crosses its reserve notch and the terminal bell rings once. At the limit Baton saves the bundle, stops the agent, and starts the next option in the same terminal from that bundle: another login of the same agent if one was added, otherwise the next agent in the order you saved. That order is a priority list, not a rotation: an agent you put last is the last option from every starting agent. The default new terminals copy lives in the board's Settings, and Change order in a terminal's details repoints one running terminal. The next agent's first turn reads `.baton/RESUME.md`, checks `git status` and `git diff`, and continues; nothing is retyped. When every option is out, the terminal prints each reset time, waits with a countdown, and starts that agent when the reset arrives.
 
 ## Background cards
 
-The board's second lane runs work with no interactive terminal, each card in its own worktree. Build stops with the changes in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. You pick the first agent; the fallback agents are the same handoff order.
+Background cards run work with no interactive terminal, each in its own worktree, and appear as a count on the board rather than beside the live terminals. Build stops with the changes in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. You pick the first agent; the fallback agents are the same handoff order.
 
 ## Two sessions in one repo
 
-A second `baton <agent>` in a checkout that already has a live session gets its own git worktree (`.baton-worktrees/<session-id>` on branch `baton/<session-id>`). Its card has a Land button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the card says why (`rebase-conflict` with the files, `tests-red`, `dirty-trunk`). Two live sessions touching the same file are flagged red on both cards. Nothing is merged and nothing is pushed.
+A second `baton <agent>` in a checkout that already has a live session gets its own git worktree (`.baton-worktrees/<session-id>` on branch `baton/<session-id>`). Its row has a Land button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the row says why (`rebase-conflict` with the files, `tests-red`, `dirty-trunk`). Two live sessions touching the same file are flagged on both rows. Nothing is merged and nothing is pushed.
 
 ## More than one human
 
-Off by default. `baton share on` binds the board to a Tailscale or LAN address and gives every human their own token; guests see redacted cards and can request a handoff.
+Off by default. `baton share on` binds the board to a Tailscale or LAN address and gives every human their own token; guests see redacted rows and can request a handoff.
 
 ## What is never touched
 
@@ -41,7 +41,7 @@ Off by default. `baton share on` binds the board to a Tailscale or LAN address a
 
 ## Verified
 
-Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 406 tests.
+Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 463 tests.
 
 ## Docs
 
