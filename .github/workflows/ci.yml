@@ -111,7 +111,8 @@ jobs:
           ;(async () => {
             const fail = (message) => { throw new Error(message) }
             const expectedRepository = 'https://github.com/ucsandman/legcli.git'
-            if (!root || pkg.name !== 'legcli' || root.name !== pkg.name || root.version !== pkg.version || lock.version !== pkg.version) {
+            const expectedName = '@ucsandman/legcli'
+            if (!root || pkg.name !== expectedName || root.name !== pkg.name || root.version !== pkg.version || lock.version !== pkg.version) {
               fail('package.json and package-lock.json root metadata do not match')
             }
             if (pkg.repository?.url !== expectedRepository || root.repository?.url !== expectedRepository) {
@@ -137,7 +138,7 @@ jobs:
             if (response.status === 404) {
               let packageResponse
               try {
-                packageResponse = await fetch('https://registry.npmjs.org/legcli', { headers: { Accept: 'application/json' } })
+                packageResponse = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}`, { headers: { Accept: 'application/json' } })
               } catch (error) {
                 fail(`npm package metadata request failed: ${error.message}`)
               }
@@ -183,6 +184,6 @@ jobs:
           })
           NODE
 
-      - name: Publish legcli to npm
+      - name: Publish @ucsandman/legcli to npm
         if: steps.registry.outputs.published == 'false'
         run: npm publish --access public --provenance=false
