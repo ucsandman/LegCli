@@ -34,7 +34,7 @@ import { openBoard, pidfile } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
 import { captureLive } from './live-capture.mjs'
 import { waitForReset, fmtCountdown } from './wait.mjs'
-import { readPreferences, normalizeHandoffOrder } from './preferences.mjs'
+import { readPreferences, normalizeHandoffOrder, resolveAutoApprove } from './preferences.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 const SERVER = join(SRC, 'server.mjs')
@@ -188,7 +188,7 @@ function restoreTerminal() {
 }
 
 // ---- spawn spec per agent ----
-export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }) {
+export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, autoApprove = resolveAutoApprove() }) {
   const adapter = await loadAdapter(agent)
   const { bin, viaNode, entry } = adapter.resolve()
   const argv = []
@@ -196,21 +196,27 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }
   if (viaNode) argv.push(entry ?? bin)
   // a leg Baton starts on its own (after a hand-off) takes BATON_<AGENT>_ARGS,
   // e.g. BATON_CODEX_ARGS="-m gpt-5-mini" to keep a test chain on cheap models
-  if (prompt) args = [...(process.env[`BATON_${agent.toUpperCase()}_ARGS`] ?? '').split(/\s+/).filter(Boolean), ...args]
+  if (prompt) args = [...(process.env[`LEG_${agent.toUpperCase()}_ARGS`] ?? process.env[`BATON_${agent.toUpperCase()}_ARGS`] ?? '').split(/\s+/).filter(Boolean), ...args]
   if (agent === 'claude') {
     const settings = writeSettings(sessionId, { statusLine: userStatusLine(process.env.CLAUDE_CONFIG_DIR || (account !== 'default' ? envFor('claude', account).CLAUDE_CONFIG_DIR : undefined)) })
-    argv.push(...args, '--settings', settings)
+    const autoFlags = autoApprove && !args.includes('--dangerously-skip-permissions') ? ['--dangerously-skip-permissions'] : [] // auto-approve: not forbidden for interactive sessions
+    argv.push(...args, ...autoFlags, '--settings', settings)
     if (prompt) argv.push(prompt)
   } else if (agent === 'codex') {
-    argv.push(...args)
+    const hasApproval = args.includes('--ask-for-approval') || args.includes('-a') || args.some((x) => typeof x === 'string' && x.startsWith('--ask-for-approval='))
+    const autoFlags = autoApprove && !hasApproval ? ['--ask-for-approval', 'never'] : []
+    argv.push(...args, ...autoFlags)
     if (prompt) argv.push(prompt)
   } else if (agent === 'agy') {
     const log = join(sessionDir(sessionId), 'agy.log')
-    argv.push(...args, '--log-file', log)
+    const autoFlags = autoApprove && !args.includes('--dangerously-skip-permissions') ? ['--dangerously-skip-permissions'] : [] // auto-approve: not forbidden for interactive sessions
+    argv.push(...args, ...autoFlags, '--log-file', log)
     if (prompt) argv.push('-i', prompt)
   } else if (agent === 'grok') {
     const log = join(sessionDir(sessionId), 'grok.log')
-    argv.push(...args, '--debug-file', log)
+    const hasApprove = args.includes('--always-approve') || args.includes('--yolo') || args.includes('--approval-mode=yolo') // auto-approve check: not forbidden for interactive sessions
+    const autoFlags = autoApprove && !hasApprove ? ['--always-approve'] : [] // auto-approve: not forbidden for interactive sessions
+    argv.push(...args, ...autoFlags, '--debug-file', log)
     if (prompt) argv.push(prompt)
   }
   const env = { ...sanitizeEnv(process.env, { interactive: true }), ...envFor(agent, account), LEG_SESSION: sessionId, BATON_SESSION: sessionId }
@@ -219,7 +225,7 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }
 
 // ---- one agent leg ----
 // Returns { reason: 'exit'|'limit'|'handoff', code }
-async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
+async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApprove = resolveAutoApprove() }) {
   const sid = session.session_id
   refreshAccount(agent, account)
   // A handoff happens when the limit hits, which is usually when nobody is
@@ -229,7 +235,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
   const trust = ensureTrust(agent, session.cwd, { cwd: session.cwd })
   const trusted = trustLine(trust)
   if (trusted) { say(trusted); appendEvent(sid, { type: 'trust', summary: trusted }) }
-  const spec = await spawnSpec(agent, { account, args, sessionId: sid, prompt, cwd: session.cwd })
+  const spec = await spawnSpec(agent, { account, args, sessionId: sid, prompt, cwd: session.cwd, autoApprove })
   appendEvent(sid, { type: 'leg', summary: `${agent} (${account}) starting${prompt ? ' from the handoff bundle' : ''}` })
   const startedMs = Date.now()
   const turnsAtLegStart = session.turns ?? 0
@@ -513,6 +519,15 @@ export async function attach(agent, args = [], { open = true } = {}) {
   // --no-worktree is Baton's flag, not the agent's: it never passes through
   const shareCheckout = args.includes('--no-worktree')
   args = args.filter((a) => a !== '--no-worktree')
+  let autoApproveCli = null
+  if (args.includes('--no-auto-approve')) {
+    autoApproveCli = false
+    args = args.filter((a) => a !== '--no-auto-approve')
+  } else if (args.includes('--auto-approve')) {
+    autoApproveCli = true
+    args = args.filter((a) => a !== '--auto-approve')
+  }
+  const autoApprove = resolveAutoApprove({ cliFlag: autoApproveCli })
   const cwd = process.cwd()
   const board = await ensureBoard({ open })
   let accounts = readAccounts()
@@ -566,7 +581,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
   // bounds a wait; a normal session runs one leg and exits
   for (let leg = 0; ; leg++) {
     const s = readSession(sid)
-    const r = await runLeg({ agent, account, args: legArgs, session: s, prompt, boardUrl: board.url })
+    const r = await runLeg({ agent, account, args: legArgs, session: s, prompt, boardUrl: board.url, autoApprove })
     if (r.reason === 'exit') { exit = r.code ?? 0; break }
     // limit or handoff: bundle, choose next, go again in this terminal
     const cur = readSession(sid)

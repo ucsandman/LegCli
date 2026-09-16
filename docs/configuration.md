@@ -20,11 +20,13 @@ variables yourself in that case.
 
 ## Interactive sessions
 
-These apply to `leg claude|codex|agy`.
+These apply to `leg claude|codex|agy|grok`.
 
 | variable | default | meaning | read in |
 |----------|---------|---------|---------|
 | `LEG_ACCOUNT` | `default` | start the session on a named login instead of the CLI's own home | `src/attach.mjs` |
+| `LEG_AUTO_APPROVE` | `1` | launch interactive agents in auto-approve mode (set to `0`, `false`, or `off` to disable) | `src/preferences.mjs` |
+| `LEG_NO_AUTO_APPROVE` | (unset) | set to `1` to opt out of auto-approve mode | `src/preferences.mjs` |
 | `LEG_WARN_PCT` | `85` | the percentage of either usage window that turns the card amber, records a `warning` event and rings the terminal bell once | `src/usage.mjs` |
 | `LEG_NO_HANDOFF` | (unset, hand-off on) | set to `1` to warn and record but never switch agents | `src/attach.mjs` |
 | `LEG_NO_OPEN` | (unset, opens once) | set to `1` to start the board without opening a browser | `bin/leg.mjs` |
@@ -44,6 +46,23 @@ record under `$LEG_HOME/sessions/`.
 
 `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are set for the child when the session
 runs on a named account; see [Accounts](#accounts) below.
+
+### Auto-approve launch mode
+
+By default, Leg starts interactive sessions (`leg claude`, `leg codex`, `leg agy`, and `leg grok`) in permissive auto-approve mode so you never sit through repetitive tool permission prompts:
+
+- Claude: `--dangerously-skip-permissions`
+- Codex: `--ask-for-approval never`
+- agy: `--dangerously-skip-permissions`
+- Grok: `--always-approve`
+
+These flags are injected at spawn time and only affect sessions launched through Leg. Your global CLI configurations (`~/.claude.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`) remain untouched.
+
+To opt out and keep standard approval prompts:
+
+1. CLI flag: pass `--no-auto-approve` when starting a session (e.g. `leg claude --no-auto-approve`).
+2. Environment variable: set `LEG_AUTO_APPROVE=0` or `LEG_NO_AUTO_APPROVE=1` (or legacy `BATON_AUTO_APPROVE=0` / `BATON_NO_AUTO_APPROVE=1`).
+3. Persistent preference: set `"auto_approve": false` in `~/.leg/preferences.json`.
 
 ## Core
 

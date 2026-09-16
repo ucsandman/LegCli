@@ -29,22 +29,38 @@ export function requireHandoffOrder(value) {
 
 export function preferencesFile() { return join(home(), 'preferences.json') }
 
+export function resolveAutoApprove({ env = process.env, preferences = null, cliFlag = null } = {}) {
+  if (cliFlag !== null && cliFlag !== undefined) return Boolean(cliFlag)
+  const envVal = env.LEG_AUTO_APPROVE ?? env.BATON_AUTO_APPROVE
+  if (envVal !== undefined) return envVal !== '0' && envVal !== 'false' && envVal !== 'off'
+  if ((env.LEG_NO_AUTO_APPROVE ?? env.BATON_NO_AUTO_APPROVE) === '1') return false
+  const prefs = preferences ?? readPreferences()
+  if (typeof prefs?.auto_approve === 'boolean') return prefs.auto_approve
+  return true
+}
+
 export function readPreferences() {
   const file = preferencesFile()
-  if (!existsSync(file)) return { handoff_order: [...HANDOFF_AGENTS] }
+  if (!existsSync(file)) return { handoff_order: [...HANDOFF_AGENTS], auto_approve: true }
   try {
     const value = JSON.parse(readFileSync(file, 'utf8'))
-    return { handoff_order: normalizeHandoffOrder(value?.handoff_order) }
+    return {
+      handoff_order: normalizeHandoffOrder(value?.handoff_order),
+      auto_approve: value?.auto_approve !== false,
+    }
   } catch {
-    return { handoff_order: [...HANDOFF_AGENTS] }
+    return { handoff_order: [...HANDOFF_AGENTS], auto_approve: true }
   }
 }
 
 export function writePreferences(patch) {
-  const order = requireHandoffOrder(patch?.handoff_order)
+  const order = patch?.handoff_order !== undefined ? requireHandoffOrder(patch?.handoff_order) : undefined
   mkdirSync(home(), { recursive: true })
   return withFileLock(preferencesFile() + '.lock', () => {
-    const next = { ...readPreferences(), handoff_order: order }
+    const current = readPreferences()
+    const next = { ...current }
+    if (order !== undefined) next.handoff_order = order
+    if (patch?.auto_approve !== undefined) next.auto_approve = Boolean(patch.auto_approve)
     writeJsonAtomic(preferencesFile(), next)
     return next
   })

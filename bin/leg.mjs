@@ -450,8 +450,9 @@ async function main() {
   if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|resume|accounts|license|share|up|down|status|open|card|scheduler|uninstall)`)
   out(`leg ${VERSION}, your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy|grok [args...]   the normal interactive agent in this terminal; args pass straight through
-                               the board opens once, the session shows as a card, usage is tracked, a limit hands off
-                               a second live session in one checkout gets its own worktree (--no-worktree to share)
+                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
+                                a second live session in one checkout gets its own worktree (--no-worktree to share)
+                                auto-approve mode (--no-auto-approve to opt out)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>
   resume [--check] [--json] [--path <dir>]      the hand-off waiting in this checkout, and whether it is still true
                                freshness is recomputed from git at read time; --check prints only the verdict

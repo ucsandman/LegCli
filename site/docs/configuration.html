@@ -66,7 +66,7 @@ Inherited shell values are still honored and take precedence. Copy
 <code>.env.example</code> to <code>.env</code> and edit it; <code>.env</code> is gitignored. Running <code>node bin/leg.mjs</code> directly does not automatically load <code>.env</code>; export the
 variables yourself in that case.</p>
 <h2 id="interactive-sessions"><a class="anchor" href="#interactive-sessions">Interactive sessions</a></h2>
-<p>These apply to <code>leg claude|codex|agy</code>.</p>
+<p>These apply to <code>leg claude|codex|agy|grok</code>.</p>
 <table>
 <thead>
 <tr>
@@ -81,6 +81,18 @@ variables yourself in that case.</p>
 <td><code>default</code></td>
 <td>start the session on a named login instead of the CLI&#39;s own home</td>
 <td><code>src/attach.mjs</code></td>
+</tr>
+<tr>
+<td><code>LEG_AUTO_APPROVE</code></td>
+<td><code>1</code></td>
+<td>launch interactive agents in auto-approve mode (set to <code>0</code>, <code>false</code>, or <code>off</code> to disable)</td>
+<td><code>src/preferences.mjs</code></td>
+</tr>
+<tr>
+<td><code>LEG_NO_AUTO_APPROVE</code></td>
+<td>(unset)</td>
+<td>set to <code>1</code> to opt out of auto-approve mode</td>
+<td><code>src/preferences.mjs</code></td>
 </tr>
 <tr>
 <td><code>LEG_WARN_PCT</code></td>
@@ -149,6 +161,21 @@ the session id, so a hook or a script inside the session can find its own
 record under <code>$LEG_HOME/sessions/</code>.</p>
 <p><code>CLAUDE_CONFIG_DIR</code> and <code>CODEX_HOME</code> are set for the child when the session
 runs on a named account; see <a href="#accounts">Accounts</a> below.</p>
+<h3 id="auto-approve-launch-mode"><a class="anchor" href="#auto-approve-launch-mode">Auto-approve launch mode</a></h3>
+<p>By default, Leg starts interactive sessions (<code>leg claude</code>, <code>leg codex</code>, <code>leg agy</code>, and <code>leg grok</code>) in permissive auto-approve mode so you never sit through repetitive tool permission prompts:</p>
+<ul>
+<li>Claude: <code>--dangerously-skip-permissions</code></li>
+<li>Codex: <code>--ask-for-approval never</code></li>
+<li>agy: <code>--dangerously-skip-permissions</code></li>
+<li>Grok: <code>--always-approve</code></li>
+</ul>
+<p>These flags are injected at spawn time and only affect sessions launched through Leg. Your global CLI configurations (<code>~/.claude.json</code>, <code>~/.codex/config.toml</code>, <code>~/.gemini/settings.json</code>) remain untouched.</p>
+<p>To opt out and keep standard approval prompts:</p>
+<ol>
+<li>CLI flag: pass <code>--no-auto-approve</code> when starting a session (e.g. <code>leg claude --no-auto-approve</code>).</li>
+<li>Environment variable: set <code>LEG_AUTO_APPROVE=0</code> or <code>LEG_NO_AUTO_APPROVE=1</code> (or legacy <code>BATON_AUTO_APPROVE=0</code> / <code>BATON_NO_AUTO_APPROVE=1</code>).</li>
+<li>Persistent preference: set <code>&quot;auto_approve&quot;: false</code> in <code>~/.leg/preferences.json</code>.</li>
+</ol>
 <h2 id="core"><a class="anchor" href="#core">Core</a></h2>
 <table>
 <thead>
