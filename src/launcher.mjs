@@ -16,7 +16,19 @@ import { schedulerStatus, MAX_CONCURRENT } from './scheduler.mjs'
 import { enabledSyncs } from './sync/index.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
-const SERVER = process.env.LEG_SERVER_SCRIPT || process.env.BATON_SERVER_SCRIPT || join(SRC, 'server.mjs')
+function resolveServer() {
+  if (process.env.LEG_SERVER_SCRIPT || process.env.BATON_SERVER_SCRIPT) {
+    return process.env.LEG_SERVER_SCRIPT || process.env.BATON_SERVER_SCRIPT
+  }
+  const wtMatch = /[\\/]\.(?:leg|baton)-worktrees(?:[\\/].*)?$/.exec(SRC)
+  if (wtMatch) {
+    const root = SRC.slice(0, wtMatch.index)
+    const mainServer = join(root, 'src', 'server.mjs')
+    if (existsSync(mainServer)) return mainServer
+  }
+  return join(SRC, 'server.mjs')
+}
+const SERVER = resolveServer()
 const VERSION = JSON.parse(readFileSync(join(SRC, '..', 'package.json'), 'utf8')).version
 const HEALTH_TIMEOUT_MS = Number(process.env.LEG_HEALTH_TIMEOUT_MS || process.env.BATON_HEALTH_TIMEOUT_MS || 20000)
 

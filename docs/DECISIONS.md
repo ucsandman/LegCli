@@ -30,7 +30,7 @@ Durable product and design decisions that the code does not explain on its own. 
 
 ## 2026-09-15: Leg records the folder-trust answer, and never overrides one already given
 
-- **What.** Before starting an agent, Leg writes the folder-trust answer for the repository the user chose by typing `leg <agent>` in it: `hasTrustDialogAccepted` in `~/.claude.json`, `trust_level` in `~/.codex/config.toml`, an entry in `~/.gemini/trustedFolders.json`. `LEG_TRUST=never` turns it off.
+- **What.** Before starting an agent, Leg writes the folder-trust answer for the repository the user chose by typing `leg <agent>` in it: `hasTrustDialogAccepted` in `~/.claude.json`, `trust_level` in `~/.codex/config.toml`, an entry in `~/.gemini/config/projects/default-cli-project.json` (`projectResources.resources`). `LEG_TRUST=never` turns it off.
 - **Why.** The handoff is the product, and it fires when the limit hits, which is usually when nobody is watching. An agent that had never run in that folder stopped on its first-run trust prompt and waited for a keypress that was not coming, so the bundle was written and the terminal sat idle until morning.
 - **Why writing those files is allowed at all.** `stdio: 'inherit'` in `src/attach.mjs` hands the real terminal to the agent, so Leg cannot watch for the prompt and answer it. Pre-seeding is the only mechanism that does not change Leg's architecture. For Claude Code it is also the documented remedy: its permissions guide prescribes exactly this edit.
 - **The three rules that bound it.** Never create a config file that is not already there. Never rewrite a file to say what it already says. Never override an answer already on file: only an absent key is an unanswered question, so a recorded refusal stays a refusal.

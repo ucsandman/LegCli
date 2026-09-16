@@ -34,7 +34,17 @@ import { readCodexUsage } from './taps/codex.mjs'
 import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder } from './preferences.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
-const BOARD_DIR = join(dirname(SELF), 'board')
+export function resolveBoardDir() {
+  const dir = join(dirname(SELF), 'board')
+  if (existsSync(dir)) return dir
+  const wtMatch = /[\\/]\.(?:leg|baton)-worktrees(?:[\\/].*)?$/.exec(dirname(SELF))
+  if (wtMatch) {
+    const root = dirname(SELF).slice(0, wtMatch.index)
+    const fallback = join(root, 'src', 'board')
+    if (existsSync(fallback)) return fallback
+  }
+  return dir
+}
 const VERSION = JSON.parse(readFileSync(join(dirname(SELF), '..', 'package.json'), 'utf8')).version
 const DEFAULT_ORDER = ['plan', 'build', 'review', 'test', 'land']
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' }
@@ -352,10 +362,11 @@ function readBody(req) {
 }
 
 function serveStatic(res, urlPath) {
-  const map = { '/': 'index.html', '/floor': 'floor.html' }
+  const map = { '/': 'index.html', '/board': 'index.html', '/board/': 'index.html', '/floor': 'floor.html', '/floor/': 'floor.html' }
   const rel = map[urlPath] ?? urlPath.replace(/^\/+/, '')
-  const file = resolve(BOARD_DIR, rel)
-  if (!file.startsWith(BOARD_DIR + sep) || !existsSync(file) || !statSync(file).isFile()) return send(res, 404, 'not found')
+  const boardDir = resolveBoardDir()
+  const file = resolve(boardDir, rel)
+  if (!file.startsWith(boardDir + sep) || !existsSync(file) || !statSync(file).isFile()) return send(res, 404, 'not found')
   res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' })
   res.end(readFileSync(file))
 }

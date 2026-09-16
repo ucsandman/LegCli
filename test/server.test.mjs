@@ -435,3 +435,16 @@ test('a card that finished after a handoff names the agent that finished it', as
   assert.equal(card.active_adapter, 'fake-codex', 'the finished card names the agent that finished it, not chain[0]')
   assert.deepEqual(card.chain_view.map((x) => x.state), ['handed', 'done'])
 })
+
+test('static file serving: / and /board serve index.html, /floor serves floor.html', async () => {
+  const root = await api('/')
+  assert.equal(root.status, 200)
+  assert.match(root.text, /<!doctype html>/i)
+  const board = await api('/board')
+  assert.equal(board.status, 200)
+  assert.match(board.text, /<!doctype html>/i)
+  const floor = await api('/floor')
+  assert.equal(floor.status, 200)
+  assert.match(floor.text, /<!doctype html>/i)
+})
+

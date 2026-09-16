@@ -37,7 +37,16 @@ import { waitForReset, fmtCountdown } from './wait.mjs'
 import { readPreferences, normalizeHandoffOrder, resolveAutoApprove } from './preferences.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
-const SERVER = join(SRC, 'server.mjs')
+function resolveServer() {
+  const wtMatch = /[\\/]\.(?:leg|baton)-worktrees(?:[\\/].*)?$/.exec(SRC)
+  if (wtMatch) {
+    const root = SRC.slice(0, wtMatch.index)
+    const mainServer = join(root, 'src', 'server.mjs')
+    if (existsSync(mainServer)) return mainServer
+  }
+  return join(SRC, 'server.mjs')
+}
+const SERVER = resolveServer()
 const POLL_MS = Number(process.env.LEG_ATTACH_POLL_MS || process.env.BATON_ATTACH_POLL_MS || 2000)
 const GIT_EVERY = 3 // polls
 const USAGE_MS = Number(process.env.LEG_USAGE_POLL_MS || process.env.BATON_USAGE_POLL_MS || 60000)

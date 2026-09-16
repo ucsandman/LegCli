@@ -15,7 +15,7 @@
 //   claude  ~/.claude.json            projects["<repo>"].hasTrustDialogAccepted
 //           (or $CLAUDE_CONFIG_DIR/.claude.json)
 //   codex   ~/.codex/config.toml      [projects."<repo>"] trust_level = "trusted"
-//   agy     ~/.gemini/trustedFolders.json   "<repo>": "TRUST_FOLDER"
+//   agy     ~/.gemini/config/projects/default-cli-project.json   projectResources.resources[{ gitFolder: { folderUri: ... } }]
 //
 // For claude this is the documented remedy: its own permissions docs say to
 // "set projects[<path>].hasTrustDialogAccepted to true in ~/.claude.json, where
@@ -268,26 +268,67 @@ function writeTextAtomic(file, text) {
 // ---- agy ----
 
 export function agyTrustFile(env = process.env) {
-  const dir = env.GEMINI_CONFIG_DIR ? resolve(env.GEMINI_CONFIG_DIR) : join(homedir(), '.gemini')
-  return join(dir, 'trustedFolders.json')
+  const base = env.GEMINI_CONFIG_DIR ? resolve(env.GEMINI_CONFIG_DIR) : join(homedir(), '.gemini')
+  if (base.endsWith('default-cli-project.json')) return base
+  if (base.endsWith('projects')) return join(base, 'default-cli-project.json')
+  if (base.endsWith('config')) return join(base, 'projects', 'default-cli-project.json')
+  return join(base, 'config', 'projects', 'default-cli-project.json')
+}
+
+export function agyFolderUri(repo) {
+  const root = repoRootOf(repo)
+  let p = root.replace(/\\/g, '/')
+  if (!p.startsWith('/')) p = '/' + p
+  return `file://${p}`
+}
+
+export function agyUriMatches(uri, root) {
+  if (typeof uri !== 'string') return false
+  let p = uri.replace(/^file:\/\//, '').replace(/%3A/gi, ':')
+  if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1)
+  p = p.replace(/\//g, '\\')
+  return samePath(p, root)
 }
 
 export function ensureAgyTrust(repo, { env = process.env } = {}) {
   const file = agyTrustFile(env)
   const root = repoRootOf(repo)
-  // agy keeps trust in its own small file rather than a big config, so an
-  // absent file next to an existing ~/.gemini is just an empty answer sheet.
   if (!existsSync(dirname(file))) return { agent: 'agy', file, wrote: [], imports: [], skipped: 'no agy config yet' }
   let wrote = []
   withFileLock(`${file}.baton-lock`, () => {
-    const map = existsSync(file) ? readJson(file) : {}
-    if (map === null || typeof map !== 'object') { wrote = null; return }
-    // Rule 4: a folder already in this file has been answered, whatever the
-    // answer was. Only an absent key is an unanswered question; anything else
-    // (DO_NOT_TRUST included) is the user's decision and stays.
-    if (Object.prototype.hasOwnProperty.call(map, root)) { if (map[root] !== 'TRUST_FOLDER') wrote = 'declined'; return }
-    writeJsonAtomic(file, { ...map, [root]: 'TRUST_FOLDER' })
-    wrote = ['TRUST_FOLDER']
+    const project = existsSync(file)
+      ? readJson(file)
+      : { id: 'default-cli-project', name: 'CLI Project', projectResources: { resources: [] } }
+    if (!project || typeof project !== 'object') { wrote = null; return }
+
+    if (!project.projectResources || typeof project.projectResources !== 'object') {
+      project.projectResources = {}
+    }
+    if (!Array.isArray(project.projectResources.resources)) {
+      project.projectResources.resources = []
+    }
+
+    const declined = project.projectResources.resources.some((res) => {
+      const uri = res.gitFolder?.folderUri ?? res.folderUri
+      return agyUriMatches(uri, root) && res.gitFolder?.allowWrite === false
+    })
+    if (declined) { wrote = 'declined'; return }
+
+    const alreadyTrusted = project.projectResources.resources.some((res) => {
+      const uri = res.gitFolder?.folderUri ?? res.folderUri
+      return agyUriMatches(uri, root)
+    })
+    if (alreadyTrusted) return
+
+    project.projectResources.resources.push({
+      gitFolder: {
+        folderUri: agyFolderUri(root),
+        defaultBranch: 'main',
+        allowWrite: true,
+      },
+    })
+    writeJsonAtomic(file, project)
+    wrote = ['gitFolder']
   })
   if (wrote === null) return { agent: 'agy', file, wrote: [], imports: [], skipped: 'agy trust file is not readable json' }
   if (wrote === 'declined') return { agent: 'agy', file, root, wrote: [], imports: [], skipped: 'you answered no for this folder; Leg leaves that answer alone' }

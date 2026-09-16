@@ -14,6 +14,7 @@ import { initRepo } from './helpers.mjs'
 import {
   ensureTrust, ensureClaudeTrust, ensureCodexTrust, ensureAgyTrust,
   externalImports, repoRootOf, trustPolicy, codexTrustedPaths, claudeConfigFile, trustLine, claudeProjectKey,
+  agyTrustFile, agyFolderUri,
 } from '../src/trust.mjs'
 
 const tmp = (p = 'baton-trust-') => mkdtempSync(join(tmpdir(), p))
@@ -137,8 +138,23 @@ test('claude: imports declined earlier are not re-approved', () => {
 test('agy: a folder recorded as not trusted stays that way', () => {
   const repo = initRepo('baton-trust-repo-')
   const dir = tmp('baton-gemini-')
-  const file = join(dir, 'trustedFolders.json')
-  writeFileSync(file, JSON.stringify({ [repoRootOf(repo)]: 'DO_NOT_TRUST' }, null, 2))
+  const file = agyTrustFile({ GEMINI_CONFIG_DIR: dir })
+  mkdirSync(join(dir, 'config', 'projects'), { recursive: true })
+  writeFileSync(file, JSON.stringify({
+    id: 'default-cli-project',
+    name: 'CLI Project',
+    projectResources: {
+      resources: [
+        {
+          gitFolder: {
+            folderUri: agyFolderUri(repoRootOf(repo)),
+            defaultBranch: 'main',
+            allowWrite: false,
+          },
+        },
+      ],
+    },
+  }, null, 2))
   const before = readFileSync(file, 'utf8')
   const r = ensureAgyTrust(repo, { env: { GEMINI_CONFIG_DIR: dir } })
   assert.deepEqual(r.wrote, [])
@@ -277,16 +293,32 @@ test('codex: no config file means no write', () => {
 
 // ---- agy ----
 
-test('agy: the folder is added to trustedFolders.json and the others survive', () => {
+test('agy: the folder is added to default-cli-project.json and the others survive', () => {
   const repo = initRepo('baton-trust-repo-')
   const dir = tmp('baton-gemini-')
-  const file = join(dir, 'trustedFolders.json')
-  writeFileSync(file, JSON.stringify({ 'C:\\Projects\\elsewhere': 'TRUST_FOLDER' }, null, 2))
+  const file = agyTrustFile({ GEMINI_CONFIG_DIR: dir })
+  mkdirSync(join(dir, 'config', 'projects'), { recursive: true })
+  writeFileSync(file, JSON.stringify({
+    id: 'default-cli-project',
+    name: 'CLI Project',
+    projectResources: {
+      resources: [
+        {
+          gitFolder: {
+            folderUri: 'file:///C:/Projects/elsewhere',
+            defaultBranch: 'main',
+            allowWrite: true,
+          },
+        },
+      ],
+    },
+  }, null, 2))
   const r = ensureAgyTrust(repo, { env: { GEMINI_CONFIG_DIR: dir } })
-  assert.deepEqual(r.wrote, ['TRUST_FOLDER'])
-  const map = read(file)
-  assert.equal(map['C:\\Projects\\elsewhere'], 'TRUST_FOLDER', 'the other folder survives')
-  assert.equal(map[repoRootOf(repo)], 'TRUST_FOLDER')
+  assert.deepEqual(r.wrote, ['gitFolder'])
+  const proj = read(file)
+  assert.equal(proj.projectResources.resources.length, 2, 'the other folder survives')
+  assert.equal(proj.projectResources.resources[0].gitFolder.folderUri, 'file:///C:/Projects/elsewhere')
+  assert.ok(proj.projectResources.resources.some((x) => x.gitFolder.folderUri === agyFolderUri(repoRootOf(repo))))
   assert.deepEqual(ensureAgyTrust(repo, { env: { GEMINI_CONFIG_DIR: dir } }).wrote, [], 'idempotent')
 })
 
