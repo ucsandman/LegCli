@@ -28,7 +28,7 @@ import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as 
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
 import { fetchGrokUsage, scanLog as scanGrokLog, promptsSince as grokPromptsSince } from './taps/grok.mjs'
 import { fetchClaudeUsage } from './taps/claude-usage.mjs'
-import { saveSessionBundle, resumePrompt } from './bundle.mjs'
+import { saveSessionBundle, resumePrompt, sessionCommitDelta } from './bundle.mjs'
 import { endSessionPointer } from './resume.mjs'
 import { openBoard, pidfile } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
@@ -639,9 +639,15 @@ export async function attach(agent, args = [], { open = true } = {}) {
       break
     }
     appendEvent(sid, { type: 'handoff', summary: `${agent}${account !== 'default' ? '/' + account : ''} → ${next.agent}${next.account !== 'default' ? '/' + next.account : ''}${bundle ? ` (bundle ${bundle.id})` : ''}` })
-    prompt = bundle
-      ? resumePrompt(cur, bundle, next)
-      : `You are taking over an interactive coding session from ${agent}.${existsSync(notesFile) ? ` Read ${notesFile} in this directory first (the previous agent's notes: task, last messages, dirty files).` : ''} Check git status and git diff, then continue the work. The task: ${cur.task ?? 'see the recent changes'}`
+    if (bundle) {
+      prompt = resumePrompt(cur, bundle, next)
+    } else {
+      const delta = sessionCommitDelta(workRoot(cur) ?? cur.cwd, cur)
+      const fallbackAction = delta.isClean && delta.newCommits.length > 0
+        ? `The previous agent committed changes (${delta.newCommits.length} commit(s)) and left a clean working tree. Check git log and verify whether the task is already complete before doing redundant work; continue only if work remains.`
+        : 'Check git status and git diff, then continue the work.'
+      prompt = `You are taking over an interactive coding session from ${agent}.${existsSync(notesFile) ? ` Read ${notesFile} in this directory first (the previous agent's notes: task, last messages, dirty files).` : ''} ${fallbackAction} The task: ${cur.task ?? 'see the recent changes'}`
+    }
     say(`starting ${next.agent}${next.account !== 'default' ? '/' + next.account : ''} in this terminal from the bundle`)
     agent = next.agent; account = next.account; legArgs = []
     // the chain is what comes after the agent now taking over, not after the

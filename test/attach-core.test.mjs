@@ -204,6 +204,44 @@ test('bundle: the resume prompt names the absolute RESUME file, not a path relat
   assert.ok(prompt.includes(perSession), `the prompt points at ${perSession}; got: ${prompt.slice(0, 220)}`)
 })
 
+test('bundle: resumePrompt and sessionNotes alert next agent when commits were made and working tree is clean', async () => {
+  const { resumePrompt, sessionNotes, sessionCommitDelta } = await import('../src/bundle.mjs')
+  const repo = mkdtempSync(join(tmpdir(), 'leg-clean-commits-'))
+  const g = (args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' })
+  g(['init', '-q', '-b', 'main']); g(['config', 'user.email', 't@example.com']); g(['config', 'user.name', 'T'])
+  writeFileSync(join(repo, 'README.md'), '# test\n'); g(['add', '-A']); g(['commit', '-q', '-m', 'init'])
+  const headAtStart = g(['rev-parse', 'HEAD']).trim()
+
+  // No commits yet, clean tree:
+  const session = { session_id: 's-clean-1', agent: 'agy', account: 'default', cwd: repo, repo, head_at_start: headAtStart, task: 'fix trust' }
+  let delta = sessionCommitDelta(repo, session)
+  assert.equal(delta.isClean, true)
+  assert.equal(delta.newCommits.length, 0)
+
+  // Agent makes a commit and leaves tree clean:
+  writeFileSync(join(repo, 'feature.txt'), 'hello feature\n'); g(['add', '-A']); g(['commit', '-q', '-m', 'add feature x'])
+  delta = sessionCommitDelta(repo, session)
+  assert.equal(delta.isClean, true)
+  assert.equal(delta.newCommits.length, 1)
+  assert.match(delta.newCommits[0], /add feature x/)
+
+  mkdirSync(join(repo, '.leg'), { recursive: true })
+  const notesFile = join(repo, '.leg', 'session-s-clean-1.md')
+  writeFileSync(notesFile, '## Scope\n\nTask: fix trust\n')
+  const notes = sessionNotes(session)
+  assert.match(notes, /The previous agent committed changes \(1 commit\(s\)/)
+  assert.match(notes, /verify whether the task is already satisfied before doing redundant work/)
+
+  const prompt = resumePrompt(session, { id: 'b-clean', path: join(repo, '.context-handoffs', 'b-clean'), notes: notesFile }, { agent: 'claude', account: 'default' })
+  assert.match(prompt, /The previous agent committed changes \(1 commit\(s\)/)
+  assert.match(prompt, /verify whether the task is already complete before doing redundant work/)
+
+  // If working tree is dirty, it falls back to normal check git status / git diff:
+  writeFileSync(join(repo, 'dirty.txt'), 'uncommitted')
+  const dirtyPrompt = resumePrompt(session, { id: 'b-clean', path: join(repo, '.context-handoffs', 'b-clean'), notes: notesFile }, { agent: 'claude', account: 'default' })
+  assert.match(dirtyPrompt, /check git status and git diff, then continue the work from where it stopped/)
+})
+
 test('agy tap: log signals and history prompts', () => {
   assert.equal(agyTap.scanLog('I0910 ok\nrpc error: code = ResourceExhausted desc = RESOURCE_EXHAUSTED quota\n').signal, 'agy-resource-exhausted')
   const r = agyTap.scanLog('quota is out, it resets in 2h for this model')
