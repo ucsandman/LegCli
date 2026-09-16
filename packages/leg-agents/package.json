@@ -1,7 +1,7 @@
 {
   "name": "leg-agents",
   "version": "0.8.0",
-  "description": "Alias installer for LegCli: installs @ucsandman/legcli and exposes the `leg` binary. Your agent hits the limit. The next one keeps your place.",
+  "description": "Alias installer for Leg: installs @ucsandman/legcli and exposes the `leg` binary. Your agent hits the limit. The next one keeps your place.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://legcli.com",
