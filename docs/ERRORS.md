@@ -395,3 +395,29 @@ it), and check whether a board was listening on 4747 at the time.
   module that reads the environment at import time cannot be imported from a
   helper that runs before the environment is set, no matter how small the thing
   you wanted from it.
+
+## A 3,000-line feature landed with red CI on Windows and no docs page (2026-09-16)
+
+- **Symptom.** Commit `c7f24a0` (the history index, committed by the agy
+  session that took over after a Claude usage limit) went green on Ubuntu and
+  macOS and red on Windows in two `history.test.mjs` cases, and the `docs` job
+  failed with "site/ is out of date". `/docs/history` did not exist and every
+  link to `history.md` pointed at the npm package page.
+- **Root cause, tests.** GitHub's Windows runner hands out an 8.3 short TEMP
+  path (`RUNNER~1`) while git reports the long form (`runneradmin`). The two
+  assertions compared a `mkdtemp` path with a path that had been through git.
+  The repo already had the seam for this (`canonPath` in `src/fsx.mjs`,
+  used the same way in `handoff-order.test.mjs`); the new tests did not use it.
+  It cannot be seen on a developer machine with 8.3 names disabled.
+- **Root cause, docs.** `scripts/build-docs-site.mjs` builds from a hard-coded
+  `PAGES` list. A new `docs/*.md` that is not in it gets no page, and
+  `rewriteHref` sends its links to the npm URL by design. Nobody ran
+  `npm run docs` before pushing, so the docs job was the first to notice.
+- **Fix.** `ebda794`: both sides of the four path assertions through
+  `canonPath`; reproduced locally by pointing `TEMP` at a case-altered path
+  (seen failing, then 16/16); `history` registered in `PAGES`; site rebuilt.
+- **The lesson that generalises.** A test that compares two filesystem paths
+  on Windows compares two spellings of the same folder unless both go through
+  `canonPath`. And a new `docs/*.md` is two edits, the file and the `PAGES`
+  entry, then `npm run docs`; the docs job exists because the second and third
+  get forgotten.
