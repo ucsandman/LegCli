@@ -643,15 +643,15 @@
   // A result that belongs to a terminal is written into that terminal's sentence
   // slot, where the reader is already looking. Only a result that belongs to no
   // object on this page goes to the one system message.
-  async function act(id, action, btn) {
+  async function act(id, action, btn, body = null) {
     btn.disabled = true
     actionNotes.delete(id)
     try {
       if (action.startsWith('requests/')) {
-        await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
+        await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body })
         actionNotes.set(id, { at: Date.now(), tone: 'ok', text: action.endsWith('approve') ? 'approved; this terminal hands off in a few seconds' : 'the request was dismissed' })
       } else if (action === 'request-handoff') {
-        await api(`/api/sessions/${encodeURIComponent(id)}/request-handoff`, { method: 'POST' })
+        await api(`/api/sessions/${encodeURIComponent(id)}/request-handoff`, { method: 'POST', body })
         sysMessage('asked; the owner of that terminal decides', 'ok')
       } else if (action === 'remove') {
         const r = await api(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -660,9 +660,10 @@
         await api(`/api/sessions/${encodeURIComponent(id)}?force=1&keep_worktree=1`, { method: 'DELETE' })
         sysMessage('removed the Leg record; the worktree and the branch are kept', 'ok')
       } else {
-        await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
+        await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body })
         if (action === 'handoff') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: 'hand-off requested; this terminal switches agents in a few seconds' })
         else if (action === 'end') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: 'end requested; the agent stops after its current turn' })
+        else if (action === 'land/fix') actionNotes.set(id, { at: Date.now(), tone: 'ok', text: 'applied fix' })
       }
       refresh()
     } catch (err) {
@@ -849,25 +850,63 @@
     // G10: the order is Land, Hand off now, Details, End, and it never reflows
     // by availability. A button that does not apply is omitted, never moved.
     const landing = Boolean(s.land && s.land.state === 'landing')
-    const blocker = s.worktree ? s.land_blocker : NO_BRANCH_BLOCKER
-    // G10 is disabled-with-its-reason, so the reason is attached to the control
-    // as well as printed: the title used to be on the inverse condition, giving
-    // the tooltip to the button that explains itself and none to the one that
-    // needs it, and nothing connected the sentence below to the button above.
+    const cl = s.can_land || (s.worktree ? (s.land_blocker ? { ok: false, blockers: [{ code: 'legacy', message: s.land_blocker }] } : { ok: true, blockers: [] }) : { ok: false, blockers: [{ code: 'no_worktree', message: NO_BRANCH_BLOCKER }] })
+    const isOnTarget = cl.blockers && cl.blockers.some((b) => b.code === 'on_target_branch')
+    const targetLocked = cl.blockers && cl.blockers.find((b) => b.code === 'target_locked')
+    const blocker = !cl.ok ? (cl.blockers[0]?.message || NO_BRANCH_BLOCKER) : null
     const blockerId = blocker ? `land-blocker-${s.session_id}` : null
-    // Land is the primary action only when it can actually run. A disabled
-    // button painted in the one accent colour spends the loudest thing in the
-    // design on something the reader cannot do.
-    const land = el('button', {
-      type: 'button',
-      class: `btn ${blocker ? 'btn-secondary' : 'btn-primary'}${landing ? ' is-loading' : ''}`,
-      disabled: blocker || landing ? '' : null,
-      'data-focus-key': `land:${s.session_id}`,
-      'aria-describedby': blockerId,
-      title: blocker || `commit this terminal's work on ${s.worktree.branch}, rebase it onto ${s.worktree.base}, run the tests, fast-forward ${s.worktree.base}; a bounce says why`,
-    }, [landing ? 'Landing…' : 'Land'])
-    land.addEventListener('click', () => act(s.session_id, 'land', land))
-    actions.appendChild(land)
+
+    if (isOnTarget) {
+      const commitDirect = el('button', {
+        type: 'button',
+        class: 'btn btn-secondary',
+        'data-focus-key': `commit-direct:${s.session_id}`,
+        title: `Commit directly on ${s.branch || s.worktree?.base || 'main'}`,
+      }, ['Commit directly'])
+      commitDirect.addEventListener('click', () => act(s.session_id, 'land/fix', commitDirect, { action: 'commit_directly' }))
+      actions.appendChild(commitDirect)
+    } else {
+      const landLabel = landing ? 'Landing…' : targetLocked ? targetLocked.message : 'Land'
+      const landDisabled = !cl.ok || landing
+      const land = el('button', {
+        type: 'button',
+        class: `btn ${landDisabled ? 'btn-secondary' : 'btn-primary'}${landing ? ' is-loading' : ''}`,
+        disabled: landDisabled ? '' : null,
+        'data-focus-key': `land:${s.session_id}`,
+        'aria-describedby': blockerId,
+        title: blocker || (s.worktree ? `commit work on ${s.worktree.branch}, rebase onto ${s.worktree.base}, test, and fast-forward ${s.worktree.base}` : 'Land'),
+      }, [landLabel])
+      if (!landDisabled) {
+        land.addEventListener('click', async () => {
+          land.disabled = true
+          land.classList.add('is-loading')
+          land.textContent = 'Preparing…'
+          try {
+            const res = await api(`/api/sessions/${encodeURIComponent(s.session_id)}/land/prepare`, { method: 'POST' })
+            land.classList.remove('is-loading')
+            if (!res.ok) {
+              actionNotes.set(s.session_id, { at: Date.now(), tone: 'danger', text: res.error || 'Prepare failed' })
+              refresh()
+              return
+            }
+            const statText = res.diff_stat || `${res.files?.length || 0} files changed`
+            const question = `Prepared: ${statText} · tests green. Land onto ${s.worktree?.base || 'main'} and ship to GitHub?`
+            pendingConfirm = {
+              id: s.session_id,
+              question,
+              verb: 'Land',
+              action: 'land',
+            }
+            renderSessions(view)
+          } catch (err) {
+            land.classList.remove('is-loading')
+            actionNotes.set(s.session_id, { at: Date.now(), tone: 'danger', text: err.message })
+            refresh()
+          }
+        })
+      }
+      actions.appendChild(land)
+    }
     if (s.active) {
       const h = el('button', { type: 'button', class: `btn ${blocker ? 'btn-primary' : 'btn-secondary'}`, title: 'save the bundle, stop this agent, start the next option in the same terminal', 'data-focus-key': `handoff:${s.session_id}` }, ['Hand off now'])
       h.addEventListener('click', () => act(s.session_id, 'handoff', h))
@@ -901,8 +940,33 @@
     }
     row.appendChild(actions)
     term.appendChild(row)
-    // the reason a disabled control is disabled is printed, never left in a title
-    if (blocker) term.appendChild(el('p', { class: 'blocker', id: blockerId }, [blocker]))
+
+    // Why can't I land expander or fallback blocker message
+    if (!cl.ok && !isOnTarget && s.worktree) {
+      const list = el('ul', { class: 'blocker-list' })
+      for (const b of cl.blockers) {
+        const item = el('li', { class: 'blocker-item' })
+        item.appendChild(el('span', { class: 'blocker-msg' }, [b.message]))
+        const fixes = b.fixes || (b.fix ? [b.fix] : [])
+        if (fixes.length) {
+          const grp = el('span', { class: 'blocker-fixes' })
+          for (const f of fixes) {
+            const fBtn = el('button', { type: 'button', class: 'btn btn-sm btn-secondary', title: f.label }, [f.label])
+            fBtn.addEventListener('click', () => act(s.session_id, 'land/fix', fBtn, { action: f.action, target_session: f.target_session }))
+            grp.appendChild(fBtn)
+          }
+          item.appendChild(grp)
+        }
+        list.appendChild(item)
+      }
+      const expander = el('details', { class: 'why-cant-land', id: blockerId }, [
+        el('summary', { class: 'why-cant-land-summary' }, ["Why can't I land?"]),
+        list,
+      ])
+      term.appendChild(expander)
+    } else if (blocker) {
+      term.appendChild(el('p', { class: 'blocker', id: blockerId }, [blocker]))
+    }
     return term
   }
 

@@ -306,6 +306,14 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .file.is-overlap { color: var(--warn-text); }
 .blocker { margin-top: 10px; font-size: var(--t-0); color: var(--text-3); max-width: 64ch; }
 .blocker.is-hoisted { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.why-cant-land { margin-top: 10px; font-size: var(--t-0); color: var(--text-3); max-width: 64ch; }
+.why-cant-land-summary { cursor: pointer; color: var(--text-2); font-weight: var(--w-head); user-select: none; }
+.why-cant-land-summary:hover { color: var(--text-1); }
+.blocker-list { list-style: none; margin: 8px 0 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.blocker-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; background: var(--surface-2); border-radius: var(--r-control); font-size: var(--t--1); }
+.blocker-msg { color: var(--text-2); flex: 1 1 auto; }
+.blocker-fixes { display: inline-flex; gap: 6px; }
+.btn-sm { min-height: 26px; padding: 0 10px; font-size: var(--t--1); }
 
 /* the flat inline data token. Not a capsule: a chip here is a word set in the
    meta colour beside the thing it qualifies */

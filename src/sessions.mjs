@@ -161,7 +161,7 @@ export function readLandings() {
   return readFileSync(landingsFile(), 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
 }
 
-function pidAlive(pid) {
+export function pidAlive(pid) {
   if (!pid) return false
   // EPERM means the process exists but is not ours to signal (e.g. an elevated
   // terminal): it is alive. Only ESRCH ("no such process") means gone.

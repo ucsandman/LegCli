@@ -27,7 +27,7 @@ import { resolveChb } from './handoff.mjs'
 import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY } from './sessions.mjs'
 import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs'
 import { refreshPointers } from './resume.mjs'
-import { landSession, landBlocker, landingNow, pruneSessionWorktree } from './land.mjs'
+import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
 import { readUsage, recordUsage, usageIsStale, candidates, isAvailable } from './usage.mjs'
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
 import { readCodexUsage } from './taps/codex.mjs'
@@ -296,7 +296,8 @@ export function sessionsView({ viewer = null, share = null } = {}) {
       files: [...new Set([...(s.files_touched ?? []), ...(s.files_dirty ?? [])])].filter(visibleSessionFile),
       // a 'landing' left behind by a board restart is no longer in flight
       land: land?.state === 'landing' && !landingNow(s.session_id) ? { ...land, state: 'interrupted' } : land,
-      land_blocker: s.worktree ? landBlocker(s) : null,
+      can_land: s.worktree ? canLand(s) : { ok: false, blockers: [{ code: 'no_worktree', message: 'this terminal works in the checkout itself: there is no branch of its own to land', fix: null }] },
+      land_blocker: s.worktree ? (canLand(s).ok ? null : canLand(s).blockers[0]?.message) : null,
     }
   })
   const accounts = []
@@ -687,9 +688,25 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           }
         }
         if (req.method === 'POST' && parts[3] === 'land') {
+          if (parts[4] === 'prepare') {
+            const cl = canLand(sess)
+            if (!cl.ok) return send(res, 409, { ok: false, error: cl.blockers[0].message, blockers: cl.blockers })
+            const prep = await prepareLanding(sess, { by: actor.id })
+            return send(res, prep.ok ? 200 : 409, prep)
+          }
+          if (parts[4] === 'fix') {
+            const body = await readBody(req)
+            try {
+              const r = await applyLandFix(sess.session_id, body?.action, { by: actor.id, message: body?.message })
+              try { sse.broadcast('sessions', (v) => viewFor(v)) } catch {}
+              return send(res, 200, r)
+            } catch (err) {
+              return send(res, 400, { ok: false, error: err.message })
+            }
+          }
           const why = landBlocker(sess)
           if (why) return send(res, 409, { error: why })
-          landSession(sess, { by: actor.id })
+          landSession(sess, { by: actor.id, autoCommit: true })
             .catch((err) => log(`land ${id}: ${err.message}`))
             .finally(() => { trunkCache.clear(); try { sse.broadcast('sessions', (v) => viewFor(v)) } catch {} })
           log(`land requested for ${id} by ${actor.id}`)

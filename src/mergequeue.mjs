@@ -82,7 +82,7 @@ export function resolveTestCommand(card, worktree) {
   return { command: null, source: 'none' }
 }
 
-function runTests(command, worktree) {
+export function runTests(command, worktree) {
   return runCommandAsync(command, worktree, { timeoutMs: TEST_TIMEOUT_MS, tailLines: 40 })
 }
 
