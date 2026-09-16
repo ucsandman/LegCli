@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 (2026-09-16)
+
+- **Grok is a supervised and handoff agent.** `leg grok` starts Grok the same
+  way `leg claude`, `leg codex` and `leg agy` start those agents: board
+  alongside, usage tracking, and a live context handoff bundle. At the limit
+  the next agent continues in the same terminal.
+- **Auto-approve is on by default** for new sessions. Leg injects each agent's
+  fully-permissive flag at spawn (`--dangerously-skip-permissions` for Claude
+  and agy, `--ask-for-approval never` for Codex, `--always-approve` for Grok).
+  Opt out with `--no-auto-approve`, `LEG_AUTO_APPROVE=0` /
+  `LEG_NO_AUTO_APPROVE=1`, or `"auto_approve": false` in `preferences.json`.
+
 ## 0.7.0 (2026-09-15)
 
 - **Rebranded to Leg.** Package is now `legcli` on npm, binary command is `leg`,

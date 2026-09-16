@@ -59,9 +59,11 @@
   --claude: #FCA169;
   --codex: #69DBBA;
   --agy: #CC97F3;
+  --grok: #70B8FF;
   --claude-ink: #FCA169;
   --codex-ink: #69DBBA;
   --agy-ink: #CC97F3;
+  --grok-ink: #70B8FF;
 
   /* severity paints inside a track. It is not the colour of a word */
   --warn: #E0A33C;
@@ -336,6 +338,7 @@ table.reads .sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .sw.claude { background: var(--claude-ink); }
 .sw.codex { background: var(--codex-ink); }
 .sw.agy { background: var(--agy-ink); }
+.sw.grok { background: var(--grok-ink); }
 .table-wrap { overflow-x: auto; }
 
 /* Board recreation. The same anatomy as src/board/, at marketing scale: a

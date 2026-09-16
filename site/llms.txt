@@ -1,6 +1,6 @@
 # Leg
 
-> A local wrapper for coding-agent CLIs. Type `leg claude`, `leg codex` or `leg agy` instead of the bare command and you get the same interactive agent with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits. Zero runtime dependencies, Node 22+, binds 127.0.0.1, never edits your own config files. Commercial license, source readable in the package. No trial: Personal $79 once or Team $12 per seat per month, with a 30-day money-back guarantee.
+> A local wrapper for coding-agent CLIs. Type `leg claude`, `leg codex`, `leg agy` or `leg grok` instead of the bare command and you get the same interactive agent with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits. Zero runtime dependencies, Node 22+, binds 127.0.0.1, never edits your own config files. Commercial license, source readable in the package. No trial: Personal $79 once or Team $12 per seat per month, with a 30-day money-back guarantee.
 
 Site: https://legcli.com/
 npm: https://www.npmjs.com/package/@ucsandman/legcli
@@ -14,7 +14,7 @@ cd <any repo>
 leg claude
 ```
 
-Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one logged-in agent CLI (`claude`, `codex` or `agy`). Anything after the agent name passes straight through (`leg claude --model opus`, `leg codex -m gpt-5.3-codex-spark`).
+Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one logged-in agent CLI (`claude`, `codex`, `agy` or `grok`). Anything after the agent name passes straight through (`leg claude --model opus`, `leg codex -m gpt-5.3-codex-spark`, `leg grok`).
 
 ## What runs alongside the agent
 

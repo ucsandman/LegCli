@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your agent hits the limit. The next one keeps your place. | LegCli</title>
-<meta name="description" content="A usage monitor and board beside Claude Code, Codex or agy, a private copy of the repo for a second agent, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, $79 once with a 30-day money-back guarantee.">
+<meta name="description" content="A usage monitor and board beside Claude Code, Codex, agy or Grok, a private copy of the repo for a second agent, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, $79 once with a 30-day money-back guarantee.">
 <link rel="canonical" href="https://legcli.com/">
 <meta name="theme-color" content="#1b4fbf">
 <meta name="google-site-verification" content="Eok1iYyy78qZjURJX8m1WEFQJk3H3vKkpwPaFhl5znc">
@@ -14,7 +14,7 @@
 <meta property="og:url" content="https://legcli.com/">
 <meta property="og:site_name" content="LegCli">
 <meta property="og:title" content="Your agent hits the limit. The next one keeps your place.">
-<meta property="og:description" content="leg claude, leg codex or leg agy: the same agent with a board beside it, usage tracking, and a handoff to the next agent in the same terminal when the limit hits.">
+<meta property="og:description" content="leg claude, leg codex, leg agy or leg grok: the same agent with a board beside it, usage tracking, and a handoff to the next agent in the same terminal when the limit hits.">
 <meta property="og:image" content="https://legcli.com/og.png?v=3">
 <meta property="og:image:secure_url" content="https://legcli.com/og.png?v=3">
 <meta property="og:image:type" content="image/png">
@@ -23,7 +23,7 @@
 <meta property="og:image:alt" content="LegCli - Your agent hits the limit. The next one keeps your place.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Your agent hits the limit. The next one keeps your place.">
-<meta name="twitter:description" content="leg claude, leg codex or leg agy: the same agent with a board beside it, usage tracking, and a handoff to the next agent in the same terminal when the limit hits.">
+<meta name="twitter:description" content="leg claude, leg codex, leg agy or leg grok: the same agent with a board beside it, usage tracking, and a handoff to the next agent in the same terminal when the limit hits.">
 <meta name="twitter:image" content="https://legcli.com/og.png?v=3">
 <meta name="twitter:image:alt" content="LegCli - Your agent hits the limit. The next one keeps your place.">
 <link rel="preload" href="fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
@@ -37,7 +37,7 @@
   "name": "LegCli",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Windows, macOS, Linux",
-"softwareVersion": "0.7.0",
+"softwareVersion": "0.8.0",
   "license": "https://legcli.com/license",
   "url": "https://legcli.com/",
   "downloadUrl": "https://www.npmjs.com/package/@ucsandman/legcli",
@@ -46,7 +46,7 @@
     { "@type": "Offer", "name": "Personal", "price": "79", "priceCurrency": "USD", "url": "https://legcli.com/#pricing" },
     { "@type": "Offer", "name": "Team", "price": "12", "priceCurrency": "USD", "url": "https://legcli.com/#pricing", "description": "per seat per month" }
   ],
-  "description": "A local wrapper for Claude Code, Codex and agy: a board and usage monitor beside the agent, a private copy of the repo for a second agent, and a handoff to the next agent in the same terminal when the usage limit hits."
+  "description": "A local wrapper for Claude Code, Codex, agy and Grok: a board and usage monitor beside the agent, a private copy of the repo for a second agent, and a handoff to the next agent in the same terminal when the usage limit hits."
 }
 </script>
 </head>
@@ -77,7 +77,7 @@
 <section id="top" class="band blue hero">
   <div class="wrap">
     <h1>Your agent hits the limit. The next one keeps your place.</h1>
-    <p class="lead">Leg runs Claude Code, Codex and agy. It watches the five-hour and weekly windows, and at the wall it saves the session, stops the agent, and starts your next option <b>in the same terminal</b>, from where the last one stopped. Nothing is retyped.</p>
+    <p class="lead">Leg runs Claude Code, Codex, agy and Grok. It watches the five-hour and weekly windows, and at the wall it saves the session, stops the agent, and starts your next option <b>in the same terminal</b>, from where the last one stopped. Nothing is retyped.</p>
     <div class="commands">
       <div class="cmd"><code>npm install -g @ucsandman/legcli</code><button class="copy" type="button" data-copy="npm install -g @ucsandman/legcli">Copy</button></div>
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
@@ -177,6 +177,7 @@
           <div><span class="k">after</span><span><span class="b">leg</span> claude --model opus</span></div>
           <div><span class="k">also</span><span><span class="b">leg</span> codex -m gpt-5.3-codex-spark</span></div>
           <div><span class="k">also</span><span><span class="b">leg</span> agy</span></div>
+          <div><span class="k">also</span><span><span class="b">leg</span> grok</span></div>
         </div>
         <div class="table-wrap">
           <table class="reads">
@@ -185,6 +186,7 @@
               <tr><td><span class="sw claude"></span>leg claude</td><td>Claude Code's own usage endpoint, the same numbers as <code>/usage</code>, polled every 60 seconds</td><td>the <code>StopFailure</code> hook with <code>rate_limit</code></td></tr>
               <tr><td><span class="sw codex"></span>leg codex</td><td>the rate limits Codex writes to its session rollout file</td><td><code>usage_limit_exceeded</code> in the same file</td></tr>
               <tr><td><span class="sw agy"></span>leg agy</td><td>none; agy exposes no percentages</td><td><code>RESOURCE_EXHAUSTED</code> in agy's log</td></tr>
+              <tr><td><span class="sw grok"></span>leg grok</td><td>Grok's billing proxy endpoint</td><td>rate-limit text in grok's log</td></tr>
             </tbody>
           </table>
         </div>

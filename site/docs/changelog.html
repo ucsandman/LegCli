@@ -52,8 +52,20 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
 <h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
+<h2 id="080-2026-09-16"><a class="anchor" href="#080-2026-09-16">0.8.0 (2026-09-16)</a></h2>
+<ul>
+<li><strong>Grok is a supervised and handoff agent.</strong> <code>leg grok</code> starts Grok the same
+way <code>leg claude</code>, <code>leg codex</code> and <code>leg agy</code> start those agents: board
+alongside, usage tracking, and a live context handoff bundle. At the limit
+the next agent continues in the same terminal.</li>
+<li><strong>Auto-approve is on by default</strong> for new sessions. Leg injects each agent&#39;s
+fully-permissive flag at spawn (<code>--dangerously-skip-permissions</code> for Claude
+and agy, <code>--ask-for-approval never</code> for Codex, <code>--always-approve</code> for Grok).
+Opt out with <code>--no-auto-approve</code>, <code>LEG_AUTO_APPROVE=0</code> /
+<code>LEG_NO_AUTO_APPROVE=1</code>, or <code>&quot;auto_approve&quot;: false</code> in <code>preferences.json</code>.</li>
+</ul>
 <h2 id="070-2026-09-15"><a class="anchor" href="#070-2026-09-15">0.7.0 (2026-09-15)</a></h2>
 <ul>
 <li><strong>Rebranded to Leg.</strong> Package is now <code>legcli</code> on npm, binary command is <code>leg</code>,

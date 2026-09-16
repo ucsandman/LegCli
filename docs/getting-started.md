@@ -10,9 +10,9 @@ it. The v0.1 pipeline flow is section 7 onward.
 - git.
 - Python 3 with pip, for the `context-handoff-bundle` CLI. This is what writes
   and reads the handoff bundles.
-- At least one coding-agent CLI, logged in: `claude`, `codex` or `agy`. You do
-  not need all three. With one installed you get the board and the usage
-  tracking; with two or more you also get the hand-off.
+- At least one coding-agent CLI, logged in: `claude`, `codex`, `agy` or
+  `grok`. You do not need all four. With one installed you get the board
+  and the usage tracking; with two or more you also get the hand-off.
 
 ## 2. Install
 

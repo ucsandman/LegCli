@@ -544,7 +544,7 @@ Leg is commercial software under the [Leg License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.7.0; see
+and remain available. The version in this source tree is 0.8.0; see
 [npm](https://www.npmjs.com/package/legcli) for published versions and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
 

@@ -1,7 +1,7 @@
 # Adapters
 
 Two things per agent: what Leg reads from an interactive session
-(`leg claude|codex|agy`), and the headless argv the v0.1 pipeline spawns.
+(`leg claude|codex|agy|grok`), and the headless argv the v0.1 pipeline spawns.
 Every fact here was written against `src/taps/*.mjs`, `src/attach.mjs` and
 `src/adapters/*.mjs`; the evidence trail, including which lines an artifact
 backs, is [cli-contracts.md](cli-contracts.md).
