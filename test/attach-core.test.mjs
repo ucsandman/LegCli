@@ -2,7 +2,7 @@
 // state + the handoff chooser, the three taps, and the claude hook handler.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, unlinkSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -219,7 +219,7 @@ test('agy tap: log signals and history prompts', () => {
 })
 
 test('accounts: default only, extra account dir with junctions and login line', () => {
-  assert.deepEqual(accounts.readAccounts(), { claude: ['default'], codex: ['default'], agy: ['default'] })
+  assert.deepEqual(accounts.readAccounts(), { claude: ['default'], codex: ['default'], agy: ['default'], grok: ['default'] })
   assert.deepEqual(accounts.envFor('claude', 'default'), {})
   const fakeHome = mkdtempSync(join(tmpdir(), 'claude-home-'))
   mkdirSync(join(fakeHome, 'hooks')); writeFileSync(join(fakeHome, 'hooks', 'h.cjs'), '1'); writeFileSync(join(fakeHome, 'settings.json'), '{"a":1}')
@@ -237,9 +237,27 @@ test('accounts: default only, extra account dir with junctions and login line', 
     assert.throws(() => accounts.addAccount('claude', 'default'), /invalid account name/)
     accounts.removeAccount('claude', 'work')
     assert.deepEqual(accounts.readAccounts().claude, ['default'])
+    assert.deepEqual(accounts.readAccounts().grok, ['default'])
     assert.equal(readFileSync(join(fakeHome, 'hooks', 'h.cjs'), 'utf8'), '1', 'real home untouched by removal')
   } finally {
     if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev
+  }
+})
+
+test('accounts: grok stays a default login when accounts.json never mentions it', () => {
+  const file = accounts.accountsFile()
+  const prev = existsSync(file) ? readFileSync(file, 'utf8') : null
+  writeFileSync(file, JSON.stringify({ claude: ['work'] }))
+  try {
+    assert.deepEqual(accounts.readAccounts(), {
+      claude: ['default', 'work'],
+      codex: ['default'],
+      agy: ['default'],
+      grok: ['default'],
+    })
+  } finally {
+    if (prev === null) { try { unlinkSync(file) } catch {} }
+    else writeFileSync(file, prev)
   }
 })
 

@@ -243,6 +243,7 @@ test('sessions API: view, handoff/end control, delete, lost reaper', async () =>
   assert.equal(byId['s-t-codex'].overlap[0].session_id, 's-t-claude')
   assert.equal(byId['s-t-dead'].status, 'lost', 'dead runner pid is reaped')
   assert.ok(r.json.accounts.some((a) => a.agent === 'claude' && a.account === 'default'))
+  assert.ok(r.json.accounts.some((a) => a.agent === 'grok' && a.account === 'default'), 'grok is a default login on the board')
   assert.equal(r.json.trunk[0].branch, 'main')
   assert.ok(r.json.trunk[0].commits.length >= 1)
   r = await api('/api/sessions/s-t-claude/handoff', { method: 'POST' })
@@ -257,6 +258,16 @@ test('sessions API: view, handoff/end control, delete, lost reaper', async () =>
   assert.equal(readSession('s-t-dead'), null)
   r = await api('/api/sessions/s-t-claude')
   assert.equal(r.json.events[0].type, 'started')
+})
+
+test('sessions API: grok usage is on the board without an extra grok account', async () => {
+  usage.recordUsage('grok', 'default', { five_hour: null, seven_day: { pct: 58, resets_at: 1_900_000_000 } }, 'grok billing proxy')
+  const r = await api('/api/sessions')
+  assert.equal(r.status, 200)
+  const grok = r.json.accounts.find((a) => a.agent === 'grok' && a.account === 'default')
+  assert.ok(grok, 'grok is a default login on the board even when accounts.json never mentions it')
+  assert.equal(grok.seven_day?.pct, 58)
+  assert.equal(grok.source, 'grok billing proxy')
 })
 
 test('session record-only removal preserves unmerged and dirty work', async () => {

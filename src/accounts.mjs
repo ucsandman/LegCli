@@ -44,12 +44,11 @@ export function accountsFile() { return join(home(), 'accounts.json') }
 export function accountDir(agent, name) { return join(home(), 'accounts', agent, name) }
 
 export function readAccounts() {
-  const base = { claude: ['default'], codex: ['default'], agy: ['default'] }
+  const base = { claude: ['default'], codex: ['default'], agy: ['default'], grok: ['default'] }
   if (!existsSync(accountsFile())) return base
   try {
     const j = JSON.parse(readFileSync(accountsFile(), 'utf8'))
     for (const k of Object.keys(base)) if (Array.isArray(j[k])) base[k] = ['default', ...j[k].filter((n) => n !== 'default')]
-    if (Array.isArray(j?.grok)) base.grok = ['default', ...j.grok.filter((n) => n !== 'default')]
   } catch {}
   return base
 }
