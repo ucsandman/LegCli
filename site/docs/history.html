@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Every conversation on this machine: leg history and leg worktrees | Leg</title>
+<meta name="description" content="One read-only index over the conversations Claude Code, Codex, Grok, Antigravity and Copilot CLI keep in their own stores, plus the sessions Leg started itself, and every checkout: the support matrix, what is read, what is written, and how to continue one.">
+<link rel="canonical" href="https://legcli.com/docs/history">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://legcli.com/docs/history">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="Every conversation on this machine: leg history and leg worktrees">
+<meta property="og:image" content="https://legcli.com/og.png?v=3">
+<meta property="og:image:secure_url" content="https://legcli.com/og.png?v=3">
+<meta property="og:image:type" content="image/png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Every conversation on this machine: leg history and leg worktrees">
+<meta name="twitter:description" content="One read-only index over the conversations Claude Code, Codex, Grok, Antigravity and Copilot CLI keep in their own stores, plus the sessions Leg started itself, and every checkout: the support matrix, what is read, what is written, and how to continue one.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=3">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Leg</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/harness">Harness</a></li>
+<li><a href="/docs/history" aria-current="page">History</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-you-get">What you get</a></li><li><a href="#support-matrix">Support matrix</a></li><li><a href="#how-discovery-works">How discovery works</a></li><li><a href="#worktrees">Worktrees</a></li><li><a href="#privacy">Privacy</a></li><li><a href="#adding-a-provider">Adding a provider</a></li></ul></nav>
+<h1 id="history-every-conversation-on-this-machine"><a class="anchor" href="#history-every-conversation-on-this-machine">History: every conversation on this machine</a></h1>
+<p><code>leg history</code> lists the coding-agent conversations on this machine in one
+place: the sessions Leg started itself, and the ones Claude Code, Codex, Grok,
+Antigravity and GitHub Copilot CLI keep in their own stores, whether or not
+Leg was involved. <code>leg worktrees</code> does the same for checkouts. The board&#39;s
+fourth ledger cell, <strong>Conversations</strong>, is the same index with a search box.</p>
+<p>Nothing moves. Claude keeps Claude&#39;s history where it always was, Codex
+keeps Codex&#39;s, and so on. Leg reads those stores, writes one index file of
+its own, and points back.</p>
+<h2 id="what-you-get"><a class="anchor" href="#what-you-get">What you get</a></h2>
+<pre><code>leg history                          newest first, every agent, 50 rows
+leg history --provider codex,grok    one or more agents
+leg history --repo leg               a repository by name, or by path
+leg history --search &quot;drainer&quot;       title, repo, branch, folder or id
+leg history --managed | --external   only what Leg started, or only what it found
+leg history --live                   only conversations with a process still on them
+leg history --all --json             everything, as JSON
+leg history show &lt;id&gt;                one conversation: where, when, its last messages, whether it can continue
+leg history continue &lt;id&gt;            start leg &lt;agent&gt; on it, in its folder, supervised like any other session
+leg history refresh [--full]         re-stat every store now; --full drops the index and re-reads everything
+leg history providers                the support matrix below, from the code that implements it
+leg worktrees [--repo &lt;path&gt;] [--json] [--no-dirty]
+</code></pre>
+<p>An id is <code>&lt;provider&gt;:&lt;the agent&#39;s own id&gt;</code>, for example
+<code>claude:0fc54b51-6cfa-40cf-9823-a5a36d1ca3f3</code>. A unique prefix of the agent&#39;s
+id, four characters or more, is enough: <code>leg history show 0fc5</code>. A Leg session
+id (<code>s-2026…</code>) works too.</p>
+<p>A row says which agent, whether the conversation is <strong>leg</strong> (Leg started it,
+its session id follows) or <strong>external</strong> (found in the agent&#39;s store), whether
+it is <strong>live</strong> (a process is still on it, where the agent leaves a marker),
+the repository and branch, when it was last active, and its title.</p>
+<h2 id="support-matrix"><a class="anchor" href="#support-matrix">Support matrix</a></h2>
+<p>Verified against the stores on a real machine on 2026-09-16 (Claude Code
+2.1.273, codex-cli 0.154.0, Grok CLI with <code>chat_format_version</code> 1,
+Antigravity 1.2.0, Copilot CLI 1.0.80). Each provider&#39;s file header in
+<code>src/history/providers/</code> names the exact files and fields it reads.</p>
+<table>
+<thead>
+<tr>
+<th>provider</th>
+<th>list</th>
+<th>title</th>
+<th>branch</th>
+<th>live marker</th>
+<th>transcript</th>
+<th>continue</th>
+<th>store read</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Claude Code</td>
+<td>yes</td>
+<td>custom title, else the AI title, else the first prompt</td>
+<td>yes</td>
+<td><code>sessions/&lt;pid&gt;.json</code>, pid checked</td>
+<td>yes</td>
+<td><code>claude --resume &lt;id&gt;</code></td>
+<td><code>~/.claude/projects/*/&lt;id&gt;.jsonl</code>, <code>history.jsonl</code>, <code>sessions/</code></td>
+</tr>
+<tr>
+<td>Codex</td>
+<td>yes</td>
+<td><code>session_index.jsonl</code>, else the first prompt</td>
+<td>yes (the <code>git</code> block)</td>
+<td>no</td>
+<td>yes</td>
+<td><code>codex resume &lt;id&gt;</code></td>
+<td><code>~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl</code>, <code>session_index.jsonl</code>, <code>history.jsonl</code></td>
+</tr>
+<tr>
+<td>Grok</td>
+<td>yes</td>
+<td><code>generated_title</code>, else the summary, else the first prompt</td>
+<td>yes</td>
+<td><code>active_sessions.json</code></td>
+<td>yes</td>
+<td><code>grok --resume &lt;id&gt;</code></td>
+<td><code>~/.grok/sessions/&lt;cwd&gt;/&lt;id&gt;/summary.json</code>, <code>chat_history.jsonl</code>, <code>prompt_history.jsonl</code></td>
+</tr>
+<tr>
+<td>Antigravity</td>
+<td>yes</td>
+<td><code>annotations/&lt;id&gt;.pbtxt</code>, else the first prompt</td>
+<td>no</td>
+<td>no</td>
+<td><strong>no</strong> (SQLite)</td>
+<td><code>agy --conversation &lt;id&gt;</code></td>
+<td><code>~/.gemini/antigravity-cli/history.jsonl</code>, <code>annotations/</code>, <code>presence/</code></td>
+</tr>
+<tr>
+<td>Copilot CLI</td>
+<td>yes</td>
+<td>the session name</td>
+<td>yes</td>
+<td>no</td>
+<td>yes</td>
+<td><strong>no</strong></td>
+<td><code>~/.copilot/session-state/&lt;id&gt;/workspace.yaml</code>, <code>events.jsonl</code></td>
+</tr>
+</tbody></table>
+<p>Extra logins made with <code>leg accounts add</code> are scanned too (their <code>CLAUDE_CONFIG_DIR</code>,
+<code>CODEX_HOME</code> or <code>GROK_HOME</code> directory); a row from one carries the account
+name.</p>
+<p><strong>Continue</strong> is offered only where the installed CLI&#39;s own help documents
+resume-by-id, quoted in the provider file. Antigravity keeps its transcripts
+in SQLite, which Leg does not open, so it lists and continues but cannot show
+messages. Copilot is discoverable without being an agent Leg supervises, so it
+lists and shows messages but cannot be continued through Leg; that split (a
+provider Leg can <em>find</em> versus an agent Leg can <em>run</em>) is deliberate, and the
+registry in <code>src/history/index.mjs</code> is separate from <code>src/adapters/</code>.</p>
+<p>Looked at and left unsupported, each for one reason: Cursor (its chat lives
+in <code>state.vscdb</code>, SQLite), opencode (<code>opencode.db</code>, SQLite), Pi (documented
+under <code>~/.pi/agent/sessions/</code>, not present on the verification machine, the
+cwd encoding undocumented), Hermes, aider and Windsurf (no session store).</p>
+<h2 id="how-discovery-works"><a class="anchor" href="#how-discovery-works">How discovery works</a></h2>
+<ul>
+<li><strong>One index file.</strong> <code>$LEG_HOME/history/index.json</code> holds, per provider, per
+transcript, the file&#39;s size and mtime and a small record: ids, cwd, repo,
+branch, times, a scrubbed title cut to 200 characters. No message body is
+ever cached. A refresh stats every file and re-reads only the ones whose
+size or mtime changed; deleted files drop out.</li>
+<li><strong>Bounded reads.</strong> Metadata comes from the first 256 KB and the last 256 KB
+of a transcript, never the whole file (a busy machine has gigabytes of
+them). Messages are read only when a conversation is opened, from the last
+4 MB, and every string is passed through the same redaction as the rest of
+the board plus the values of the well-known key variables the process holds.</li>
+<li><strong>Repository resolution without git.</strong> A cwd is walked up to its <code>.git</code>; a
+<code>.git</code> <em>file</em> names a linked worktree and its main repository, so a
+conversation that ran in a worktree groups under the repository it belongs
+to. When the folder is gone, what the agent itself recorded (Claude&#39;s
+<code>worktree-state</code>, Grok&#39;s <code>git_root_dir</code>) is used instead.</li>
+<li><strong>Dedup.</strong> A Leg session records the agent&#39;s own id (<code>agent_session_id</code>)
+and transcript path; a discovered record with the same id or path is the
+same conversation and is shown once, marked managed, with the Leg session id
+and status. A Leg session whose agent id Leg never learned still lists,
+under <code>leg:&lt;session id&gt;</code>. <code>leg history continue</code> seeds the new session with
+the id up front, so the continued conversation dedups from its first turn.</li>
+<li><strong>Hidden by default.</strong> Subagent threads (Codex <code>source.subagent</code>, Grok
+<code>session_kind: subagent</code>, Claude sidechains and the <code>&lt;id&gt;/subagents/</code>
+directory) and sessions Claude Code itself hides (<code>history-suppression</code>)
+are left out unless <code>--subagents</code> (the API&#39;s <code>hidden=1</code>) asks for them.</li>
+<li><strong>A provider failing is contained.</strong> Each provider scans inside its own
+try; a throw keeps that provider&#39;s last good entries, records the error on
+its stats line, and the others still index.</li>
+<li><strong>The listing refreshes itself</strong> when the index is older than a minute;
+<code>leg history refresh</code> forces it.</li>
+</ul>
+<h2 id="worktrees"><a class="anchor" href="#worktrees">Worktrees</a></h2>
+<p><code>leg worktrees</code> merges three sources into one list: what <code>git worktree list</code>
+says for every repository Leg knows (from its sessions, its cards and the
+discovered conversations), the worktrees Leg&#39;s sessions and cards recorded
+(even when git no longer lists them), and the worktrees discovered
+conversations ran in. Each row carries the repository, branch, whether the
+directory exists, how many files are uncommitted (git status, on up to 40
+checkouts per call; <code>null</code> past that or when <code>--no-dirty</code>), who owns it (the
+checkout itself, a Leg session, a Leg card, or nobody Leg knows), which
+conversations point at it and when the last one was active, <strong>orphaned</strong>
+(a <code>.leg-worktrees/</code> directory no session or card records), <strong>stale</strong>
+(exists, no live owner, nothing touched it in 14 days) and <strong>missing</strong> (git
+or a record names it, the directory is gone).</p>
+<p>It is a view. Removing a worktree is still <code>leg sessions rm</code>, <code>leg card rm</code>
+or the board&#39;s Remove, which keep their guards.</p>
+<h2 id="privacy"><a class="anchor" href="#privacy">Privacy</a></h2>
+<ul>
+<li>The whole <code>/api/history</code> and <code>/api/worktrees</code> group is the owner&#39;s. On a
+shared board a guest gets 403 from every route in it, the same gate as the
+pipeline routes; nothing history knows is pushed over SSE.</li>
+<li>The API takes an id, never a path. The transcript a record names is read
+only when it sits inside a provider home, an extra account&#39;s directory or
+Leg&#39;s own <code>sessions/</code>; an index edited by hand to point elsewhere reads
+nothing.</li>
+<li>Discovery writes only <code>$LEG_HOME/history/index.json</code>, its lock and its
+temporary sibling, and refuses to write when <code>LEG_HOME</code> sits inside a
+provider&#39;s store. No SQLite file is ever opened. Junctions and symlinks
+under a store are not followed.</li>
+<li><code>leg history continue</code> validates the id against the provider&#39;s own shape
+(a UUID) before it becomes an argument, and the folder before it becomes
+the working directory: it must exist, be a directory, and not sit under
+<code>LEG_HOME</code>. The continued session shares its checkout (no worktree is cut):
+the conversation&#39;s files are where it left them.</li>
+</ul>
+<h2 id="adding-a-provider"><a class="anchor" href="#adding-a-provider">Adding a provider</a></h2>
+<p>One file in <code>src/history/providers/</code>, registered in <code>src/history/index.mjs</code>:</p>
+<ul>
+<li><code>name</code>, <code>label</code>, <code>transcript</code> (<code>&#39;supported&#39; | &#39;unsupported&#39;</code>), <code>ID_RE</code></li>
+<li><code>root(homes)</code>: the store&#39;s directory (from the CLI&#39;s own environment variable
+when it has one; <code>homes</code> overrides it in tests)</li>
+<li><code>scan({ home, prev })</code>: <code>{ entries, aux, scanned, parsed }</code> where <code>entries</code>
+maps a stable key (the transcript path) to <code>{ mtime, size, record }</code>, reusing
+<code>prev.entries[key]</code> when the file is unchanged; <code>record</code> carries
+<code>native_id, cwd, branch, title, started_at, updated_at, transcript_path, size_bytes, turns, live, native</code></li>
+<li><code>messages(record, limit)</code>: the last messages from a bounded tail, or <code>null</code></li>
+<li><code>resume(record)</code>: <code>{ supported, agent, args }</code> or <code>{ supported: false, reason }</code>,
+with the CLI&#39;s help text quoted beside it</li>
+<li>optionally <code>liveIds(home)</code></li>
+</ul>
+<p><code>test/history-fixture.mjs</code> shows the shapes each existing provider expects;
+a new provider gets a builder there and a row in the matrix above.</p>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

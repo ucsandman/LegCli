@@ -7,6 +7,9 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync
 import { join } from 'node:path'
 import { makeHome, initRepo, git, testEnv, leg, legFail } from './helpers.mjs'
 import { allStores, claudeStore, id as uuid } from './history-fixture.mjs'
+// a Windows runner hands out a short 8.3 TEMP path while git reports the long
+// one, so a repo or checkout path only matches after both are canonicalized
+import { canonPath } from '../src/fsx.mjs'
 
 const HOME = makeHome()
 process.env.LEG_HOME = HOME
@@ -316,14 +319,14 @@ test('worktrees: a real linked worktree resolves to its repository; a recorded w
   H.refreshIndex({ homes: f.homes })
   const recs = H.listHistory({ homes: f.homes, refresh: false, sessions: [] }).records
   const inWt = recs.find((r) => r.title === 'in the worktree')
-  assert.equal(inWt.repo, repo)
-  assert.equal(inWt.worktree.path, wt)
-  assert.equal(recs.find((r) => r.title === 'grok in the worktree').repo, repo, 'git, not the provider, says which repo a worktree belongs to')
+  assert.equal(canonPath(inWt.repo), canonPath(repo))
+  assert.equal(canonPath(inWt.worktree.path), canonPath(wt))
+  assert.equal(canonPath(recs.find((r) => r.title === 'grok in the worktree').repo), canonPath(repo), 'git, not the provider, says which repo a worktree belongs to')
   const gone = recs.find((r) => r.title === 'moved to a worktree since deleted')
   assert.equal(gone.cwd_exists, false)
   assert.equal(gone.worktree.path, goneWt)
   assert.equal(gone.worktree.branch, 'worktree-gone')
-  assert.equal(gone.repo, repo, 'the recorded original cwd names the repo')
+  assert.equal(canonPath(gone.repo), canonPath(repo), 'the recorded original cwd names the repo')
 })
 
 test('leg history: ls, show, providers, refresh and worktrees through the CLI, JSON and text', () => {
@@ -390,7 +393,7 @@ test('leg history continue: a stub claude gets --resume <id> in the conversation
   assert.deepEqual(stub.argv.slice(0, 2), ['--resume', uuid(7101)])
   assert.ok(stub.argv.includes('--settings'), 'the claude tap is injected as for any session')
   assert.equal(stub.argv.includes('--dangerously-skip-permissions'), false)
-  assert.equal(stub.cwd.toLowerCase(), repo.toLowerCase(), 'started in the conversation\'s own folder')
+  assert.equal(canonPath(stub.cwd), canonPath(repo), 'started in the conversation\'s own folder')
   const s = JSON.parse(readFileSync(join(home, 'sessions', stub.session, 'session.json'), 'utf8'))
   assert.equal(s.agent_session_id, uuid(7101))
   assert.equal(s.transcript_path, f.claude[0].file)

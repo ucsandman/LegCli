@@ -43,6 +43,7 @@
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
 <li><a href="/docs/harness">Harness</a></li>
+<li><a href="/docs/history">History</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -185,6 +186,10 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 <tr>
 <td><code>agent_exit</code></td>
 <td>the agent process exited, with its code</td>
+</tr>
+<tr>
+<td><code>continued</code></td>
+<td>the session was started by <code>leg history continue</code> on a conversation the agent&#39;s own store holds; <code>session.json</code> carries <code>continued_from: { id, provider, native_id }</code></td>
 </tr>
 <tr>
 <td><code>ended</code></td>

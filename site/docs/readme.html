@@ -43,6 +43,7 @@
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
 <li><a href="/docs/harness">Harness</a></li>
+<li><a href="/docs/history">History</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -53,7 +54,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#contents">Contents</a></li><li><a href="#60-second-run">60-second run</a></li><li><a href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></li><li><a href="#how-a-handoff-works">How a handoff works</a></li><li><a href="#two-sessions-in-one-repo">Two sessions in one repo</a></li><li><a href="#more-than-one-human">More than one human</a></li><li><a href="#the-board">The board</a></li><li><a href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></li><li><a href="#what-is-and-is-not-touched">What is and is not touched</a></li><li><a href="#cli-reference">CLI reference</a></li><li><a href="#background-tasks-the-v01-extras">Background tasks: the v0.1 extras</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#documentation">Documentation</a></li><li><a href="#contributing">Contributing</a></li><li><a href="#privacy-and-attribution">Privacy and attribution</a></li><li><a href="#license-and-pricing">License and pricing</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#contents">Contents</a></li><li><a href="#60-second-run">60-second run</a></li><li><a href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></li><li><a href="#how-a-handoff-works">How a handoff works</a></li><li><a href="#two-sessions-in-one-repo">Two sessions in one repo</a></li><li><a href="#more-than-one-human">More than one human</a></li><li><a href="#the-board">The board</a></li><li><a href="#every-conversation-on-this-machine">Every conversation on this machine</a></li><li><a href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></li><li><a href="#what-is-and-is-not-touched">What is and is not touched</a></li><li><a href="#cli-reference">CLI reference</a></li><li><a href="#background-tasks-the-v01-extras">Background tasks: the v0.1 extras</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#documentation">Documentation</a></li><li><a href="#contributing">Contributing</a></li><li><a href="#privacy-and-attribution">Privacy and attribution</a></li><li><a href="#license-and-pricing">License and pricing</a></li></ul></nav>
 <h1 id="leg"><a class="anchor" href="#leg">Leg</a></h1>
 <p><strong>Type <code>leg claude</code>, <code>leg codex</code>, <code>leg agy</code> or <code>leg grok</code> instead of the bare command. You get the same interactive agent; Leg opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.</strong></p>
 <p><a href="https://legcli.com/license"><img src="https://img.shields.io/badge/license-commercial-blue.svg" alt="License: commercial"></a>
@@ -160,6 +161,7 @@ yourself.</p>
 <li><a href="#two-sessions-in-one-repo">Two sessions in one repo</a></li>
 <li><a href="#more-than-one-human">More than one human</a></li>
 <li><a href="#the-board">The board</a></li>
+<li><a href="#every-conversation-on-this-machine">Every conversation on this machine</a></li>
 <li><a href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></li>
 <li><a href="#what-is-and-is-not-touched">What is and is not touched</a></li>
 <li><a href="#cli-reference">CLI reference</a></li>
@@ -399,11 +401,34 @@ when plus who. A commit a Land put there says <code>landed by &lt;agent&gt; (&lt
 <li><strong>Buttons</strong>, in a fixed order that never reflows: Land, Hand off now,
 Details, End. Once a session has ended, Remove and Remove record take End&#39;s
 place. Details opens an expansion in flow under the panel.</li>
-<li>Below it, optional <strong>Background tasks</strong> an agent runs in a separate worktree
-without joining the terminal conversation (see below), then <strong>Settings</strong>.</li>
+<li>Below it, <strong>Conversations</strong>: every coding-agent conversation on this machine
+as a count that opens, the ones Leg started and the ones Claude Code, Codex,
+Grok, Antigravity and Copilot keep in their own stores. Filter by agent,
+search, repository, or only what Leg started; a row opens its last messages
+in place, with the <code>leg history continue</code> command to copy where the agent
+can resume by id. The same drawer lists every checkout Leg can see. Then
+optional <strong>Background tasks</strong> an agent runs in a separate worktree without
+joining the terminal conversation (see below), then <strong>Settings</strong>.</li>
 </ul>
 <p>The board reads <code>~/.leg/sessions/*/session.json</code> over server-sent events; a
 session whose runner process is gone is marked <code>lost</code>, never shown as live.</p>
+<h2 id="every-conversation-on-this-machine"><a class="anchor" href="#every-conversation-on-this-machine">Every conversation on this machine</a></h2>
+<p>Claude Code, Codex, Grok, Antigravity and Copilot each keep their history in
+their own place. <code>leg history</code> is one list over all of them, whether or not
+Leg started the conversation, and <code>leg worktrees</code> is one list over every
+checkout: git&#39;s, Leg&#39;s own, and the ones those conversations ran in.</p>
+<pre><code>leg history                          newest first, every agent; --provider, --repo, --search, --json
+leg history show claude:0fc5         where it ran, its last messages, whether Leg can continue it
+leg history continue claude:0fc5     leg claude --resume &lt;id&gt; in that folder, supervised like any session
+leg worktrees                        path, repo, branch, exists, uncommitted, owner, conversations, stale
+</code></pre>
+<p>Nothing moves: each agent&#39;s store stays where it was, Leg writes only its own
+<code>~/.leg/history/index.json</code>, reads transcripts from their head and tail, and
+opens messages only when you open a conversation. A session Leg started and
+the same conversation in the agent&#39;s store are one row, marked <code>leg</code>; the rest
+are <code>external</code>. On a shared board the whole group is the owner&#39;s. The support
+matrix (which agents list, show messages, continue) and every file read are in
+<a href="/docs/history">docs/history.md</a>.</p>
 <h2 id="second-accounts-and-what-the-terms-say"><a class="anchor" href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></h2>
 <p>Optional. <code>leg accounts add claude work</code> creates
 <code>~/.leg/accounts/claude/work</code>, junctions your <code>hooks</code>, <code>skills</code>, <code>agents</code>,
@@ -443,6 +468,10 @@ happens after you run <code>leg accounts add</code>; that is your call.</p>
 <code>~/.codex/config.toml</code>, agy&#39;s files, your repo&#39;s settings. Claude Code gets
 hooks through a per-session <code>--settings</code> file under <code>~/.leg</code>; codex and
 agy get nothing injected.</li>
+<li><strong>Read, never written</strong>: each agent&#39;s own history (<code>~/.claude/projects</code>,
+<code>~/.codex/sessions</code>, <code>~/.grok/sessions</code>, <code>~/.gemini/antigravity-cli</code>,
+<code>~/.copilot/session-state</code>) for <code>leg history</code>; the index it builds lives
+under <code>~/.leg/history/</code>, and no SQLite file is ever opened.</li>
 <li><strong>Written only after <code>leg harness enable</code></strong> (<a href="/docs/harness">the portable harness</a>,
 off by default): the destination client&#39;s global rules file
 (<code>~/.codex/AGENTS.md</code>, <code>~/.gemini/GEMINI.md</code>, <code>~/.claude/leg-rules.md</code> plus
@@ -483,6 +512,10 @@ leg sessions show|events &lt;id&gt;
 leg sessions handoff|end &lt;id&gt;        same as the board buttons
 leg sessions rm &lt;id&gt;                 forget an ended session
 leg sessions simulate-limit &lt;id&gt;     the real limit path without a real wall (claude, agy, grok)
+leg history [ls] [--provider p] [--repo r] [--search q] [--managed|--external] [--live] [--all] [--json]
+                                     every conversation on this machine, Leg&#39;s own and the agents&#39; own (read only)
+leg history show &lt;id&gt; [--messages n] [--json] | continue &lt;id&gt; [agent args…] | refresh [--full] | providers
+leg worktrees [--repo &lt;path&gt;] [--no-dirty] [--json]   every checkout: git&#39;s, Leg&#39;s, the conversations&#39; (read only)
 leg accounts ls                      logins and their 5h/7d usage
 leg accounts add &lt;claude|codex|grok&gt; &lt;name&gt; | rm &lt;agent&gt; &lt;name&gt; | terms
 leg harness status|inspect|check|explain|history [--json]   the portable harness, read-only
@@ -597,6 +630,10 @@ than Node; run <code>npx --yes npm@latest install</code> once.</li>
 <tr>
 <td><a href="/docs/harness">Portable harness</a></td>
 <td>carrying rules, hooks, skills, agents, commands and MCP servers to the agent a hand-off lands on: what moves, what does not, policies, ownership, secrets</td>
+</tr>
+<tr>
+<td><a href="/docs/history">History</a></td>
+<td><code>leg history</code> and <code>leg worktrees</code>: every conversation and checkout on this machine across agents, the support matrix, what is read and what is written</td>
 </tr>
 <tr>
 <td><a href="/docs/adapters">Adapters</a></td>

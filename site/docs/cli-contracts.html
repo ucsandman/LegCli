@@ -43,6 +43,7 @@
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
 <li><a href="/docs/harness">Harness</a></li>
+<li><a href="/docs/history">History</a></li>
 <li><a href="/docs/cli-contracts" aria-current="page">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -578,6 +579,16 @@ in <a href="/docs/vocabulary">VOCABULARY.md</a>. Board routes: <code>GET /api/se
 <code>GET /api/sessions/:id</code>, <code>POST /api/sessions/:id/handoff</code>,
 <code>POST /api/sessions/:id/end</code>, <code>DELETE /api/sessions/:id</code>, with the list pushed
 as the SSE <code>sessions</code> event (source: src/server.mjs, src/board/sessions.js).</p>
+<h3 id="history-index"><a class="anchor" href="#history-index">History index</a></h3>
+<p><code>&lt;LEG_HOME&gt;/history/index.json</code> is the one file <code>leg history</code> writes: per
+provider, per transcript, size, mtime and a small scrubbed record (source:
+src/history/index.mjs). What each provider reads from its CLI&#39;s own store,
+with the observed file and field names, is the header of each
+<code>src/history/providers/&lt;name&gt;.mjs</code>; the support matrix and the resume
+commands quoted from each CLI&#39;s <code>--help</code> (observed-live 2026-09-16: <code>claude --resume &lt;id&gt;</code>, <code>codex resume &lt;id&gt;</code>, <code>grok --resume &lt;id&gt;</code>, <code>agy --conversation &lt;id&gt;</code>; copilot has none Leg has verified) are in <a href="/docs/history">history.md</a>.
+Board routes, owner only: <code>GET /api/history</code>, <code>GET /api/history/:id</code>,
+<code>GET /api/history/providers</code>, <code>POST /api/history/refresh</code>,
+<code>GET /api/worktrees</code> (source: src/server.mjs, src/board/history.js).</p>
 <h2 id="limit-signals"><a class="anchor" href="#limit-signals">Limit signals</a></h2>
 <p>Recorded in <code>fixtures/limits/&lt;group&gt;/&lt;id&gt;.json</code> and classified by
 <code>src/limits.mjs</code> (<code>classify()</code>); the runner writes the outcome into

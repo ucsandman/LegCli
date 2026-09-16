@@ -43,6 +43,7 @@
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration" aria-current="page">Configuration</a></li>
 <li><a href="/docs/harness">Harness</a></li>
+<li><a href="/docs/history">History</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -527,6 +528,11 @@ live under <code>~/.leg/harness/</code>. Every detail: <a href="/docs/harness">h
 <td><code>LEG_SERVER_SCRIPT</code></td>
 <td>override the server script path the launcher spawns</td>
 <td><code>src/launcher.mjs</code></td>
+</tr>
+<tr>
+<td><code>COPILOT_HOME</code></td>
+<td>where <code>leg history</code> looks for the Copilot CLI store instead of <code>~/.copilot</code> (Claude, Codex and Grok use their own <code>CLAUDE_CONFIG_DIR</code>, <code>CODEX_HOME</code>, <code>GROK_HOME</code>; Antigravity has no variable and is found under the OS home)</td>
+<td><code>src/history/providers/copilot.mjs</code></td>
 </tr>
 </tbody></table>
 <h2 id="network-exposure"><a class="anchor" href="#network-exposure">Network exposure</a></h2>

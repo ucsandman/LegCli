@@ -66,6 +66,13 @@ const PAGES = [
     description: 'How Leg carries the source agent\'s working environment to the agent a handoff lands on, what moves and what does not, the policies, ownership and backups, and how secrets are handled.',
   },
   {
+    slug: 'history',
+    nav: 'History',
+    source: 'docs/history.md',
+    title: 'Every conversation on this machine: leg history and leg worktrees',
+    description: 'One read-only index over the conversations Claude Code, Codex, Grok, Antigravity and Copilot CLI keep in their own stores, plus the sessions Leg started itself, and every checkout: the support matrix, what is read, what is written, and how to continue one.',
+  },
+  {
     slug: 'cli-contracts',
     nav: 'What it reads',
     source: 'docs/cli-contracts.md',

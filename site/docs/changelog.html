@@ -43,6 +43,7 @@
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
 <li><a href="/docs/harness">Harness</a></li>
+<li><a href="/docs/history">History</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -53,8 +54,30 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#unreleased">Unreleased</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
 <h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
+<h2 id="unreleased"><a class="anchor" href="#unreleased">Unreleased</a></h2>
+<ul>
+<li><strong>Every conversation on this machine (<code>leg history</code>, <code>leg worktrees</code>, the
+board&#39;s Conversations cell).</strong> One read-only index over the conversations
+Claude Code, Codex, Grok, Antigravity and Copilot CLI keep in their own
+stores, plus Leg&#39;s own sessions, deduplicated (a session Leg started and
+the same conversation in the agent&#39;s store are one row, marked <code>leg</code>; the
+rest are <code>external</code>). List, filter by agent, repository or text, open one
+(its last messages, read from the tail of the transcript only when asked),
+and <code>leg history continue &lt;id&gt;</code> to start a supervised leg on it where the
+installed CLI documents resume-by-id (claude, codex, grok, agy; copilot
+lists and reads but is not an agent Leg runs). Nothing in an agent&#39;s store
+is moved or written; Leg writes only <code>~/.leg/history/index.json</code>, refreshed
+incrementally by size and mtime, and never opens a SQLite file. Every
+checkout Leg can see, git&#39;s and its own and the ones conversations ran in,
+with owner, uncommitted count, orphaned, stale and missing verdicts, read
+only. On a shared board the whole group is the owner&#39;s. Redaction learned
+the shapes another agent&#39;s transcript carries (Stripe, Google, xAI, npm,
+GitLab, Hugging Face keys, JWTs, private-key blocks, basic auth, URL
+credentials, <code>password=</code>), and the board token joined the values it strips.
+Support matrix and every file read: docs/history.md.</li>
+</ul>
 <h2 id="090-2026-09-16"><a class="anchor" href="#090-2026-09-16">0.9.0 (2026-09-16)</a></h2>
 <ul>
 <li><strong>The portable harness (<code>leg harness</code>), off by default.</strong> A hand-off can now

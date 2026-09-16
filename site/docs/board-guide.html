@@ -43,6 +43,7 @@
 <li><a href="/docs/board-guide" aria-current="page">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
 <li><a href="/docs/harness">Harness</a></li>
+<li><a href="/docs/history">History</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -419,7 +420,7 @@ priority: an agent moved to the bottom is tried last from every starting agent.
 The editor previews the resulting priority, with the agent running now skipped,
 before saving.</p>
 <h2 id="the-ledger"><a class="anchor" href="#the-ledger">The ledger</a></h2>
-<p>Below the terminals, three counts sitting on the ground with no panel, because a
+<p>Below the terminals, four counts sitting on the ground with no panel, because a
 raised surface here would compete with the terminals that are live. Each is a
 heading, a line of detail and a button that opens the detail below the row.</p>
 <ul>
@@ -435,6 +436,23 @@ its git author. Shown in full it was eighteen rows of <code>git log</code> at th
 visual weight as the live terminals, so the loudest thing on the page was a
 commit from eleven days ago. With nothing landed it reads <code>Nothing landed yet</code>
 and explains what Land does.</li>
+<li><strong>N conversations</strong>, every coding-agent conversation on this machine, <code>799 claude, 198 codex, 92 agy, 14 grok, 5 copilot; looked 2m ago</code>: the sessions
+Leg started and the ones the agents keep in their own stores, read from
+there and never moved (<a href="/docs/history">history.md</a>). <strong>Browse N</strong> opens a
+drawer with filters (agent, search, repository, only what Leg started), a
+page of fifty rows newest first and <strong>Show 50 more</strong>. A row is the title as a
+button, then the agent chip, <code>leg</code> or <code>external</code> (<code>, live</code> when a process is
+still on it), <code>repo on branch</code>, the prompt count and the short id. The title
+opens the conversation in place: agent, who started it, folder, repository,
+worktree, times, prompts, transcript path, id, the <code>leg history continue &lt;id&gt;</code> command with <strong>Copy the continue command</strong> where the agent can resume
+by id (or the reason it cannot), <strong>Copy folder path</strong>, and the last eight
+messages newest first, each redacted the way the terminal drawer&#39;s are. Below
+the rows, <strong>Checkouts</strong>: every worktree Leg can see with its repo and branch,
+owner (the checkout itself, a Leg session, a Leg card, or not Leg&#39;s), how
+many conversations point at it, and <code>missing</code>, <code>orphaned</code>, <code>stale</code>, <code>clean</code>
+or <code>N uncommitted</code>. Nothing here is pushed over the live stream; the count
+re-reads itself once a minute while the drawer is closed. On a shared board
+a guest sees <code>The owner of this machine sees them.</code> and nothing else.</li>
 <li><strong>N background tasks</strong>, the card runtime below, as a count with <strong>View N
 cards</strong>, plus <strong>New card</strong>. With none it reads <code>Nothing is queued. Leg starts the next login only when a terminal hands off.</code></li>
 </ul>
