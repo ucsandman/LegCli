@@ -185,12 +185,13 @@ function page ({ slug, title, description, body, headings }) {
 <meta property="og:url" content="${url}">
 <meta property="og:site_name" content="LegCli">
 <meta property="og:title" content="${escapeHtml(title)}">
-<meta property="og:description" content="${escapeHtml(description)}">
-<meta property="og:image" content="${ORIGIN}/og.png?v=2">
+<meta property="og:image" content="${ORIGIN}/og.png?v=3">
+<meta property="og:image:secure_url" content="${ORIGIN}/og.png?v=3">
+<meta property="og:image:type" content="image/png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${escapeHtml(title)}">
 <meta name="twitter:description" content="${escapeHtml(description)}">
-<meta name="twitter:image" content="${ORIGIN}/og.png?v=2">
+<meta name="twitter:image" content="${ORIGIN}/og.png?v=3">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">

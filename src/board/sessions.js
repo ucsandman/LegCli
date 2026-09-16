@@ -1078,9 +1078,12 @@
   }
 
   function messageRow(m, key) {
-    return el('div', { class: 'turn drawer-msg' }, [
-      el('span', { class: 'turn-role drawer-msg-role' }, [m.role === 'user' ? 'human' : 'agent']),
-      m.ts ? el('span', { class: 'turn-when drawer-msg-when' }, [whenAgo(m.ts)]) : null,
+    const isUser = m.role === 'user'
+    return el('div', { class: `turn drawer-msg ${isUser ? 'is-human' : 'is-agent'}` }, [
+      el('div', { class: 'drawer-msg-head' }, [
+        el('span', { class: `turn-role drawer-msg-role ${isUser ? '' : 'chip-state-ok'}` }, [isUser ? 'human' : 'agent']),
+        m.ts ? el('span', { class: 'turn-when drawer-msg-when' }, [whenAgo(m.ts)]) : null,
+      ]),
       // every box that can scroll carries a key, so where the reader had
       // scrolled to survives the rebuild three seconds later
       el('p', { 'data-scroll-key': `msg:${key}` }, [m.text]),
@@ -1088,7 +1091,7 @@
   }
 
   function fileRow(f) {
-    const wrap = el('div', {})
+    const wrap = el('div', { class: 'drawer-file-item' })
     const pre = el('pre', { class: 'drawer-diff', hidden: '', 'data-scroll-key': `diff:${f.path}` })
     const row = el('button', { type: 'button', class: 'btn btn-text file-row', 'aria-expanded': 'false', 'data-focus-key': `file:${f.path}` }, [
       el('span', { class: 'mono', title: f.path }, [f.path]),
@@ -1179,16 +1182,18 @@
       return
     }
     const [label] = STATUS[s.status] || [s.status]
-    const controls = el('div', { class: 'cap-line' }, [
+    const left = el('div', { class: 'detail-brand' }, [
+      el('span', { class: `dot id-${idOf(s.agent)}` }),
       el('span', { class: `acct-name chip-id-${idOf(s.agent)}` }, [s.agent]),
-      el('span', { class: 'chip' }, [tail(s.session_id)]),
+      el('span', { class: 'chip mono' }, [tail(s.session_id)]),
+      el('span', { class: s.active ? 'chip chip-state-ok' : 'chip is-stale' }, [s.active ? (label || 'running') : (label || s.status)]),
     ])
     const pause = el('button', { type: 'button', class: 'btn btn-secondary', id: 'session-drawer-pause', 'data-focus-key': 'drawer-pause' }, [drawer.paused ? 'Resume updates' : 'Pause updates'])
     pause.addEventListener('click', () => { drawer.paused = !drawer.paused; if (!drawer.paused) loadDrawer(); else renderDrawer() })
     const close = el('button', { type: 'button', class: 'btn btn-secondary', id: 'session-drawer-close', 'data-focus-key': 'drawer-close' }, ['Close'])
     close.addEventListener('click', closeSessionDrawer)
-    controls.append(pause, close)
-    box.appendChild(controls)
+    const header = el('div', { class: 'detail-masthead' }, [left, el('div', { class: 'detail-ctrls' }, [pause, close])])
+    box.appendChild(header)
     if (drawer.error) box.appendChild(el('p', { class: 'sentence tone-danger' }, [drawer.error]))
 
     const last = d && d.messages ? [...d.messages].reverse().find((m) => m.role === 'assistant') : null
@@ -1235,10 +1240,10 @@
       // header on the same panel printing the same instant as 11:04 PM. The
       // summary is a block, as board.js:754 builds the same row, or the kind
       // word and the sentence render glued: `lostrunner pid 999002 is gone`.
-      timeline.appendChild(el('div', { class: 'turn' }, [
+      timeline.appendChild(el('div', { class: 'turn timeline-item' }, [
         el('span', { class: 'mono turn-when' }, [clockAt(Date.parse(e.ts))]),
         el('span', { class: 'turn-role' }, [e.type]),
-        el('p', {}, [e.summary || '']),
+        el('p', { class: 'timeline-summary' }, [e.summary || '']),
       ]))
     }
     if (!events.length) timeline.appendChild(el('p', { class: 'sentence tone-muted' }, [d ? 'nothing recorded yet' : 'reading the timeline']))

@@ -600,7 +600,7 @@
     if (s === 'reconnecting') {
       banner.textContent = state.lastReadingAt ? `Reconnecting to Leg. Last reading ${clockAt(state.lastReadingAt.getTime())}.` : `Reconnecting to Leg on ${state.bind}.`
     } else if (s === 'connecting') {
-      banner.textContent = `Connecting to Baton on ${state.bind}.`
+      banner.textContent = `Connecting to Leg on ${state.bind}.`
     }
   }
 
