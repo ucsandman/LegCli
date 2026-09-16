@@ -9,6 +9,7 @@ import { chb, ensureExcluded } from './handoff.mjs'
 import { scrub } from './redact.mjs'
 import { updateSession, workRoot } from './sessions.mjs'
 import { perSessionFile, writeHandoffPointer } from './resume.mjs'
+import { readSynthesis, formatSynthesisSection, synthesisDirective, SYNTHESIS_POINTER_PARAGRAPH } from './synthesis.mjs'
 
 const LEG_DIRS = /^(\.leg|\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
 const bullets = (items) => items.filter(Boolean).map((x) => `- ${String(x).replace(/\r?\n/g, ' ').trim()}`)
@@ -58,7 +59,10 @@ export function sessionNotes(session, { messages = [], why = 'handoff' } = {}) {
     ...bullets((session.files_touched ?? []).slice(0, 50).map((f) => `Edited this session: ${f}`)),
     ...bullets(recent ? [`Recent commits: ${recent.replace(/\n/g, ' | ')}`] : []),
     '', '## Opportunities', '',
-    ...bullets([opportunity]),
+    ...bullets([
+      opportunity,
+      synthesisDirective(session.session_id),
+    ]),
     '', '## Open questions', '',
     ...bullets([`Why the previous agent stopped: ${why}`, session.limit?.detail ? `Limit text: ${session.limit.detail}` : null]),
     '', '## Evidence anchors', '',
@@ -86,8 +90,18 @@ export function saveSessionBundle(session, { messages = [], why = 'checkpoint' }
   if (r.status !== 0) throw new Error(`context-handoff-bundle save failed (exit ${r.status}): ${scrub(r.stderr || r.stdout).slice(0, 400)}`)
   let out
   try { out = JSON.parse(r.stdout) } catch { throw new Error(`context-handoff-bundle save printed no JSON: ${scrub(r.stdout).slice(0, 200)}`) }
-  const bundle = { id: out.bundle_id, path: join(cwd, '.context-handoffs', out.bundle_id), notes: notesPath, quality: out.quality ?? null, updated_at: new Date().toISOString(), why }
-  updateSession(session.session_id, { bundle })
+  const nowIso = new Date().toISOString()
+  const bundle = { id: out.bundle_id, path: join(cwd, '.context-handoffs', out.bundle_id), notes: notesPath, quality: out.quality ?? null, updated_at: nowIso, why }
+  if (why === 'checkpoint') {
+    const checkpoints = [...(session.checkpoints ?? []), nowIso].slice(-20)
+    session.checkpoints = checkpoints
+    updateSession(session.session_id, (cur) => ({
+      bundle,
+      checkpoints: [...(cur?.checkpoints ?? []), nowIso].slice(-20),
+    }))
+  } else {
+    updateSession(session.session_id, { bundle })
+  }
   return bundle
 }
 
@@ -101,7 +115,15 @@ export function resumePrompt(session, bundle, next) {
     if (r.status === 0) loaded = r.stdout
   } catch {}
   const header = `# Leg handoff\n\nPrevious agent: ${session.agent} (${session.account}). Reason: ${session.limit?.reason ?? session.handoff?.reason ?? 'handoff requested'}${session.limit?.detail ? `, ${session.limit.detail}` : ''}.\nNext agent: ${next.agent} (${next.account}).\nBundle: ${bundle.path}\n\n`
-  const body = header + (loaded || readFileSync(bundle.notes, 'utf8'))
+  const bundleDump = loaded || readFileSync(bundle.notes, 'utf8')
+  let synthesisSection = ''
+  try {
+    const rawSyn = readSynthesis(cwd, session.session_id)
+    if (rawSyn) {
+      synthesisSection = formatSynthesisSection(rawSyn, { sessionId: session.session_id })
+    }
+  } catch {}
+  const body = header + (synthesisSection ? `${synthesisSection}\n\n` : '') + bundleDump
   // src/resume.mjs owns both files: the per-session one so two sessions sharing
   // one checkout (--no-worktree, or two started in the same instant) never
   // overwrite each other's handoff, and RESUME.md, the copy everyone opens.
@@ -117,10 +139,11 @@ export function resumePrompt(session, bundle, next) {
     : ', check git status and git diff, then continue the work from where it stopped.'
   // the absolute path: the next agent is spawned in the session's cwd, which is
   // a subdirectory of the work root whenever Leg was started in one
-  return `You are taking over an interactive coding session from ${session.agent}, which hit its usage limit. Read ${perSession} (the context handoff bundle is at ${bundle.path})${actionText} Do not ask the human to restate the task.${task}`
+  return `You are taking over an interactive coding session from ${session.agent}, which hit its usage limit. Read ${perSession} (the context handoff bundle is at ${bundle.path})${actionText} Do not ask the human to restate the task.${task}\n\n${SYNTHESIS_POINTER_PARAGRAPH}`
 }
 
 // Freshness, never existence: src/resume.mjs recomputes it from git at read
 // time. `resumeFileExists` used to live here and answered "a file is on disk",
 // which every caller then read as "the handoff it describes is still true".
 export { resumeVerdict } from './resume.mjs'
+export { synthesisFile, readSynthesis, validateSynthesis, validateSynthesisHeader, formatSynthesisSection, hasRecentSynthesis, synthesisDirective, SYNTHESIS_POINTER_PARAGRAPH } from './synthesis.mjs'

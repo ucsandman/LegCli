@@ -72,7 +72,9 @@ Claude print session. The subscription login is always what runs. Nothing in
   old readings stale. Only an explicit backend available answer clears a prior
   wall; no model turn or hardcoded quota is used.
 - A `context-handoff-bundle` for this session, refreshed every two minutes and
-  at every warning, limit and hand-off.
+  at every warning, limit and hand-off. If `.leg/SYNTHESIS-<session-id>.md` is
+  maintained by the agent, it is inlined into `.leg/RESUME.md` as a `## Synthesis`
+  section before the raw bundle dump.
 - At the limit: the bundle is saved, the agent is stopped, and the next option
   starts in the same terminal from `.leg/RESUME-<session-id>.md`, copied to
   `.leg/RESUME.md`. Order is other logins of

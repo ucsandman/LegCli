@@ -108,12 +108,14 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    it again at the transition and during all-out waiting. Machine Settings is
    copied only when a new terminal starts.
 3. **Switch.** The agent process is stopped and the terminal restored. The
-   bundle's `context-handoff-bundle load <id>` output is written to
+   bundle's `context-handoff-bundle load <id>` output (with the `## Synthesis`
+   section prepended if `.leg/SYNTHESIS-<session-id>.md` is present) is written to
    `.leg/RESUME-<session-id>.md` and copied to `.leg/RESUME.md`, and the next
    agent starts in the same terminal with a short pointer prompt as its first
    positional argument: `claude "<prompt>"`, `codex "<prompt>"`,
-   `agy -i "<prompt>"`. The prompt names the per-session file, and says to check
-   `git status` and `git diff`, continue, and not ask the human to restate the
+   `agy -i "<prompt>"`. The prompt names the per-session file, directs the agent
+   to read Synthesis first and treat ruled-out approaches as settled, and says to
+   check `git status` and `git diff`, continue, and not ask the human to restate the
    task.
 4. **All out.** If every option is walled, Leg prints each one with its reset
    time, soonest first, then waits in the terminal with a one-line countdown
@@ -302,6 +304,16 @@ notes carry six sections in the bundle's own vocabulary:
 
 The next leg's prompt starts with the bundle's `load` output (the resume
 text) followed by the same contract.
+
+### The synthesis layer
+
+Alongside raw state, Leg supports an agent-maintained judgment record in `.leg/SYNTHESIS-<session-id>.md`. At handoff time, Leg reads this file and inlines it verbatim into `.leg/RESUME-<session-id>.md` and `.leg/RESUME.md` as a `## Synthesis` section before the raw bundle dump.
+
+- **Schema v1**: A 2-line header (`synthesis_version: 1`, `session: <id>  updated: <ISO-8601 UTC>`) followed by up to four optional sections in fixed order: `## Ruled out`, `## Decisions`, `## Next steps`, `## Open questions` (max 5 bullets each, one line per bullet).
+- **Size cap**: 4 KB. Beyond that, Leg includes the first 4 KB plus a trailing `[synthesis truncated]` marker.
+- **Resilience**: If the header is malformed, Leg still inlines the body prefixed with `[synthesis header invalid, rendering body as-is]`. If the file is absent or empty, no `## Synthesis` section is emitted and handoff degrades to today's raw dump.
+- **Pointer prompt**: Directs the taking-over agent to read the Synthesis section first if present, treat ruled-out approaches as settled, and start from the top-ranked next step.
+- **Board indicator**: Shows a `synthesis` chip on the terminal card when the synthesis file exists and was modified within the last 3 checkpoints.
 
 ## Worktrees
 

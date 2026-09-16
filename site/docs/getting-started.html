@@ -112,7 +112,9 @@ one terminal bell.</li>
 old readings stale. Only an explicit backend available answer clears a prior
 wall; no model turn or hardcoded quota is used.</li>
 <li>A <code>context-handoff-bundle</code> for this session, refreshed every two minutes and
-at every warning, limit and hand-off.</li>
+at every warning, limit and hand-off. If <code>.leg/SYNTHESIS-&lt;session-id&gt;.md</code> is
+maintained by the agent, it is inlined into <code>.leg/RESUME.md</code> as a <code>## Synthesis</code>
+section before the raw bundle dump.</li>
 <li>At the limit: the bundle is saved, the agent is stopped, and the next option
 starts in the same terminal from <code>.leg/RESUME-&lt;session-id&gt;.md</code>, copied to
 <code>.leg/RESUME.md</code>. Order is other logins of

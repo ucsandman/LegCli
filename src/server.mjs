@@ -26,6 +26,7 @@ import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
 import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY } from './sessions.mjs'
 import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs'
+import { hasRecentSynthesis } from './synthesis.mjs'
 import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
 import { readUsage, recordUsage, usageIsStale, candidates, isAvailable } from './usage.mjs'
@@ -300,6 +301,7 @@ export function sessionsView({ viewer = null, share = null } = {}) {
       handoff_availability_known: availabilityKnown,
       can_edit_handoff_order: s.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY) ?? false,
       active: isActive(s),
+      has_synthesis: hasRecentSynthesis(s),
       overlap: ov.get(s.session_id) ?? [],
       elapsed_ms: Date.now() - Date.parse(s.started_at),
       // Older attached Codex processes can retain one parser mistake where an

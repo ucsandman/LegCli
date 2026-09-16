@@ -176,12 +176,14 @@ reset. The board can save a new order for an active terminal; the wrapper reads
 it again at the transition and during all-out waiting. Machine Settings is
 copied only when a new terminal starts.</li>
 <li><strong>Switch.</strong> The agent process is stopped and the terminal restored. The
-bundle&#39;s <code>context-handoff-bundle load &lt;id&gt;</code> output is written to
+bundle&#39;s <code>context-handoff-bundle load &lt;id&gt;</code> output (with the <code>## Synthesis</code>
+section prepended if <code>.leg/SYNTHESIS-&lt;session-id&gt;.md</code> is present) is written to
 <code>.leg/RESUME-&lt;session-id&gt;.md</code> and copied to <code>.leg/RESUME.md</code>, and the next
 agent starts in the same terminal with a short pointer prompt as its first
 positional argument: <code>claude &quot;&lt;prompt&gt;&quot;</code>, <code>codex &quot;&lt;prompt&gt;&quot;</code>,
-<code>agy -i &quot;&lt;prompt&gt;&quot;</code>. The prompt names the per-session file, and says to check
-<code>git status</code> and <code>git diff</code>, continue, and not ask the human to restate the
+<code>agy -i &quot;&lt;prompt&gt;&quot;</code>. The prompt names the per-session file, directs the agent
+to read Synthesis first and treat ruled-out approaches as settled, and says to
+check <code>git status</code> and <code>git diff</code>, continue, and not ask the human to restate the
 task.</li>
 <li><strong>All out.</strong> If every option is walled, Leg prints each one with its reset
 time, soonest first, then waits in the terminal with a one-line countdown
@@ -422,6 +424,15 @@ continue from the last done step, then write <code>.leg/DONE</code>.</li>
 </ul>
 <p>The next leg&#39;s prompt starts with the bundle&#39;s <code>load</code> output (the resume
 text) followed by the same contract.</p>
+<h3 id="the-synthesis-layer"><a class="anchor" href="#the-synthesis-layer">The synthesis layer</a></h3>
+<p>Alongside raw state, Leg supports an agent-maintained judgment record in <code>.leg/SYNTHESIS-&lt;session-id&gt;.md</code>. At handoff time, Leg reads this file and inlines it verbatim into <code>.leg/RESUME-&lt;session-id&gt;.md</code> and <code>.leg/RESUME.md</code> as a <code>## Synthesis</code> section before the raw bundle dump.</p>
+<ul>
+<li><strong>Schema v1</strong>: A 2-line header (<code>synthesis_version: 1</code>, <code>session: &lt;id&gt;  updated: &lt;ISO-8601 UTC&gt;</code>) followed by up to four optional sections in fixed order: <code>## Ruled out</code>, <code>## Decisions</code>, <code>## Next steps</code>, <code>## Open questions</code> (max 5 bullets each, one line per bullet).</li>
+<li><strong>Size cap</strong>: 4 KB. Beyond that, Leg includes the first 4 KB plus a trailing <code>[synthesis truncated]</code> marker.</li>
+<li><strong>Resilience</strong>: If the header is malformed, Leg still inlines the body prefixed with <code>[synthesis header invalid, rendering body as-is]</code>. If the file is absent or empty, no <code>## Synthesis</code> section is emitted and handoff degrades to today&#39;s raw dump.</li>
+<li><strong>Pointer prompt</strong>: Directs the taking-over agent to read the Synthesis section first if present, treat ruled-out approaches as settled, and start from the top-ranked next step.</li>
+<li><strong>Board indicator</strong>: Shows a <code>synthesis</code> chip on the terminal card when the synthesis file exists and was modified within the last 3 checkpoints.</li>
+</ul>
 <h2 id="worktrees"><a class="anchor" href="#worktrees">Worktrees</a></h2>
 <p>Every card runs in its own git worktree: <code>&lt;repo&gt;/.leg-worktrees/&lt;card-id&gt;</code>
 on branch <code>leg/&lt;card-id&gt;</code> (<code>src/worktree.mjs</code>). The repo root is never

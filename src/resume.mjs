@@ -82,6 +82,7 @@ export function perSessionFile(cwd, id) {
   if (existsSync(join(cwd, '.baton')) && !existsSync(join(cwd, '.leg'))) return baton
   return leg
 }
+export { synthesisFile } from './synthesis.mjs'
 
 // An agent started deeper in the tree still finds its checkout's pointer.
 export function findResume(startDir) {

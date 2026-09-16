@@ -166,16 +166,19 @@ presenting it as current.
    commits, why it stopped) and runs `context-handoff-bundle save --repo-local`
    with one slug per leg; each save writes its own timestamped bundle next to
    the last one. A checkpoint of the same bundle is taken every two minutes
-   while the session is active.
+   while the session is active. If the session maintained `.leg/SYNTHESIS-<session-id>.md`,
+   Leg inlines it into the resume file as a `## Synthesis` section ahead of the raw dump.
 4. **Switch.** The agent process is stopped, the terminal is restored, and the
    next option starts in the same terminal with a short pointer prompt:
    read `.leg/RESUME-<session-id>.md` (the `context-handoff-bundle load`
-   output plus the reason for the switch), check `git status` and `git diff`,
-   continue, do not ask the human to restate the task. The same text is copied
-   to `.leg/RESUME.md`, the file people open by habit, and both are stamped
-   with the commit and the live terminals they describe. `claude "<prompt>"`, `codex "<prompt>"`
-   and `agy -i "<prompt>"` all open the normal interactive session with that
-   first turn.
+   output, the `## Synthesis` section if present, and the reason for the switch),
+   check `git status` and `git diff`, continue, do not ask the human to restate
+   the task. The pointer prompt directs the next agent to read Synthesis first,
+   treat ruled-out approaches as settled, and start from the top-ranked next step.
+   The same text is copied to `.leg/RESUME.md`, the file people open by habit, and
+   both are stamped with the commit and the live terminals they describe.
+   `claude "<prompt>"`, `codex "<prompt>"` and `agy -i "<prompt>"` all open the
+   normal interactive session with that first turn.
 5. **Order.** Other accounts of the same agent come first, then every other
    agent in the saved order, each tried once. The order is a priority list, not
    a rotation: put agy at the bottom and agy is the last option from a Claude

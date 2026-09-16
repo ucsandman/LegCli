@@ -58,7 +58,7 @@ export function createSession({ id, agent, account = 'default', cwd, repo = null
     task: null, turns: 0,
     files_touched: [], files_dirty: [], head: null, head_at_start: null,
     limits: null, limit: null, warning: null,
-    bundle: null, handoff: null, chain,
+    bundle: null, handoff: null, chain, checkpoints: [],
     handoff_order: normalizeHandoffOrder(handoffOrder), installed,
     runtime_capabilities: [...new Set(runtimeCapabilities)],
     lineage: { from: null, to: null },

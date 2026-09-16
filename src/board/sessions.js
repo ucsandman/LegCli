@@ -775,6 +775,7 @@
     if (shared() && s.owner) register.appendChild(el('span', { class: 'chip' }, [isMine(s) ? `${s.owner}, you` : s.owner]))
     if (s.lineage && s.lineage.from) register.appendChild(el('span', { class: 'chip' }, [`from ${s.lineage.from}`]))
     if (s.worktree) register.appendChild(el('span', { class: 'chip' }, [`own worktree, from ${s.worktree.base || 'a detached HEAD'}`]))
+    if (s.has_synthesis) register.appendChild(el('span', { class: 'chip', title: 'synthesis record active' }, ['synthesis']))
     body.appendChild(register)
 
     if (s.hidden) body.appendChild(el('p', { class: 'term-prompt term-prompt--empty' }, ['prompt hidden']))
