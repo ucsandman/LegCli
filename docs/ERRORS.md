@@ -3,6 +3,19 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-16: a hand-edited `package.json` version left `package-lock.json` behind, and the publish gate refused 0.9.0
+
+**Fixed by bumping the lockfile root version; the gate is `scripts/npm-publish-gate.mjs`.**
+
+The version went from 0.8.1 to 0.9.0 by editing `package.json` directly, so
+the lockfile's two root `version` fields still said 0.8.1 and CI's
+`publish-npm` job stopped at "package.json and package-lock.json root metadata
+do not match". The run before it had failed the same way, which is why npm
+still served 0.8.0. Tests, lint and the docs job were green; only the publish
+was refused, which is the gate doing its job. Lesson: bump with `npm version`
+(it writes the lockfile and runs the alias sync) and run the gate locally
+before pushing a release; a green test matrix says nothing about the publish.
+
 ## 2026-09-16: the vendored engine's secret scan covered two fields; the review found the other five
 
 **Fixed upstream (Agnostic AI 7e35b51) and re-vendored; regression in `test/harness-engine.test.mjs`.**
