@@ -1,0 +1,58 @@
+Leg License Agreement
+
+Copyright 2026 Wes Sander (Practical Systems). All rights reserved.
+
+This is a legal agreement between you and Wes Sander ("we") for the Leg
+software, including its source files, documentation and updates ("Leg").
+By installing or using Leg you accept it. If you do not accept it, do not
+install or use Leg.
+
+1. License. When you buy a license we grant you a non-exclusive,
+   non-transferable license to install and use Leg as follows.
+   Personal: one named person, on any number of machines that person uses.
+   Team: one named person per seat purchased. A Team license also covers use
+   of the shared board (leg share) by the people holding seats. A Personal
+   license covers every Leg release dated on or before the date printed in
+   the license key; releases dated after that require a renewal, and the
+   releases already covered keep working. A Team license covers releases
+   while the subscription is active.
+
+2. Source. Leg ships as readable JavaScript so that you can inspect what it
+   does on your machine. You may read it and modify it for your own use under
+   your license. You may not publish, distribute, sublicense, rent, sell or
+   host Leg or any modified version for others, and you may not remove,
+   disable or work around the license check.
+
+3. What is yours. Everything Leg writes for you (session notes, handoff
+   bundles, worktrees, your repositories) is yours. Leg sends nothing about
+   your work anywhere; the only network calls it makes on its own behalf are
+   to this product's site to renew a Team key, and to the agent vendors'
+   endpoints that the agent CLIs themselves use.
+
+4. Third parties. Leg starts the coding-agent CLIs you already have and use
+   under your own accounts and their vendors' terms. You are responsible for
+   complying with those terms; see `leg accounts terms`.
+
+5. Ownership. Leg is licensed, not sold. We keep all rights not expressly
+   granted here.
+
+6. Money-back guarantee. Within 30 days of purchase, reply to your receipt
+   and we refund it in full. You do not have to give a reason, and you do not
+   have to have stopped using Leg before you ask.
+
+7. No warranty. Leg is provided "as is", without warranty of any kind,
+   express or implied, including fitness for a particular purpose. Coding
+   agents act on your code; you review what they do.
+
+8. Limitation of liability. To the extent the law allows, our total liability
+   for any claim related to Leg is limited to the amount you paid for it in
+   the 12 months before the claim, and we are not liable for indirect,
+   incidental or consequential damages.
+
+9. Termination. This agreement ends if you breach it; on termination you
+   stop using Leg. Sections 5, 7 and 8 survive.
+
+10. Law. This agreement is governed by the laws of the State of Ohio, USA,
+    without regard to conflict-of-law rules.
+
+Contact: legcli@practicalsystems.io

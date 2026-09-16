@@ -1,0 +1,41 @@
+{
+  "name": "leg-agents",
+  "version": "0.8.0",
+  "description": "Alias installer for LegCli: installs @ucsandman/legcli and exposes the `leg` binary. Your agent hits the limit. The next one keeps your place.",
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://legcli.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ucsandman/legcli.git"
+  },
+  "bugs": {
+    "url": "https://legcli.com/support",
+    "email": "legcli@practicalsystems.io"
+  },
+  "keywords": [
+    "legcli",
+    "leg",
+    "claude-code",
+    "codex",
+    "usage-limits",
+    "agent-harness",
+    "handoff"
+  ],
+  "author": "Wes Sander",
+  "bin": {
+    "leg": "bin/leg.mjs"
+  },
+  "dependencies": {
+    "@ucsandman/legcli": "0.8.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "bin",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ]
+}

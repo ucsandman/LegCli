@@ -15,6 +15,9 @@
   and agy, `--ask-for-approval never` for Codex, `--always-approve` for Grok).
   Opt out with `--no-auto-approve`, `LEG_AUTO_APPROVE=0` /
   `LEG_NO_AUTO_APPROVE=1`, or `"auto_approve": false` in `preferences.json`.
+- **`leg-agents` is the unscoped alias installer.** It pins the same version of
+  `@ucsandman/legcli` and exposes the same `leg` binary. CI publishes both
+  packages together; `npm test` fails if their versions drift.
 
 ## 0.7.0 (2026-09-15)
 

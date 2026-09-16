@@ -49,8 +49,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=.env bin/leg.mjs up",
-    "test": "node --test --test-concurrency=4 && node scripts/privacy-check.mjs && node scripts/check-branding.mjs && node scripts/check-claims.mjs",
+    "test": "node --test --test-concurrency=4 && node scripts/privacy-check.mjs && node scripts/check-branding.mjs && node scripts/check-claims.mjs && node scripts/sync-leg-agents.mjs --check",
+    "sync-alias": "node scripts/sync-leg-agents.mjs",
+    "version": "node scripts/sync-leg-agents.mjs",
     "lint": "eslint .",
     "privacy": "node scripts/privacy-check.mjs",
     "branding": "node scripts/check-branding.mjs",

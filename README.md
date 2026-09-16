@@ -113,6 +113,9 @@ cd <any repo>
 leg claude
 ```
 
+`npm install -g leg-agents` is the same release: it pins this version of
+`@ucsandman/legcli` and exposes the same `leg` binary.
+
 That is the whole setup. The first `leg <agent>` starts the board on
 http://127.0.0.1:4747 and opens it; later sessions reuse it. Anything after the
 agent name passes straight through (`leg codex -m gpt-5.3-codex-spark`,
@@ -522,13 +525,16 @@ Any real agent session started only to test Leg runs on the cheapest model
 (`leg claude --model haiku`); the live checks in `test/` never start one.
 
 Maintainer releases use npm trusted publishing with no `NPM_TOKEN`. Bump the
-package, lockfile, site metadata and release notes, then push `main`. CI waits
-for the Ubuntu and Windows test matrix, validates the exact version against
-npm, and publishes only when that version is missing and newer than the stable
-`latest`. Existing versions skip cleanly; older, prerelease, and registry-error
-cases fail the job. The npm trusted publisher is bound to
-`ucsandman/legcli` and `.github/workflows/ci.yml`. The repository stays private,
-so publication uses `--provenance=false`.
+package, lockfile, site metadata and release notes, then push `main`.
+`npm version` (and `npm run sync-alias`) writes `packages/leg-agents` to the
+same version and pins `@ucsandman/legcli` to it; `npm test` fails if they
+drift. CI waits for the Ubuntu and Windows test matrix, validates both
+`@ucsandman/legcli` and `leg-agents` against npm, and publishes each only
+when that version is missing and newer than the stable `latest`. Existing
+versions skip cleanly; older, prerelease, lockstep, and registry-error cases
+fail the job. The npm trusted publisher is bound to `ucsandman/legcli` and
+`.github/workflows/ci.yml` (bind `leg-agents` the same way). The repository
+stays private, so publication uses `--provenance=false`.
 
 ## Privacy and attribution
 

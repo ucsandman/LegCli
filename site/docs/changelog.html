@@ -69,6 +69,9 @@ fully-permissive flag at spawn (<code>--dangerously-skip-permissions</code> for 
 and agy, <code>--ask-for-approval never</code> for Codex, <code>--always-approve</code> for Grok).
 Opt out with <code>--no-auto-approve</code>, <code>LEG_AUTO_APPROVE=0</code> /
 <code>LEG_NO_AUTO_APPROVE=1</code>, or <code>&quot;auto_approve&quot;: false</code> in <code>preferences.json</code>.</li>
+<li><strong><code>leg-agents</code> is the unscoped alias installer.</strong> It pins the same version of
+<code>@ucsandman/legcli</code> and exposes the same <code>leg</code> binary. CI publishes both
+packages together; <code>npm test</code> fails if their versions drift.</li>
 </ul>
 <h2 id="070-2026-09-15"><a class="anchor" href="#070-2026-09-15">0.7.0 (2026-09-15)</a></h2>
 <ul>

@@ -21,6 +21,9 @@ npm install -g @ucsandman/legcli
 pip install -U context-handoff-bundle
 ```
 
+`npm install -g leg-agents` is the same release: it pins this version of
+`@ucsandman/legcli` and exposes the same `leg` binary.
+
 The source repository is private, so there is no clone to install from. The
 source you run ships in the package: `$(npm root -g)/legcli/src`, plain
 `.mjs`, nothing bundled. Read it before you trust it.

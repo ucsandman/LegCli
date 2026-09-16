@@ -173,6 +173,8 @@ pip install -U context-handoff-bundle
 cd &lt;any repo&gt;
 leg claude
 </code></pre>
+<p><code>npm install -g leg-agents</code> is the same release: it pins this version of
+<code>@ucsandman/legcli</code> and exposes the same <code>leg</code> binary.</p>
 <p>That is the whole setup. The first <code>leg &lt;agent&gt;</code> starts the board on
 <a href="http://127.0.0.1:4747">http://127.0.0.1:4747</a> and opens it; later sessions reuse it. Anything after the
 agent name passes straight through (<code>leg codex -m gpt-5.3-codex-spark</code>,
@@ -605,13 +607,16 @@ npm run lint
 <p>Any real agent session started only to test Leg runs on the cheapest model
 (<code>leg claude --model haiku</code>); the live checks in <code>test/</code> never start one.</p>
 <p>Maintainer releases use npm trusted publishing with no <code>NPM_TOKEN</code>. Bump the
-package, lockfile, site metadata and release notes, then push <code>main</code>. CI waits
-for the Ubuntu and Windows test matrix, validates the exact version against
-npm, and publishes only when that version is missing and newer than the stable
-<code>latest</code>. Existing versions skip cleanly; older, prerelease, and registry-error
-cases fail the job. The npm trusted publisher is bound to
-<code>ucsandman/legcli</code> and <code>.github/workflows/ci.yml</code>. The repository stays private,
-so publication uses <code>--provenance=false</code>.</p>
+package, lockfile, site metadata and release notes, then push <code>main</code>.
+<code>npm version</code> (and <code>npm run sync-alias</code>) writes <code>packages/leg-agents</code> to the
+same version and pins <code>@ucsandman/legcli</code> to it; <code>npm test</code> fails if they
+drift. CI waits for the Ubuntu and Windows test matrix, validates both
+<code>@ucsandman/legcli</code> and <code>leg-agents</code> against npm, and publishes each only
+when that version is missing and newer than the stable <code>latest</code>. Existing
+versions skip cleanly; older, prerelease, lockstep, and registry-error cases
+fail the job. The npm trusted publisher is bound to <code>ucsandman/legcli</code> and
+<code>.github/workflows/ci.yml</code> (bind <code>leg-agents</code> the same way). The repository
+stays private, so publication uses <code>--provenance=false</code>.</p>
 <h2 id="privacy-and-attribution"><a class="anchor" href="#privacy-and-attribution">Privacy and attribution</a></h2>
 <p>Parts of the runner, ledger and git snapshot were ported from a private
 repository that was MIT licensed (see <a href="https://www.npmjs.com/package/@ucsandman/legcli">NOTICE</a> and

@@ -2,6 +2,14 @@
 
 Durable product and design decisions that the code does not explain on its own. One entry per decision, newest first.
 
+## 2026-09-16: @ucsandman/legcli and leg-agents stay on the same version
+
+- **What.** The unscoped `leg-agents` package is an alias installer for `@ucsandman/legcli`. It lives in `packages/leg-agents`, always carries the root version, and pins `@ucsandman/legcli` to that exact version. CI publishes both from `.github/workflows/ci.yml` after the same registry gate.
+- **Why.** `npm i -g leg-agents` is the name agents and muscle memory will type. A hand-kept alias is how the two versions drift, and a drifted alias installs yesterday's CLI.
+- **How drift is refused.** `scripts/sync-leg-agents.mjs --check` is part of `npm test`. The publish gate refuses to ship if the two package.json versions differ, or if the alias pin is not the root version. `npm version` / `npm run sync-alias` writes the alias in the same step as the root bump. The alias tarball is not included in the scoped package (`files` does not list `packages/`).
+- **Windows.** The alias wrapper loads `bin/leg.mjs` through `pathToFileURL`. A bare `import(join(absPath))` is a `c:` URL scheme on Windows and throws `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
+- **First publish.** `leg-agents` is a new npm name. Bind a trusted publisher on npmjs.com for `leg-agents` to `ucsandman/legcli` + `ci.yml` (same as the scoped package) before the first CI publish, or publish the first version once with OTP.
+
 ## 2026-09-15: the board is dark cobalt, and there is no light mode
 
 - **What.** The board ground is a saturated deep cobalt at hue 258, the same hue the marketing site is drenched in, taken to its dark end. Not a neutral near-black: measured in OKLab, `--e0` sits 0.0507 from `#0f1115` at 5.7 times its chroma, so the anti-reference colour `PRODUCT.md` bans is not reachable from this palette.

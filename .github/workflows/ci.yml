@@ -101,89 +101,13 @@ jobs:
 
       - name: Check package metadata and registry version
         id: registry
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs')
-          const pkg = require('./package.json')
-          const lock = require('./package-lock.json')
-          const root = lock.packages?.['']
-          ;(async () => {
-            const fail = (message) => { throw new Error(message) }
-            const expectedRepository = 'https://github.com/ucsandman/legcli.git'
-            const expectedName = '@ucsandman/legcli'
-            if (!root || pkg.name !== expectedName || root.name !== pkg.name || root.version !== pkg.version || lock.version !== pkg.version) {
-              fail('package.json and package-lock.json root metadata do not match')
-            }
-            if (pkg.repository?.url !== expectedRepository || root.repository?.url !== expectedRepository) {
-              fail('package repository metadata does not match the npm trusted publisher binding')
-            }
-            const stableVersion = (value) => {
-              const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(value)
-              if (!match) return null
-              const parts = match.slice(1).map(Number)
-              return parts.every(Number.isSafeInteger) ? parts : null
-            }
-            const candidate = stableVersion(pkg.version)
-            if (!candidate) fail(`invalid stable package version: ${pkg.version}`)
-
-            const url = `https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}`
-            let response
-            try {
-              response = await fetch(url, { headers: { Accept: 'application/json' } })
-            } catch (error) {
-              fail(`npm registry request failed: ${error.message}`)
-            }
-
-            if (response.status === 404) {
-              let packageResponse
-              try {
-                packageResponse = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}`, { headers: { Accept: 'application/json' } })
-              } catch (error) {
-                fail(`npm package metadata request failed: ${error.message}`)
-              }
-              if (packageResponse.status === 404) {
-                fs.appendFileSync(process.env.GITHUB_OUTPUT, 'published=false\n')
-                console.log(`${pkg.name}@${pkg.version} is missing (package not yet on npm); publication is required`)
-                return
-              }
-              if (packageResponse.status !== 200) {
-                fail(`npm package metadata returned unexpected status ${packageResponse.status}`)
-              }
-              let metadata
-              try {
-                metadata = await packageResponse.json()
-              } catch {
-                fail('npm package metadata returned invalid JSON')
-              }
-              const latestText = metadata?.['dist-tags']?.latest
-              const latest = stableVersion(latestText)
-              if (!latest) fail(`npm latest tag is not a stable version: ${latestText ?? '(missing)'}`)
-              const changedPart = candidate.findIndex((part, index) => part !== latest[index])
-              const newer = changedPart !== -1 && candidate[changedPart] > latest[changedPart]
-              if (!newer) fail(`refusing to publish missing ${pkg.version} because npm latest is ${latestText}`)
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'published=false\n')
-              console.log(`${pkg.name}@${pkg.version} is missing and newer than npm latest ${latestText}; publication is required`)
-              return
-            }
-            if (response.status !== 200) fail(`npm registry returned unexpected status ${response.status}`)
-            let published
-            try {
-              published = await response.json()
-            } catch {
-              fail('npm registry returned invalid JSON for an existing version')
-            }
-            if (published?.name !== pkg.name || published?.version !== pkg.version) {
-              fail('npm registry response did not match the requested package version')
-            }
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'published=true\n')
-            console.log(`${pkg.name}@${pkg.version} already exists; skipping publication`)
-          })().catch((error) => {
-            console.error(`registry gate failed: ${error.message}`)
-            process.exitCode = 1
-          })
-          NODE
+        run: node scripts/npm-publish-gate.mjs
 
       - name: Publish @ucsandman/legcli to npm
         if: steps.registry.outputs.published == 'false'
+        run: npm publish --access public --provenance=false
+
+      - name: Publish leg-agents to npm
+        if: steps.registry.outputs.alias_published == 'false'
+        working-directory: packages/leg-agents
         run: npm publish --access public --provenance=false

@@ -27,8 +27,10 @@ npm run privacy
 
 - `npm test` runs `node --test` over everything in `test/`, then
   `scripts/privacy-check.mjs` (so a leaked private-source string fails the
-  test run, not just the commit hook) and `scripts/check-branding.mjs`
-  (so previous product names cannot reappear on product surfaces).
+  test run, not just the commit hook), `scripts/check-branding.mjs`
+  (so previous product names cannot reappear on product surfaces),
+  `scripts/check-claims.mjs`, and `scripts/sync-leg-agents.mjs --check`
+  (so `leg-agents` cannot ship a different version than `@ucsandman/legcli`).
 - `npm run lint` runs `eslint .` (config: `eslint.config.js`; it ignores
   `docs/**`, `fixtures/**`, `.leg/**` and `.leg-worktrees/**`).
 - `npm run privacy` runs the same privacy check `npm test` runs, standalone.
@@ -109,6 +111,23 @@ It clones the repo into `<scratch-dir>`, runs `npm ci`, `npm test`,
   Verifying that a hook fires or that a tap reads the right file costs one
   turn; there is no reason for that turn to come out of an expensive model's
   usage window.
+
+## Releasing
+
+The root `package.json` version is the source of truth. `packages/leg-agents`
+must carry that same version and pin `@ucsandman/legcli` to it.
+
+```
+# after CHANGELOG.md and the README version line:
+npm version <new> --no-git-tag-version
+npm test
+```
+
+`npm version` runs `scripts/sync-leg-agents.mjs`, which writes the alias
+version, the `@ucsandman/legcli` pin, and copies `LICENSE` and `NOTICE`.
+A hand-edit of the root version needs `npm run sync-alias` before commit.
+`npm test` fails if they drift. Push `main` and CI publishes both packages
+when that version is new on npm.
 
 ## Commit message style
 

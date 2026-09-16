@@ -3,6 +3,18 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-16: alias `import(join(windowsPath))` is a `c:` URL scheme
+
+**Fixed in `packages/leg-agents/bin/leg.mjs`.**
+
+The first `leg-agents` wrapper did `await import(join(pkgRoot, 'bin', 'leg.mjs'))`.
+On Windows that string is `C:\…\bin\leg.mjs`, which Node's ESM loader treats as a
+URL with protocol `c:` and throws `ERR_UNSUPPORTED_ESM_URL_SCHEME`. `npm install`
+of the tarball succeeded; `leg --version` died before printing `0.8.0`.
+
+The fix is `await import(pathToFileURL(join(pkgRoot, 'bin', 'leg.mjs')).href)`.
+`require.resolve` returning a path is not a valid ESM specifier on Windows.
+
 ## 2026-09-15: macOS `/var` symlink broke two e2e tests
 
 **Fixed in `test/helpers.mjs`.**
