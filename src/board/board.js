@@ -56,7 +56,7 @@
     'read-only': 'read only',
     plan: 'plan only',
   }
-  const AGENT_IDS = ['claude', 'codex', 'agy']
+  const AGENT_IDS = ['claude', 'codex', 'agy', 'grok']
   const DEFAULT_BIND = '127.0.0.1:4747'
   const TIMELINE_CAP = 12
   // mirrors LOOPBACK in src/auth.mjs; state.bind is "<host>:<port>" and an IPv6

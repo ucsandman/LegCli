@@ -130,7 +130,7 @@
   // the same commit.
 
   const WIN_WORDS = { '5h': '5 hour', '7d': '7 day' }
-  const IDS = ['claude', 'codex', 'agy', 'fake']
+  const IDS = ['claude', 'codex', 'agy', 'grok', 'fake']
 
   // ---- times. The head prints `Times are local.` once, so no row repeats it ----
   // THIS FILE OWNS THE TIME GRAMMAR FOR THE WHOLE BOARD. ago(), clockAt(),

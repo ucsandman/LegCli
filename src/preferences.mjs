@@ -7,11 +7,15 @@ import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 
 export const HANDOFF_AGENTS = ['claude', 'codex', 'agy']
+export const ALL_HANDOFF_AGENTS = ['claude', 'codex', 'agy', 'grok']
 
 export function validHandoffOrder(value) {
-  return Array.isArray(value) && value.length === HANDOFF_AGENTS.length &&
-    new Set(value).size === HANDOFF_AGENTS.length &&
-    value.every((agent) => HANDOFF_AGENTS.includes(agent))
+  if (!Array.isArray(value)) return false
+  const set = new Set(value)
+  if (set.size !== value.length) return false
+  if (value.length === 3 && ['claude', 'codex', 'agy'].every((a) => set.has(a))) return true
+  if (value.length === 4 && ['claude', 'codex', 'agy', 'grok'].every((a) => set.has(a))) return true
+  return false
 }
 
 export function normalizeHandoffOrder(value) {

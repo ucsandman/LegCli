@@ -180,10 +180,26 @@ live.</li>
 <li><strong>One account only</strong>: agy 1.2.0 has no config-directory override, so
 <code>leg accounts add agy …</code> is refused.</li>
 </ul>
+<h3 id="grok"><a class="anchor" href="#grok">grok</a></h3>
+<ul>
+<li><strong>How Leg attaches</strong>: <code>grok &lt;your args&gt;</code> with <code>--debug-file &lt;~/.leg/sessions/&lt;id&gt;/grok.log&gt;</code> passed by Leg (<code>src/attach.mjs</code> <code>spawnSpec</code>).</li>
+<li><strong>Usage percentages</strong>: <code>GET https://cli-chat-proxy.grok.com/v1/billing?format=credits</code> and <code>GET https://cli-chat-proxy.grok.com/v1/user?include=subscription</code> (<code>LEG_GROK_BILLING_URL</code> and <code>LEG_GROK_USER_URL</code> override), reading the OAuth token stored in <code>~/.grok/auth.json</code>. The billing endpoint reports <code>creditUsagePercent</code> and <code>currentPeriod</code> (with weekly resets). Polled every 60 s (<code>LEG_USAGE_POLL_MS</code>). If the token expires or returns 401, usage is marked unknown without crashing, and re-reads <code>auth.json</code> on the next poll.</li>
+<li><strong>The wall</strong>: rate limit signals cited directly from <code>xai-org/grok-build</code>:<ul>
+<li><code>SamplingError::Api { status: StatusCode::TOO_MANY_REQUESTS }</code> (<code>crates/codegen/xai-grok-sampling-types/src/error.rs:304</code>)</li>
+<li><code>RATE_LIMITED_ERROR_CODE = -32003</code> and user messages <code>RATE_LIMITED_USER_MESSAGE_OAUTH</code> (&quot;You&#39;ve hit the rate limit for your plan. Try again later.&quot;) and <code>RATE_LIMITED_USER_MESSAGE_API_KEY</code> (&quot;You&#39;ve hit the rate limit for your API key. Try again later.&quot;) (<code>crates/codegen/xai-grok-shell/src/sampling/error.rs:15, 18-21</code>)</li>
+<li>Headline &quot;Rate limited (429)&quot; and &quot;You&#39;ve hit the rate limit for your plan&quot; (<code>crates/codegen/xai-grok-pager/src/app/error_display.rs:263-267</code>)</li>
+<li><code>StopFailureKind::RateLimit</code> (&quot;rate_limit&quot;) (<code>crates/codegen/xai-grok-hooks/src/event.rs:306-315</code>)</li>
+<li>Free usage exhausted: <code>FREE_USAGE_USER_MESSAGE</code> and <code>FREE_USAGE_EXHAUSTED_ERROR_CODE</code> (&quot;subscription:free-usage-exhausted&quot;) (<code>crates/codegen/xai-grok-shell/src/sampling/error.rs:30, 33</code>)
+<code>src/taps/grok.mjs</code> scans <code>grok.log</code> for these exact signals and extracts reset durations when available.</li>
+</ul>
+</li>
+<li><strong>Prompts and session id</strong>: <code>~/.grok/sessions/&lt;url-encoded-cwd&gt;/prompt_history.jsonl</code>, recorded per prompt with timestamp, <code>session_id</code>, and <code>prompt</code>.</li>
+<li><strong>Accounts</strong>: Supports <code>GROK_HOME</code> override. <code>leg accounts add grok &lt;name&gt;</code> creates junctioned directories copying <code>config.toml</code>.</li>
+</ul>
 <h3 id="resume-prompt-per-agent"><a class="anchor" href="#resume-prompt-per-agent">Resume prompt per agent</a></h3>
 <p>After a hand-off the next agent starts in the same terminal with the pointer
 prompt as its first positional argument: <code>claude &quot;&lt;prompt&gt;&quot;</code>,
-<code>codex &quot;&lt;prompt&gt;&quot;</code>, <code>agy -i &quot;&lt;prompt&gt;&quot;</code> (<code>src/attach.mjs</code> <code>spawnSpec</code>).</p>
+<code>codex &quot;&lt;prompt&gt;&quot;</code>, <code>agy -i &quot;&lt;prompt&gt;&quot;</code>, <code>grok &quot;&lt;prompt&gt;&quot;</code> (<code>src/attach.mjs</code> <code>spawnSpec</code>).</p>
 <h2 id="headless-adapters-the-v01-pipeline"><a class="anchor" href="#headless-adapters-the-v01-pipeline">Headless adapters (the v0.1 pipeline)</a></h2>
 <p>These are what a pipeline card&#39;s chain spawns. Unchanged since 0.2.0.</p>
 <h3 id="claude-headless"><a class="anchor" href="#claude-headless">claude (headless)</a></h3>

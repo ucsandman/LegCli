@@ -1,0 +1,11 @@
+{
+  "id": "grok-rate-limit",
+  "adapter": "grok",
+  "source": "docs-only",
+  "produced_by": "crates/codegen/xai-grok-shell/src/sampling/error.rs:18 (RATE_LIMITED_USER_MESSAGE_OAUTH: \"You've hit the rate limit for your plan. Try again later.\")",
+  "where": "any",
+  "text": "You've hit the rate limit for your plan. Try again later.",
+  "pattern": "You've hit the rate limit for your plan|You've hit the rate limit for your API key|Rate limited \\(429\\)|subscription:free-usage-exhausted|You've used all of your free queries",
+  "exit_code": null,
+  "classification": "limit"
+}

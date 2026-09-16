@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { sanitizeEnv } from './env.mjs'
 import { home } from './store.mjs'
 import { get as getAdapter } from './adapters/index.mjs'
-import { AGENTS, HANDOFF_ORDER_CAPABILITY, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
+import { SUPERVISED_AGENTS, HANDOFF_ORDER_CAPABILITY, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
 import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.mjs'
 import { canonPath, realPath } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
@@ -26,6 +26,7 @@ import { writeSettings, userStatusLine, transcriptTail as claudeTail } from './t
 import { ensureTrust, trustLine } from './trust.mjs'
 import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as codexTail } from './taps/codex.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
+import { fetchGrokUsage, scanLog as scanGrokLog, promptsSince as grokPromptsSince } from './taps/grok.mjs'
 import { fetchClaudeUsage } from './taps/claude-usage.mjs'
 import { saveSessionBundle, resumePrompt } from './bundle.mjs'
 import { endSessionPointer } from './resume.mjs'
@@ -138,13 +139,18 @@ export function isolate({ g, cwd, sid, sessions = reapLost(listSessions()) }) {
 // a binary that is not installed (that spawned ENOENT and killed the session
 // with exit 127 instead of waiting for a reset). Resolves each adapter the way
 // the runner would spawn it (native exe, npm entry, or BATON_<AGENT>_BIN).
+async function loadAdapter(name) {
+  if (name === 'grok') return (await import('./adapters/grok.mjs')).default
+  return getAdapter(name)
+}
+
 let installedCache = null
 async function installedAgents() {
   if (installedCache) return installedCache
   const out = {}
-  for (const name of AGENTS) {
+  for (const name of SUPERVISED_AGENTS) {
     try {
-      const { bin, viaNode, entry } = (await getAdapter(name)).resolve()
+      const { bin, viaNode, entry } = (await loadAdapter(name)).resolve()
       const target = viaNode ? (entry ?? bin) : bin
       if (/[\\/]/.test(target)) out[name] = existsSync(target)
       else { const r = spawnSync(target, ['--version'], { windowsHide: true, encoding: 'utf8', timeout: 8000 }); out[name] = !r.error && r.status === 0 }
@@ -183,7 +189,7 @@ function restoreTerminal() {
 
 // ---- spawn spec per agent ----
 export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }) {
-  const adapter = await getAdapter(agent)
+  const adapter = await loadAdapter(agent)
   const { bin, viaNode, entry } = adapter.resolve()
   const argv = []
   // viaNode: either an npm entry (codex bin/codex.js) or a BATON_<AGENT>_BIN that names a .mjs (tests)
@@ -202,6 +208,10 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd }
     const log = join(sessionDir(sessionId), 'agy.log')
     argv.push(...args, '--log-file', log)
     if (prompt) argv.push('-i', prompt)
+  } else if (agent === 'grok') {
+    const log = join(sessionDir(sessionId), 'grok.log')
+    argv.push(...args, '--debug-file', log)
+    if (prompt) argv.push(prompt)
   }
   const env = { ...sanitizeEnv(process.env, { interactive: true }), ...envFor(agent, account), LEG_SESSION: sessionId, BATON_SESSION: sessionId }
   return { bin: viaNode ? process.execPath : bin, args: argv, env, cwd }
@@ -227,6 +237,8 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
   // the end of what the first one wrote, or it walls itself on that leg's line
   const agyLog = agent === 'agy' ? join(sessionDir(sid), 'agy.log') : null
   const agyTail = agyLog ? createTail(agyLog, { from: logSize(agyLog) }) : null
+  const grokLog = agent === 'grok' ? join(sessionDir(sid), 'grok.log') : null
+  const grokTail = grokLog ? createTail(grokLog, { from: logSize(grokLog) }) : null
   let child
   try {
     child = spawn(spec.bin, spec.args, { cwd: spec.cwd, env: spec.env, stdio: 'inherit', windowsHide: false })
@@ -284,6 +296,24 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
         updateSession(sid, patch)
       } else if (!s.usage_error) {
         updateSession(sid, { usage_error: r.error }, { event: { type: 'status', summary: `codex usage unavailable: ${r.error}` } })
+      }
+    }
+    pollUsage().catch(() => {})
+    usageTimer = setInterval(() => pollUsage().catch(() => {}), USAGE_MS)
+    usageTimer.unref?.()
+  } else if (agent === 'grok') {
+    const pollUsage = async () => {
+      const configDir = spec.env.GROK_HOME || LAYOUT.grok.home()
+      const r = await fetchGrokUsage({ configDir })
+      const s = readSession(sid)
+      if (!isCurrentLeg(s, { pid: child.pid, agent, account })) return
+      const usable = r.ok && r.limits && (r.limits.five_hour || r.limits.seven_day)
+      if (usable) {
+        recordUsage('grok', account, r.limits, 'grok billing proxy')
+        updateSession(sid, { limits: r.limits, usage_source: 'grok billing proxy', usage_error: null })
+      } else if (!s.usage_error) {
+        const why = r.error ?? 'the usage endpoint answered with no window'
+        updateSession(sid, { usage_error: why }, { event: { type: 'status', summary: `grok usage unavailable: ${why}` } })
       }
     }
     pollUsage().catch(() => {})
@@ -348,6 +378,25 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl }) {
           patch.turns = turns; patch.last_activity = new Date().toISOString()
           if (!s.task) patch.task = prompts[0].text.slice(0, 500)
           if (!s.agent_session_id && prompts[0].conversationId) patch.agent_session_id = prompts[0].conversationId
+          if (s.status === 'starting') patch.status = 'running'
+        }
+      }
+      // grok: log text + prompts
+      if (agent === 'grok') {
+        const text = grokTail ? grokTail.read().join('\n') : ''
+        const hit = text ? scanGrokLog(text) : null
+        if (hit && s.status !== 'limit') {
+          const u = markLimited('grok', account, { resets_at: hit.resets_at, reason: hit.signal, source: 'grok log' })
+          patch.status = 'limit'; patch.limit = { reason: hit.signal, detail: hit.detail, resets_at: hit.resets_at ?? u.limited_until, at: new Date().toISOString() }
+          appendEvent(sid, { type: 'limit', summary: `grok limit (${hit.signal}): ${hit.detail.slice(0, 160)}` })
+          try { captureLive('grok', hit.signal, { log_excerpt: hit.detail, resets_at: hit.resets_at }, { sessionId: sid }) } catch {}
+        }
+        const prompts = grokPromptsSince({ grokHome: spec.env.GROK_HOME || LAYOUT.grok.home(), cwd: s.cwd, sinceMs: startedMs })
+        const turns = turnsAtLegStart + prompts.length
+        if (prompts.length && turns !== (s.turns ?? 0)) {
+          patch.turns = turns; patch.last_activity = new Date().toISOString()
+          if (!s.task) patch.task = prompts[0].text.slice(0, 500)
+          if (!s.agent_session_id && prompts[0].sessionId) patch.agent_session_id = prompts[0].sessionId
           if (s.status === 'starting') patch.status = 'running'
         }
       }
@@ -456,7 +505,7 @@ export function claimHandoffChoice({ sid, agent, account, installed, bundle = nu
 
 // ---- the command ----
 export async function attach(agent, args = [], { open = true } = {}) {
-  if (!AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy)`)
+  if (!SUPERVISED_AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy|grok)`)
   // the paid gate: a valid key, or no session (exit 4). The bare agent is never
   // affected; only what Baton adds is licensed.
   const ent = entitlement()
@@ -470,13 +519,17 @@ export async function attach(agent, args = [], { open = true } = {}) {
   const installed = await installedAgents()
   const handoffOrder = readPreferences().handoff_order
   let account = process.env.LEG_ACCOUNT || process.env.BATON_ACCOUNT || 'default'
-  if (!accounts[agent].includes(account)) { say(`no ${agent} account "${account}"; using default`); account = 'default' }
+  if (!(accounts[agent] ?? ['default']).includes(account)) { say(`no ${agent} account "${account}"; using default`); account = 'default' }
   // A persisted wall is only a cache. Ask Codex's read-only account endpoint
   // before using it to skip this login; an explicit true can clear an older
   // wall, false refreshes it, and unknown preserves it.
   if (agent === 'codex' && installed.codex && !process.env.BATON_CODEX_BIN) {
     const codexHome = envFor('codex', account).CODEX_HOME || LAYOUT.codex.home()
     await refreshCodexUsage(account, codexHome).catch(() => {})
+  }
+  if (agent === 'grok' && installed.grok && !process.env.BATON_GROK_BIN) {
+    const grokHome = envFor('grok', account).GROK_HOME || LAYOUT.grok.home()
+    await fetchGrokUsage({ configDir: grokHome }).catch(() => {})
   }
   // Start on an account that is not at its wall, if we already know one is.
   const nowS = Math.floor(Date.now() / 1000)

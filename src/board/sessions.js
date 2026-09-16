@@ -22,7 +22,7 @@
     handing_off: ['handing off', 'warn'], waiting: ['waiting for reset', 'warn'], handed_off: ['handed off', 'idle'], ended: ['ended', 'idle'], lost: ['lost', 'danger'],
   }
   const WIN_WORDS = { '5h': '5 hour', '7d': '7 day' }
-  const IDS = ['claude', 'codex', 'agy', 'fake']
+  const IDS = ['claude', 'codex', 'agy', 'grok', 'fake']
 
   let view = null
   const NO_BRANCH_BLOCKER = 'this terminal works in the checkout itself: there is no branch of its own to land'

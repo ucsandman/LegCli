@@ -53,7 +53,7 @@
   <main id="doc" class="docs-body">
 <nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#contents">Contents</a></li><li><a href="#60-second-run">60-second run</a></li><li><a href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></li><li><a href="#how-a-handoff-works">How a handoff works</a></li><li><a href="#two-sessions-in-one-repo">Two sessions in one repo</a></li><li><a href="#more-than-one-human">More than one human</a></li><li><a href="#the-board">The board</a></li><li><a href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></li><li><a href="#what-is-and-is-not-touched">What is and is not touched</a></li><li><a href="#cli-reference">CLI reference</a></li><li><a href="#background-tasks-the-v01-extras">Background tasks: the v0.1 extras</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#documentation">Documentation</a></li><li><a href="#contributing">Contributing</a></li><li><a href="#privacy-and-attribution">Privacy and attribution</a></li><li><a href="#license-and-pricing">License and pricing</a></li></ul></nav>
 <h1 id="leg"><a class="anchor" href="#leg">leg</a></h1>
-<p><strong>Type <code>leg claude</code>, <code>leg codex</code> or <code>leg agy</code> instead of the bare command. You get the same interactive agent; Leg opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.</strong></p>
+<p><strong>Type <code>leg claude</code>, <code>leg codex</code>, <code>leg agy</code> or <code>leg grok</code> instead of the bare command. You get the same interactive agent; Leg opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.</strong></p>
 <p><a href="https://legcli.com/license"><img src="https://img.shields.io/badge/license-commercial-blue.svg" alt="License: commercial"></a>
 <a href="https://legcli.com/docs/getting-started"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node 22+"></a>
 <a href="https://legcli.com/docs"><img src="https://img.shields.io/badge/runtime%20deps-0-lightgrey.svg" alt="Runtime deps: 0"></a>
@@ -74,15 +74,15 @@ cards, and a second session in a checkout that already has one gets its
 own worktree and a <strong>Land</strong> button instead of writing over the first.</li>
 <li><strong>Usage tracking</strong> per agent and account, from what each CLI already
 exposes: Claude Code&#39;s usage endpoint and its <code>StopFailure</code> hook, Codex&#39;s
-read-only app-server rate-limit read, agy&#39;s log.</li>
+read-only app-server rate-limit read, agy&#39;s log, and Grok&#39;s billing proxy endpoint.</li>
 <li><strong>A context handoff bundle</strong> (<a href="https://pypi.org/project/context-handoff-bundle/">context-handoff-bundle</a>)
 refreshed as the session goes, so the work is always ready to hand off.</li>
 <li><strong>The handoff itself.</strong> Near the limit you get a warning. At the limit Leg
 saves the bundle, stops the agent, and starts the next option in the same
 terminal from that bundle: another login of the same agent if you added
 one, otherwise the next agent in the order shown on the terminal card.
-The default is claude → codex → agy, and Settings changes the default for
-new terminals. Nothing is retyped.
+The default is claude -&gt; codex -&gt; agy (with grok supported in handoff order),
+and Settings changes the default for new terminals. Nothing is retyped.
 When every option is out, it tells you which resets first and when, waits
 for that reset with a countdown, and starts that agent from the bundle.</li>
 </ol>
@@ -91,9 +91,10 @@ for that reset with a countdown, and starts that agent from the bundle.</li>
 <code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>, <code>OPENAI_API_BASE</code>, <code>GEMINI_API_KEY</code>,
 <code>GOOGLE_API_KEY</code>, <code>GOOGLE_GEMINI_BASE_URL</code>, <code>GOOGLE_GENAI_USE_VERTEXAI</code>,
 <code>GOOGLE_GENAI_USE_ENTERPRISE</code>, <code>GOOGLE_CLOUD_PROJECT</code>,
-<code>GOOGLE_CLOUD_LOCATION</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code>, <code>CLAUDECODE</code>,
-<code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code>, and <code>CLAUDE_PLUGIN_DATA</code> before any agent
-starts. It then sets <code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0</code> for a detached
+<code>GOOGLE_CLOUD_LOCATION</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code>, <code>GROK_API_KEY</code>,
+<code>XAI_API_KEY</code>, <code>CLAUDECODE</code>, <code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code>, and
+<code>CLAUDE_PLUGIN_DATA</code> before any agent starts. It then sets
+<code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0</code> for a detached
 Claude print session. Leg never edits <code>~/.claude/settings.json</code> or any other
 settings file of yours; its hooks ride in a separate per-session <code>--settings</code>
 file. The one thing it does write outside <code>~/.leg</code> is the folder-trust
@@ -165,7 +166,7 @@ yourself.</p>
 </ul>
 <h2 id="60-second-run"><a class="anchor" href="#60-second-run">60-second run</a></h2>
 <p>Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one
-logged-in agent CLI (<code>claude</code>, <code>codex</code> or <code>agy</code>).</p>
+logged-in agent CLI (<code>claude</code>, <code>codex</code>, <code>agy</code> or <code>grok</code>).</p>
 <pre><code>npm install -g @ucsandman/legcli
 pip install -U context-handoff-bundle
 cd &lt;any repo&gt;
@@ -216,6 +217,13 @@ which.</p>
 <td><code>RESOURCE_EXHAUSTED</code>, &quot;it resets in …&quot;, &quot;out of quota&quot; in the log</td>
 <td><code>--log-file</code> per session; <code>~/.gemini/antigravity-cli/history.jsonl</code> gives the prompts and conversation id</td>
 <td>observed live (a real <code>RESOURCE_EXHAUSTED</code> with its reset was read from the log on 2026-09-11)</td>
+</tr>
+<tr>
+<td>grok</td>
+<td><code>GET cli-chat-proxy.grok.com/v1/billing?format=credits</code> and <code>GET cli-chat-proxy.grok.com/v1/user?include=subscription</code> with OAuth token from <code>~/.grok/auth.json</code> (<code>creditUsagePercent</code>, <code>currentPeriod</code> weekly reset); polled every 60 s</td>
+<td><code>-32003</code> rate limit error, &quot;You&#39;ve hit the rate limit for your plan. Try again later.&quot;, &quot;Rate limited (429)&quot;, <code>StopFailureKind::RateLimit</code> (<code>xai-org/grok-build</code>)</td>
+<td><code>--debug-file grok.log</code> per session; <code>~/.grok/sessions/&lt;encoded-cwd&gt;/prompt_history.jsonl</code> gives prompts and session id</td>
+<td>verified by source and proxy endpoint</td>
 </tr>
 </tbody></table>
 <p>Why not Claude Code&#39;s status line JSON (<code>rate_limits.five_hour.used_percentage</code>):
@@ -437,15 +445,15 @@ account directories with their junctions, v0.1 cards, the board pidfile) and
 nothing else; then <code>npm rm -g legcli</code>.</li>
 </ul>
 <h2 id="cli-reference"><a class="anchor" href="#cli-reference">CLI reference</a></h2>
-<pre><code>leg claude|codex|agy [agent args…]   the interactive agent, board alongside, handoff on limit
+<pre><code>leg claude|codex|agy|grok [agent args…] the interactive agent, board alongside, handoff on limit
       [--no-worktree]                  share the checkout with a live session instead of a worktree
 leg sessions ls [--json]             every session and its usage
 leg sessions show|events &lt;id&gt;
 leg sessions handoff|end &lt;id&gt;        same as the board buttons
 leg sessions rm &lt;id&gt;                 forget an ended session
-leg sessions simulate-limit &lt;id&gt;     the real limit path without a real wall (claude, agy)
+leg sessions simulate-limit &lt;id&gt;     the real limit path without a real wall (claude, agy, grok)
 leg accounts ls                      logins and their 5h/7d usage
-leg accounts add &lt;claude|codex&gt; &lt;name&gt; | rm &lt;agent&gt; &lt;name&gt; | terms
+leg accounts add &lt;claude|codex|grok&gt; &lt;name&gt; | rm &lt;agent&gt; &lt;name&gt; | terms
 leg license                          the license on this machine, or where to buy one
 leg license activate &lt;key&gt; | deactivate | refresh   (refresh renews a Team key)
 leg share                            who is on the board (off by default; Team plan)
@@ -458,9 +466,9 @@ leg uninstall [--yes]
 (4747), <code>LEG_ACCOUNT</code> (start on a named login), <code>LEG_WARN_PCT</code> (85),
 <code>LEG_NO_HANDOFF=1</code> (warn and record, never switch), <code>LEG_NO_OPEN=1</code> (do not
 open the browser), <code>LEG_USAGE_POLL_MS</code> (60000), <code>LEG_CLAUDE_ARGS</code> /
-<code>LEG_CODEX_ARGS</code> / <code>LEG_AGY_ARGS</code> (extra args for a leg Leg starts after
+<code>LEG_CODEX_ARGS</code> / <code>LEG_AGY_ARGS</code> / <code>LEG_GROK_ARGS</code> (extra args for a leg Leg starts after
 a hand-off, e.g. <code>-m gpt-5.3-codex-spark</code>), <code>LEG_CLAUDE_BIN</code>,
-<code>LEG_CODEX_BIN</code>, <code>LEG_AGY_BIN</code>, <code>LEG_CHB_BIN</code>, <code>LEG_PERSON</code> (whose
+<code>LEG_CODEX_BIN</code>, <code>LEG_AGY_BIN</code>, <code>LEG_GROK_BIN</code>, <code>LEG_CHB_BIN</code>, <code>LEG_PERSON</code> (whose
 terminal this is when the board is shared), <code>LEG_RATE_MAX</code> (600 requests a
 minute per human) and <code>LEG_RATE_MAX_FAILURES</code> (20 wrong tokens per address).</p>
 <h2 id="background-tasks-the-v01-extras"><a class="anchor" href="#background-tasks-the-v01-extras">Background tasks: the v0.1 extras</a></h2>

@@ -133,11 +133,25 @@ documentation say docs-only.
 - **One account only**: agy 1.2.0 has no config-directory override, so
   `leg accounts add agy …` is refused.
 
+### grok
+
+- **How Leg attaches**: `grok <your args>` with `--debug-file <~/.leg/sessions/<id>/grok.log>` passed by Leg (`src/attach.mjs` `spawnSpec`).
+- **Usage percentages**: `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` and `GET https://cli-chat-proxy.grok.com/v1/user?include=subscription` (`LEG_GROK_BILLING_URL` and `LEG_GROK_USER_URL` override), reading the OAuth token stored in `~/.grok/auth.json`. The billing endpoint reports `creditUsagePercent` and `currentPeriod` (with weekly resets). Polled every 60 s (`LEG_USAGE_POLL_MS`). If the token expires or returns 401, usage is marked unknown without crashing, and re-reads `auth.json` on the next poll.
+- **The wall**: rate limit signals cited directly from `xai-org/grok-build`:
+  - `SamplingError::Api { status: StatusCode::TOO_MANY_REQUESTS }` (`crates/codegen/xai-grok-sampling-types/src/error.rs:304`)
+  - `RATE_LIMITED_ERROR_CODE = -32003` and user messages `RATE_LIMITED_USER_MESSAGE_OAUTH` ("You've hit the rate limit for your plan. Try again later.") and `RATE_LIMITED_USER_MESSAGE_API_KEY` ("You've hit the rate limit for your API key. Try again later.") (`crates/codegen/xai-grok-shell/src/sampling/error.rs:15, 18-21`)
+  - Headline "Rate limited (429)" and "You've hit the rate limit for your plan" (`crates/codegen/xai-grok-pager/src/app/error_display.rs:263-267`)
+  - `StopFailureKind::RateLimit` ("rate_limit") (`crates/codegen/xai-grok-hooks/src/event.rs:306-315`)
+  - Free usage exhausted: `FREE_USAGE_USER_MESSAGE` and `FREE_USAGE_EXHAUSTED_ERROR_CODE` ("subscription:free-usage-exhausted") (`crates/codegen/xai-grok-shell/src/sampling/error.rs:30, 33`)
+  `src/taps/grok.mjs` scans `grok.log` for these exact signals and extracts reset durations when available.
+- **Prompts and session id**: `~/.grok/sessions/<url-encoded-cwd>/prompt_history.jsonl`, recorded per prompt with timestamp, `session_id`, and `prompt`.
+- **Accounts**: Supports `GROK_HOME` override. `leg accounts add grok <name>` creates junctioned directories copying `config.toml`.
+
 ### Resume prompt per agent
 
 After a hand-off the next agent starts in the same terminal with the pointer
 prompt as its first positional argument: `claude "<prompt>"`,
-`codex "<prompt>"`, `agy -i "<prompt>"` (`src/attach.mjs` `spawnSpec`).
+`codex "<prompt>"`, `agy -i "<prompt>"`, `grok "<prompt>"` (`src/attach.mjs` `spawnSpec`).
 
 ## Headless adapters (the v0.1 pipeline)
 

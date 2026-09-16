@@ -129,6 +129,7 @@
   --id-claude: #FCA169;  /* oklch(0.790 0.130 52) warm */
   --id-codex: #69DBBA;   /* oklch(0.815 0.115 172) cool green */
   --id-agy: #CC97F3;     /* oklch(0.760 0.140 310) violet, 46 degrees clear of the accent */
+  --id-grok: #70B8FF;    /* oklch(0.750 0.130 240) azure blue */
   --id-fake: #A0A6AE;    /* oklch(0.720 0.010 258) the scripted adapter, neutral in hue */
 
   /* type scale. Fixed rem, range 13 to 52. The old board ran 13 to 21, which
@@ -220,6 +221,7 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .dot.id-claude { background: var(--id-claude); }
 .dot.id-codex { background: var(--id-codex); }
 .dot.id-agy { background: var(--id-agy); }
+.dot.id-grok { background: var(--id-grok); }
 
 /* ---- logins ------------------------------------------------------------- */
 .logins { display: grid; gap: 20px; }
@@ -312,6 +314,7 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .chip-id-claude { color: var(--id-claude); }
 .chip-id-codex { color: var(--id-codex); }
 .chip-id-agy { color: var(--id-agy); }
+.chip-id-grok { color: var(--id-grok); }
 .chip-id-fake { color: var(--id-fake); }
 .chip-state-ok { color: var(--ok-text); }
 .chip-state-warn { color: var(--warn-text); }
@@ -320,6 +323,7 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .acct-name.id-claude { color: var(--id-claude); }
 .acct-name.id-codex { color: var(--id-codex); }
 .acct-name.id-agy { color: var(--id-agy); }
+.acct-name.id-grok { color: var(--id-grok); }
 .acct-name.id-fake { color: var(--id-fake); }
 
 /* ---- controls ----------------------------------------------------------- */

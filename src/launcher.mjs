@@ -46,6 +46,7 @@ const INSTALL_HINT = {
   claude: 'https://claude.com/claude-code (then `claude` to log in)',
   codex: 'npm i -g @openai/codex (then `codex login`)',
   agy: 'Antigravity CLI (`agy`), log in once interactively',
+  grok: 'xAI Grok CLI (`grok`), log in once via `grok login`',
 }
 
 // Rows: [name, status, detail]. Nothing here is fatal except "no adapter at all".
@@ -62,7 +63,7 @@ export async function preflight() {
     const v = viaNode ? version(process.execPath, [entry, '--version']) : version(bin)
     if (v) { present += 1; rows.push([name, 'ok', `${v} (${viaNode ? entry : bin})`]) } else rows.push([name, 'missing', INSTALL_HINT[name] ?? 'not on PATH'])
   }
-  rows.push(['fake adapters', 'ok', 'fake, fake-claude, fake-codex, fake-agy (tests and demo)'])
+  rows.push(['fake adapters', 'ok', 'fake, fake-claude, fake-codex, fake-agy, fake-grok (tests and demo)'])
   return { rows, adapters_present: present }
 }
 

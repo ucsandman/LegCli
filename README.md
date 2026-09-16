@@ -1,6 +1,6 @@
 # leg
 
-**Type `leg claude`, `leg codex` or `leg agy` instead of the bare command. You get the same interactive agent; Leg opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.**
+**Type `leg claude`, `leg codex`, `leg agy` or `leg grok` instead of the bare command. You get the same interactive agent; Leg opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.**
 
 [![License: commercial](https://img.shields.io/badge/license-commercial-blue.svg)](https://legcli.com/license)
 [![Node 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://legcli.com/docs/getting-started)
@@ -26,15 +26,15 @@ settings file and never edits yours. `leg claude --model opus` is
    own worktree and a **Land** button instead of writing over the first.
 2. **Usage tracking** per agent and account, from what each CLI already
    exposes: Claude Code's usage endpoint and its `StopFailure` hook, Codex's
-   read-only app-server rate-limit read, agy's log.
+   read-only app-server rate-limit read, agy's log, and Grok's billing proxy endpoint.
 3. **A context handoff bundle** ([context-handoff-bundle](https://pypi.org/project/context-handoff-bundle/))
    refreshed as the session goes, so the work is always ready to hand off.
 4. **The handoff itself.** Near the limit you get a warning. At the limit Leg
    saves the bundle, stops the agent, and starts the next option in the same
    terminal from that bundle: another login of the same agent if you added
    one, otherwise the next agent in the order shown on the terminal card.
-   The default is claude → codex → agy, and Settings changes the default for
-   new terminals. Nothing is retyped.
+   The default is claude -> codex -> agy (with grok supported in handoff order),
+   and Settings changes the default for new terminals. Nothing is retyped.
    When every option is out, it tells you which resets first and when, waits
    for that reset with a countdown, and starts that agent from the bundle.
 
@@ -43,9 +43,10 @@ Subscription logins only: Leg strips `ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `GEMINI_API_KEY`,
 `GOOGLE_API_KEY`, `GOOGLE_GEMINI_BASE_URL`, `GOOGLE_GENAI_USE_VERTEXAI`,
 `GOOGLE_GENAI_USE_ENTERPRISE`, `GOOGLE_CLOUD_PROJECT`,
-`GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`, `CLAUDECODE`,
-`CLAUDE_CODE_*`, `CLAUDE_EFFORT`, and `CLAUDE_PLUGIN_DATA` before any agent
-starts. It then sets `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for a detached
+`GOOGLE_CLOUD_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`, `GROK_API_KEY`,
+`XAI_API_KEY`, `CLAUDECODE`, `CLAUDE_CODE_*`, `CLAUDE_EFFORT`, and
+`CLAUDE_PLUGIN_DATA` before any agent starts. It then sets
+`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for a detached
 Claude print session. Leg never edits `~/.claude/settings.json` or any other
 settings file of yours; its hooks ride in a separate per-session `--settings`
 file. The one thing it does write outside `~/.leg` is the folder-trust
@@ -103,7 +104,7 @@ yourself.
 ## 60-second run
 
 Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one
-logged-in agent CLI (`claude`, `codex` or `agy`).
+logged-in agent CLI (`claude`, `codex`, `agy` or `grok`).
 
 ```
 npm install -g @ucsandman/legcli
@@ -136,6 +137,7 @@ which.
 | claude | `GET api.anthropic.com/api/oauth/usage` with the login Claude Code stored, the same data as `/usage` and the built-in status line (`five_hour`, `seven_day`, `utilization`, `resets_at`); polled every 60 s | `StopFailure` hook with `error: rate_limit` ([docs](https://code.claude.com/docs/en/hooks#stopfailure)) | one extra settings file per session via `--settings`, carrying only Leg's own hooks; `autoContinueAtUsageLimit` is set to `false` because Leg owns the handoff | observed live |
 | codex | read-only `account/rateLimits/read` through the app-server, polled every 60 s by the board and active attach; windows are identified by duration (300 minutes = 5h, 10080 = 7d) | `task_complete.error.codex_error_info: usage_limit_exceeded`, message "You've hit your usage limit … try again at …" (`codex-rs/protocol/src/error.rs`) | no model turn and no hook are injected; the board reads the CLI backend and records only returned windows | verified by source and regression tests |
 | agy | none exposed (agy's own status line fetches a quota summary that is written nowhere) | `RESOURCE_EXHAUSTED`, "it resets in …", "out of quota" in the log | `--log-file` per session; `~/.gemini/antigravity-cli/history.jsonl` gives the prompts and conversation id | observed live (a real `RESOURCE_EXHAUSTED` with its reset was read from the log on 2026-09-11) |
+| grok | `GET cli-chat-proxy.grok.com/v1/billing?format=credits` and `GET cli-chat-proxy.grok.com/v1/user?include=subscription` with OAuth token from `~/.grok/auth.json` (`creditUsagePercent`, `currentPeriod` weekly reset); polled every 60 s | `-32003` rate limit error, "You've hit the rate limit for your plan. Try again later.", "Rate limited (429)", `StopFailureKind::RateLimit` (`xai-org/grok-build`) | `--debug-file grok.log` per session; `~/.grok/sessions/<encoded-cwd>/prompt_history.jsonl` gives prompts and session id | verified by source and proxy endpoint |
 
 Why not Claude Code's status line JSON (`rate_limits.five_hour.used_percentage`):
 on 2.1.268 the custom `statusLine` Leg passes through `--settings` did not
@@ -387,15 +389,15 @@ happens after you run `leg accounts add`; that is your call.
 ## CLI reference
 
 ```
-leg claude|codex|agy [agent args…]   the interactive agent, board alongside, handoff on limit
+leg claude|codex|agy|grok [agent args…] the interactive agent, board alongside, handoff on limit
       [--no-worktree]                  share the checkout with a live session instead of a worktree
 leg sessions ls [--json]             every session and its usage
 leg sessions show|events <id>
 leg sessions handoff|end <id>        same as the board buttons
 leg sessions rm <id>                 forget an ended session
-leg sessions simulate-limit <id>     the real limit path without a real wall (claude, agy)
+leg sessions simulate-limit <id>     the real limit path without a real wall (claude, agy, grok)
 leg accounts ls                      logins and their 5h/7d usage
-leg accounts add <claude|codex> <name> | rm <agent> <name> | terms
+leg accounts add <claude|codex|grok> <name> | rm <agent> <name> | terms
 leg license                          the license on this machine, or where to buy one
 leg license activate <key> | deactivate | refresh   (refresh renews a Team key)
 leg share                            who is on the board (off by default; Team plan)
@@ -409,9 +411,9 @@ Environment, all optional: `LEG_HOME` (default `~/.leg`), `LEG_PORT`
 (4747), `LEG_ACCOUNT` (start on a named login), `LEG_WARN_PCT` (85),
 `LEG_NO_HANDOFF=1` (warn and record, never switch), `LEG_NO_OPEN=1` (do not
 open the browser), `LEG_USAGE_POLL_MS` (60000), `LEG_CLAUDE_ARGS` /
-`LEG_CODEX_ARGS` / `LEG_AGY_ARGS` (extra args for a leg Leg starts after
+`LEG_CODEX_ARGS` / `LEG_AGY_ARGS` / `LEG_GROK_ARGS` (extra args for a leg Leg starts after
 a hand-off, e.g. `-m gpt-5.3-codex-spark`), `LEG_CLAUDE_BIN`,
-`LEG_CODEX_BIN`, `LEG_AGY_BIN`, `LEG_CHB_BIN`, `LEG_PERSON` (whose
+`LEG_CODEX_BIN`, `LEG_AGY_BIN`, `LEG_GROK_BIN`, `LEG_CHB_BIN`, `LEG_PERSON` (whose
 terminal this is when the board is shared), `LEG_RATE_MAX` (600 requests a
 minute per human) and `LEG_RATE_MAX_FAILURES` (20 wrong tokens per address).
 

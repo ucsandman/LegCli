@@ -1,8 +1,5 @@
-// grok adapter — Grok CLI headless (`grok -p <prompt> --output-format json`).
-// NOT REGISTERED in index.mjs: the phase-3 probe could not verify it because
-// the build machine had no grok login (device-code prompt, exit "Cancelled").
-// Built from `grok --help` only; see docs/cli-contracts.md § grok. Register it
-// after `grok` is logged in and `node scripts/probe.mjs --adapter grok` passes.
+// grok adapter - Grok CLI headless (`grok -p <prompt> --output-format json`).
+// Registered in index.mjs alongside claude, codex, and agy.
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { sanitizeEnv } from '../env.mjs'
@@ -38,8 +35,8 @@ const adapter = {
         const j = JSON.parse(s.slice(i))
         return {
           session_id: j.session_id ?? j.sessionId ?? null,
-          last_message: typeof j.response === 'string' ? j.response : (typeof j.result === 'string' ? j.result : null),
-          stop_reason: j.stop_reason ?? null,
+          last_message: typeof j.response === 'string' ? j.response : (typeof j.result === 'string' ? j.result : (typeof j.text === 'string' ? j.text : null)),
+          stop_reason: j.stop_reason ?? j.stopReason ?? null,
           raw: j,
         }
       } catch { continue }

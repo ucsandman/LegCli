@@ -11,9 +11,10 @@ import { randomBytes } from 'node:crypto'
 import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { scrub } from './redact.mjs'
-import { HANDOFF_AGENTS, normalizeHandoffOrder } from './preferences.mjs'
+import { HANDOFF_AGENTS, ALL_HANDOFF_AGENTS, normalizeHandoffOrder } from './preferences.mjs'
 
 export const AGENTS = HANDOFF_AGENTS
+export const SUPERVISED_AGENTS = ALL_HANDOFF_AGENTS
 export const HANDOFF_ORDER_CAPABILITY = 'handoff_order_v1'
 export const SESSION_STATUSES = ['starting', 'running', 'warning', 'limit', 'handing_off', 'waiting', 'handed_off', 'ended', 'lost']
 const ACTIVE = ['starting', 'running', 'warning', 'limit', 'handing_off', 'waiting']

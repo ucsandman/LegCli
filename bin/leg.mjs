@@ -20,7 +20,7 @@ import { availableActions } from '../src/chain.mjs'
 import { up, down, stopBoard, status, openBoard } from '../src/launcher.mjs'
 import { attach, ensureBoard } from '../src/attach.mjs'
 import { readShare, addPerson, removePerson, rotate as rotateToken, turnOn, turnOff, linkFor, personNamed } from '../src/share.mjs'
-import { AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, readLand, sessionDir, appendEvent } from '../src/sessions.mjs'
+import { SUPERVISED_AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, readLand, sessionDir, appendEvent } from '../src/sessions.mjs'
 import { addAccount, removeAccount, listAccountRows, LAYOUT } from '../src/accounts.mjs'
 import { listUsage, fmtReset } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
@@ -88,7 +88,12 @@ function simulateLimit(s) {
     appendEvent(s.session_id, { type: 'status', summary: 'simulated RESOURCE_EXHAUSTED appended to the session log' })
     return out(`simulated: RESOURCE_EXHAUSTED appended to ${join(sessionDir(s.session_id), 'agy.log')}; the runner reads it within ${process.env.BATON_ATTACH_POLL_MS || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
   }
-  die(2, `simulate-limit drives the claude hook path (and the agy log); codex's wall comes from its own rollout file, which Baton never writes. Use "leg sessions handoff ${s.session_id}" to force the switch.`)
+  if (s.agent === 'grok') {
+    appendFileSync(join(sessionDir(s.session_id), 'grok.log'), "\nRate limited (429): You've hit the rate limit for your plan. Try again later. (simulated by leg sessions simulate-limit)\n")
+    appendEvent(s.session_id, { type: 'status', summary: 'simulated rate limit appended to the grok log' })
+    return out(`simulated: rate limit appended to ${join(sessionDir(s.session_id), 'grok.log')}; the runner reads it within ${process.env.BATON_ATTACH_POLL_MS || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
+  }
+  die(2, `simulate-limit drives the claude hook path (and the agy/grok log); codex's wall comes from its own rollout file, which Baton never writes. Use "leg sessions handoff ${s.session_id}" to force the switch.`)
 }
 
 function fmtCard(c) {
@@ -97,7 +102,7 @@ function fmtCard(c) {
   return `${c.card_id}  [${c.status}]  ${c.station}${leg}  leases=${(c.leases?.length ? c.leases : ['**']).join(',')}  ${String(c.title ?? c.task).slice(0, 60)}`
 }
 
-const TERMS = `Terms check (fetched 2026-09-11): Anthropic Consumer Terms forbid sharing account credentials and "bypassing any of our systems or protective measures"; the Anthropic Usage Policy forbids coordinating across multiple accounts to circumvent product guardrails; OpenAI's Terms of Use forbid sharing credentials and "circumvent any rate limits or restrictions". Two paid logins you own are not banned by name, but rotating to a second account of the same vendor because the first is rate-limited is close to that wording. Leg's default chain switches vendors (claude -> codex -> agy); a second account of one vendor is your call.`
+const TERMS = `Terms check (fetched 2026-09-11): Anthropic Consumer Terms forbid sharing account credentials and "bypassing any of our systems or protective measures"; the Anthropic Usage Policy forbids coordinating across multiple accounts to circumvent product guardrails; OpenAI's Terms of Use forbid sharing credentials and "circumvent any rate limits or restrictions". Two paid logins you own are not banned by name, but rotating to a second account of the same vendor because the first is rate-limited is close to that wording. Leg's default chain switches vendors (claude -> codex -> agy -> grok); a second account of one vendor is your call.`
 
 async function main() {
   const [group, cmd, ...rest] = process.argv.slice(2)
@@ -123,8 +128,8 @@ async function main() {
     out('   Passing the leg to the next runner when limits hit.')
     return
   }
-  if (AGENTS.includes(group)) {
-    // leg claude|codex|agy [agent args...]: everything after the agent name
+  if (SUPERVISED_AGENTS.includes(group)) {
+    // leg claude|codex|agy|grok [agent args...]: everything after the agent name
     // goes straight through.
     const code = await attach(group, [cmd, ...rest].filter((x) => x !== undefined), { open: process.env.BATON_NO_OPEN !== '1' })
     process.exit(code)
@@ -427,9 +432,9 @@ async function main() {
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|resume|accounts|license|share|up|down|status|open|card|scheduler|uninstall)`)
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|resume|accounts|license|share|up|down|status|open|card|scheduler|uninstall)`)
   out(`leg ${VERSION}, your coding agents, with a board alongside and a handoff when one hits its limit
-  claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
+  claude|codex|agy|grok [args...]   the normal interactive agent in this terminal; args pass straight through
                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                a second live session in one checkout gets its own worktree (--no-worktree to share)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>

@@ -31,6 +31,13 @@ export const LAYOUT = {
     login: (dir) => `$env:CODEX_HOME='${dir}'; codex login`,
   },
   agy: { env: null, home: () => join(homedir(), '.gemini', 'antigravity-cli'), share: [], copy: [], login: null },
+  grok: {
+    env: 'GROK_HOME',
+    home: () => process.env.GROK_HOME || join(homedir(), '.grok'),
+    share: ['installed-plugins', 'skills', 'workflows'],
+    copy: ['config.toml'],
+    login: (dir) => `$env:GROK_HOME='${dir}'; grok login`,
+  },
 }
 
 export function accountsFile() { return join(home(), 'accounts.json') }
@@ -42,6 +49,7 @@ export function readAccounts() {
   try {
     const j = JSON.parse(readFileSync(accountsFile(), 'utf8'))
     for (const k of Object.keys(base)) if (Array.isArray(j[k])) base[k] = ['default', ...j[k].filter((n) => n !== 'default')]
+    if (Array.isArray(j?.grok)) base.grok = ['default', ...j.grok.filter((n) => n !== 'default')]
   } catch {}
   return base
 }
@@ -69,7 +77,7 @@ function junction(target, link) {
 export function addAccount(agent, name) {
   if (!/^[a-z0-9][a-z0-9_-]{0,29}$/i.test(name) || name === 'default') throw new Error(`invalid account name "${name}" (letters, digits, - and _; not "default")`)
   const l = LAYOUT[agent]
-  if (!l) throw new Error(`unknown agent "${agent}" (claude|codex|agy)`)
+  if (!l) throw new Error(`unknown agent "${agent}" (claude|codex|agy|grok)`)
   if (!l.env) throw new Error(`${agent} has no config-dir override in the installed version; extra accounts are not possible`)
   const dir = accountDir(agent, name)
   mkdirSync(dir, { recursive: true })
@@ -78,6 +86,7 @@ export function addAccount(agent, name) {
   for (const d of l.share) if (junction(join(src, d), join(dir, d))) shared.push(d)
   refreshAccount(agent, name)
   const acc = readAccounts()
+  if (!acc[agent]) acc[agent] = ['default']
   if (!acc[agent].includes(name)) { acc[agent].push(name); writeAccounts(acc) }
   return { dir, shared, login: l.login(dir), env: l.env }
 }
