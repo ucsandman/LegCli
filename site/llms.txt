@@ -3,12 +3,12 @@
 > A local wrapper for coding-agent CLIs. Type `leg claude`, `leg codex` or `leg agy` instead of the bare command and you get the same interactive agent with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits. Zero runtime dependencies, Node 22+, binds 127.0.0.1, never edits your own config files. Commercial license, source readable in the package. No trial: Personal $79 once or Team $12 per seat per month, with a 30-day money-back guarantee.
 
 Site: https://legcli.com/
-npm: https://www.npmjs.com/package/legcli
+npm: https://www.npmjs.com/package/@ucsandman/legcli
 
 ## Install
 
 ```
-npm install -g legcli
+npm install -g @ucsandman/legcli
 pip install -U context-handoff-bundle
 cd <any repo>
 leg claude
@@ -61,4 +61,4 @@ The source repository is private, so these pages are the public copy of the docu
 - Changelog: https://legcli.com/docs/changelog
 - Support and refunds: https://legcli.com/support
 - License: https://legcli.com/license
-- Package: https://www.npmjs.com/package/legcli
+- Package: https://www.npmjs.com/package/@ucsandman/legcli

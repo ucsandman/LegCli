@@ -190,6 +190,7 @@ code { font-family: var(--mono); font-size: 0.94em; }
 
 .masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-block: 28px 0; }
 .brand { font-size: var(--t-1); font-weight: var(--w-head); letter-spacing: -.01em; }
+.brand-glyph { display: inline-block; margin-right: 4px; }
 .masthead-right { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; font-size: var(--t-0); color: var(--text-3); }
 .floor-link { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line-strong); padding-bottom: 1px; }
 .floor-link:hover { color: var(--text); border-bottom-color: var(--text-2); }

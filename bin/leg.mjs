@@ -103,6 +103,26 @@ async function main() {
   const [group, cmd, ...rest] = process.argv.slice(2)
   const args = parseArgs(rest)
   if (group === '--version' || group === '-v') return out(VERSION)
+  if (group === '🦿' || group === 'prosthetic' || group === 'easter-egg') {
+    out(' 🦿 LegCli — The mechanical relay runner for coding agents.')
+    out(`
+.--------.
+|  ____  |
+| |    | |
+| |____| |
+'--------'
+    ||
+ .--||--.
+ |  ||  |   knee servo
+ '--||--'
+    ||
+    ||
+ ___||___
+|________|
+`)
+    out('   Passing the leg to the next runner when limits hit.')
+    return
+  }
   if (AGENTS.includes(group)) {
     // leg claude|codex|agy [agent args...]: everything after the agent name
     // goes straight through.
@@ -407,7 +427,7 @@ async function main() {
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|resume|accounts|share|up|down|status|open|card|scheduler|uninstall)`)
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|sessions|resume|accounts|license|share|up|down|status|open|card|scheduler|uninstall)`)
   out(`leg ${VERSION}, your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy [args...]   the normal interactive agent in this terminal; args pass straight through
                                the board opens once, the session shows as a card, usage is tracked, a limit hands off
@@ -417,6 +437,8 @@ async function main() {
                                freshness is recomputed from git at read time; --check prints only the verdict
                                exit 0 current, 1 stale or unstamped, 3 no pointer here
   accounts ls|add <agent> <name>|rm|terms        optional second login for claude or codex
+  license [status|activate <key>|deactivate|refresh]
+                                personal or team license status and management
   share status|on|add <name>|rotate <name>|rm <name>|off
                                 more than one human on the board, off by default
   down | status | open          the board

@@ -10,7 +10,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://legcli.com/docs/readme">
-<meta property="og:site_name" content="Leg">
+<meta property="og:site_name" content="LegCli">
 <meta property="og:title" content="Leg README">
 <meta property="og:description" content="The complete Leg README as shipped in the npm package: what it does, what it reads, what it never touches, and the license.">
 <meta property="og:image" content="https://legcli.com/og.png?v=2">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Leg</a>
+    <a class="docs-home" href="/">LegCli</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -166,7 +166,7 @@ yourself.</p>
 <h2 id="60-second-run"><a class="anchor" href="#60-second-run">60-second run</a></h2>
 <p>Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one
 logged-in agent CLI (<code>claude</code>, <code>codex</code> or <code>agy</code>).</p>
-<pre><code>npm install -g legcli
+<pre><code>npm install -g @ucsandman/legcli
 pip install -U context-handoff-bundle
 cd &lt;any repo&gt;
 leg claude
@@ -493,7 +493,7 @@ the card with the failure in the bundle.</li>
 (<code>LEG_SYNC_WORKBOARD=1</code>) and DashClaw (<code>LEG_SYNC_DASHCLAW=1</code>).</li>
 </ul>
 <p>The full v0.1 story, with the fake-limit demo and the real claude→codex run,
-is in <a href="/docs/concepts">docs/concepts.md</a>, <a href="https://www.npmjs.com/package/legcli">docs/DEMO.md</a>,
+is in <a href="/docs/concepts">docs/concepts.md</a>, <a href="https://www.npmjs.com/package/@ucsandman/legcli">docs/DEMO.md</a>,
 <a href="/docs/real-run">docs/real-run.md</a> and <a href="/docs/board-guide">docs/board-guide.md</a>.</p>
 <h3 id="network-exposure"><a class="anchor" href="#network-exposure">Network exposure</a></h3>
 <p>Leg binds <code>127.0.0.1</code>. <code>leg share on</code> is the supported way to listen
@@ -564,7 +564,7 @@ than Node; run <code>npx --yes npm@latest install</code> once.</li>
 <td>a question the others did not answer</td>
 </tr>
 <tr>
-<td><a href="https://www.npmjs.com/package/legcli">Demo</a> and <a href="/docs/real-run">real run</a></td>
+<td><a href="https://www.npmjs.com/package/@ucsandman/legcli">Demo</a> and <a href="/docs/real-run">real run</a></td>
 <td>the v0.1 handoff, fake and real</td>
 </tr>
 <tr>
@@ -572,15 +572,15 @@ than Node; run <code>npx --yes npm@latest install</code> once.</li>
 <td>statuses, outcomes and event types</td>
 </tr>
 <tr>
-<td><a href="https://www.npmjs.com/package/legcli">Roadmap v2</a></td>
+<td><a href="https://www.npmjs.com/package/@ucsandman/legcli">Roadmap v2</a></td>
 <td>where this is going</td>
 </tr>
 <tr>
-<td><a href="https://www.npmjs.com/package/legcli">Reuse</a> and <a href="https://www.npmjs.com/package/legcli">deviations</a></td>
+<td><a href="https://www.npmjs.com/package/@ucsandman/legcli">Reuse</a> and <a href="https://www.npmjs.com/package/@ucsandman/legcli">deviations</a></td>
 <td>what was ported and every place the plan changed</td>
 </tr>
 <tr>
-<td><a href="https://www.npmjs.com/package/legcli">Website</a></td>
+<td><a href="https://www.npmjs.com/package/@ucsandman/legcli">Website</a></td>
 <td>the public page: static HTML in <code>site/</code>, preview with <code>python -m http.server 4780 --directory site</code>, deployed to Vercel from that directory; PRODUCT.md and DESIGN.md at the root carry its brief and tokens</td>
 </tr>
 </tbody></table>
@@ -605,8 +605,8 @@ cases fail the job. The npm trusted publisher is bound to
 so publication uses <code>--provenance=false</code>.</p>
 <h2 id="privacy-and-attribution"><a class="anchor" href="#privacy-and-attribution">Privacy and attribution</a></h2>
 <p>Parts of the runner, ledger and git snapshot were ported from a private
-repository that was MIT licensed (see <a href="https://www.npmjs.com/package/legcli">NOTICE</a> and
-<a href="https://www.npmjs.com/package/legcli">docs/REUSE.md</a>), with chat identifiers, machine paths and
+repository that was MIT licensed (see <a href="https://www.npmjs.com/package/@ucsandman/legcli">NOTICE</a> and
+<a href="https://www.npmjs.com/package/@ucsandman/legcli">docs/REUSE.md</a>), with chat identifiers, machine paths and
 personal names removed. The test suite runs a privacy check on every commit,
 and the fixtures store home paths as <code>~</code>.</p>
 <h2 id="license-and-pricing"><a class="anchor" href="#license-and-pricing">License and pricing</a></h2>

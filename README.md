@@ -106,7 +106,7 @@ Prerequisites: Node 22 or newer, git, Python 3 with pip, and at least one
 logged-in agent CLI (`claude`, `codex` or `agy`).
 
 ```
-npm install -g legcli
+npm install -g @ucsandman/legcli
 pip install -U context-handoff-bundle
 cd <any repo>
 leg claude

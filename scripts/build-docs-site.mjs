@@ -136,7 +136,7 @@ function rewriteHref (href) {
   // public page: DEMO, REUSE, ROADMAP-v2, DEVIATIONS, NOTICE, the site source.
   // The package is where a reader can actually open it, so point there rather
   // than dangling a 404 at a stranger.
-  return 'https://www.npmjs.com/package/legcli'
+  return 'https://www.npmjs.com/package/@ucsandman/legcli'
 }
 
 const slugify = (text) => text.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-')
@@ -183,7 +183,7 @@ function page ({ slug, title, description, body, headings }) {
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="${url}">
-<meta property="og:site_name" content="Leg">
+<meta property="og:site_name" content="LegCli">
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 <meta property="og:image" content="${ORIGIN}/og.png?v=2">
@@ -201,7 +201,7 @@ function page ({ slug, title, description, body, headings }) {
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Leg</a>
+    <a class="docs-home" href="/">LegCli</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>

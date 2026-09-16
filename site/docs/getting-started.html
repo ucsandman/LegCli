@@ -10,7 +10,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://legcli.com/docs/getting-started">
-<meta property="og:site_name" content="Leg">
+<meta property="og:site_name" content="LegCli">
 <meta property="og:title" content="Install Leg and monitor your Claude Code usage limit">
 <meta property="og:description" content="Install Leg, run your first agent under it, and see the board, the usage reading and the handoff. Node 22+, one npm command.">
 <meta property="og:image" content="https://legcli.com/og.png?v=2">
@@ -28,7 +28,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">Leg</a>
+    <a class="docs-home" href="/">LegCli</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -67,7 +67,7 @@ not need all three. With one installed you get the board and the usage
 tracking; with two or more you also get the hand-off.</li>
 </ul>
 <h2 id="2-install"><a class="anchor" href="#2-install">2. Install</a></h2>
-<pre><code>npm install -g legcli
+<pre><code>npm install -g @ucsandman/legcli
 pip install -U context-handoff-bundle
 </code></pre>
 <p>The source repository is private, so there is no clone to install from. The
@@ -214,7 +214,7 @@ a full run without a subscription login:</p>
 behaviour: <code>success</code>, <code>incomplete</code>, <code>limit</code>, <code>stall</code>, <code>auth</code>, <code>crash</code>,
 <code>no_progress</code>, and the land-demo modes <code>break-test</code> / <code>fix-test</code> /
 <code>resolve-rebase</code>. A chain of two fake adapters (<code>--chain fake-claude,fake-codex --fake-mode &quot;fake-claude=limit,fake-codex=success&quot;</code>)
-shows a full handoff; see <a href="https://www.npmjs.com/package/legcli">DEMO.md</a> for the walkthrough with
+shows a full handoff; see <a href="https://www.npmjs.com/package/@ucsandman/legcli">DEMO.md</a> for the walkthrough with
 screenshots.</p>
 <h3 id="where-a-cards-files-live"><a class="anchor" href="#where-a-cards-files-live">Where a card&#39;s files live</a></h3>
 <pre><code>~/.leg/

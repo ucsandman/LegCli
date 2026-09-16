@@ -17,7 +17,7 @@ it. The v0.1 pipeline flow is section 7 onward.
 ## 2. Install
 
 ```
-npm install -g legcli
+npm install -g @ucsandman/legcli
 pip install -U context-handoff-bundle
 ```
 

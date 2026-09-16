@@ -8,7 +8,7 @@
 | < 0.7 | no |
 
 Leg is pre-1.0 and local-only software. Only the latest minor release gets
-security fixes; upgrade with `npm install -g legcli@latest`.
+security fixes; upgrade with `npm install -g @ucsandman/legcli@latest`.
 
 ## Reporting a vulnerability
 
