@@ -25,7 +25,7 @@ const PLANTED = ['sk', 'planted', 'stripped', 'abcdefgh12345678'].join('-')
 // claude stub: records argv, fires StopFailure rate_limit through the hook when told to, then idles until killed
 writeFileSync(join(STUBS, 'claude.mjs'), `import { writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-writeFileSync(process.env.STUB_DIR + '/claude-' + Date.now() + '.json', JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), session: process.env.BATON_SESSION, api_key: process.env.ANTHROPIC_API_KEY ?? null }))
+writeFileSync(process.env.STUB_DIR + '/claude-' + Date.now() + '-' + process.pid + '.json', JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), session: process.env.BATON_SESSION, api_key: process.env.ANTHROPIC_API_KEY ?? null }))
 if (process.env.STUB_LIMIT === '1') {
   // wall the other options from here, so "every option is out" is true at the
   // moment the limit lands however loaded the machine is
@@ -41,10 +41,10 @@ setTimeout(() => {}, 120000)
 `)
 // codex stub: records argv (the resume prompt is the last arg) and exits 0
 writeFileSync(join(STUBS, 'codex.mjs'), `import { writeFileSync } from 'node:fs'
-writeFileSync(process.env.STUB_DIR + '/codex-' + Date.now() + '.json', JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), session: process.env.BATON_SESSION }))
+writeFileSync(process.env.STUB_DIR + '/codex-' + Date.now() + '-' + process.pid + '.json', JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), session: process.env.BATON_SESSION }))
 `)
 writeFileSync(join(STUBS, 'agy.mjs'), `import { writeFileSync } from 'node:fs'
-writeFileSync(process.env.STUB_DIR + '/agy-' + Date.now() + '.json', JSON.stringify({ argv: process.argv.slice(2) }))
+writeFileSync(process.env.STUB_DIR + '/agy-' + Date.now() + '-' + process.pid + '.json', JSON.stringify({ argv: process.argv.slice(2) }))
 `)
 const emptyClaudeHome = mkdtempSync(join(tmpdir(), 'claude-home-empty-'))
 
@@ -56,7 +56,17 @@ function envFor(stubDir, extra = {}) {
     ...extra,
   })
 }
-const records = (dir, prefix) => readdirSync(dir).filter((n) => n.startsWith(prefix)).sort().map((n) => JSON.parse(readFileSync(join(dir, n), 'utf8')))
+const records = (dir, prefix) => readdirSync(dir)
+  .filter((n) => n.startsWith(prefix) && n.endsWith('.json'))
+  .sort()
+  .flatMap((n) => {
+    try {
+      const text = readFileSync(join(dir, n), 'utf8')
+      return text ? [JSON.parse(text)] : []
+    } catch {
+      return []
+    }
+  })
 
 test('limit → every option out → waits for the first reset → starts codex from the bundle in the same terminal (exit 0)', async (t) => {
   const repo = initRepo('attach-e2e-')

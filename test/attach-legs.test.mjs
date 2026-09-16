@@ -28,7 +28,7 @@ const sid = process.env.BATON_SESSION
 const dir = process.env.STUB_DIR
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const seen = (p) => readdirSync(dir).filter((n) => n.startsWith(p)).length
-const record = (p) => writeFileSync(join(dir, p + '-' + Date.now() + '.json'), JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), session: sid }))
+const record = (p) => writeFileSync(join(dir, p + '-' + Date.now() + '-' + process.pid + '.json'), JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), session: sid }))
 async function untilRecord(pred, ms = 15000) { const t0 = Date.now(); while (Date.now() - t0 < ms) { const s = S.readSession(sid); if (s && pred(s)) return s; await sleep(50) } return null }
 `
 writeFileSync(join(STUBS, 'claude.mjs'), `${PRELUDE}
@@ -87,7 +87,17 @@ function envFor(stubDir, extra = {}) {
     ...extra,
   })
 }
-const records = (dir, prefix) => readdirSync(dir).filter((n) => n.startsWith(prefix)).sort().map((n) => JSON.parse(readFileSync(join(dir, n), 'utf8')))
+const records = (dir, prefix) => readdirSync(dir)
+  .filter((n) => n.startsWith(prefix) && n.endsWith('.json'))
+  .sort()
+  .flatMap((n) => {
+    try {
+      const text = readFileSync(join(dir, n), 'utf8')
+      return text ? [JSON.parse(text)] : []
+    } catch {
+      return []
+    }
+  })
 const mine = (repo) => (s) => Boolean(s.repo) && canonPath(s.repo) === canonPath(repo)
 async function until(pred, ms = 20000) {
   const t0 = Date.now()
