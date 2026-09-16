@@ -247,7 +247,12 @@ export function codexTrustedPaths(text) {
 }
 
 function samePath(a, b) {
-  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+  if (typeof a !== 'string' || typeof b !== 'string') return false
+  const normA = a.replace(/\\/g, '/')
+  const normB = b.replace(/\\/g, '/')
+  if (process.platform === 'win32') return normA.toLowerCase() === normB.toLowerCase()
+  if (DRIVE_ABS.test(a) && DRIVE_ABS.test(b)) return normA.toLowerCase() === normB.toLowerCase()
+  return normA === normB
 }
 
 function writeTextAtomic(file, text) {
@@ -323,7 +328,6 @@ export function agyUriMatches(uri, root) {
   if (typeof uri !== 'string') return false
   let p = uri.replace(/^file:\/\//, '').replace(/%3A/gi, ':')
   if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1)
-  p = p.replace(/\//g, '\\')
   return samePath(p, root)
 }
 
