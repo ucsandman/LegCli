@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The portable harness: carry rules, hooks, skills and MCP servers between agents | Leg</title>
+<meta name="description" content="How Leg carries the source agent's working environment to the agent a handoff lands on, what moves and what does not, the policies, ownership and backups, and how secrets are handled.">
+<link rel="canonical" href="https://legcli.com/docs/harness">
+<meta name="theme-color" content="#0E1012">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://legcli.com/docs/harness">
+<meta property="og:site_name" content="Leg">
+<meta property="og:title" content="The portable harness: carry rules, hooks, skills and MCP servers between agents">
+<meta property="og:image" content="https://legcli.com/og.png?v=3">
+<meta property="og:image:secure_url" content="https://legcli.com/og.png?v=3">
+<meta property="og:image:type" content="image/png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The portable harness: carry rules, hooks, skills and MCP servers between agents">
+<meta name="twitter:description" content="How Leg carries the source agent's working environment to the agent a handoff lands on, what moves and what does not, the policies, ownership and backups, and how secrets are handled.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=3">
+<link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/docs.css">
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#doc">Skip to the document</a>
+<header class="docs-top">
+  <div class="docs-top-wrap">
+    <a class="docs-home" href="/">Leg</a>
+    <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
+  </div>
+</header>
+<div class="docs-shell">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p class="docs-nav-title">Documentation</p>
+    <ul>
+<li><a href="/docs">All docs</a></li>
+<li><a href="/docs/getting-started">Install</a></li>
+<li><a href="/docs/concepts">How it works</a></li>
+<li><a href="/docs/board-guide">The board</a></li>
+<li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/harness" aria-current="page">Harness</a></li>
+<li><a href="/docs/cli-contracts">What it reads</a></li>
+<li><a href="/docs/adapters">Adapters</a></li>
+<li><a href="/docs/faq">FAQ</a></li>
+<li><a href="/docs/real-run">A real run</a></li>
+<li><a href="/docs/vocabulary">Vocabulary</a></li>
+<li><a href="/docs/readme">README</a></li>
+<li><a href="/docs/changelog">Changelog</a></li>
+    </ul>
+  </nav>
+  <main id="doc" class="docs-body">
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-moves-and-what-does-not">What moves, and what does not</a></li><li><a href="#precedence">Precedence</a></li><li><a href="#turning-it-on-the-first-run">Turning it on: the first run</a></li><li><a href="#policies">Policies</a></li><li><a href="#states">States</a></li><li><a href="#ownership-backups-hand-edits">Ownership, backups, hand edits</a></li><li><a href="#performance">Performance</a></li><li><a href="#failure-model">Failure model</a></li><li><a href="#observability">Observability</a></li><li><a href="#files">Files</a></li><li><a href="#the-port-policy">The port policy</a></li><li><a href="#which-clients">Which clients</a></li><li><a href="#leg-and-agnostic-ai">Leg and Agnostic AI</a></li><li><a href="#limits">Limits</a></li></ul></nav>
+<h1 id="the-portable-harness"><a class="anchor" href="#the-portable-harness">The portable harness</a></h1>
+<p>Off by default. When you turn it on, a hand-off carries two things instead of
+one: the task (the context handoff bundle Leg has always written) and the
+agent&#39;s <strong>working environment</strong>: the global working agreement, identity,
+hooks, skills, subagents, slash commands, MCP servers and permissions of the
+client you actually use, rendered into the native configuration of the client
+the hand-off lands on. The promise is not byte-for-byte equivalence. It is:</p>
+<blockquote>
+<p>Preserve as much of the source agent&#39;s operating environment as the
+destination client can faithfully support, and say exactly what could not be
+carried over.</p>
+</blockquote>
+<pre><code>leg harness enable        # detect clients, capture, show the plan, apply after you say yes
+leg harness status        # what is on, the source, when it was captured, each client&#39;s state
+leg harness sync          # re-capture and write whatever is out of date
+leg harness check         # the same, writing nothing; exit 1 when something is stale
+leg harness explain       # every item a client could not receive, and why
+leg harness disable       # stop; nothing already written is removed
+</code></pre>
+<h2 id="what-moves-and-what-does-not"><a class="anchor" href="#what-moves-and-what-does-not">What moves, and what does not</a></h2>
+<table>
+<thead>
+<tr>
+<th>component</th>
+<th>carried as</th>
+<th>what a destination may drop</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>rules</td>
+<td>the source&#39;s global rules file with its <code>@imports</code> inlined, written as the destination&#39;s global rules file (<code>AGENTS.md</code>, <code>GEMINI.md</code>, or <code>leg-rules.md</code> imported from <code>CLAUDE.md</code>)</td>
+<td>nothing; the whole agreement travels</td>
+</tr>
+<tr>
+<td>identity</td>
+<td><code>SOUL.md</code> or the identity section, inlined or written to the client&#39;s own file</td>
+<td>nothing</td>
+</tr>
+<tr>
+<td>hooks</td>
+<td>the same hook scripts, pointed at (never copied), in the destination&#39;s dialect; non-Codex clients run them through a shim that translates the payload</td>
+<td>an event the client does not have (<code>MessageDisplay</code>, agy&#39;s missing <code>SessionStart</code>), a matcher whose tools have no counterpart</td>
+</tr>
+<tr>
+<td>skills</td>
+<td>a directory link per skill into the client&#39;s skills directory, so an edit at the source is live everywhere</td>
+<td>a name that already exists as a real directory there, a skill the client reads natively from a shared directory</td>
+</tr>
+<tr>
+<td>agents</td>
+<td>one subagent file per agent in the client&#39;s format (<code>.md</code> or <code>.toml</code>), with the model tier mapped through the client&#39;s ladder</td>
+<td>a client with no subagent surface (Gemini CLI)</td>
+</tr>
+<tr>
+<td>commands</td>
+<td>one prompt file per slash command (<code>prompts/</code>, <code>commands/</code>, <code>.toml</code> for Gemini)</td>
+<td>a name that already exists and Leg did not write</td>
+</tr>
+<tr>
+<td>MCP servers</td>
+<td>each server in the client&#39;s own MCP file or config table, with every credential replaced by an environment reference</td>
+<td>a transport the client lacks (Codex has no SSE), a server the user already configured there</td>
+</tr>
+<tr>
+<td>permissions</td>
+<td><code>settings.json</code> allow/deny/ask for Claude Code; Codex prefix rules for <code>Bash(...)</code> patterns</td>
+<td>anything but a <code>Bash(...)</code> pattern on Codex; clients with no machine-readable permission surface</td>
+</tr>
+</tbody></table>
+<p>What never moves:</p>
+<ul>
+<li><strong>Credentials.</strong> OAuth tokens, <code>.credentials.json</code>, <code>auth.json</code>, API keys in an
+MCP <code>env</code> or <code>headers</code> block, and a token anywhere else the capture reads.
+An <code>env</code> or <code>headers</code> value that looks like a credential becomes <code>${NAME}</code>
+in the bundle and Leg tells you which variable to export for each client.
+A token inside free text (the rules, the identity, an agent or command
+body) is replaced by <code>[REDACTED]</code>; a hook whose command line carries one,
+and an MCP server whose argument or URL carries one (a password in a
+connection string, a secret query value, a token in the path), are not
+carried at all, each with a warning naming it. The scan is fail-closed:
+every field of the bundle is validated at save time and a bundle that
+still carries a credential is refused. Tests plant tokens in every one of
+those places, and in the places a capture must not read, and assert they
+appear in no bundle file and no destination file.</li>
+<li><strong>Which login runs.</strong> Accounts are Leg&#39;s account layer
+(<code>leg accounts</code>, <code>src/accounts.mjs</code>); the harness describes behaviour and
+capabilities, never who is signed in. A same-agent hand-off to a second
+login carries no harness at all: the second login shares the first one&#39;s
+home through the junctions the account layer made.</li>
+<li><strong>Project-local instructions.</strong> A repository&#39;s <code>CLAUDE.md</code>, <code>AGENTS.md</code> or
+<code>GEMINI.md</code> is read natively by each client from the checkout. The harness
+carries the <em>global</em> working agreement only.</li>
+<li><strong>The source client itself.</strong> The client the harness is captured from is
+never written to.</li>
+</ul>
+<h2 id="precedence"><a class="anchor" href="#precedence">Precedence</a></h2>
+<p>When a destination starts after a hand-off, four layers of instruction are in
+play. From most to least specific:</p>
+<ol>
+<li><strong>The resume prompt and bundle</strong> (<code>.leg/RESUME-&lt;session&gt;.md</code>): the task,
+the last messages, the diff, why the previous agent stopped. Always
+present, harness or not.</li>
+<li><strong>The repository&#39;s own instruction files</strong>: <code>CLAUDE.md</code>, <code>AGENTS.md</code>,
+<code>GEMINI.md</code> in the checkout. Never touched by Leg; each client reads them
+itself.</li>
+<li><strong>The ported global working agreement</strong>: the destination&#39;s global rules
+file, written by the harness. This is where the source&#39;s <code>~/.claude/CLAUDE.md</code>
+(with its imports) lands.</li>
+<li>The client&#39;s own defaults.</li>
+</ol>
+<p>Leg does not merge layers 2 and 3. A repository file that repeats a global rule
+repeats it; a repository file that contradicts one wins, because that is how
+every client already resolves project-level instructions over global ones.
+<code>test/harness-policy.test.mjs</code> runs a sync from inside a checkout that has its
+own <code>CLAUDE.md</code> and <code>AGENTS.md</code> and asserts both are byte-identical afterwards:
+a sync writes under the client homes only.</p>
+<h2 id="turning-it-on-the-first-run"><a class="anchor" href="#turning-it-on-the-first-run">Turning it on: the first run</a></h2>
+<p><code>leg harness enable</code> is the one explicit consent. It:</p>
+<ol>
+<li>Detects which sources exist on this machine (<code>~/.claude/CLAUDE.md</code>,
+<code>~/.codex/AGENTS.md</code>) and picks the first, or the one you name with
+<code>--source</code>. It never guesses destructively: with two sources it says which
+it chose and how to choose the other.</li>
+<li>Captures the source into the neutral bundle under <code>~/.leg/harness/bundle/</code>,
+scans it for credentials, and prints every warning.</li>
+<li>Runs a check against every installed client and prints the table: per
+client, per component, <code>✓ synced</code>, <code>✗ stale</code>, <code>- unsupported</code>, and the
+count carried (<code>skills 2/3</code>), then every item that will not be carried with
+its reason.</li>
+<li>Asks before writing. In a terminal it prompts; without one (a script, CI)
+it prints the plan, writes nothing, and exits 3 unless you passed <code>--yes</code>.</li>
+<li>Applies, records ownership of every file and region it wrote, and saves the
+consent: <code>preferences.json</code> gains <code>&quot;harness&quot;: { &quot;enabled&quot;: true, &quot;policy&quot;: &quot;sync&quot;, &quot;source&quot;: &quot;claude&quot; }</code>.</li>
+</ol>
+<p>After that, unattended hand-offs use the saved policy and never prompt.
+<code>leg harness sync</code> writes only on an install that gave this consent; before
+<code>enable</code> it exits 3 and points at it, while <code>check</code>, <code>diff</code> and <code>explain</code>
+report without writing. The board can turn the feature off or narrow the
+policy, never turn it on or widen it: that stays a terminal command.</p>
+<h2 id="policies"><a class="anchor" href="#policies">Policies</a></h2>
+<p><code>leg harness policy &lt;warn|sync|strict&gt;</code>, or <code>--policy</code> on <code>enable</code>. The
+default when you enable is <code>sync</code>; an install that never enabled the feature
+is <code>off</code> and behaves exactly as before.</p>
+<table>
+<thead>
+<tr>
+<th>policy</th>
+<th>at a hand-off, before the next agent starts</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>off</code></td>
+<td>nothing is captured, checked, written or recorded</td>
+</tr>
+<tr>
+<td><code>warn</code></td>
+<td>the source is re-captured if it changed, the destination is checked, the result is recorded on the session and printed; nothing is written to any client</td>
+</tr>
+<tr>
+<td><code>sync</code></td>
+<td>as <code>warn</code>, and a stale destination is synced: managed files and regions are written, backups taken, hand-edited files skipped and reported. The hand-off proceeds whatever the outcome.</td>
+</tr>
+<tr>
+<td><code>strict</code></td>
+<td>as <code>sync</code>, and a destination that ends <code>attention</code>, <code>error</code> or <code>unsupported</code> is refused: Leg records <code>harness_blocked</code>, prints why, tries the next option in your hand-off order, and if none is left stops the terminal with exit 5 rather than launching an agent without its environment. Strict applies to hand-offs only; the agent you start yourself is never refused.</td>
+</tr>
+</tbody></table>
+<p>There is no interactive prompt on this path under any policy. A limit usually
+lands when nobody is at the keyboard, and a prompt would wedge the terminal
+until morning.</p>
+<h2 id="states"><a class="anchor" href="#states">States</a></h2>
+<p>One word per destination, the same word on the CLI, the session timeline, the
+terminal card and the drawer:</p>
+<table>
+<thead>
+<tr>
+<th>state</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>synced</code></td>
+<td>everything the destination supports is current and nothing was dropped</td>
+</tr>
+<tr>
+<td><code>partial</code></td>
+<td>current, but some items could not be carried (each has a reason under <strong>Dropped</strong>)</td>
+</tr>
+<tr>
+<td><code>stale</code></td>
+<td>the destination is behind the source; <code>warn</code> policy, or a <code>check</code></td>
+</tr>
+<tr>
+<td><code>attention</code></td>
+<td>a managed file was hand-edited since Leg wrote it (backed up, left alone), a component errored (a malformed config file, for instance), or a <code>deny</code> or <code>ask</code> permission the destination cannot express was dropped, leaving it less restricted than the source; needs you</td>
+</tr>
+<tr>
+<td><code>unsupported</code></td>
+<td>the destination has no harness adapter (Grok) or is not installed</td>
+</tr>
+<tr>
+<td><code>blocked</code></td>
+<td>the strict policy refused this destination</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>the destination is the source client; nothing to carry</td>
+</tr>
+<tr>
+<td><code>same-client</code></td>
+<td>a hand-off to another login of the same client; the harness is shared already</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>the preparation itself failed; the reason is recorded</td>
+</tr>
+</tbody></table>
+<h2 id="ownership-backups-hand-edits"><a class="anchor" href="#ownership-backups-hand-edits">Ownership, backups, hand edits</a></h2>
+<p>Every file the harness writes carries <code>GENERATED by Leg harness</code> in its first
+lines. Inside a file you also own (<code>config.toml</code>, <code>settings.json</code>,
+<code>.claude.json</code>, agy&#39;s <code>hooks.json</code>) it writes a marked region:</p>
+<pre><code># &gt;&gt;&gt; leg harness hooks start (generated, do not edit)
+...
+# &lt;&lt;&lt; leg harness hooks end
+</code></pre>
+<p>or, for JSON, exactly the groups or keys it inserted last time, recorded in
+<code>~/.leg/harness/harness-state.json</code>. Everything outside is preserved byte for
+byte; a re-run only ever removes what the harness itself added; a skill link is
+never made over a real directory; a file Leg did not create is never
+overwritten. Before any overwrite the previous content goes to
+<code>~/.leg/harness/backups/&lt;client&gt;-&lt;file&gt;-&lt;timestamp&gt;.bak</code>. A generated file
+that is pruned because its source went away (a subagent or command deleted at
+the source, a permissions file that became empty) is backed up the same way
+before it is removed.</p>
+<p>A file you edit by hand after Leg wrote it (the ownership line removed, or
+the content changed) is detected by hash, backed up once, and <strong>skipped</strong>. The
+sync reports <code>attention</code> with the path and the remedy: edit the source client
+instead, or <code>leg harness sync --force</code> to replace it (the backup stays).</p>
+<h2 id="performance"><a class="anchor" href="#performance">Performance</a></h2>
+<p>A hand-off must stay fast. Before capturing, Leg fingerprints the source&#39;s
+surfaces from file metadata alone (the rules file and its imports,
+<code>settings.json</code>, the MCP file, the agents, commands and skills directories):
+a few dozen <code>stat</code> calls. An unchanged fingerprint reuses the bundle on disk.
+The destination is then checked by reading its managed files, and written
+only when something differs. <code>test/harness-perf.test.mjs</code> holds a warm
+hand-off decision (unchanged source, synced destination) under 400 ms median
+and a cached capture under 40 ms; on the development machine they measure
+about 19 ms and 7 ms.</p>
+<h2 id="failure-model"><a class="anchor" href="#failure-model">Failure model</a></h2>
+<table>
+<thead>
+<tr>
+<th>failure</th>
+<th>what happens</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>no source configured or detected</td>
+<td><code>error</code>; hand-off proceeds under <code>warn</code>/<code>sync</code>, refused under <code>strict</code>; <code>leg harness source</code> names one</td>
+</tr>
+<tr>
+<td>destination not installed</td>
+<td><code>unsupported</code>; the chooser never picks a missing CLI anyway</td>
+</tr>
+<tr>
+<td>destination config is not valid JSON/TOML</td>
+<td>that component is <code>error</code>, nothing is written to that file, the hand-off proceeds under <code>warn</code>/<code>sync</code></td>
+</tr>
+<tr>
+<td>a managed file was hand-edited</td>
+<td><code>attention</code>; backed up, skipped, named</td>
+</tr>
+<tr>
+<td>a skill name is a real directory at the destination</td>
+<td>dropped with a reason; the directory is untouched</td>
+</tr>
+<tr>
+<td>an MCP value references a variable the destination does not expand</td>
+<td>the component note names the variable to export</td>
+</tr>
+<tr>
+<td>a hook event or matcher the destination lacks</td>
+<td>dropped with a reason</td>
+</tr>
+<tr>
+<td>a <code>deny</code> or <code>ask</code> permission the destination cannot express</td>
+<td><code>attention</code>: the destination would be less restricted than the source; strict refuses it, sync proceeds and names it</td>
+</tr>
+<tr>
+<td>a credential in the rules, an agent, a command, a hook command line, an MCP argument or URL</td>
+<td>free text is redacted to <code>[REDACTED]</code>; the hook or server is not carried; each with a warning</td>
+</tr>
+<tr>
+<td>a subagent, command or skill with an unsafe name</td>
+<td>not carried, with a warning; the rest of the bundle still travels</td>
+</tr>
+<tr>
+<td>a skill path with a shell metacharacter on Windows when the junction fallback is needed</td>
+<td>the link is refused and reported; nothing is passed to a shell</td>
+</tr>
+<tr>
+<td>two Leg processes hand off at once</td>
+<td>one takes <code>~/.leg/harness/.lock</code> (up to 30 s); the other fails its own step rather than tearing the ownership record</td>
+</tr>
+<tr>
+<td>a model tier the destination cannot map</td>
+<td>passed through as a raw id and noted</td>
+</tr>
+<tr>
+<td>the captured bundle is corrupt on disk</td>
+<td>re-captured from the source, never trusted</td>
+</tr>
+<tr>
+<td>an interrupted previous apply</td>
+<td>the next sync re-derives everything from ownership records; a region is rebuilt, never appended twice</td>
+</tr>
+<tr>
+<td>the engine itself throws</td>
+<td><code>error</code> on the session; the session is never corrupted; the hand-off proceeds under <code>warn</code>/<code>sync</code></td>
+</tr>
+</tbody></table>
+<p>Nothing here rolls back a user file: every overwrite is preceded by a backup,
+and a refusal leaves the file as it was.</p>
+<h2 id="observability"><a class="anchor" href="#observability">Observability</a></h2>
+<p>Every operation leaves evidence:</p>
+<ul>
+<li><code>~/.leg/harness/history.jsonl</code>: one line per capture, apply and hand-off
+decision, with the source, target, bundle fingerprint, timestamps,
+per-component states, dropped items, attention items, the files touched and
+the backups made. <code>leg harness history</code> prints it.</li>
+<li>The session record (<code>session.json</code> → <code>harness</code>) carries the outcome for the
+leg now running: source, fingerprint, capture and sync times, components,
+dropped, attention, whether the hand-off proceeded.</li>
+<li>Session events <code>harness</code> and <code>harness_blocked</code>; card ledger events of the
+same names on the background-task path.</li>
+<li>The board: a chip on the terminal row (<code>harness synced</code>, <code>harness partial</code>,
+<code>harness attention</code>, <code>harness refused</code>) and a <strong>Harness</strong> section in the
+drawer with the source, capture and sync times, the component table,
+<strong>Needs you</strong>, <strong>Dropped</strong>, and the last eight trail entries.</li>
+</ul>
+<p>No secret is ever logged: the bundle holds references, the trail holds paths
+and states.</p>
+<h2 id="files"><a class="anchor" href="#files">Files</a></h2>
+<pre><code>~/.leg/harness/
+  bundle/               the neutral bundle: manifest.json, rules.md, identity.md,
+                        hooks.json, mcp.json, skills.json, permissions.json, agents/, commands/
+  capture.json          source, fingerprint, the surfaces hash the capture was taken at
+  harness-state.json    ownership: every file and region written, per client
+  harness-report.json   the last apply or check, per client, per component
+  backups/              every file before Leg overwrote it
+  history.jsonl         the evidence trail
+  policy.json           optional: what is deliberately not carried (below)
+</code></pre>
+<p><code>leg uninstall --yes</code> removes <code>~/.leg</code> and with it all of the above. It does
+not remove what the harness wrote into other clients: run <code>leg harness disable</code>, then delete the files carrying <code>GENERATED by Leg harness</code> and the
+<code>leg harness</code> regions if you want them gone.</p>
+<h2 id="the-port-policy"><a class="anchor" href="#the-port-policy">The port policy</a></h2>
+<p><code>~/.leg/harness/policy.json</code>, optional, merged over the defaults:</p>
+<pre><code class="language-jsonc">{
+  &quot;rules&quot;:  { &quot;dropSectionsForTargets&quot;: [&quot;Delegation and Model Routing&quot;] },
+  &quot;hooks&quot;:  { &quot;exclude&quot;: [{ &quot;match&quot;: &quot;capability-graph-guard&quot;, &quot;reason&quot;: &quot;polices Claude Code&#39;s model ladder&quot; }] },
+  &quot;skills&quot;: { &quot;exclude&quot;: { &quot;review-browser&quot;: &quot;the destination has no browser tool&quot; } },
+  &quot;mcp&quot;:    { &quot;exclude&quot;: { &quot;xapi&quot;: &quot;one OAuth grant per client; copy nothing&quot; } },
+  &quot;agents&quot;: { &quot;modelLadder&quot;: { &quot;codex&quot;: { &quot;opus&quot;: [&quot;gpt-5.6-sol&quot;, &quot;high&quot;] } } }
+}
+</code></pre>
+<p>An excluded item shows in <code>explain</code> and on the board as <strong>excluded by policy</strong>
+with your reason, and does not make a destination <code>partial</code>. The defaults
+exclude nothing; the shipped Codex model ladder maps the four Claude tiers
+(<code>fable</code>, <code>opus</code>, <code>sonnet</code>, <code>haiku</code>) onto Codex models and can be overridden.</p>
+<h2 id="which-clients"><a class="anchor" href="#which-clients">Which clients</a></h2>
+<table>
+<thead>
+<tr>
+<th>client</th>
+<th>source</th>
+<th>destination</th>
+<th>notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Claude Code</td>
+<td>yes</td>
+<td>yes</td>
+<td>the bundle&#39;s own dialect; hooks and matchers need no translation</td>
+</tr>
+<tr>
+<td>Codex CLI</td>
+<td>yes</td>
+<td>yes</td>
+<td>hooks pre-trusted with Codex&#39;s own trust hash (self-tested against a value Codex wrote); SSE servers dropped</td>
+</tr>
+<tr>
+<td>Antigravity CLI (<code>agy</code>)</td>
+<td>no</td>
+<td>yes</td>
+<td>hooks under one owned key in <code>hooks.json</code>; shares <code>GEMINI.md</code> with Gemini CLI; no permission surface</td>
+</tr>
+<tr>
+<td>Gemini CLI</td>
+<td>no</td>
+<td>yes</td>
+<td>kept coherent with agy; no subagent surface</td>
+</tr>
+<tr>
+<td>Grok CLI</td>
+<td>no</td>
+<td>no</td>
+<td>no adapter yet; reported <code>unsupported</code>, never guessed</td>
+</tr>
+</tbody></table>
+<p>Paths honour <code>CLAUDE_CONFIG_DIR</code>, <code>CODEX_HOME</code> and <code>GEMINI_CONFIG_DIR</code>, the
+same variables the trust and account layers honour.</p>
+<h2 id="leg-and-agnostic-ai"><a class="anchor" href="#leg-and-agnostic-ai">Leg and Agnostic AI</a></h2>
+<p>The capture → neutral bundle → apply engine is the
+<a href="https://github.com/ucsandman/Agnostic-AI">Agnostic AI</a> port engine (MIT).
+Leg embeds it as a library, byte for byte, under
+<code>src/harness/vendor/agnostic-ai/</code>, and owns everything around it: consent,
+policy, the client registry, where state lives, the fingerprint, the evidence
+trail and the hand-off decision (<code>src/harness/*.mjs</code>).</p>
+<p>Drift between the two is refused, not managed:</p>
+<ul>
+<li><code>src/harness/vendor/agnostic-ai/UPSTREAM.json</code> records the upstream commit
+and the sha256 of every vendored file. <code>npm test</code> runs
+<code>scripts/sync-harness-engine.mjs --check</code>, which fails on any local edit
+under <code>vendor/</code>.</li>
+<li>A fix to the engine lands upstream first, then
+<code>node scripts/sync-harness-engine.mjs &lt;path-to-agnostic-ai&gt;</code> copies it in
+and re-records the hashes. <code>--diff &lt;path&gt;</code> lists what a sync would change.</li>
+<li>Upstream exposes the library through <code>engine/harness/index.cjs</code> with
+everything a host may own as an option (<code>configure({ brand, secretPatterns, shimPath, importRoots })</code>, an injected registry and policy), and its own
+regression suite proves that boundary. Node&#39;s ESM loader imports that
+CommonJS entry directly, so there is no build step and no dependency.</li>
+</ul>
+<p>Attribution is in <code>NOTICE</code>; the vendored copy keeps its MIT licence text and
+is not relicensed.</p>
+<h2 id="limits"><a class="anchor" href="#limits">Limits</a></h2>
+<ul>
+<li>Grok has no adapter.</li>
+<li>Cursor, Windsurf and the other clients upstream supports are not in Leg&#39;s
+registry, because Leg does not launch them.</li>
+<li>The Claude Code target imports the ported rules from <code>~/.claude/CLAUDE.md</code>
+with one <code>@</code> line; a source that is itself Codex therefore lands as
+<code>~/.claude/leg-rules.md</code>, not inline.</li>
+<li>A repository-level harness (project skills, project MCP) is not carried;
+only the global one is.</li>
+<li>Persistent configuration is the only mechanism: none of the four clients
+offers a per-session overlay for rules, hooks, skills and MCP together, so
+the managed-region and ownership discipline above is what keeps writes safe.</li>
+</ul>
+
+    <hr class="docs-end">
+    <p class="docs-foot">Leg is commercial, source-available software by Wes Sander. The source you run ships in the npm package. Questions or a refund: <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a>.</p>
+  </main>
+</div>
+</body>
+</html>

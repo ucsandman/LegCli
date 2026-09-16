@@ -137,6 +137,8 @@ Everything Leg writes goes under `LEG_HOME` (default `~/.leg`):
   accounts/<agent>/<name>/ extra logins (see configuration.md)
   landings.jsonl           every Land, for the landed-on-trunk list
   board.log                the board server's output
+  harness/                 the portable harness (only after leg harness enable):
+                           bundle/, harness-state.json, backups/, history.jsonl
 ```
 
 In the repo you run in, Leg writes `.leg/` (session notes, `RESUME.md` and
@@ -145,6 +147,19 @@ bundles). Both are added to `.git/info/exclude`, so they never show up in
 `git status`.
 
 `leg uninstall --yes` removes `~/.leg` and nothing else.
+
+## Carry your working environment too (optional)
+
+By default a hand-off carries the task. `leg harness enable` makes it carry
+the working environment as well: the rules, identity, hooks, skills,
+subagents, slash commands, MCP servers and permissions of the client you
+configure, rendered into the client the hand-off lands on. The first run
+detects your clients, captures the source, prints what each client will
+receive and what it cannot, and writes only after you say yes (or `--yes`).
+Then `leg harness status` shows the state per client, and every hand-off
+prepares the destination under the policy you chose. Read
+[harness.md](harness.md) before enabling it: it says exactly which files are
+written and how they are protected.
 
 ## 7. Pipelines (extras)
 
@@ -254,3 +269,4 @@ A card's own git worktree lives in the repo it targets, not under
   station.
 - [board-guide.md](board-guide.md): every element of the board.
 - [configuration.md](configuration.md): every environment variable.
+- [harness.md](harness.md): the portable harness, what moves between agents and what does not.

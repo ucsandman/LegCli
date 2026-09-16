@@ -1,0 +1,30 @@
+{
+  "_comment": "Written by scripts/sync-harness-engine.mjs; never edited by hand. Every file under this directory is a byte-for-byte copy of the Agnostic AI engine at the commit below, and `npm test` fails if one drifts.",
+  "upstream": "https://github.com/ucsandman/Agnostic-AI",
+  "license": "MIT (see LICENSE beside this file)",
+  "commit": "7e35b5164d01fa8d738bfe1153b0fc0f7b86c23d",
+  "upstreamDirty": false,
+  "syncedAt": "2026-09-16T20:27:22.033Z",
+  "files": {
+    "LICENSE": "4bd581dc7a60a4ffc3f1ec5c8f3bed3a681f446eff6457e6051963e83da7066d",
+    "engine/harness/README.md": "10b4273325add7aa50f4705cd5ad3bc1361609fdfcc2b70b3bae3383a90711ba",
+    "engine/harness/index.cjs": "655273cdaa881b97188306f1a2b815012f0e1934890f3920d948a141e098c0e5",
+    "engine/harness/common.cjs": "dccf2d5c9fa035dcf63d7490195f7ef9da694d71f7397f2dfa864c1842c67fe7",
+    "engine/harness/bundle.cjs": "630ebc4540d32451e7a32527941ceafe7906beb65fead4e49bc8e7ac90d7df43",
+    "engine/harness/capture.cjs": "8a26fccd980bbcdb87b67429bde50ab01822cf918346208091921a622c30e9a1",
+    "engine/harness/apply.cjs": "ac15d0a4e318bd6316860c3763f8e90cc1ce1d34238ef0df168d6f7f1f3194d9",
+    "engine/harness/status.cjs": "748a8bfdfbc76f215bfe0091ccbdaf260cbbd3642df53d8cf8f8fb7ecd16624c",
+    "engine/harness/toml.cjs": "2cd95222f36d23e1b7efff27476c5a4ea8aa083e70b98752de288be6959c8bf3",
+    "engine/harness/sources/claude.cjs": "3818d4d3ab9a12ac920b8e3c32624490ae59a7a7500069df697b543ed4ba2506",
+    "engine/harness/sources/codex.cjs": "9f4668370d225a6fd4ecd0940494b3fbcfa5b2992a26a57068eb27b93b0f9d9a",
+    "engine/harness/targets/generic.cjs": "cc2ce7796689a82716630853217aa8ef39657e8139f4b2a74521956f453012ea",
+    "engine/harness/targets/claude.cjs": "21240425a80d5ae1e11707abdc97e88d83baf3af99f3a7544194b0a9b0abac3f",
+    "engine/harness/targets/codex.cjs": "3714cafd41ec64b402cd547f3a39edc46ee40044b564d9841bfdcc5f570b633f",
+    "engine/harness/targets/gemini.cjs": "dcf2bdc1d1122874c426f95bec9ff2d363dff429949b573db7cd8fb1f7835cf6",
+    "engine/harness/targets/agy.cjs": "e504db894caa590116c105ec3a4bc3d457753d4acbdd32218dbaa6b42d8eb000",
+    "engine/harness/targets/cursor.cjs": "5617e05d31c18c447136bcb8c0df3ad536018c46e65bad597eed9b7197150f5c",
+    "engine/hooks/shim.cjs": "83684ad537b5df456fcfaf61487fed14989877d1d16997ae49d124c4ce314f95",
+    "core/templates/targets.json": "bfa9787c7a998ca2eabede129fcd642ef5b2ac5d5a063099c6f70cf994c223ae",
+    "core/safety/guards.json": "fee1cfb1a629facdac39ff93462ae4ed573c5755f2ab9ea3422645edbe761066"
+  }
+}

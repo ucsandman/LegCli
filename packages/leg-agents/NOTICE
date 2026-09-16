@@ -2,3 +2,11 @@ Portions of this software (src/runner.mjs, src/ledger.mjs, src/git-snapshot.mjs
 and their tests) were ported on 2026-09-10 from a private ucsandman repository
 (team tooling) under the MIT license; that code is included here under the Leg License Agreement (see LICENSE), which its author also holds. Telegram delivery, chat identifiers,
 and machine-specific paths were removed in the port.
+
+The portable-harness engine under src/harness/vendor/agnostic-ai/ is the
+Agnostic AI port engine (https://github.com/ucsandman/Agnostic-AI), copyright
+(c) 2026 Wes Sander, included byte for byte under the MIT License, whose full
+text is in src/harness/vendor/agnostic-ai/LICENSE. That copy is not
+relicensed: it stays MIT, and its upstream commit and per-file hashes are
+recorded in src/harness/vendor/agnostic-ai/UPSTREAM.json. Leg's own
+harness code (src/harness/*.mjs) is under the Leg License Agreement.

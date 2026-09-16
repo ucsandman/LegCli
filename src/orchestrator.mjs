@@ -18,6 +18,7 @@ import {
   RUNNER, BATON_ACTOR, readCard, ledgerAppend, ledgerUpdate, cardDir, sleep,
 } from './store.mjs'
 import { scrub, updateRun } from './runner.mjs'
+import { prepareHarnessForHandoff, harnessLine } from './harness/index.mjs'
 import * as agentStation from './stations/agent.mjs'
 import * as testStation from './stations/test.mjs'
 import * as humanStation from './stations/human.mjs'
@@ -200,6 +201,26 @@ async function runLeg(card, station, worktree) {
   const prompt = legPrompt({ contractText, resumeText })
   const promptFile = join(cardDir(card.card_id), `prompt-${station.name}-leg${card.leg}.txt`)
   writeFileSync(promptFile, prompt)
+  // The portable harness for the adapter about to run (src/harness/index.mjs):
+  // nothing when the feature is off; otherwise the card keeps the outcome and
+  // the ledger says what transferred. Under the strict policy a destination
+  // that cannot be made safe is not launched: the leg fails as launch_failed,
+  // which never advances the chain, and a human fixes it and reruns.
+  const previous = card.leg > 0 ? station.chain[card.leg - 1]?.adapter ?? null : null
+  let harness
+  try { harness = prepareHarnessForHandoff({ from: previous, to: entry.adapter, sessionId: card.card_id }) } catch (err) { harness = { state: 'error', proceed: true, to: entry.adapter, reason: String(err.message).slice(0, 200), summary: `harness error: ${String(err.message).slice(0, 120)}` } }
+  if (harness.state !== 'off') {
+    // the card keeps the verdict; the full record (components, dropped items,
+    // files, backups) is in $LEG_HOME/harness/history.jsonl, and the ledger's
+    // argv is not the place for it
+    const { state, target, source = null, policy, fingerprint = null, captured_at = null, synced_at = null, summary = null, proceed, reason = null } = harness
+    ledgerUpdate(card.card_id, { patch: { harness: { state, target, source, policy, fingerprint, captured_at, synced_at, summary, proceed, reason, dropped: harness.dropped?.length ?? 0, attention: harness.attention?.length ?? 0 } } })
+    const line = harnessLine(harness)
+    // the ledger refuses a line that looks like a secret by exiting; evidence
+    // about the harness must never be what fails a leg
+    if (line) { try { ledgerAppend(card.card_id, { type: harness.proceed ? 'harness' : 'harness_blocked', station: station.name, leg: card.leg, summary: line, body: [...(harness.attention ?? []).map((a) => `attention ${a.component}: ${a.reason}`), ...(harness.dropped ?? []).map((d) => `dropped ${d.component}: ${d.item}: ${d.reason}`)].join('\n') || undefined }) } catch (err) { log(`harness event not recorded: ${scrub(String(err.message)).slice(0, 160)}`) } }
+    if (!harness.proceed) return { status: 'failed', outcome: 'launch_failed', handoff: true, signal: 'none', reason: `strict harness policy refused ${entry.adapter}: ${harness.reason ?? harness.state}`, run: null, exit_code: null }
+  }
   const args = ['launch', '--card', card.card_id, '--adapter', entry.adapter, '--prompt-file', promptFile, '--cwd', worktree, '--driver-pid', String(process.pid)]
   if (entry.mode) args.push('--mode', entry.mode)
   if (entry.maxTurns) args.push('--max-turns', String(entry.maxTurns))

@@ -35,6 +35,7 @@ import { LAYOUT } from './accounts.mjs'
 import { captureLive } from './live-capture.mjs'
 import { waitForReset, fmtCountdown } from './wait.mjs'
 import { readPreferences, normalizeHandoffOrder, resolveAutoApprove } from './preferences.mjs'
+import { prepareHarnessForHandoff, harnessLine } from './harness/index.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 function resolveServer() {
@@ -493,14 +494,14 @@ function messagesFor(agent, s) {
 // an order save is consumed here, or the editor sees handing_off and refuses.
 // No eligible choice leaves the session unclaimed so all-out waiting can keep
 // accepting order edits.
-export function claimHandoffChoice({ sid, agent, account, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000) }) {
+export function claimHandoffChoice({ sid, agent, account, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000), exclude = [] }) {
   let choice = { next: null, out: [] }
   let claimed = false
   const session = updateSession(sid, (current) => {
     const accounts = readAccounts()
     const order = normalizeHandoffOrder(current.handoff_order)
-    choice = chooseNext({ agent, account, accounts, installed, order, nowS })
-    if (!choice.next && isAvailable(readUsage(agent, account), nowS)) choice = { next: { agent, account }, out: [] }
+    choice = chooseNext({ agent, account, accounts, installed, order, nowS, exclude })
+    if (!choice.next && isAvailable(readUsage(agent, account), nowS) && !exclude.some((x) => x.agent === agent && x.account === account)) choice = { next: { agent, account }, out: [] }
     if (!choice.next) return {}
     claimed = true
     return {
@@ -517,6 +518,21 @@ export function claimHandoffChoice({ sid, agent, account, installed, bundle = nu
     }
   })
   return { choice, claimed, session }
+}
+
+// The portable harness, decided before a leg starts (src/harness/index.mjs).
+// Off by default: then this records nothing and changes nothing. On, it
+// carries the source agent's working environment to the agent about to run,
+// per the saved policy, and the session keeps the outcome so the board can say
+// what transferred and what did not. Never throws into the session.
+function prepareLegHarness({ sid, from, to }) {
+  let outcome
+  try { outcome = prepareHarnessForHandoff({ from, to, sessionId: sid }) } catch (err) { outcome = { state: 'error', policy: 'unknown', proceed: true, to, target: to, reason: String(err.message).slice(0, 200), summary: `harness error: ${String(err.message).slice(0, 120)}` } }
+  if (outcome.state === 'off') return outcome
+  updateSession(sid, { harness: outcome })
+  const line = harnessLine(outcome)
+  if (line) { say(line); appendEvent(sid, { type: outcome.proceed ? 'harness' : 'harness_blocked', summary: line, body: outcome.dropped?.length || outcome.attention?.length ? [...(outcome.attention ?? []).map((a) => `attention ${a.component}: ${a.reason}`), ...(outcome.dropped ?? []).map((d) => `dropped ${d.component}: ${d.item}: ${d.reason}`)].join('\n') : undefined }) }
+  return outcome
 }
 
 // ---- the command ----
@@ -587,6 +603,9 @@ export async function attach(agent, args = [], { open = true } = {}) {
   let prompt = null
   let legArgs = args
   let exit = 0
+  // the first leg is the agent the human chose: its harness is prepared per
+  // policy and recorded, never refused (strict applies to hand-offs)
+  prepareLegHarness({ sid, from: null, to: agent })
   // unbounded: the 12-leg cap below stops a runaway chain, and the all-out wait
   // bounds a wait; a normal session runs one leg and exits
   for (let leg = 0; ; leg++) {
@@ -602,10 +621,14 @@ export async function attach(agent, args = [], { open = true } = {}) {
     // saveSessionBundle writes the notes file before it shells out to chb, so
     // even when chb is missing and the save throws, the context is on disk
     const notesFile = join(workRoot(cur) ?? cur.cwd, '.leg', `session-${sid}.md`)
-    let claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason })
+    // destinations the strict harness policy refused during this hand-off
+    const excluded = []
+    let claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded })
     let choice = claim.choice
     let cancelled = false
+    let blocked = false
     while (!choice.next) {
+      if (excluded.length && !choice.out.length) { blocked = true; break }
       // every option is out: keep the terminal, count down to the SOONEST reset
       // (the current agent's own wall included — it may be the first back), then
       // start that option from the bundle. Ctrl-C (or End) quits with exit 3.
@@ -621,12 +644,30 @@ export async function attach(agent, args = [], { open = true } = {}) {
       updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
       const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
       if (r2 === 'cancelled') { cancelled = true; break }
-      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason })
+      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded })
       choice = claim.choice
     }
     if (cancelled) {
       updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), waiting: null }, { event: { type: 'ended', summary: 'quit while waiting for a reset (exit 3)' } })
       exit = 3
+      break
+    }
+    // strict harness policy: a destination whose harness cannot be made safe is
+    // refused and the next option is tried; when none is left the session ends
+    // with exit 5 rather than launching an agent without its environment
+    while (!blocked && choice.next) {
+      const prepared = prepareLegHarness({ sid, from: agent, to: choice.next.agent })
+      if (prepared.proceed) break
+      excluded.push(choice.next)
+      say(`${choice.next.agent} refused by the strict harness policy: ${prepared.reason ?? prepared.state}`)
+      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded })
+      choice = claim.choice
+      if (!choice.next) blocked = true
+    }
+    if (blocked) {
+      say('every remaining option was refused by the strict harness policy; stopping (exit 5). Fix what needs attention (leg harness status) or relax the policy (leg harness policy sync), then run leg again in this directory.')
+      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: 5, waiting: null }, { event: { type: 'ended', summary: 'strict harness policy refused every destination; stopped (exit 5)' } })
+      exit = 5
       break
     }
     const next = choice.next

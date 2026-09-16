@@ -29,6 +29,7 @@ These apply to `leg claude|codex|agy|grok`.
 | `LEG_NO_AUTO_APPROVE` | (unset) | set to `1` to opt out of auto-approve mode | `src/preferences.mjs` |
 | `LEG_WARN_PCT` | `85` | the percentage of either usage window that turns the card amber, records a `warning` event and rings the terminal bell once | `src/usage.mjs` |
 | `LEG_NO_HANDOFF` | (unset, hand-off on) | set to `1` to warn and record but never switch agents | `src/attach.mjs` |
+| `LEG_HARNESS_HOME` | the OS home | where the portable harness reads and writes client configuration (`~/.claude`, `~/.codex`, `~/.gemini` under it); the test suite points it at a throwaway directory. `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `GEMINI_CONFIG_DIR` move one client each, as everywhere else in Leg | `src/harness/registry.mjs` |
 | `LEG_NO_OPEN` | (unset, opens once) | set to `1` to start the board without opening a browser | `bin/leg.mjs` |
 | `LEG_NO_BOARD` | (unset) | set to `1` to run a session with no board at all (the record under `$LEG_HOME/sessions/` is still kept; the test suite uses this) | `src/attach.mjs` |
 | `LEG_WAIT_TICK_MS` | `1000` | how often the all-out countdown redraws and re-checks Ctrl-C / End while waiting for the first reset | `src/attach.mjs` |
@@ -170,6 +171,26 @@ settings files, and prints one line to paste to log in. `rm` removes the
 junctions as links, never following them, then deletes the directory. Nothing
 under your real home is written at any point. Start a session on a named
 account with `LEG_ACCOUNT=<name>`, or let a limit hand off to it.
+
+## The portable harness
+
+Off until `leg harness enable`. Its settings live in `~/.leg/preferences.json`
+beside the hand-off order:
+
+```json
+{ "harness": { "enabled": true, "policy": "sync", "source": "claude" } }
+```
+
+| key | values | meaning |
+|-----|--------|---------|
+| `enabled` | `true`, `false` (default) | the consent `leg harness enable` records; `leg harness disable` clears it and removes nothing |
+| `policy` | `warn`, `sync` (default on enable), `strict` | what an unattended hand-off may do: report only; write managed state when safe; refuse a destination that cannot be made safe |
+| `source` | `claude`, `codex` | the client whose harness is carried; auto-detected from `~/.claude/CLAUDE.md` then `~/.codex/AGENTS.md` when unset |
+
+`~/.leg/harness/policy.json` (optional) names what is deliberately not
+carried: sections to drop, hooks, skills and MCP servers to exclude, each with
+a reason, and the Codex model ladder. State, backups and the evidence trail
+live under `~/.leg/harness/`. Every detail: [harness.md](harness.md).
 
 ## Test and development seams
 

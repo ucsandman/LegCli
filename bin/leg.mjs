@@ -26,6 +26,7 @@ import { listUsage, fmtReset } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
 import { entitlement, allows, describe as describeLicense, activate as activateLicense, deactivate as deactivateLicense, refresh as refreshLicense, licensePath, BUY_URL } from '../src/license.mjs'
 import { resumeVerdict, bodyOf, ago } from '../src/resume.mjs'
+import { harnessCommand } from '../src/harness/cli.mjs'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 // one source of truth for the version, so the help text cannot drift from the package
@@ -322,6 +323,12 @@ async function main() {
     if (cmd === 'terms') return out(TERMS)
     die(2, `unknown accounts command "${cmd}" (ls|add|rm|terms)`)
   }
+  if (group === 'harness') {
+    // The portable harness: the working environment a hand-off carries with
+    // the task. Off until `leg harness enable` (src/harness/index.mjs).
+    const code = await harnessCommand(cmd, args, { out, die })
+    process.exit(code)
+  }
   if (group === 'license') {
     // The paid gate. Keys verify offline against the public key in
     // src/license.mjs; nothing here talks to the network except refresh.
@@ -447,7 +454,7 @@ async function main() {
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|resume|accounts|license|share|up|down|status|open|card|scheduler|uninstall)`)
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|resume|accounts|harness|license|share|up|down|status|open|card|scheduler|uninstall)`)
   out(`leg ${VERSION}, your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy|grok [args...]   the normal interactive agent in this terminal; args pass straight through
                                 the board opens once, the session shows as a card, usage is tracked, a limit hands off
@@ -458,6 +465,8 @@ async function main() {
                                freshness is recomputed from git at read time; --check prints only the verdict
                                exit 0 current, 1 stale or unstamped, 3 no pointer here
   accounts ls|add <agent> <name>|rm|terms        optional second login for claude or codex
+  harness status|enable|sync|check|explain|...   carry the source agent's rules, hooks, skills, agents, commands and MCP
+                                servers to the agent a hand-off lands on; off until enabled (leg harness help)
   license [status|activate <key>|deactivate|refresh]
                                 personal or team license status and management
   share status|on|add <name>|rotate <name>|rm <name>|off

@@ -42,6 +42,7 @@
 <li><a href="/docs/concepts">How it works</a></li>
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/harness">Harness</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -52,7 +53,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#1-prerequisites">1. Prerequisites</a></li><li><a href="#2-install">2. Install</a></li><li><a href="#3-run-an-agent">3. Run an agent</a></li><li><a href="#4-what-you-get-while-it-runs">4. What you get while it runs</a></li><li><a href="#is-the-resume-file-still-true">Is the resume file still true?</a></li><li><a href="#5-watching-and-steering-from-the-cli">5. Watching and steering from the CLI</a></li><li><a href="#6-where-files-live">6. Where files live</a></li><li><a href="#7-pipelines-extras">7. Pipelines (extras)</a></li><li><a href="#next">Next</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#1-prerequisites">1. Prerequisites</a></li><li><a href="#2-install">2. Install</a></li><li><a href="#3-run-an-agent">3. Run an agent</a></li><li><a href="#4-what-you-get-while-it-runs">4. What you get while it runs</a></li><li><a href="#is-the-resume-file-still-true">Is the resume file still true?</a></li><li><a href="#5-watching-and-steering-from-the-cli">5. Watching and steering from the CLI</a></li><li><a href="#6-where-files-live">6. Where files live</a></li><li><a href="#carry-your-working-environment-too-optional">Carry your working environment too (optional)</a></li><li><a href="#7-pipelines-extras">7. Pipelines (extras)</a></li><li><a href="#next">Next</a></li></ul></nav>
 <h1 id="getting-started"><a class="anchor" href="#getting-started">Getting started</a></h1>
 <p>For a developer setting up Leg for the first time on their own machine. The
 first four sections get an interactive agent running with the board alongside
@@ -165,12 +166,25 @@ unmerged commits, and dirty files intact.</p>
   accounts/&lt;agent&gt;/&lt;name&gt;/ extra logins (see configuration.md)
   landings.jsonl           every Land, for the landed-on-trunk list
   board.log                the board server&#39;s output
+  harness/                 the portable harness (only after leg harness enable):
+                           bundle/, harness-state.json, backups/, history.jsonl
 </code></pre>
 <p>In the repo you run in, Leg writes <code>.leg/</code> (session notes, <code>RESUME.md</code> and
 one <code>RESUME-&lt;session-id&gt;.md</code> per hand-off) and <code>.context-handoffs/</code> (the
 bundles). Both are added to <code>.git/info/exclude</code>, so they never show up in
 <code>git status</code>.</p>
 <p><code>leg uninstall --yes</code> removes <code>~/.leg</code> and nothing else.</p>
+<h2 id="carry-your-working-environment-too-optional"><a class="anchor" href="#carry-your-working-environment-too-optional">Carry your working environment too (optional)</a></h2>
+<p>By default a hand-off carries the task. <code>leg harness enable</code> makes it carry
+the working environment as well: the rules, identity, hooks, skills,
+subagents, slash commands, MCP servers and permissions of the client you
+configure, rendered into the client the hand-off lands on. The first run
+detects your clients, captures the source, prints what each client will
+receive and what it cannot, and writes only after you say yes (or <code>--yes</code>).
+Then <code>leg harness status</code> shows the state per client, and every hand-off
+prepares the destination under the policy you chose. Read
+<a href="/docs/harness">harness.md</a> before enabling it: it says exactly which files are
+written and how they are protected.</p>
 <h2 id="7-pipelines-extras"><a class="anchor" href="#7-pipelines-extras">7. Pipelines (extras)</a></h2>
 <p>Version 0.1 worked the other way round: you dropped a task card on the board
 and Leg ran the agents headless in a git worktree, one per card, with a
@@ -248,6 +262,7 @@ interactive hand-off, then cards, stations, chains, leases and the land
 station.</li>
 <li><a href="/docs/board-guide">board-guide.md</a>: every element of the board.</li>
 <li><a href="/docs/configuration">configuration.md</a>: every environment variable.</li>
+<li><a href="/docs/harness">harness.md</a>: the portable harness, what moves between agents and what does not.</li>
 </ul>
 
     <hr class="docs-end">

@@ -42,6 +42,7 @@
 <li><a href="/docs/concepts">How it works</a></li>
 <li><a href="/docs/board-guide" aria-current="page">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/harness">Harness</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -201,6 +202,9 @@ by coincidence, not a fact about the board.</p>
 is history, and after a day&#39;s work it is most of the list. It moves to the
 ledger (below) as part of a count that opens. A finished terminal that still
 needs you, or whose expansion you have open, stays in place.</p>
+<p>With the portable harness on, the register also carries one chip for the leg
+now running: <code>harness synced</code>, <code>harness partial</code>, <code>harness stale</code>, <code>harness attention</code> or <code>harness refused</code> (<code>harness.md</code>, &quot;States&quot;). Nothing shows when
+the feature is off.</p>
 <h3 id="the-one-sentence"><a class="anchor" href="#the-one-sentence">The one sentence</a></h3>
 <p><code>rankedNotes</code> in <code>src/board/sessions.js</code> is the single source of every sentence
 a panel prints. It builds the list, sorts it, prints the first, and names the
@@ -397,6 +401,12 @@ to that file&#39;s diff, capped at 400 lines.</li>
 preferred and which is eligible now, the line <code>Used after a usage limit or Hand off now. A normal exit ends this terminal.</code>, the <strong>Change order</strong>
 editor, the current bundle id, and whether <code>.leg/RESUME.md</code> still describes
 the repository (recomputed from git on every poll).</li>
+<li><strong>Harness</strong> (only when the <a href="/docs/harness">portable harness</a> is on): the
+source client, when it was captured and synced, the policy, one line for
+the leg now running (<code>codex harness partial · 8/8 components, 3 dropped · 1 file(s) written</code>), a row per component with its state and <code>carried / total</code>, <strong>Needs you</strong> for a hand-edited file or an unreadable config,
+<strong>Dropped</strong> with a reason per item (<code>excluded by policy</code> when the drop was
+yours), and the last eight entries of the harness trail. Every word comes
+from what the session recorded when the leg started, never from a guess.</li>
 </ol>
 <p>It refetches every 3 seconds while it is open, and stops on <strong>Pause updates</strong>,
 when the tab is in the background, or when it is closed. The rest of the page

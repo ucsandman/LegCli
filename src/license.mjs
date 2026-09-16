@@ -29,7 +29,7 @@ export const PUBLIC_KEY_B64 = 'MCowBQYDK2VwAyEAIpVQymHHJAkIrZHv0u4o0bgfFmtW3Crm7
 const ACTIVE_PUBLIC_KEY = process.env.LEG_PUBLIC_KEY_B64 || process.env.BATON_PUBLIC_KEY_B64 || PUBLIC_KEY_B64
 // The date this release was cut. A personal key activates when this is on or
 // before its updates_until. Bumped with every published version.
-export const RELEASE_DATE = '2026-09-15'
+export const RELEASE_DATE = '2026-09-16'
 export const GUARANTEE_DAYS = 30
 export const SITE = process.env.LEG_SITE || process.env.BATON_SITE || 'https://legcli.com'
 export const BUY_URL = `${SITE}/#pricing`

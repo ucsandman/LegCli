@@ -27,6 +27,38 @@ export function requireHandoffOrder(value) {
   return [...value]
 }
 
+// Portable harness (src/harness/): off for every existing install. `enabled`
+// is the explicit consent `leg harness enable` records; `policy` is what an
+// unattended hand-off may do (warn: report only; sync: write managed state
+// when it is safe; strict: refuse a destination that cannot be made safe);
+// `source` is the client whose harness is the one being carried.
+export const HARNESS_POLICIES = ['warn', 'sync', 'strict']
+export const HARNESS_SOURCES = ['claude', 'codex']
+export const HARNESS_DEFAULTS = Object.freeze({ enabled: false, policy: 'warn', source: null })
+
+export function normalizeHarness(value) {
+  const v = value && typeof value === 'object' ? value : {}
+  return {
+    enabled: v.enabled === true,
+    policy: HARNESS_POLICIES.includes(v.policy) ? v.policy : HARNESS_DEFAULTS.policy,
+    source: HARNESS_SOURCES.includes(v.source) ? v.source : null,
+  }
+}
+
+export function requireHarness(patch, current = HARNESS_DEFAULTS) {
+  const next = { ...normalizeHarness(current) }
+  if (patch?.enabled !== undefined) next.enabled = Boolean(patch.enabled)
+  if (patch?.policy !== undefined) {
+    if (!HARNESS_POLICIES.includes(patch.policy)) throw new TypeError(`harness policy must be one of ${HARNESS_POLICIES.join(', ')}`)
+    next.policy = patch.policy
+  }
+  if (patch?.source !== undefined) {
+    if (patch.source !== null && !HARNESS_SOURCES.includes(patch.source)) throw new TypeError(`harness source must be one of ${HARNESS_SOURCES.join(', ')}`)
+    next.source = patch.source
+  }
+  return next
+}
+
 export function preferencesFile() { return join(home(), 'preferences.json') }
 
 export function resolveAutoApprove({ env = process.env, preferences = null, cliFlag = null } = {}) {
@@ -41,15 +73,16 @@ export function resolveAutoApprove({ env = process.env, preferences = null, cliF
 
 export function readPreferences() {
   const file = preferencesFile()
-  if (!existsSync(file)) return { handoff_order: [...HANDOFF_AGENTS], auto_approve: true }
+  if (!existsSync(file)) return { handoff_order: [...HANDOFF_AGENTS], auto_approve: true, harness: { ...HARNESS_DEFAULTS } }
   try {
     const value = JSON.parse(readFileSync(file, 'utf8'))
     return {
       handoff_order: normalizeHandoffOrder(value?.handoff_order),
       auto_approve: value?.auto_approve !== false,
+      harness: normalizeHarness(value?.harness),
     }
   } catch {
-    return { handoff_order: [...HANDOFF_AGENTS], auto_approve: true }
+    return { handoff_order: [...HANDOFF_AGENTS], auto_approve: true, harness: { ...HARNESS_DEFAULTS } }
   }
 }
 
@@ -61,6 +94,7 @@ export function writePreferences(patch) {
     const next = { ...current }
     if (order !== undefined) next.handoff_order = order
     if (patch?.auto_approve !== undefined) next.auto_approve = Boolean(patch.auto_approve)
+    if (patch?.harness !== undefined) next.harness = requireHarness(patch.harness, current.harness)
     writeJsonAtomic(preferencesFile(), next)
     return next
   })

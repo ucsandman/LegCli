@@ -776,6 +776,10 @@
     if (s.lineage && s.lineage.from) register.appendChild(el('span', { class: 'chip' }, [`from ${s.lineage.from}`]))
     if (s.worktree) register.appendChild(el('span', { class: 'chip' }, [`own worktree, from ${s.worktree.base || 'a detached HEAD'}`]))
     if (s.has_synthesis) register.appendChild(el('span', { class: 'chip', title: 'synthesis record active' }, ['synthesis']))
+    // the portable harness, one word: what this leg's client received from the
+    // source harness (src/harness/index.mjs STATES); nothing when the feature is off
+    const hb = harnessBadge(s.harness)
+    if (hb) register.appendChild(el('span', { class: hb.cls, title: hb.title }, [hb.text]))
     body.appendChild(register)
 
     if (s.hidden) body.appendChild(el('p', { class: 'term-prompt term-prompt--empty' }, ['prompt hidden']))
@@ -1148,6 +1152,71 @@
     return el('p', { class: cls, title: 'freshness is recomputed from git on every poll; leg resume --check' }, [text])
   }
 
+  // ---- the portable harness ----
+  // Every word here comes from the outcome the session recorded when the leg
+  // started (src/harness/index.mjs prepareHarnessForHandoff), never from a guess.
+  const HARNESS_WORD = { synced: 'harness synced', partial: 'harness partial', stale: 'harness stale', attention: 'harness attention', blocked: 'harness refused', error: 'harness error', unsupported: 'harness unsupported', source: 'harness source' }
+  function harnessBadge(h) {
+    if (!h || h.state === 'off' || h.state === 'same-client') return null
+    const text = HARNESS_WORD[h.state] || `harness ${h.state}`
+    const cls = h.state === 'synced' || h.state === 'partial' || h.state === 'source' ? 'chip chip-state-ok' : h.state === 'unsupported' ? 'chip' : 'chip is-stale'
+    return { text, cls, title: h.summary || text }
+  }
+
+  function harnessSection(s, d) {
+    const h = (d && d.harness) || s.harness
+    if (!h || h.state === 'off') return null
+    const box = el('div', { class: 'detail-section' })
+    const src = h.source ? `${h.source}` : 'unknown'
+    const captured = h.captured_at ? `captured ${whenAgo(h.captured_at)}` : 'not captured'
+    const head = h.state === 'same-client'
+      ? `${h.to} to ${h.to}: same client, same harness`
+      : h.state === 'source' ? `${h.target} is the source of the harness; nothing to carry`
+        : `source ${src}, ${captured}${h.synced_at ? `, synced ${whenAgo(h.synced_at)}` : ''}${h.policy ? `, policy ${h.policy}` : ''}`
+    box.appendChild(el('div', { class: 'well' }, [
+      el('div', {}, [head]),
+      h.summary && h.state !== 'same-client' && h.state !== 'source' ? el('p', { class: `sentence ${h.state === 'synced' || h.state === 'partial' ? 'tone-ok' : h.state === 'unsupported' ? 'tone-muted' : 'tone-warn'}` }, [h.summary]) : null,
+      h.reason && (h.state === 'blocked' || h.state === 'error' || h.state === 'unsupported') ? el('p', { class: 'blocker' }, [h.reason]) : null,
+    ]))
+    if (h.components) {
+      const rows = el('div', { class: 'drawer-timeline' })
+      for (const [name, c] of Object.entries(h.components)) {
+        const count = c.total !== null && c.total !== undefined ? `${c.carried} / ${c.total}` : ''
+        rows.appendChild(el('div', { class: 'turn timeline-item' }, [
+          el('span', { class: 'mono turn-when' }, [name]),
+          el('span', { class: 'turn-role' }, [c.state]),
+          el('p', { class: 'timeline-summary' }, [`${count}${c.note ? `${count ? ' · ' : ''}${c.note}` : ''}`]),
+        ]))
+      }
+      box.appendChild(rows)
+    }
+    const dropped = h.dropped || []
+    const attention = h.attention || []
+    if (attention.length) {
+      const list = el('div', {})
+      for (const a of attention) list.appendChild(el('p', { class: 'blocker' }, [`${a.component}: ${a.file ? `${a.file}: ` : ''}${a.reason}`]))
+      box.appendChild(el('div', { class: 'detail-section' }, [el('div', {}, ['Needs you']), list]))
+    }
+    if (dropped.length) {
+      const list = el('div', {})
+      for (const dr of dropped) list.appendChild(el('p', { class: 'sentence tone-muted' }, [`${dr.component}: ${dr.item}${dr.excluded ? ' (excluded by policy)' : ''}. ${dr.reason}`]))
+      box.appendChild(el('div', { class: 'detail-section' }, [el('div', {}, [`Dropped (${dropped.length})`]), list]))
+    }
+    const history = (d && d.harness && d.harness.history) || []
+    if (history.length) {
+      const list = el('div', { class: 'drawer-timeline' })
+      for (const r of history.slice(-8).reverse()) {
+        list.appendChild(el('div', { class: 'turn timeline-item' }, [
+          el('span', { class: 'mono turn-when' }, [clockAt(Date.parse(r.ts))]),
+          el('span', { class: 'turn-role' }, [r.op]),
+          el('p', { class: 'timeline-summary' }, [r.op === 'apply' ? `${r.source} to ${r.target}: ${r.state}, ${r.written || 0} written, ${(r.backups || []).length} backed up` : r.op === 'capture' ? `${r.source} captured` : `${r.from || 'start'} to ${r.to}: ${r.state}${r.proceed === false ? ', refused' : ''}`]),
+        ]))
+      }
+      box.appendChild(list)
+    }
+    return box
+  }
+
   function section(title, note, body) {
     const s = el('section', { class: 'detail-section' }, [
       el('h3', { class: 'detail-heading' }, [title, note ? el('span', { class: 'detail-sub' }, [note]) : null]),
@@ -1257,6 +1326,9 @@
     if (s.bundle) next.appendChild(el('p', { class: 'blocker' }, [`bundle ${s.bundle.id}${s.bundle.at ? `, saved ${whenAgo(s.bundle.at)}` : ''}`]))
     if (d && d.resume) next.appendChild(resumeLine(d.resume))
     box.appendChild(section('What happens next', '', next))
+
+    const harness = harnessSection(s, d)
+    if (harness) box.appendChild(section('Harness', 'the working environment this leg was given', harness))
     putScroll(box, inner)
     putFocus(box, focus)
   }

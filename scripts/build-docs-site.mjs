@@ -59,6 +59,13 @@ const PAGES = [
     description: 'Every Leg environment variable, the config file, network exposure, the token seam and the folder-trust switch.',
   },
   {
+    slug: 'harness',
+    nav: 'Harness',
+    source: 'docs/harness.md',
+    title: 'The portable harness: carry rules, hooks, skills and MCP servers between agents',
+    description: 'How Leg carries the source agent\'s working environment to the agent a handoff lands on, what moves and what does not, the policies, ownership and backups, and how secrets are handled.',
+  },
+  {
     slug: 'cli-contracts',
     nav: 'What it reads',
     source: 'docs/cli-contracts.md',

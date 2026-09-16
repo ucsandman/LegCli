@@ -269,6 +269,8 @@ function redactSession(s) {
     // the branch is already on the worktree chip: naming it again costs nothing
     // and is what the board's land line reads
     land: s.land ? { state: s.land.state, branch: s.land.branch ?? null, base: s.land.base ?? null, sha: s.land.sha ?? null, reason: s.land.reason ?? null } : null,
+    // the chip's word only: paths, dropped items and attention text stay on this machine
+    harness: s.harness ? { state: s.harness.state, target: s.harness.target ?? null } : null,
     task: null, cwd: null, files: [], overlap: [], requests: [], hidden: true,
     land_blocker: `read-only: this terminal belongs to ${s.owner ?? 'someone else'}`,
   }
@@ -612,7 +614,20 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
         if (req.method === 'POST' || req.method === 'PATCH') {
           const body = await readBody(req)
           try {
-            const preferences = writePreferences({ handoff_order: requireHandoffOrder(body.handoff_order) })
+            const patch = {}
+            if (body.handoff_order !== undefined) patch.handoff_order = requireHandoffOrder(body.handoff_order)
+            if (body.harness !== undefined) {
+              // the board may narrow the policy or turn the feature off; turning
+              // it on is the first-run consent flow, which shows what will be
+              // written before it writes (leg harness enable)
+              if (body.harness?.enabled === true) return send(res, 400, { error: 'turn the portable harness on from a terminal: leg harness enable shows what it will write before it writes it' })
+              const rank = ['warn', 'sync', 'strict']
+              const current = readPreferences().harness
+              if (body.harness?.policy !== undefined && rank.indexOf(body.harness.policy) > rank.indexOf(current.policy)) return send(res, 400, { error: `the board may only narrow the harness policy (now ${current.policy}); widen it from a terminal: leg harness policy ${body.harness.policy}` })
+              patch.harness = { policy: body.harness?.policy, enabled: body.harness?.enabled === false ? false : undefined }
+            }
+            if (!Object.keys(patch).length) return send(res, 400, { error: 'nothing to change: send handoff_order or harness' })
+            const preferences = writePreferences(patch)
             sse.broadcast('sessions', (v) => viewFor(v))
             return send(res, 200, { preferences })
           } catch (err) {

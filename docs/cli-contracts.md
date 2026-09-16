@@ -189,6 +189,27 @@ stderr are 0 bytes, and codex's is the one stdin notice. observed-live.
   out of `src/adapters/index.mjs` until `grok login` has been completed on the
   machine and `node scripts/probe.mjs --adapter grok --repo <toy>` passes.
 
+## `leg harness` (the portable harness)
+
+What the command reads and writes per client, each fact from the engine's
+adapter source (`src/harness/vendor/agnostic-ai/engine/harness/{sources,targets}/*.cjs`,
+byte for byte the Agnostic AI engine) and verified by
+`test/harness-*.test.mjs` against fixture homes on 2026-09-16.
+
+| client | read as a source | written as a destination | shim |
+|---|---|---|---|
+| Claude Code | `~/.claude/CLAUDE.md` (+ `@imports` inside the home), `SOUL.md`, the hooks and permissions of its settings file, the `mcpServers` of `~/.claude.json` and `~/.claude/.mcp.json` (the oauth block is never read), `agents/*.md`, `commands/*.md`, `skills/*/SKILL.md` | `~/.claude/leg-rules.md` + one `@` line appended to `CLAUDE.md`; owned hook groups and permission entries in its settings file; owned servers in `~/.claude.json`; `agents/`, `commands/`, skill links | none: the bundle is Claude's dialect |
+| Codex CLI | `~/.codex/AGENTS.md`, `config.toml` (`hooks.*`, `mcp_servers.*`), `agents/*.toml`, `prompts/*.md`, `skills/`, `rules/*.rules` (per-invocation absolute-path approvals skipped; `auth.json` never read) | `AGENTS.md` (whole file, owned), `config.toml` regions `hooks` (with `[hooks.state]` trust hashes, self-tested), `skills` (duplicate disables), `mcp`; `agents/*.toml`; `prompts/*.md`; skill links; `rules/leg-harness.rules` prefix rules | none |
+| Antigravity CLI | not a source | `~/.gemini/GEMINI.md` (owned), the `leg-harness` key in `~/.gemini/config/hooks.json`, `mcp_config.json` servers, `config/agents`, `config/commands`, `config/skills` links | the engine's hook shim, chained with `++` |
+| Gemini CLI | not a source | `GEMINI.md`, owned hook groups in its settings file, `commands/*.toml`, `mcpServers`, skill links | shim |
+| Grok CLI | no | no (reported `unsupported`) | |
+
+Exit codes: `0` fine; `1` stale or attention (`check`, `sync`) or a doctor
+failure; `2` usage; `3` not captured, no source, or consent declined
+(`enable` without `--yes` and without a terminal). `--json` on `status`,
+`inspect`, `sync`, `check`, `explain`, `history`, `doctor` prints the same
+record the board reads.
+
 ## Interactive taps
 
 What `leg claude|codex|agy|grok` reads while the real interactive CLI runs. Same

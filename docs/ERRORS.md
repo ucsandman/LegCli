@@ -3,6 +3,52 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-16: the vendored engine's secret scan covered two fields; the review found the other five
+
+**Fixed upstream (Agnostic AI 7e35b51) and re-vendored; regression in `test/harness-engine.test.mjs`.**
+
+`docs/harness.md` promised "a bundle that still carries a credential is refused
+at save time". The engine's `validate()` scanned `mcp.<n>.env` and
+`mcp.<n>.headers` only; the rules text, identity, hook command lines, MCP
+arguments, URLs and agent bodies were copied verbatim, and the four canary
+tests planted tokens exactly where the scan already looked. The read-only
+security review planted one everywhere else and got one problem back. Root
+cause: a scan written for two map keys, and a test fixture shaped to it. Fix:
+whole-bundle scanning with redaction of free text and drops of unsafe
+handlers or servers, plus `PLANTED` tokens in every place the scan must reach.
+Lesson: a canary proves the place it sits in, nothing else; a fixture written
+by the same hands as the scan finds nothing the scan missed.
+
+## 2026-09-16: `CLAUDE_CONFIG_DIR` outside the OS home was captured from `~/.claude` instead
+
+**Fixed upstream in `sources/claude.cjs` (`pick()`), regression in `test/harness-engine.test.mjs`.**
+
+The engine kept a registry path only when it sat inside the OS home and fell
+back to `~/.claude` otherwise, while Leg's registry, detection and fingerprint
+honoured the override. A per-account config dir under a `LEG_HOME` on another
+drive would have ported the dormant profile and never noticed edits to the
+active one. Fix: the registry path is trusted as given. Lesson: three code
+paths agreeing on a directory is a property to test, not to assume.
+
+## 2026-09-16: `leg harness sync` wrote before `leg harness enable`; the board could widen the policy
+
+**Fixed in `src/harness/cli.mjs` and `src/server.mjs`, regressions in `test/harness-cli.test.mjs` and `test/harness-policy.test.mjs`.**
+
+The consent gate lived in `enable` only, so `sync` on an install that never
+enabled the feature wrote managed files while `status` said off; the settings
+route accepted any policy value, so a board POST could take `warn` to
+`strict`. Both were one-line fixes the review caught. Lesson: a consent rule
+has to be checked at every writer, not at the one verb that grants it.
+
+## 2026-09-16: the backup count was always zero
+
+**Fixed in `src/harness/index.mjs`.**
+
+The engine's writer returns the backup path, but every adapter keeps only the
+action, so counting `f.backup` counted nothing. The count now comes from the
+backups directory before and after an apply. Lesson: a number that never moves
+in a demo is a number nobody is computing.
+
 ## 2026-09-16: alias `import(join(windowsPath))` is a `c:` URL scheme
 
 **Fixed in `packages/leg-agents/bin/leg.mjs`.**

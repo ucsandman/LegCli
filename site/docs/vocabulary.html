@@ -42,6 +42,7 @@
 <li><a href="/docs/concepts">How it works</a></li>
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/harness">Harness</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -52,7 +53,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#session-statuses">Session statuses</a></li><li><a href="#session-event-types">Session event types</a></li><li><a href="#land-states-terminal-cards">Land states (terminal cards)</a></li><li><a href="#share-roles-more-than-one-human">Share roles (more than one human)</a></li><li><a href="#card-statuses">Card statuses</a></li><li><a href="#leg-outcomes">Leg outcomes</a></li><li><a href="#station-kinds">Station kinds</a></li><li><a href="#event-types">Event types</a></li><li><a href="#actor-types">Actor types</a></li><li><a href="#human-actions-and-board-buttons">Human actions and board buttons</a></li><li><a href="#bounce-reasons-land-station">Bounce reasons (land station)</a></li><li><a href="#cross-check-against-visible-strings">Cross-check against visible strings</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#session-statuses">Session statuses</a></li><li><a href="#session-event-types">Session event types</a></li><li><a href="#harness-states-terminal-cards-drawer-leg-harness">Harness states (terminal cards, drawer, leg harness)</a></li><li><a href="#land-states-terminal-cards">Land states (terminal cards)</a></li><li><a href="#share-roles-more-than-one-human">Share roles (more than one human)</a></li><li><a href="#card-statuses">Card statuses</a></li><li><a href="#leg-outcomes">Leg outcomes</a></li><li><a href="#station-kinds">Station kinds</a></li><li><a href="#event-types">Event types</a></li><li><a href="#actor-types">Actor types</a></li><li><a href="#human-actions-and-board-buttons">Human actions and board buttons</a></li><li><a href="#bounce-reasons-land-station">Bounce reasons (land station)</a></li><li><a href="#cross-check-against-visible-strings">Cross-check against visible strings</a></li></ul></nav>
 <h1 id="vocabulary"><a class="anchor" href="#vocabulary">Vocabulary</a></h1>
 <p>One page of the words Leg uses for state, events and actions, pulled
 straight from the source (not invented). Each table lists the exact
@@ -202,6 +203,14 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 <td>a note that does not fit another type</td>
 </tr>
 <tr>
+<td><code>harness</code></td>
+<td>the portable harness was prepared for the leg starting now: the destination&#39;s state (<code>synced</code>, <code>partial</code>, <code>stale</code>, <code>attention</code>, <code>unsupported</code>, <code>source</code>, <code>error</code>) with what was dropped in the body</td>
+</tr>
+<tr>
+<td><code>harness_blocked</code></td>
+<td>the strict harness policy refused the chosen destination; the next option is tried</td>
+</tr>
+<tr>
 <td><code>worktree</code></td>
 <td>another live session was in the checkout, so this one got its own worktree: path, branch, base</td>
 </tr>
@@ -224,6 +233,56 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 <tr>
 <td><code>land_noop</code></td>
 <td>Land found nothing on the branch beyond its base</td>
+</tr>
+</tbody></table>
+<h2 id="harness-states-terminal-cards-drawer-leg-harness"><a class="anchor" href="#harness-states-terminal-cards-drawer-leg-harness">Harness states (terminal cards, drawer, <code>leg harness</code>)</a></h2>
+<p>Source: <code>STATES</code> in <code>src/harness/index.mjs</code>; recorded on <code>session.harness.state</code>.</p>
+<table>
+<thead>
+<tr>
+<th>state</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>off</code></td>
+<td>the portable harness is not enabled; nothing recorded</td>
+</tr>
+<tr>
+<td><code>same-client</code></td>
+<td>a hand-off to another login of the same client; the harness is shared already</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>the destination is the source client; never written</td>
+</tr>
+<tr>
+<td><code>synced</code></td>
+<td>every component the destination supports is current, nothing dropped</td>
+</tr>
+<tr>
+<td><code>partial</code></td>
+<td>current, some items could not be carried (each with a reason)</td>
+</tr>
+<tr>
+<td><code>stale</code></td>
+<td>the destination is behind the source (<code>warn</code> policy, or a check)</td>
+</tr>
+<tr>
+<td><code>attention</code></td>
+<td>a managed file was hand-edited (backed up, skipped) or a component errored</td>
+</tr>
+<tr>
+<td><code>unsupported</code></td>
+<td>no adapter for the destination (Grok), or it is not installed</td>
+</tr>
+<tr>
+<td><code>blocked</code></td>
+<td>the strict policy refused the destination</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>the preparation failed; the reason is recorded</td>
 </tr>
 </tbody></table>
 <h2 id="land-states-terminal-cards"><a class="anchor" href="#land-states-terminal-cards">Land states (terminal cards)</a></h2>
@@ -537,6 +596,14 @@ across <code>src/chain.mjs</code>, <code>src/orchestrator.mjs</code>, <code>src/
 <tr>
 <td><code>status</code></td>
 <td>a status note that doesn&#39;t fit another type (e.g. &quot;rerun from build leg 0&quot;)</td>
+</tr>
+<tr>
+<td><code>harness</code></td>
+<td>the portable harness was prepared for the adapter about to run; the summary names the state, the body what was dropped</td>
+</tr>
+<tr>
+<td><code>harness_blocked</code></td>
+<td>the strict harness policy refused the adapter; the leg fails as <code>launch_failed</code> and does not advance</td>
 </tr>
 </tbody></table>
 <h2 id="actor-types"><a class="anchor" href="#actor-types">Actor types</a></h2>

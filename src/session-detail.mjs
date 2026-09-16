@@ -11,6 +11,7 @@ import { scrub } from './redact.mjs'
 import { transcriptTail as claudeTail } from './taps/claude.mjs'
 import { transcriptTail as codexTail } from './taps/codex.mjs'
 import { resumeVerdict, verdictForBoard } from './resume.mjs'
+import { readHistory } from './harness/index.mjs'
 
 export const MESSAGE_LIMIT = 8
 export const DIFF_MAX_LINES = 400
@@ -116,6 +117,18 @@ function resumeFor(session) {
   try { return verdictForBoard(resumeVerdict(root)) } catch { return null }
 }
 
+// The harness the leg now running was given: what the session recorded when
+// the leg started, plus every capture, sync and decision the harness trail
+// holds for this session. Paths in the attention list are local; a guest never
+// reaches the drawer.
+function harnessFor(session) {
+  const h = session.harness ?? null
+  let history = []
+  try { history = readHistory(200).filter((r) => r.session_id === session.session_id).slice(-20) } catch { /* the drawer renders without the trail */ }
+  if (!h && !history.length) return null
+  return { ...(h ?? {}), history }
+}
+
 export function sessionDetail(session) {
   return {
     session_id: session.session_id,
@@ -124,6 +137,7 @@ export function sessionDetail(session) {
     events: readEvents(session.session_id).slice(-EVENT_LIMIT),
     bundle: session.bundle ?? null,
     resume: resumeFor(session),
+    harness: harnessFor(session),
     ts: new Date().toISOString(),
   }
 }

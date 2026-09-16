@@ -17,4 +17,12 @@ export default [
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
+  // The vendored Agnostic AI port engine is a byte-for-byte copy of upstream
+  // (scripts/sync-harness-engine.mjs --check refuses a local edit), so it is
+  // linted for errors under its own conventions: CommonJS, `catch (_)`.
+  {
+    files: ['src/harness/vendor/**/*.cjs'],
+    languageOptions: { sourceType: 'commonjs' },
+    rules: { 'no-unused-vars': ['error', { caughtErrors: 'none', args: 'none' }] },
+  },
 ]

@@ -158,10 +158,14 @@ export function candidates({ agent, account = 'default', accounts, order = AGENT
 }
 
 // → { next: {agent, account} | null, out: [{agent, account, resets_at}] sorted by reset }
-export function chooseNext({ agent, account, accounts, installed, order = AGENTS, nowS = Math.floor(Date.now() / 1000) }) {
+// `exclude` names (agent, account) pairs this choice must skip: a destination
+// the strict harness policy refused is neither available nor out, it is off
+// the list for this hand-off.
+export function chooseNext({ agent, account, accounts, installed, order = AGENTS, nowS = Math.floor(Date.now() / 1000), exclude = [] }) {
   const out = []
   for (const c of candidates({ agent, account, accounts, order })) {
     if (installed && installed[c.agent] === false) continue
+    if (exclude.some((x) => x.agent === c.agent && x.account === c.account)) continue
     const u = readUsage(c.agent, c.account)
     if (isAvailable(u, nowS)) return { next: c, out }
     out.push({ ...c, resets_at: u.limited_until, reason: u.limited_reason })

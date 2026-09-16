@@ -42,6 +42,7 @@
 <li><a href="/docs/concepts" aria-current="page">How it works</a></li>
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/harness">Harness</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -52,7 +53,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#sessions">Sessions</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#usage-windows">Usage windows</a></li><li><a href="#handoff-interactive">Handoff (interactive)</a></li><li><a href="#the-resume-pointer">The resume pointer</a></li><li><a href="#share-more-than-one-human">Share (more than one human)</a></li><li><a href="#cards-stations-and-pipelines">Cards, stations and pipelines</a></li><li><a href="#chains-and-legs">Chains and legs</a></li><li><a href="#adapters-and-modes">Adapters and modes</a></li><li><a href="#the-done-marker-contract">The DONE marker contract</a></li><li><a href="#outcomes-and-the-classifier">Outcomes and the classifier</a></li><li><a href="#handoff-bundles">Handoff bundles</a></li><li><a href="#worktrees">Worktrees</a></li><li><a href="#leases-and-the-scheduler">Leases and the scheduler</a></li><li><a href="#the-land-station">The land station</a></li><li><a href="#the-ledger-and-actors">The ledger and actors</a></li><li><a href="#card-status-state-diagram">Card status state diagram</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#sessions">Sessions</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#usage-windows">Usage windows</a></li><li><a href="#handoff-interactive">Handoff (interactive)</a></li><li><a href="#the-portable-harness">The portable harness</a></li><li><a href="#the-resume-pointer">The resume pointer</a></li><li><a href="#share-more-than-one-human">Share (more than one human)</a></li><li><a href="#cards-stations-and-pipelines">Cards, stations and pipelines</a></li><li><a href="#chains-and-legs">Chains and legs</a></li><li><a href="#adapters-and-modes">Adapters and modes</a></li><li><a href="#the-done-marker-contract">The DONE marker contract</a></li><li><a href="#outcomes-and-the-classifier">Outcomes and the classifier</a></li><li><a href="#handoff-bundles">Handoff bundles</a></li><li><a href="#worktrees">Worktrees</a></li><li><a href="#leases-and-the-scheduler">Leases and the scheduler</a></li><li><a href="#the-land-station">The land station</a></li><li><a href="#the-ledger-and-actors">The ledger and actors</a></li><li><a href="#card-status-state-diagram">Card status state diagram</a></li><li><a href="#see-also">See also</a></li></ul></nav>
 <h1 id="concepts"><a class="anchor" href="#concepts">Concepts</a></h1>
 <p>Two halves. The first four sections are the 0.2 way in: <code>leg claude</code> runs an
 interactive agent and Leg watches it. The rest is the v0.1 pipeline, which
@@ -193,6 +194,30 @@ waits again. The card records <code>session.all_out</code> and <code>session.wai
 (<code>{ agent, account, resets_at, since }</code>) and shows status <code>waiting</code>. Ctrl-C
 in the terminal, or End on the card, quits with exit 3.</li>
 </ol>
+<h2 id="the-portable-harness"><a class="anchor" href="#the-portable-harness">The portable harness</a></h2>
+<p>Off by default. <code>leg harness enable</code> adds a step to the hand-off, between
+<strong>Choose</strong> and <strong>Switch</strong>: the destination&#39;s working environment is prepared
+before the destination starts. The source client (the one you actually
+configure: Claude Code or Codex) is captured into a client-neutral bundle
+under <code>~/.leg/harness/bundle/</code> (rules with their imports inlined, identity,
+hooks, skills, subagents, slash commands, MCP servers with every credential
+replaced by <code>${NAME}</code>, permissions), and that bundle is rendered into the
+destination client&#39;s own files: <code>AGENTS.md</code>, <code>config.toml</code> regions and hook
+trust entries for Codex; <code>GEMINI.md</code>, <code>hooks.json</code> and <code>mcp_config.json</code> for
+agy; <code>leg-rules.md</code> plus one import line, hook groups and MCP servers for
+Claude Code. Skills are linked, not copied. What a destination cannot
+represent is dropped with a reason, and the session records exactly what
+transferred (<code>session.harness</code>, the <code>harness</code> event, the <strong>Harness</strong> section
+of the drawer).</p>
+<p>The saved policy decides what an unattended hand-off may do: <code>warn</code> reports
+and writes nothing, <code>sync</code> writes managed state when that is safe, <code>strict</code>
+refuses a destination it cannot make safe and tries the next option. A
+fingerprint of the source&#39;s files makes an unchanged environment free to
+check. Everything Leg writes this way carries <code>GENERATED by Leg harness</code>, sits
+in a marked region or an owned key inside files you also own, is backed up
+before it is overwritten, and is skipped when you hand-edited it. The source
+client is never written; credentials never move; which login runs is still the
+account layer&#39;s decision. The whole contract is in <a href="/docs/harness">harness.md</a>.</p>
 <h2 id="the-resume-pointer"><a class="anchor" href="#the-resume-pointer">The resume pointer</a></h2>
 <p><code>.leg/RESUME.md</code> is the file humans and other agents open by habit, so Leg
 owns it and keeps it from describing a picture that is no longer true.</p>

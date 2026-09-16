@@ -42,6 +42,7 @@
 <li><a href="/docs/concepts">How it works</a></li>
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration">Configuration</a></li>
+<li><a href="/docs/harness">Harness</a></li>
 <li><a href="/docs/cli-contracts" aria-current="page">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -52,7 +53,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#claude">claude</a></li><li><a href="#codex">codex</a></li><li><a href="#agy">agy</a></li><li><a href="#grok">grok</a></li><li><a href="#interactive-taps">Interactive taps</a></li><li><a href="#limit-signals">Limit signals</a></li><li><a href="#runner-facts-that-apply-to-every-cli-observed-live-in-phase-23-tests">Runner facts that apply to every CLI (observed-live in phase 2/3 tests)</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#claude">claude</a></li><li><a href="#codex">codex</a></li><li><a href="#agy">agy</a></li><li><a href="#grok">grok</a></li><li><a href="#leg-harness-the-portable-harness">leg harness (the portable harness)</a></li><li><a href="#interactive-taps">Interactive taps</a></li><li><a href="#limit-signals">Limit signals</a></li><li><a href="#runner-facts-that-apply-to-every-cli-observed-live-in-phase-23-tests">Runner facts that apply to every CLI (observed-live in phase 2/3 tests)</a></li></ul></nav>
 <h1 id="cli-contracts"><a class="anchor" href="#cli-contracts">CLI contracts</a></h1>
 <p>What Leg knows about each coding-agent CLI, where every fact came from, and
 which facts were observed live on the build machine versus read from <code>--help</code>
@@ -351,6 +352,56 @@ out of <code>src/adapters/index.mjs</code> until <code>grok login</code> has bee
 machine and <code>node scripts/probe.mjs --adapter grok --repo &lt;toy&gt;</code> passes.</p>
 </li>
 </ul>
+<h2 id="leg-harness-the-portable-harness"><a class="anchor" href="#leg-harness-the-portable-harness"><code>leg harness</code> (the portable harness)</a></h2>
+<p>What the command reads and writes per client, each fact from the engine&#39;s
+adapter source (<code>src/harness/vendor/agnostic-ai/engine/harness/{sources,targets}/*.cjs</code>,
+byte for byte the Agnostic AI engine) and verified by
+<code>test/harness-*.test.mjs</code> against fixture homes on 2026-09-16.</p>
+<table>
+<thead>
+<tr>
+<th>client</th>
+<th>read as a source</th>
+<th>written as a destination</th>
+<th>shim</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Claude Code</td>
+<td><code>~/.claude/CLAUDE.md</code> (+ <code>@imports</code> inside the home), <code>SOUL.md</code>, the hooks and permissions of its settings file, the <code>mcpServers</code> of <code>~/.claude.json</code> and <code>~/.claude/.mcp.json</code> (the oauth block is never read), <code>agents/*.md</code>, <code>commands/*.md</code>, <code>skills/*/SKILL.md</code></td>
+<td><code>~/.claude/leg-rules.md</code> + one <code>@</code> line appended to <code>CLAUDE.md</code>; owned hook groups and permission entries in its settings file; owned servers in <code>~/.claude.json</code>; <code>agents/</code>, <code>commands/</code>, skill links</td>
+<td>none: the bundle is Claude&#39;s dialect</td>
+</tr>
+<tr>
+<td>Codex CLI</td>
+<td><code>~/.codex/AGENTS.md</code>, <code>config.toml</code> (<code>hooks.*</code>, <code>mcp_servers.*</code>), <code>agents/*.toml</code>, <code>prompts/*.md</code>, <code>skills/</code>, <code>rules/*.rules</code> (per-invocation absolute-path approvals skipped; <code>auth.json</code> never read)</td>
+<td><code>AGENTS.md</code> (whole file, owned), <code>config.toml</code> regions <code>hooks</code> (with <code>[hooks.state]</code> trust hashes, self-tested), <code>skills</code> (duplicate disables), <code>mcp</code>; <code>agents/*.toml</code>; <code>prompts/*.md</code>; skill links; <code>rules/leg-harness.rules</code> prefix rules</td>
+<td>none</td>
+</tr>
+<tr>
+<td>Antigravity CLI</td>
+<td>not a source</td>
+<td><code>~/.gemini/GEMINI.md</code> (owned), the <code>leg-harness</code> key in <code>~/.gemini/config/hooks.json</code>, <code>mcp_config.json</code> servers, <code>config/agents</code>, <code>config/commands</code>, <code>config/skills</code> links</td>
+<td>the engine&#39;s hook shim, chained with <code>++</code></td>
+</tr>
+<tr>
+<td>Gemini CLI</td>
+<td>not a source</td>
+<td><code>GEMINI.md</code>, owned hook groups in its settings file, <code>commands/*.toml</code>, <code>mcpServers</code>, skill links</td>
+<td>shim</td>
+</tr>
+<tr>
+<td>Grok CLI</td>
+<td>no</td>
+<td>no (reported <code>unsupported</code>)</td>
+<td></td>
+</tr>
+</tbody></table>
+<p>Exit codes: <code>0</code> fine; <code>1</code> stale or attention (<code>check</code>, <code>sync</code>) or a doctor
+failure; <code>2</code> usage; <code>3</code> not captured, no source, or consent declined
+(<code>enable</code> without <code>--yes</code> and without a terminal). <code>--json</code> on <code>status</code>,
+<code>inspect</code>, <code>sync</code>, <code>check</code>, <code>explain</code>, <code>history</code>, <code>doctor</code> prints the same
+record the board reads.</p>
 <h2 id="interactive-taps"><a class="anchor" href="#interactive-taps">Interactive taps</a></h2>
 <p>What <code>leg claude|codex|agy|grok</code> reads while the real interactive CLI runs. Same
 tagging rule: <code>observed-live 2026-09-11</code> means the build machine did it;

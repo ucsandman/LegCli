@@ -42,6 +42,7 @@
 <li><a href="/docs/concepts">How it works</a></li>
 <li><a href="/docs/board-guide">The board</a></li>
 <li><a href="/docs/configuration" aria-current="page">Configuration</a></li>
+<li><a href="/docs/harness">Harness</a></li>
 <li><a href="/docs/cli-contracts">What it reads</a></li>
 <li><a href="/docs/adapters">Adapters</a></li>
 <li><a href="/docs/faq">FAQ</a></li>
@@ -52,7 +53,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#env">.env</a></li><li><a href="#interactive-sessions">Interactive sessions</a></li><li><a href="#core">Core</a></li><li><a href="#optional-syncs">Optional syncs</a></li><li><a href="#seller-and-checkout-site">Seller and checkout site</a></li><li><a href="#adapter-binary-overrides">Adapter binary overrides</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#test-and-development-seams">Test and development seams</a></li><li><a href="#network-exposure">Network exposure</a></li><li><a href="#share-more-than-one-human">Share (more than one human)</a></li><li><a href="#card-level-options">Card-level options</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#env">.env</a></li><li><a href="#interactive-sessions">Interactive sessions</a></li><li><a href="#core">Core</a></li><li><a href="#optional-syncs">Optional syncs</a></li><li><a href="#seller-and-checkout-site">Seller and checkout site</a></li><li><a href="#adapter-binary-overrides">Adapter binary overrides</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#the-portable-harness">The portable harness</a></li><li><a href="#test-and-development-seams">Test and development seams</a></li><li><a href="#network-exposure">Network exposure</a></li><li><a href="#share-more-than-one-human">Share (more than one human)</a></li><li><a href="#card-level-options">Card-level options</a></li><li><a href="#see-also">See also</a></li></ul></nav>
 <h1 id="configuration"><a class="anchor" href="#configuration">Configuration</a></h1>
 <p>The user-facing settings Leg reads, the seller settings for its checkout
 site, and the card-level options that configure one card instead of the whole
@@ -106,6 +107,12 @@ variables yourself in that case.</p>
 <td>(unset, hand-off on)</td>
 <td>set to <code>1</code> to warn and record but never switch agents</td>
 <td><code>src/attach.mjs</code></td>
+</tr>
+<tr>
+<td><code>LEG_HARNESS_HOME</code></td>
+<td>the OS home</td>
+<td>where the portable harness reads and writes client configuration (<code>~/.claude</code>, <code>~/.codex</code>, <code>~/.gemini</code> under it); the test suite points it at a throwaway directory. <code>CLAUDE_CONFIG_DIR</code>, <code>CODEX_HOME</code> and <code>GEMINI_CONFIG_DIR</code> move one client each, as everywhere else in Leg</td>
+<td><code>src/harness/registry.mjs</code></td>
 </tr>
 <tr>
 <td><code>LEG_NO_OPEN</code></td>
@@ -468,6 +475,39 @@ settings files, and prints one line to paste to log in. <code>rm</code> removes 
 junctions as links, never following them, then deletes the directory. Nothing
 under your real home is written at any point. Start a session on a named
 account with <code>LEG_ACCOUNT=&lt;name&gt;</code>, or let a limit hand off to it.</p>
+<h2 id="the-portable-harness"><a class="anchor" href="#the-portable-harness">The portable harness</a></h2>
+<p>Off until <code>leg harness enable</code>. Its settings live in <code>~/.leg/preferences.json</code>
+beside the hand-off order:</p>
+<pre><code class="language-json">{ &quot;harness&quot;: { &quot;enabled&quot;: true, &quot;policy&quot;: &quot;sync&quot;, &quot;source&quot;: &quot;claude&quot; } }
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>values</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>enabled</code></td>
+<td><code>true</code>, <code>false</code> (default)</td>
+<td>the consent <code>leg harness enable</code> records; <code>leg harness disable</code> clears it and removes nothing</td>
+</tr>
+<tr>
+<td><code>policy</code></td>
+<td><code>warn</code>, <code>sync</code> (default on enable), <code>strict</code></td>
+<td>what an unattended hand-off may do: report only; write managed state when safe; refuse a destination that cannot be made safe</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>claude</code>, <code>codex</code></td>
+<td>the client whose harness is carried; auto-detected from <code>~/.claude/CLAUDE.md</code> then <code>~/.codex/AGENTS.md</code> when unset</td>
+</tr>
+</tbody></table>
+<p><code>~/.leg/harness/policy.json</code> (optional) names what is deliberately not
+carried: sections to drop, hooks, skills and MCP servers to exclude, each with
+a reason, and the Codex model ladder. State, backups and the evidence trail
+live under <code>~/.leg/harness/</code>. Every detail: <a href="/docs/harness">harness.md</a>.</p>
 <h2 id="test-and-development-seams"><a class="anchor" href="#test-and-development-seams">Test and development seams</a></h2>
 <p>Not meant for normal use; documented for completeness.</p>
 <table>

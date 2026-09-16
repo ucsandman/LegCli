@@ -6,6 +6,7 @@
 - [concepts.md](concepts.md): sessions, accounts, usage windows and the interactive handoff, then cards, stations, chains, outcomes, leases, the land station and the card status state diagram.
 - [board-guide.md](board-guide.md): the instrument head (a row per login, two window rails each, the 85 percent post), the Terminals panels, overlap flags, Landed on main, Background tasks, Settings, and the floor view.
 - [configuration.md](configuration.md): every environment variable, the accounts layout, `.env`, network exposure, card-level options.
+- [harness.md](harness.md): the portable harness, off by default: what moves between agents and what does not, the first run, policies, ownership and backups, secrets, the evidence trail, and how Leg relates to the Agnostic AI engine it embeds.
 - [adapters.md](adapters.md): what Leg reads from each CLI in an interactive session, each adapter's headless argv, modes, forbidden flags, gotchas, and how to add a new one.
 - [faq.md](faq.md): short answers to real questions (the status line, codex's missing hook, agy's missing percentage, second accounts, uninstall, limits, secrets, Windows support).
 
@@ -22,6 +23,7 @@
 | area | modules |
 |------|---------|
 | interactive sessions | `src/attach.mjs` (the `leg <agent>` runner), `src/sessions.mjs` (the session store), `src/usage.mjs` (usage windows and the chooser), `src/accounts.mjs` (extra logins), `src/bundle.mjs` (the per-session bundle), `src/hook.mjs` (what Claude Code's hooks run) |
+| portable harness | `src/harness/index.mjs` (capture, compare, apply, status, the hand-off decision), `src/harness/registry.mjs` (which clients, where their files are), `src/harness/fingerprint.mjs`, `src/harness/cli.mjs` (`leg harness`), `src/harness/vendor/agnostic-ai/` (the engine, verbatim; `scripts/sync-harness-engine.mjs` is the only writer) |
 | taps | `src/taps/claude.mjs`, `src/taps/claude-usage.mjs`, `src/taps/codex.mjs`, `src/taps/agy.mjs` |
 | board | `src/server.mjs`, `src/board/sessions.js` (Terminals lane), `src/board/board.js` and `src/board/floor.js` (pipelines) |
 | pipelines | `src/orchestrator.mjs`, `src/scheduler.mjs`, `src/chain.mjs`, `src/pipeline.mjs`, `src/runner.mjs`, `src/ledger.mjs`, `src/leases.mjs`, `src/mergequeue.mjs`, `src/adapters/*.mjs` |

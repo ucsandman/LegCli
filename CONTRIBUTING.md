@@ -25,6 +25,10 @@ npm run lint
 npm run privacy
 ```
 
+- `src/harness/vendor/agnostic-ai/` is a byte-for-byte copy of the Agnostic AI
+  port engine, pinned by `UPSTREAM.json`. Never edit it here: a fix lands
+  upstream, then `node scripts/sync-harness-engine.mjs <path-to-agnostic-ai>`
+  copies it in; `npm test` fails on a local edit.
 - `npm test` runs `node --test` over everything in `test/`, then
   `scripts/privacy-check.mjs` (so a leaked private-source string fails the
   test run, not just the commit hook), `scripts/check-branding.mjs`

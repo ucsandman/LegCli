@@ -51,12 +51,31 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `lost` | the runner pid is gone; the session was marked `lost` |
 | `error` | a spawn error, a tap error, a failed bundle checkpoint, or an error the agent reported |
 | `status` | a note that does not fit another type |
+| `harness` | the portable harness was prepared for the leg starting now: the destination's state (`synced`, `partial`, `stale`, `attention`, `unsupported`, `source`, `error`) with what was dropped in the body |
+| `harness_blocked` | the strict harness policy refused the chosen destination; the next option is tried |
 | `worktree` | another live session was in the checkout, so this one got its own worktree: path, branch, base |
 | `land_requested` | Land was pressed: the branch and its base |
 | `land_warning` | the landing ran without a test command |
 | `landed` | the base was fast-forwarded to the branch: sha range, files, who pressed Land |
 | `bounced` | the landing stopped with a [bounce reason](#bounce-reasons-land-station); the full detail is in `body` |
 | `land_noop` | Land found nothing on the branch beyond its base |
+
+## Harness states (terminal cards, drawer, `leg harness`)
+
+Source: `STATES` in `src/harness/index.mjs`; recorded on `session.harness.state`.
+
+| state | meaning |
+|-------|---------|
+| `off` | the portable harness is not enabled; nothing recorded |
+| `same-client` | a hand-off to another login of the same client; the harness is shared already |
+| `source` | the destination is the source client; never written |
+| `synced` | every component the destination supports is current, nothing dropped |
+| `partial` | current, some items could not be carried (each with a reason) |
+| `stale` | the destination is behind the source (`warn` policy, or a check) |
+| `attention` | a managed file was hand-edited (backed up, skipped) or a component errored |
+| `unsupported` | no adapter for the destination (Grok), or it is not installed |
+| `blocked` | the strict policy refused the destination |
+| `error` | the preparation failed; the reason is recorded |
 
 ## Land states (terminal cards)
 
@@ -166,6 +185,8 @@ across `src/chain.mjs`, `src/orchestrator.mjs`, `src/scheduler.mjs`,
 | `failed` | the card failed (chain exhausted, land attempts exhausted, or an environment fault) |
 | `error` | an unexpected error (orchestrator crash, handoff bundle write failure, land station crash) |
 | `status` | a status note that doesn't fit another type (e.g. "rerun from build leg 0") |
+| `harness` | the portable harness was prepared for the adapter about to run; the summary names the state, the body what was dropped |
+| `harness_blocked` | the strict harness policy refused the adapter; the leg fails as `launch_failed` and does not advance |
 
 ## Actor types
 

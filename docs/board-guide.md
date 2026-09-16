@@ -184,6 +184,11 @@ is history, and after a day's work it is most of the list. It moves to the
 ledger (below) as part of a count that opens. A finished terminal that still
 needs you, or whose expansion you have open, stays in place.
 
+With the portable harness on, the register also carries one chip for the leg
+now running: `harness synced`, `harness partial`, `harness stale`, `harness
+attention` or `harness refused` (`harness.md`, "States"). Nothing shows when
+the feature is off.
+
 ### The one sentence
 
 `rankedNotes` in `src/board/sessions.js` is the single source of every sentence
@@ -289,6 +294,14 @@ from the right, and the page keeps one scroll container
    Hand off now. A normal exit ends this terminal.`, the **Change order**
    editor, the current bundle id, and whether `.leg/RESUME.md` still describes
    the repository (recomputed from git on every poll).
+8. **Harness** (only when the [portable harness](harness.md) is on): the
+   source client, when it was captured and synced, the policy, one line for
+   the leg now running (`codex harness partial · 8/8 components, 3 dropped ·
+   1 file(s) written`), a row per component with its state and `carried /
+   total`, **Needs you** for a hand-edited file or an unreadable config,
+   **Dropped** with a reason per item (`excluded by policy` when the drop was
+   yours), and the last eight entries of the harness trail. Every word comes
+   from what the session recorded when the leg started, never from a guess.
 
 It refetches every 3 seconds while it is open, and stops on **Pause updates**,
 when the tab is in the background, or when it is closed. The rest of the page

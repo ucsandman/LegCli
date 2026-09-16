@@ -62,6 +62,9 @@ export function createSession({ id, agent, account = 'default', cwd, repo = null
     handoff_order: normalizeHandoffOrder(handoffOrder), installed,
     runtime_capabilities: [...new Set(runtimeCapabilities)],
     lineage: { from: null, to: null },
+    // the portable-harness outcome for the leg now running (src/harness/index.mjs);
+    // null until the feature is enabled and a leg has been prepared
+    harness: null,
     exit_code: null,
   }
   mkdirSync(sessionDir(id), { recursive: true })

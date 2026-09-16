@@ -17,13 +17,13 @@ export const EVENT_TYPES = ['card_created', 'leg_started', 'leg_progress', 'leg_
   'limit_detected', 'handoff_written', 'leg_resumed', 'station_done', 'bounced', 'landed',
   'land_warning', 'land_retry', 'blocked_by', 'scheduler_started', 'scheduler_stopped',
   'approval_needed', 'approved', 'reassigned', 'paused', 'resumed', 'killed', 'done',
-  'failed', 'error', 'status']
+  'failed', 'error', 'status', 'harness', 'harness_blocked']
 export const STATUSES = ['backlog', 'queued', 'running', 'handing_off', 'waiting_human',
   'needs_approval', 'paused', 'done', 'failed', 'killed']
 const CLOSED = ['done', 'failed', 'killed']
 // card.json keys `update --patch` may set (everything else goes through a named flag)
 export const PATCHABLE = ['pipeline', 'leases', 'land_attempts', 'land_mode', 'test_command', 'title', 'trunk',
-  'bounce_reason', 'kill_requested', 'worktree', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'last_bundle', 'pr_url']
+  'bounce_reason', 'kill_requested', 'worktree', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'last_bundle', 'pr_url', 'harness']
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,39}$/i
 
 export const ROOT = process.env.LEG_HOME || process.env.BATON_HOME || (existsSync(join(homedir(), '.leg')) ? join(homedir(), '.leg') : existsSync(join(homedir(), '.baton')) ? join(homedir(), '.baton') : join(homedir(), '.leg'))

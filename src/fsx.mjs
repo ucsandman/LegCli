@@ -39,7 +39,9 @@ const sleepSync = (ms) => { const t = Date.now() + ms; while (Date.now() < t) { 
 // poller) holds it at a time. A lock older than staleMs (a crashed holder) is
 // stolen. If it cannot be acquired within the budget, fn runs anyway rather
 // than hang the caller (a Claude Code hook must never block the user's turn).
-export function withFileLock(lockPath, fn, { retries = 60, waitMs = 20, staleMs = 5000 } = {}) {
+// `mustHold`: a caller for whom running unlocked is worse than not running
+// (two harness applies would tear one ownership record) gets a throw instead.
+export function withFileLock(lockPath, fn, { retries = 60, waitMs = 20, staleMs = 5000, mustHold = false } = {}) {
   let fd = null
   for (let i = 0; i < retries; i++) {
     try { fd = openSync(lockPath, 'wx'); break } catch (err) {
@@ -51,6 +53,7 @@ export function withFileLock(lockPath, fn, { retries = 60, waitMs = 20, staleMs 
       sleepSync(waitMs)
     }
   }
+  if (fd === null && mustHold) throw new Error(`could not take ${lockPath} within ${Math.round(retries * waitMs / 1000)} s; another Leg process holds it`)
   try { return fn() } finally { if (fd !== null) { try { closeSync(fd) } catch {} try { unlinkSync(lockPath) } catch {} } }
 }
 
