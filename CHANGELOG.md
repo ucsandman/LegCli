@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.1 (2026-09-16)
+
+- **Antigravity CLI (`agy`) workspace trust in worktrees and repos.** Leg writes
+  the folder trust record to `~/.gemini/antigravity-cli/settings.json`'s
+  `trustedWorkspaces` for both the repo root and the worktree directory, with
+  exact Windows drive and separator normalization matching Go's `runtime.memequal`
+  check so `leg agy` runs completely unattended without interactive trust prompts.
+- **Board server resolution in worktrees.** Fixed board asset resolution when
+  Leg is executed from within a git worktree.
+
 ## 0.8.0 (2026-09-16)
 
 - **The product is called Leg.** Website, CLI help, board logs and onboarding
