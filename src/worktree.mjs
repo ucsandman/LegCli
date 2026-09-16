@@ -64,7 +64,7 @@ export function validateRepo(repo) {
   return resolved
 }
 
-function parseWorktreeList(output) {
+export function parseWorktreeList(output) {
   const entries = []
   let current = null
   for (const line of output.split(/\r?\n/)) {

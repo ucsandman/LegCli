@@ -75,6 +75,15 @@
       <div class="ledger-actions" id="trunk-actions"></div>
     </div>
 
+    <!-- Every conversation on this machine, Leg's own and the ones the agents
+         keep in their own stores. A count that opens, like the other three:
+         history.js fills it from /api/history, only once the reader asks. -->
+    <div class="ledger-cell region-history">
+      <h3 id="history-head">Reading conversations</h3>
+      <p class="region-meta"></p>
+      <div class="ledger-actions" id="history-actions"></div>
+    </div>
+
     <div class="ledger-cell" id="board">
       <h3 id="cards-head">No background tasks</h3>
       <p class="region-meta"></p>
@@ -95,6 +104,29 @@
   <div class="drawer" id="trunk-drawer" hidden>
     <h3 class="drawer-head" id="trunk-drawer-head">Landed on main</h3>
     <div class="trunk-list" id="trunk"></div>
+  </div>
+
+  <div class="drawer" id="history-drawer" hidden>
+    <h3 class="drawer-head" id="history-drawer-head">Conversations</h3>
+    <!-- discovered conversations are read from the agents' own stores and
+         never moved; a row opens its last messages in place, and the only
+         way to continue one is a command in a terminal, shown on the row -->
+    <form class="history-filters" id="history-filters">
+      <label for="history-provider">Agent</label>
+      <select id="history-provider"><option value="">every agent</option></select>
+      <label for="history-search">Search</label>
+      <input type="text" id="history-search" autocomplete="off" spellcheck="false" placeholder="title, repo, branch or id">
+      <label for="history-repo">Repository</label>
+      <input type="text" id="history-repo" autocomplete="off" spellcheck="false" placeholder="name or path">
+      <label for="history-only"><input type="checkbox" id="history-only"> only conversations Leg started</label>
+    </form>
+    <p class="region-meta" id="history-list-meta" role="status" aria-atomic="true"></p>
+    <div class="history-list" id="history-list"></div>
+    <div class="ledger-actions" id="history-more"></div>
+    <p class="drawer-note">Read only: each agent keeps its own history where it always was. Leg lists it, opens it, and never moves or changes it. Sessions Leg started itself are marked <span class="chip">leg</span>; the rest are <span class="chip is-stale">external</span>.</p>
+    <h3 class="drawer-head" id="worktrees-head">Checkouts</h3>
+    <p class="region-meta" id="worktrees-meta" role="status" aria-atomic="true"></p>
+    <div class="history-list" id="worktrees-list"></div>
   </div>
 
   <div class="drawer" id="cards-drawer" hidden>
@@ -247,5 +279,6 @@
 
 <script src="board.js" defer></script>
 <script src="sessions.js" defer></script>
+<script src="history.js" defer></script>
 </body>
 </html>

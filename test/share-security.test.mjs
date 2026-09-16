@@ -186,6 +186,8 @@ const apiRoutes = () => [
   ['GET', '/api/floor'], ['GET', '/api/trunk'], ['GET', '/api/leases'],
   ['GET', `/api/cards/${CARD}`], ['GET', `/api/cards/${CARD}/events`], ['GET', `/api/cards/${CARD}/log`],
   ['POST', `/api/cards/${CARD}/run`], ['DELETE', `/api/cards/${CARD}`],
+  ['GET', '/api/history'], ['GET', `/api/history/claude:${OWNED}`], ['GET', '/api/history/providers'], ['POST', '/api/history/refresh'],
+  ['GET', '/api/worktrees'],
   ['GET', '/api/nope'],
 ]
 const STATIC = ['/', '/floor', '/board.js', '/sessions.js', '/index.html', '/nope.html']
@@ -270,7 +272,7 @@ test('the canary detector actually fires: the owner\'s own board carries every o
   assert.ok(carries(log.text, C.runlog), 'the owner can read the run log')
   assert.equal(carries(log.text, SCRUBBED_KEY), false, 'an API key in a run log is scrubbed even for the owner')
   assert.ok(log.text.includes('[REDACTED]'), 'scrub() replaced the key')
-  assert.equal(apiRoutes().length, 26, 'every route handle() answers is in the sweep')
+  assert.equal(apiRoutes().length, 31, 'every route handle() answers is in the sweep')
 })
 
 // ---- 1. no token from a non-loopback address -------------------------------
@@ -288,7 +290,7 @@ test('no token, from a non-owner address: every route refuses and says nothing',
     swept++
   }
   assert.equal((await sseCollect(strictBase, null, { ms: 50 })).status, 401, 'SSE with no token')
-  assert.equal(swept, 26, `swept ${swept} routes`)
+  assert.equal(swept, 31, `swept ${swept} routes`)
 })
 
 test('no token on loopback when share asks for one: every route refuses', async () => {

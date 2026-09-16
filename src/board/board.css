@@ -370,7 +370,7 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .drawer-msg-when { font-size: var(--t--1); color: var(--text-3); font-family: var(--mono); }
 
 /* ---- ledger: on the ground, unpanelled --------------------------------- */
-.ledger { margin-top: 56px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; padding-top: 32px; border-top: 1px solid var(--edge); }
+.ledger { margin-top: 56px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 40px; padding-top: 32px; border-top: 1px solid var(--edge); }
 .ledger-cell h3 { font-size: var(--t-2); font-weight: var(--w-head); letter-spacing: -.012em; }
 .ledger-cell .region-meta { margin-top: 6px; font-size: var(--t-0); color: var(--text-3); }
 .ledger-actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
@@ -384,6 +384,23 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .line-main { color: var(--text); }
 .line-meta { color: var(--text-2); }
 .line-when { color: var(--text-3); text-align: right; }
+/* history: the conversations every agent keeps, one row each, opening in place */
+.history-filters { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 14px; align-items: center; margin: 4px 0 18px; max-width: 64ch; }
+.history-filters label { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
+.history-filters label:has(input[type="checkbox"]) { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-weight: var(--w-text); }
+.history-list { display: block; }
+.history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 20px; align-items: baseline; padding: 12px 0; font-size: var(--t-0); }
+.history-row + .history-row, .history-row + .history-detail, .history-detail + .history-row { border-top: 1px solid var(--line); }
+.history-title { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 0; font: inherit; color: var(--text); cursor: pointer; line-height: 1.4; }
+.history-title:hover { color: var(--accent-hi); }
+.history-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: var(--r-control); }
+.history-register { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; font-size: var(--t--1); color: var(--text-3); }
+.history-when { color: var(--text-3); white-space: nowrap; font-size: var(--t--1); }
+.history-detail { padding: 14px 0 20px; }
+.history-detail .kv { margin-bottom: 14px; }
+.history-command { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: var(--t-0); }
+.history-empty { font-size: var(--t-0); color: var(--text-3); padding: 12px 0; }
+
 .group-head { display: flex; align-items: baseline; gap: 10px; margin-top: 24px; margin-bottom: 4px; font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
 .group-head:first-child { margin-top: 0; }
 .group-head span { font-weight: var(--w-text); color: var(--text-3); }
@@ -556,6 +573,8 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   .kv { grid-template-columns: 1fr; gap: 4px 0; }
   .kv-val + .kv-key { margin-top: 12px; }
   .ledger { grid-template-columns: 1fr; gap: 32px; margin-top: 40px; }
+  .history-row { grid-template-columns: 1fr; }
+  .history-filters { grid-template-columns: 1fr; }
   .line { grid-template-columns: 1fr auto; gap: 6px 14px; }
   .line-main { grid-column: 1 / -1; }
   .line-meta { grid-column: 1; }

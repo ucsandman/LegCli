@@ -27,6 +27,7 @@ import { home } from '../src/store.mjs'
 import { entitlement, allows, describe as describeLicense, activate as activateLicense, deactivate as deactivateLicense, refresh as refreshLicense, licensePath, BUY_URL } from '../src/license.mjs'
 import { resumeVerdict, bodyOf, ago } from '../src/resume.mjs'
 import { harnessCommand } from '../src/harness/cli.mjs'
+import { historyCommand, worktreesCommand } from '../src/history/cli.mjs'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 // one source of truth for the version, so the help text cannot drift from the package
@@ -329,6 +330,21 @@ async function main() {
     const code = await harnessCommand(cmd, args, { out, die })
     process.exit(code)
   }
+  if (group === 'history' || group === 'worktrees') {
+    // Every conversation on this machine, Leg's own and the ones the agents'
+    // stores hold: a read-only index (src/history/index.mjs). `continue`
+    // starts a normal supervised leg on one of them. `leg history --json` is
+    // `leg history ls --json`: a leading flag names no verb.
+    const isHelp = cmd === '--help' || cmd === '-h' || cmd === 'help' || args.help || args.h
+    const bare = typeof cmd === 'string' && cmd.startsWith('--')
+    const verb = isHelp ? 'help' : (bare ? 'ls' : cmd)
+    const a = bare ? parseArgs([cmd, ...rest]) : args
+    // `continue <id> [agent args...]`: what follows the id goes to the agent
+    // untouched, the way `leg claude [args...]` passes its argv straight through
+    const raw = bare ? [cmd, ...rest] : rest
+    const code = group === 'history' ? await historyCommand(verb, a, { out, die, raw }) : worktreesCommand(verb, a, { out, die })
+    process.exit(code)
+  }
   if (group === 'license') {
     // The paid gate. Keys verify offline against the public key in
     // src/license.mjs; nothing here talks to the network except refresh.
@@ -454,13 +470,19 @@ async function main() {
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|resume|accounts|harness|license|share|up|down|status|open|card|scheduler|uninstall)`)
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|history|worktrees|resume|accounts|harness|license|share|up|down|status|open|card|scheduler|uninstall)`)
   out(`leg ${VERSION}, your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy|grok [args...]   the normal interactive agent in this terminal; args pass straight through
                                 the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                 a second live session in one checkout gets its own worktree (--no-worktree to share)
                                 auto-approve mode (--no-auto-approve to opt out)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>
+  history [ls] [--provider p] [--repo r] [--search q] [--json]
+                                every conversation on this machine: Leg's own, and the ones Claude Code, Codex,
+                                Grok, Antigravity and Copilot keep in their own stores (read only, nothing moved)
+  history show|continue <id> | refresh | providers
+                                one conversation, or start leg <agent> on it where the agent can resume by id
+  worktrees [--repo r] [--json]  every checkout Leg can see: git's, its own, the ones conversations worked in
   resume [--check] [--json] [--path <dir>]      the hand-off waiting in this checkout, and whether it is still true
                                freshness is recomputed from git at read time; --check prints only the verdict
                                exit 0 current, 1 stale or unstamped, 3 no pointer here

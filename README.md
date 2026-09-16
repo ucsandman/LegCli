@@ -95,6 +95,7 @@ yourself.
 - [Two sessions in one repo](#two-sessions-in-one-repo)
 - [More than one human](#more-than-one-human)
 - [The board](#the-board)
+- [Every conversation on this machine](#every-conversation-on-this-machine)
 - [Second accounts, and what the terms say](#second-accounts-and-what-the-terms-say)
 - [What is and is not touched](#what-is-and-is-not-touched)
 - [CLI reference](#cli-reference)
@@ -336,11 +337,39 @@ one sam's; sam's board showed wes's card with the prompt hidden and only
 - **Buttons**, in a fixed order that never reflows: Land, Hand off now,
   Details, End. Once a session has ended, Remove and Remove record take End's
   place. Details opens an expansion in flow under the panel.
-- Below it, optional **Background tasks** an agent runs in a separate worktree
-  without joining the terminal conversation (see below), then **Settings**.
+- Below it, **Conversations**: every coding-agent conversation on this machine
+  as a count that opens, the ones Leg started and the ones Claude Code, Codex,
+  Grok, Antigravity and Copilot keep in their own stores. Filter by agent,
+  search, repository, or only what Leg started; a row opens its last messages
+  in place, with the `leg history continue` command to copy where the agent
+  can resume by id. The same drawer lists every checkout Leg can see. Then
+  optional **Background tasks** an agent runs in a separate worktree without
+  joining the terminal conversation (see below), then **Settings**.
 
 The board reads `~/.leg/sessions/*/session.json` over server-sent events; a
 session whose runner process is gone is marked `lost`, never shown as live.
+
+## Every conversation on this machine
+
+Claude Code, Codex, Grok, Antigravity and Copilot each keep their history in
+their own place. `leg history` is one list over all of them, whether or not
+Leg started the conversation, and `leg worktrees` is one list over every
+checkout: git's, Leg's own, and the ones those conversations ran in.
+
+```
+leg history                          newest first, every agent; --provider, --repo, --search, --json
+leg history show claude:0fc5         where it ran, its last messages, whether Leg can continue it
+leg history continue claude:0fc5     leg claude --resume <id> in that folder, supervised like any session
+leg worktrees                        path, repo, branch, exists, uncommitted, owner, conversations, stale
+```
+
+Nothing moves: each agent's store stays where it was, Leg writes only its own
+`~/.leg/history/index.json`, reads transcripts from their head and tail, and
+opens messages only when you open a conversation. A session Leg started and
+the same conversation in the agent's store are one row, marked `leg`; the rest
+are `external`. On a shared board the whole group is the owner's. The support
+matrix (which agents list, show messages, continue) and every file read are in
+[docs/history.md](docs/history.md).
 
 ## Second accounts, and what the terms say
 
@@ -387,6 +416,10 @@ happens after you run `leg accounts add`; that is your call.
   `~/.codex/config.toml`, agy's files, your repo's settings. Claude Code gets
   hooks through a per-session `--settings` file under `~/.leg`; codex and
   agy get nothing injected.
+- **Read, never written**: each agent's own history (`~/.claude/projects`,
+  `~/.codex/sessions`, `~/.grok/sessions`, `~/.gemini/antigravity-cli`,
+  `~/.copilot/session-state`) for `leg history`; the index it builds lives
+  under `~/.leg/history/`, and no SQLite file is ever opened.
 - **Written only after `leg harness enable`** ([the portable harness](docs/harness.md),
   off by default): the destination client's global rules file
   (`~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.claude/leg-rules.md` plus
@@ -429,6 +462,10 @@ leg sessions show|events <id>
 leg sessions handoff|end <id>        same as the board buttons
 leg sessions rm <id>                 forget an ended session
 leg sessions simulate-limit <id>     the real limit path without a real wall (claude, agy, grok)
+leg history [ls] [--provider p] [--repo r] [--search q] [--managed|--external] [--live] [--all] [--json]
+                                     every conversation on this machine, Leg's own and the agents' own (read only)
+leg history show <id> [--messages n] [--json] | continue <id> [agent args…] | refresh [--full] | providers
+leg worktrees [--repo <path>] [--no-dirty] [--json]   every checkout: git's, Leg's, the conversations' (read only)
 leg accounts ls                      logins and their 5h/7d usage
 leg accounts add <claude|codex|grok> <name> | rm <agent> <name> | terms
 leg harness status|inspect|check|explain|history [--json]   the portable harness, read-only
@@ -534,6 +571,7 @@ More in [docs/faq.md](docs/faq.md).
 | [Board guide](docs/board-guide.md) | every word, number and button on the board explained |
 | [Configuration](docs/configuration.md) | environment variables and options |
 | [Portable harness](docs/harness.md) | carrying rules, hooks, skills, agents, commands and MCP servers to the agent a hand-off lands on: what moves, what does not, policies, ownership, secrets |
+| [History](docs/history.md) | `leg history` and `leg worktrees`: every conversation and checkout on this machine across agents, the support matrix, what is read and what is written |
 | [Adapters](docs/adapters.md) | what each CLI exposes and how Leg attaches to it |
 | [CLI contracts](docs/cli-contracts.md) | exact argv per CLI and the limit-signal table with sources |
 | [FAQ](docs/faq.md) | a question the others did not answer |

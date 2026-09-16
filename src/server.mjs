@@ -33,6 +33,8 @@ import { readUsage, recordUsage, usageIsStale, candidates, isAvailable } from '.
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
 import { readCodexUsage } from './taps/codex.mjs'
 import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder } from './preferences.mjs'
+import { listHistory, findRecord, recordDetail, refreshIndex, readIndex, providerSupport, HistoryInputError, PROVIDER_NAMES } from './history/index.mjs'
+import { listWorktrees } from './history/worktrees.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 export function resolveBoardDir() {
@@ -226,6 +228,26 @@ async function adaptersInfo() {
 }
 
 // ---- sessions (baton claude|codex|agy) ----
+// The worktree list runs git once per known repository: cached for a short
+// while so a board that polls does not fork fifty processes a second.
+const WORKTREES_TTL = 20000
+let worktreesCache = null
+let historyRefreshing = false
+function backgroundHistoryRefresh() {
+  if (historyRefreshing) return
+  historyRefreshing = true
+  setImmediate(() => {
+    try { refreshIndex() } catch {} finally { historyRefreshing = false }
+  })
+}
+function worktreesFor({ repo = null, dirty = true } = {}) {
+  const key = `${repo ?? ''}|${dirty}`
+  if (worktreesCache && worktreesCache.key === key && Date.now() - worktreesCache.at < WORKTREES_TTL) return worktreesCache.data
+  const data = listWorktrees({ repo, dirty, dirtyLimit: 20, repoLimit: 20 })
+  worktreesCache = { key, at: Date.now(), data }
+  return data
+}
+
 const trunkCache = new Map()
 function trunkFor(repo) {
   const hit = trunkCache.get(repo)
@@ -575,7 +597,9 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
     const guest = shared && viewer.role !== 'owner'
     const ownsSession = (s) => !shared || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
     const parts = path.split('/').filter(Boolean) // ['api', ...]
-    if (guest && ['cards', 'floor', 'presets', 'adapters', 'leases', 'trunk'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner of this machine' })
+    // history and worktrees are the whole machine's project map (every path,
+    // every conversation on it): the owner's, never a guest's, as a group
+    if (guest && ['cards', 'floor', 'presets', 'adapters', 'leases', 'trunk', 'history', 'worktrees'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner of this machine' })
     try {
       if (req.method === 'GET' && path === '/api/health') {
         const you = { ...viewer, share: { on: shared, people: shared ? share.people.length : 0 } }
@@ -765,6 +789,61 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           sse.broadcast('sessions', (v) => viewFor(v))
           return send(res, 200, { removed: id, worktree })
         }
+      }
+      // ---- history: the read-only index over every agent's own store ----
+      if (parts[1] === 'history') {
+        const q = url.searchParams
+        const int = (v, def, max) => { const n = parseInt(v ?? '', 10); return Number.isFinite(n) && n >= 0 ? Math.min(n, max) : def }
+        if (req.method === 'GET' && parts.length === 2) {
+          const provider = q.get('provider') || null
+          if (provider && provider.split(',').some((p) => !PROVIDER_NAMES.includes(p.trim()))) return send(res, 400, { error: `unknown provider in "${provider}" (${PROVIDER_NAMES.join('|')})` })
+          const tri = (v) => (v === '1' || v === 'true' ? true : v === '0' || v === 'false' ? false : null)
+          const explicitRefresh = tri(q.get('refresh')) === true
+          let refreshArg = null
+          if (!explicitRefresh) {
+            const idx = readIndex()
+            if (idx) {
+              const age = idx.refreshed_at ? Date.now() - Date.parse(idx.refreshed_at) : Infinity
+              if (age > 60000) backgroundHistoryRefresh()
+              refreshArg = false
+            }
+          } else {
+            refreshArg = true
+          }
+          return send(res, 200, listHistory({
+            provider, repo: q.get('repo') || null, search: q.get('search') || null,
+            before: q.get('before') || null,
+            // never the whole index in one response: a page is 1 to 200 rows
+            limit: Math.max(1, int(q.get('limit'), 50, 200)), offset: int(q.get('offset'), 0, 1e6),
+            managed: tri(q.get('managed')), live: tri(q.get('live')), includeHidden: tri(q.get('hidden')) === true,
+            refresh: refreshArg,
+          }))
+        }
+        if (req.method === 'GET' && parts[2] === 'providers') return send(res, 200, { providers: providerSupport() })
+        if (req.method === 'POST' && parts[2] === 'refresh') {
+          const body = await readBody(req)
+          const t = Date.now()
+          try {
+            const r = refreshIndex({ force: body.full === true })
+            return send(res, 200, { ms: Date.now() - t, refreshed_at: r.index.refreshed_at, stats: r.stats })
+          } catch (err) { return send(res, 409, { error: `refresh did not run: ${err.message}` }) }
+        }
+        if (req.method === 'GET' && parts.length === 3) {
+          // the id is a lookup key, never a path: findRecord compares strings,
+          // and the transcript it names is read only from inside a known store
+          let rec
+          try { rec = findRecord(decodeURIComponent(parts[2]), { refresh: false }) } catch (err) {
+            if (err instanceof HistoryInputError) return send(res, 400, { error: err.message })
+            throw err
+          }
+          if (!rec) return send(res, 404, { error: `no conversation matches ${parts[2]}` })
+          return send(res, 200, recordDetail(rec, { messages: int(q.get('messages'), 8, 50) }))
+        }
+        return send(res, 404, { error: 'not found' })
+      }
+      if (req.method === 'GET' && path === '/api/worktrees') {
+        const q = url.searchParams
+        return send(res, 200, worktreesFor({ repo: q.get('repo') || null, dirty: q.get('dirty') !== '0' }))
       }
       if (req.method === 'GET' && path === '/api/floor') return send(res, 200, floor(listCards()))
       if (req.method === 'GET' && path === '/api/trunk') return send(res, 200, trunk(listCards(), parseSince(url.searchParams.get('since'))))

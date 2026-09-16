@@ -11,19 +11,32 @@ const PATTERNS = [
   ['Anthropic key (sk-ant-)', /(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{8,}/g],
   ['DashClaw key (oc_live_)', /(?<![A-Za-z0-9_-])oc_live_[a-f0-9]\w*/g],
   ['bearer token', /Bearer\s+[A-Za-z0-9._-]{16,}/g],
-  ['GitHub token (ghp_)', /(?<![A-Za-z0-9_-])ghp_[A-Za-z0-9]{20,}/g],
-  ['GitHub server token (ghs_)', /(?<![A-Za-z0-9_-])ghs_[A-Za-z0-9]{20,}/g],
+  ['GitHub token (gh[pousr]_)', /(?<![A-Za-z0-9_-])gh[pousr]_[A-Za-z0-9]{20,}/g],
   ['GitHub fine-grained token (github_pat_)', /(?<![A-Za-z0-9_-])github_pat_[A-Za-z0-9_]{20,}/g],
   ['AWS key (AKIA)', /(?<![A-Za-z0-9_-])AKIA[0-9A-Z]{12,}/g],
-  ['Slack token (xox)', /(?<![A-Za-z0-9_-])xox[bp]-\S*/g],
+  ['Slack token (xox/xapp)', /(?<![A-Za-z0-9_-])(?:xox[baprs]|xapp)-\S+/g],
   ['key=value secret', /api[_-]?key\s*[=:]\s*\S+/gi],
+  // shapes a discovered transcript from another agent carries that the list
+  // above missed (measured 2026-09-16: 15 of 18 common shapes went through)
+  ['Stripe key (sk_live_/rk_live_)', /(?<![A-Za-z0-9_-])[sr]k_(?:live|test)_[A-Za-z0-9]{8,}/g],
+  ['Google API key (AIza)', /(?<![A-Za-z0-9_-])AIza[0-9A-Za-z_-]{30,}/g],
+  ['xAI key (xai-)', /(?<![A-Za-z0-9_-])xai-[A-Za-z0-9]{16,}/g],
+  ['npm token (npm_)', /(?<![A-Za-z0-9_-])npm_[A-Za-z0-9]{20,}/g],
+  ['GitLab token (glpat-)', /(?<![A-Za-z0-9_-])glpat-[A-Za-z0-9_-]{16,}/g],
+  ['Hugging Face token (hf_)', /(?<![A-Za-z0-9_-])hf_[A-Za-z0-9]{20,}/g],
+  ['JWT', /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g],
+  ['private key block', /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g],
+  ['basic auth header', /Basic\s+[A-Za-z0-9+/=]{16,}/g],
+  ['URL with credentials', /(?<=[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s@/]{4,}(?=@)/gi],
+  ['env-style secret assign', /(?:[A-Za-z0-9_]*_(?:key|token|secret|password)|aws_secret_access_key)\s*[=:]\s*["']?[^\s"',;]{8,}/gi],
+  ['password=value', /\b(?:password|passwd)\s*[=:]\s*["']?[^\s"',;]{8,}/gi],
 ]
 
 export const SECRET_RES = PATTERNS.map(([, re]) => re)
 // non-global copies for `.test()` (a /g regex carries lastIndex state)
 export const SECRET_PATTERNS = PATTERNS.map(([name, re]) => [name, new RegExp(re.source, re.flags.replace('g', ''))])
 
-const ENV_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY', 'DASHCLAW_API_KEY', 'BATON_TOKEN', 'GITHUB_TOKEN', 'GH_TOKEN']
+const ENV_KEYS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY', 'DASHCLAW_API_KEY', 'LEG_TOKEN', 'BATON_TOKEN', 'LEG_LICENSE_PRIVATE_KEY', 'BATON_LICENSE_PRIVATE_KEY', 'GITHUB_TOKEN', 'GH_TOKEN', 'STRIPE_SECRET_KEY', 'STRIPE_TEST_SECRET_KEY', 'RESEND_API_KEY', 'NPM_TOKEN']
 let envValues = null
 function heldValues() {
   if (envValues) return envValues

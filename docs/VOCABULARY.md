@@ -47,6 +47,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `handoff` | the switch happened: from, to, reason, bundle id |
 | `all_out` | every option is walled; the resets are printed and the terminal waits for the first one (`ended` with "quit while waiting" if Ctrl-C or End cuts the wait short, exit 3) |
 | `agent_exit` | the agent process exited, with its code |
+| `continued` | the session was started by `leg history continue` on a conversation the agent's own store holds; `session.json` carries `continued_from: { id, provider, native_id }` |
 | `ended` | the session ended |
 | `lost` | the runner pid is gone; the session was marked `lost` |
 | `error` | a spawn error, a tap error, a failed bundle checkpoint, or an error the agent reported |

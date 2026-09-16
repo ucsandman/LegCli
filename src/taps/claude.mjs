@@ -60,11 +60,12 @@ function textOf(content) {
   return ''
 }
 
-// Last human/assistant messages from a Claude Code transcript (jsonl).
-export function transcriptTail(path, limit = 8) {
-  if (!path || !existsSync(path)) return []
+// Human/assistant messages from Claude Code transcript lines (jsonl). Shared
+// with history discovery, which hands in the tail of a file it never reads whole.
+export function messagesFromLines(lines, limit = 8) {
+  if (!(limit > 0)) return []
   const out = []
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
+  for (const line of lines) {
     if (!line) continue
     let j
     try { j = JSON.parse(line) } catch { continue }
@@ -75,6 +76,12 @@ export function transcriptTail(path, limit = 8) {
     out.push({ role: j.type, text: text.slice(0, 1500), ts: j.timestamp ?? null })
   }
   return out.slice(-limit)
+}
+
+// Last human/assistant messages from a Claude Code transcript (jsonl).
+export function transcriptTail(path, limit = 8) {
+  if (!path || !existsSync(path)) return []
+  return messagesFromLines(readFileSync(path, 'utf8').split('\n'), limit)
 }
 
 export function firstPrompt(path) {

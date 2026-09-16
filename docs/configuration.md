@@ -200,6 +200,7 @@ Not meant for normal use; documented for completeness.
 |----------|---------|---------|
 | `LEG_SKIP_KILL` | set to `1` to make the supervisor skip actually killing a leg's process (used by tests that need an "unkillable agent") | `src/runner.mjs` |
 | `LEG_SERVER_SCRIPT` | override the server script path the launcher spawns | `src/launcher.mjs` |
+| `COPILOT_HOME` | where `leg history` looks for the Copilot CLI store instead of `~/.copilot` (Claude, Codex and Grok use their own `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME`; Antigravity has no variable and is found under the OS home) | `src/history/providers/copilot.mjs` |
 
 ## Network exposure
 

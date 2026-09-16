@@ -15,6 +15,19 @@ const CASES = [
   ['AKIA', fake('AKIA', 'ABCDEFGHIJKL1234')],
   ['xoxb', fake('xoxb-', '1234-5678-abcdefgh')],
   ['api_key=', fake('api_key=', 'whatever-secret')],
+  ['sk_live_', `stripe ${fake('sk_live_', 'abcdefgh12345678')}`],
+  ['AIza', fake('AIza', 'abcdefgh12345678abcdefgh12345678ab')],
+  ['xai-', fake('xai-', 'abcdefgh12345678abcdefgh')],
+  ['npm_', fake('npm_', 'abcdefgh12345678abcdefgh')],
+  ['glpat-', fake('glpat-', 'abcdefgh12345678abcd')],
+  ['hf_', fake('hf_', 'abcdefgh12345678abcdefgh')],
+  ['JWT', `jwt ${fake('eyJ', 'abcdefgh12345678')}.${fake('eyJ', 'abcdefgh12345678')}.${fake('', 'abcdefgh12345678')}`],
+  ['private key block', `${['-----BEGIN', 'PRIVATE KEY-----'].join(' ')}\n${fake('', 'abcdefgh12345678')}\n${['-----END', 'PRIVATE KEY-----'].join(' ')}`],
+  ['Basic auth', `Authorization: ${fake('Basic ', 'abcdefgh12345678abcd')}`],
+  ['url credentials', `postgres://user:${fake('', 'whatever-secret')}@db.example/app`],
+  ['password=', fake('password=', 'whatever-secret1')],
+  ['gho_', fake('gho_', 'abcdefghijklmnopqrstuvwxyz1234')],
+  ['xapp-', fake('xapp-', '1234-5678-abcdefgh')],
 ]
 
 for (const [name, line] of CASES) {
@@ -27,6 +40,8 @@ for (const [name, line] of CASES) {
 
 test('scrub leaves ordinary lines alone and SECRET_PATTERNS are non-global (safe for .test)', () => {
   assert.equal(scrub('leg exited code 0: completed'), 'leg exited code 0: completed')
+  assert.equal(scrub('const token = session.token'), 'const token = session.token')
+  assert.equal(scrub('postgres://user:secret1234@db.example/app'), 'postgres://user:[REDACTED]@db.example/app')
   for (const [, re] of SECRET_PATTERNS) assert.equal(re.global, false)
   const [, sk] = SECRET_PATTERNS.find(([n]) => n.startsWith('api key'))
   assert.equal(sk.test(fake('sk-')), true)

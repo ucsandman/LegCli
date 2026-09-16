@@ -391,6 +391,20 @@ in [VOCABULARY.md](VOCABULARY.md). Board routes: `GET /api/sessions`,
 `POST /api/sessions/:id/end`, `DELETE /api/sessions/:id`, with the list pushed
 as the SSE `sessions` event (source: src/server.mjs, src/board/sessions.js).
 
+### History index
+
+`<LEG_HOME>/history/index.json` is the one file `leg history` writes: per
+provider, per transcript, size, mtime and a small scrubbed record (source:
+src/history/index.mjs). What each provider reads from its CLI's own store,
+with the observed file and field names, is the header of each
+`src/history/providers/<name>.mjs`; the support matrix and the resume
+commands quoted from each CLI's `--help` (observed-live 2026-09-16: `claude
+--resume <id>`, `codex resume <id>`, `grok --resume <id>`, `agy --conversation
+<id>`; copilot has none Leg has verified) are in [history.md](history.md).
+Board routes, owner only: `GET /api/history`, `GET /api/history/:id`,
+`GET /api/history/providers`, `POST /api/history/refresh`,
+`GET /api/worktrees` (source: src/server.mjs, src/board/history.js).
+
 ## Limit signals
 
 Recorded in `fixtures/limits/<group>/<id>.json` and classified by

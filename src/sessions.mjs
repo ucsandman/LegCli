@@ -85,6 +85,15 @@ export function updateSession(id, patch, { event } = {}) {
     const delta = typeof patch === 'function' ? patch(cur) : patch
     const next = { ...cur, ...delta, updated_at: now() }
     if (delta.limits && cur.limits) next.limits = { ...cur.limits, ...delta.limits }
+    // every agent conversation this session has been: a hand-off overwrites
+    // agent_session_id with the next agent's, and history (src/history) still
+    // needs to know the earlier legs were this session's too
+    if (delta.agent_session_id && delta.agent_session_id !== cur.agent_session_id) {
+      const seen = cur.agent_sessions ?? []
+      if (!seen.some((x) => x.agent === next.agent && x.agent_session_id === delta.agent_session_id)) {
+        next.agent_sessions = [...seen, { agent: next.agent, agent_session_id: delta.agent_session_id, transcript_path: delta.transcript_path ?? null, at: now() }].slice(-24)
+      }
+    }
     writeJsonAtomic(join(sessionDir(id), 'session.json'), next)
     if (event) appendEvent(id, event)
     return next

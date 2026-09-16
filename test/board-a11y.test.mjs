@@ -17,6 +17,7 @@ const INDEX_HTML = readFileSync(join(ROOT, 'src/board/index.html'), 'utf8')
 const FLOOR_HTML = readFileSync(join(ROOT, 'src/board/floor.html'), 'utf8')
 const BOARD_JS = readFileSync(join(ROOT, 'src/board/board.js'), 'utf8')
 const FLOOR_JS = readFileSync(join(ROOT, 'src/board/floor.js'), 'utf8')
+const HISTORY_JS = readFileSync(join(ROOT, 'src/board/history.js'), 'utf8')
 
 // ---- WCAG relative luminance / contrast ----
 function hexToRgb(hex) {
@@ -229,6 +230,7 @@ function checkJsControls(t, src, name) {
 
 test('board.js: every control it creates has an accessible name', (t) => checkJsControls(t, BOARD_JS, 'board.js'))
 test('floor.js: every control it creates has an accessible name', (t) => checkJsControls(t, FLOOR_JS, 'floor.js'))
+test('history.js: every control it creates has an accessible name', (t) => checkJsControls(t, HISTORY_JS, 'history.js'))
 
 // .chip is flat by design: no padding, no background, colour only. Anything
 // that sets one beside other text therefore has to supply the gap itself, or
@@ -263,7 +265,7 @@ test('the file row carries the class its gap is written against', () => {
 // listed by name with a reason rather than left to a grep.
 const NO_RULE_NEEDED = new Set([
   // queried from JS as selectors, never styled
-  'region-settings', 'region-terminals', 'region-finished', 'region-trunk',
+  'region-settings', 'region-terminals', 'region-finished', 'region-trunk', 'region-history',
   'disclosure', 'default-order', 'finished-list', 'trunk-list',
   'region', 'region-title', 'lease-blocked-row',
   // floor table columns: the cells are styled through table/th/td
@@ -289,7 +291,7 @@ test('every class the board puts in the DOM has a rule in board.css', () => {
 
   const SESSIONS_JS = readFileSync(join(ROOT, 'src/board/sessions.js'), 'utf8')
   const sources = {
-    'board.js': BOARD_JS, 'sessions.js': SESSIONS_JS, 'floor.js': FLOOR_JS,
+    'board.js': BOARD_JS, 'sessions.js': SESSIONS_JS, 'floor.js': FLOOR_JS, 'history.js': HISTORY_JS,
     'index.html': INDEX_HTML, 'floor.html': FLOOR_HTML,
   }
   const missing = []

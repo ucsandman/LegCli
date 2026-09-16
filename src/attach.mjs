@@ -36,6 +36,7 @@ import { captureLive } from './live-capture.mjs'
 import { waitForReset, fmtCountdown } from './wait.mjs'
 import { readPreferences, normalizeHandoffOrder, resolveAutoApprove } from './preferences.mjs'
 import { prepareHarnessForHandoff, harnessLine } from './harness/index.mjs'
+import { insideKnownStore } from './history/index.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
 function resolveServer() {
@@ -269,6 +270,13 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
 
   // taps
   let rollout = null; let tail = null
+  // a continued codex thread appends to its old rollout, which findRollout
+  // (newest file since this leg started) would never pick: bind it up front
+  // and read only what the thread writes from here on
+  if (agent === 'codex' && !prompt && session.transcript_path && session.agent_session_id && existsSync(session.transcript_path)) {
+    rollout = { path: session.transcript_path, meta: { id: session.agent_session_id } }
+    tail = createTail(rollout.path, { from: logSize(rollout.path) })
+  }
   let polls = 0; let warned = false
   let stop = null
   const done = new Promise((res) => { stop = res })
@@ -536,14 +544,18 @@ function prepareLegHarness({ sid, from, to }) {
 }
 
 // ---- the command ----
-export async function attach(agent, args = [], { open = true } = {}) {
+// `cwd` and `continued` are how `leg history continue` starts a leg on a
+// conversation the agent's own store holds (src/history/cli.mjs): the leg runs
+// in that conversation's folder, shares the checkout (its files are already
+// there), and the session record carries the agent's id from the start.
+export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null, continued = null } = {}) {
   if (!SUPERVISED_AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy|grok)`)
   // the paid gate: a valid key, or no session (exit 4). The bare agent is never
   // affected; only what Leg adds is licensed.
   const ent = entitlement()
   if (!allows(ent, 'run')) { say(describeLicense(ent)); return 4 }
   // --no-worktree is Leg's flag, not the agent's: it never passes through
-  const shareCheckout = args.includes('--no-worktree')
+  const shareCheckout = args.includes('--no-worktree') || Boolean(continued)
   args = args.filter((a) => a !== '--no-worktree')
   let autoApproveCli = null
   if (args.includes('--no-auto-approve')) {
@@ -554,7 +566,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
     args = args.filter((a) => a !== '--auto-approve')
   }
   const autoApprove = resolveAutoApprove({ cliFlag: autoApproveCli })
-  const cwd = process.cwd()
+  const cwd = cwdOpt ? realPath(cwdOpt) : process.cwd()
   const board = await ensureBoard({ open })
   let accounts = readAccounts()
   const installed = await installedAgents()
@@ -587,6 +599,13 @@ export async function attach(agent, args = [], { open = true } = {}) {
   // `git worktree add` still leaves a card (with a Remove button), never a
   // silent orphan under .baton-worktrees with no record and no button
   createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain, worktree: null, owner: whoami(), handoffOrder, installed, runtimeCapabilities: [HANDOFF_ORDER_CAPABILITY] })
+  if (continued) {
+    // the agent's own id and transcript are known before the first turn, so
+    // history dedups this leg against the conversation it continues at once
+    const safeTranscript = (continued.transcript_path && insideKnownStore(continued.transcript_path)) ? continued.transcript_path : null
+    updateSession(sid, { agent_session_id: continued.native_id ?? null, transcript_path: safeTranscript, task: continued.title ?? null, continued_from: { id: continued.id, provider: continued.provider, native_id: continued.native_id ?? null } },
+      { event: { type: 'continued', summary: `continuing ${continued.id}${continued.title ? `: ${String(continued.title).slice(0, 120)}` : ''}` } })
+  }
   let iso = null
   if (g.repo && !shareCheckout) {
     try { iso = isolate({ g, cwd, sid }) } catch (err) { say(`could not make a worktree (${String(err.message).split('\n')[0].slice(0, 200)}); sharing the checkout`); try { removeWorktree(g.repo, sid) } catch {} }

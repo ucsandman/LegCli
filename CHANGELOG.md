@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- **Every conversation on this machine (`leg history`, `leg worktrees`, the
+  board's Conversations cell).** One read-only index over the conversations
+  Claude Code, Codex, Grok, Antigravity and Copilot CLI keep in their own
+  stores, plus Leg's own sessions, deduplicated (a session Leg started and
+  the same conversation in the agent's store are one row, marked `leg`; the
+  rest are `external`). List, filter by agent, repository or text, open one
+  (its last messages, read from the tail of the transcript only when asked),
+  and `leg history continue <id>` to start a supervised leg on it where the
+  installed CLI documents resume-by-id (claude, codex, grok, agy; copilot
+  lists and reads but is not an agent Leg runs). Nothing in an agent's store
+  is moved or written; Leg writes only `~/.leg/history/index.json`, refreshed
+  incrementally by size and mtime, and never opens a SQLite file. Every
+  checkout Leg can see, git's and its own and the ones conversations ran in,
+  with owner, uncommitted count, orphaned, stale and missing verdicts, read
+  only. On a shared board the whole group is the owner's. Redaction learned
+  the shapes another agent's transcript carries (Stripe, Google, xAI, npm,
+  GitLab, Hugging Face keys, JWTs, private-key blocks, basic auth, URL
+  credentials, `password=`), and the board token joined the values it strips.
+  Support matrix and every file read: docs/history.md.
+
 ## 0.9.0 (2026-09-16)
 
 - **The portable harness (`leg harness`), off by default.** A hand-off can now

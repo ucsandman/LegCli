@@ -317,7 +317,7 @@ before saving.
 
 ## The ledger
 
-Below the terminals, three counts sitting on the ground with no panel, because a
+Below the terminals, four counts sitting on the ground with no panel, because a
 raised surface here would compete with the terminals that are live. Each is a
 heading, a line of detail and a button that opens the detail below the row.
 
@@ -334,6 +334,25 @@ heading, a line of detail and a button that opens the detail below the row.
   visual weight as the live terminals, so the loudest thing on the page was a
   commit from eleven days ago. With nothing landed it reads `Nothing landed yet`
   and explains what Land does.
+- **N conversations**, every coding-agent conversation on this machine, `799
+  claude, 198 codex, 92 agy, 14 grok, 5 copilot; looked 2m ago`: the sessions
+  Leg started and the ones the agents keep in their own stores, read from
+  there and never moved ([history.md](history.md)). **Browse N** opens a
+  drawer with filters (agent, search, repository, only what Leg started), a
+  page of fifty rows newest first and **Show 50 more**. A row is the title as a
+  button, then the agent chip, `leg` or `external` (`, live` when a process is
+  still on it), `repo on branch`, the prompt count and the short id. The title
+  opens the conversation in place: agent, who started it, folder, repository,
+  worktree, times, prompts, transcript path, id, the `leg history continue
+  <id>` command with **Copy the continue command** where the agent can resume
+  by id (or the reason it cannot), **Copy folder path**, and the last eight
+  messages newest first, each redacted the way the terminal drawer's are. Below
+  the rows, **Checkouts**: every worktree Leg can see with its repo and branch,
+  owner (the checkout itself, a Leg session, a Leg card, or not Leg's), how
+  many conversations point at it, and `missing`, `orphaned`, `stale`, `clean`
+  or `N uncommitted`. Nothing here is pushed over the live stream; the count
+  re-reads itself once a minute while the drawer is closed. On a shared board
+  a guest sees `The owner of this machine sees them.` and nothing else.
 - **N background tasks**, the card runtime below, as a count with **View N
   cards**, plus **New card**. With none it reads `Nothing is queued. Leg starts
   the next login only when a terminal hands off.`
