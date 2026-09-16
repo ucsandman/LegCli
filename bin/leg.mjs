@@ -109,23 +109,38 @@ async function main() {
   const args = parseArgs(rest)
   if (group === '--version' || group === '-v') return out(VERSION)
   if (group === '🦿' || group === 'prosthetic' || group === 'easter-egg') {
-    out(' 🦿 LegCli — The mechanical relay runner for coding agents.')
-    out(`
-.--------.
-|  ____  |
-| |    | |
-| |____| |
-'--------'
-    ||
- .--||--.
- |  ||  |   knee servo
- '--||--'
-    ||
-    ||
- ___||___
-|________|
-`)
-    out('   Passing the leg to the next runner when limits hit.')
+    const ORANGE = '\x1b[38;5;208m'
+    const RESET = '\x1b[0m'
+    const LEG_ART = [
+      '         ███████',
+      '           ███████',
+      '             ███████',
+      '               ███████',
+      '                 ███████',
+      '                   ███████',
+      '                     ███████',
+      '                       ███████',
+      '                         ███████',
+      '                           ███████',
+      '                              ███████',
+      '                            ███████████',
+      '                           █████████████',
+      `                           ██████(${ORANGE}00${RESET})███  ← knee servo`,
+      '                           █████████████',
+      '                            ███████████',
+      '                              ███████',
+      '                             █████',
+      '                           █████',
+      '                         █████',
+      '                       █████',
+      '                     █████',
+      '                    █████',
+      '            ██████████████████████████',
+      '            ████ ████ ████ ████ ████ ████',
+    ].join('\n')
+    out('🦿 LegCli: the mechanical relay runner for coding agents.\n')
+    out(LEG_ART)
+    out('\nPassing the leg to the next runner when limits hit.')
     return
   }
   if (SUPERVISED_AGENTS.includes(group)) {
