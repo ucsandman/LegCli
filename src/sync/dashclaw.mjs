@@ -1,5 +1,5 @@
 // dashclaw sync — records every ledger event as a DashClaw action over native
-// http/https (LESSONS 07-12: no global fetch). Off unless BATON_SYNC_DASHCLAW=1
+// http/https (LESSONS 07-12: no global fetch). Off unless LEG_SYNC_DASHCLAW=1
 // and DASHCLAW_URL + DASHCLAW_API_KEY are set. Field names come from
 // DashClaw's validator (app/lib/validate.js ACTION_RECORD_SCHEMA): agent_id,
 // action_type and declared_goal are required; status is one of running,
@@ -26,11 +26,11 @@ const STATUS_BY_TYPE = {
 
 // One ledger event → one action record (the request body).
 export function actionForEvent(ev, card = null) {
-  const actor = ev.actor ?? { type: 'baton' }
-  const agent = actor.type === 'agent' ? `baton/${actor.adapter}` : actor.type === 'human' ? `baton/human:${actor.id}` : 'baton'
+  const actor = ev.actor ?? { type: 'leg' }
+  const agent = actor.type === 'agent' ? `leg/${actor.adapter}` : actor.type === 'human' ? `leg/human:${actor.id}` : 'leg'
   const body = {
     agent_id: agent,
-    action_type: `baton_${ev.type}`,
+    action_type: `leg_${ev.type}`,
     declared_goal: String(ev.summary ?? ev.type).slice(0, 2000),
     status: STATUS_BY_TYPE[ev.type] ?? 'completed',
     reversible: true,

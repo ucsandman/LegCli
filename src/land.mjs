@@ -213,15 +213,15 @@ export async function applyLandFix(sessionId, action, opts = {}) {
   if (action === 'commit') {
     git(wt, ['add', '-A'])
     const verify = (process.env.LEG_COMMIT_VERIFY || process.env.BATON_COMMIT_VERIFY) === '1' ? [] : ['--no-verify']
-    const msg = opts.message || 'baton: save work before landing'
-    const r = git(wt, ['-c', 'user.email=baton@localhost', '-c', 'user.name=baton', 'commit', '-q', ...verify, '-m', msg])
+    const msg = opts.message || 'leg: save work before landing'
+    const r = git(wt, ['-c', 'user.email=leg@localhost', '-c', 'user.name=leg', 'commit', '-q', ...verify, '-m', msg])
     if (!r.ok) throw new Error(`git commit failed: ${r.err || r.out}`)
     appendEvent(sessionId, { type: 'fix_applied', by: opts.by || 'local', summary: 'committed uncommitted work in worktree' })
     return { ok: true, action: 'commit' }
   }
 
   if (action === 'stash') {
-    const r = git(wt, ['stash', '-u', '-m', 'baton: stash before landing'])
+    const r = git(wt, ['stash', '-u', '-m', 'leg: stash before landing'])
     if (!r.ok) throw new Error(`git stash failed: ${r.err || r.out}`)
     appendEvent(sessionId, { type: 'fix_applied', by: opts.by || 'local', summary: 'stashed uncommitted changes in worktree' })
     return { ok: true, action: 'stash' }
@@ -241,8 +241,8 @@ export async function applyLandFix(sessionId, action, opts = {}) {
   if (action === 'commit_directly') {
     git(wt, ['add', '-A'])
     const verify = (process.env.LEG_COMMIT_VERIFY || process.env.BATON_COMMIT_VERIFY) === '1' ? [] : ['--no-verify']
-    const msg = opts.message || `baton: commit directly on ${s.branch || s.worktree?.base || 'main'}`
-    const r = git(wt, ['-c', 'user.email=baton@localhost', '-c', 'user.name=baton', 'commit', '-q', ...verify, '-m', msg])
+    const msg = opts.message || `leg: commit directly on ${s.branch || s.worktree?.base || 'main'}`
+    const r = git(wt, ['-c', 'user.email=leg@localhost', '-c', 'user.name=leg', 'commit', '-q', ...verify, '-m', msg])
     if (!r.ok) throw new Error(`git commit failed: ${r.err || r.out}`)
     appendEvent(sessionId, { type: 'fix_applied', by: opts.by || 'local', summary: `committed directly on ${s.branch || 'main'}` })
     return { ok: true, action: 'commit_directly' }
@@ -522,7 +522,7 @@ export async function landSession(session, { by = 'local', autoCommit = true, ig
   if (autoCommit && existsSync(path)) {
     ensureExcludeEntries(repo)
     const task = String(session.task ?? 'terminal session').split('\n')[0].slice(0, 60)
-    commitWorktree(path, `baton: ${session.agent ?? 'agent'} ${id.split('-').pop()}: ${task}`)
+    commitWorktree(path, `leg: ${session.agent ?? 'agent'} ${id.split('-').pop()}: ${task}`)
   }
 
   const cl = canLand(session, { ignoreInFlight: true, ignoreRunning, ignoreTargetActive })

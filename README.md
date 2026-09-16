@@ -1,4 +1,4 @@
-# leg
+# Leg
 
 **Type `leg claude`, `leg codex`, `leg agy` or `leg grok` instead of the bare command. You get the same interactive agent; Leg opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.**
 
@@ -384,7 +384,7 @@ happens after you run `leg accounts add`; that is your call.
   and key shapes from every line regardless.
 - **`leg uninstall --yes`**: removes `~/.leg` (sessions, usage, extra
   account directories with their junctions, v0.1 cards, the board pidfile) and
-  nothing else; then `npm rm -g legcli`.
+  nothing else; then `npm rm -g @ucsandman/legcli`.
 
 ## CLI reference
 

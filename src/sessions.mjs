@@ -1,4 +1,4 @@
-// sessions — the store behind `baton claude|codex|agy`. One directory per
+// sessions — the store behind `leg claude|codex|agy`. One directory per
 // interactive terminal session under $BATON_HOME/sessions/<id>/:
 //   session.json   the live record the board renders (atomic writes)
 //   events.jsonl   timeline (started, turn, warning, limit, handoff, ended)
@@ -44,7 +44,7 @@ export function listSessions() {
 
 export function isActive(s) { return ACTIVE.includes(s?.status) }
 
-// The checkout this session's files live in: its own worktree when Baton gave
+// The checkout this session's files live in: its own worktree when Leg gave
 // it one (repo stays the main checkout, for grouping and landing), else the repo.
 export function workRoot(s) { return s?.worktree?.path ?? s?.repo ?? s?.cwd ?? null }
 

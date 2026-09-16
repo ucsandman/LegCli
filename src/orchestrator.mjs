@@ -26,13 +26,16 @@ import * as humanStation from './stations/human.mjs'
 // the merge queue). Each handler gets the orchestrator's helpers as `ops`.
 const KIND_HANDLERS = { agent: agentStation, test: testStation, human: humanStation }
 
-const POLL_MS = Number(process.env.BATON_POLL_MS || 2000)
+const POLL_MS = Number(process.env.LEG_POLL_MS || process.env.BATON_POLL_MS || 2000)
 const WAITING = ['done', 'failed', 'killed', 'paused', 'waiting_human', 'needs_approval']
 // Patchable card keys the chain machine may change; everything else is a
 // named ledger flag.
 const PATCH_KEYS = ['pipeline', 'leases', 'land_attempts', 'bounce_reason', 'kill_requested', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'pr_url']
 
-const log = (msg) => { if (process.env.BATON_QUIET !== '1') process.stderr.write(`[baton] ${msg}\n`) }
+const log = (msg) => {
+  const quiet = (process.env.LEG_QUIET === '0' || process.env.BATON_QUIET === '0') ? false : (process.env.LEG_QUIET === '1' || process.env.BATON_QUIET === '1')
+  if (!quiet) process.stderr.write(`[leg] ${msg}\n`)
+}
 
 // Persist a chain transition: card fields via ledger update, events via append.
 export function apply(id, before, result, actor = BATON_ACTOR) {
@@ -70,7 +73,7 @@ function latestRun(id) {
 }
 
 // A run whose verdict no orchestrator has consumed: the latest run has no
-// settled_at. Happens after `baton down` (agents killed, the supervisor wrote
+// settled_at. Happens after `leg down` (agents killed, the supervisor wrote
 // its verdict, the server that would apply it was already gone) or a crashed
 // server. runCard re-attaches to it instead of launching a fresh leg.
 export function unsettledRun(id) {
@@ -176,7 +179,7 @@ async function waitForRun(id, n, { pollMs = POLL_MS } = {}) {
 function changedFiles(worktree) {
   const r = spawnSync('git', ['status', '--porcelain'], { cwd: worktree, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
   if (r.status !== 0) return []
-  return r.stdout.split(/\r?\n/).filter(Boolean).map((l) => l.slice(3).trim()).filter((f) => f && !f.startsWith('.baton'))
+  return r.stdout.split(/\r?\n/).filter(Boolean).map((l) => l.slice(3).trim()).filter((f) => f && !f.startsWith('.baton') && !f.startsWith('.leg'))
 }
 
 function diffStat(worktree) {

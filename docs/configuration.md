@@ -99,7 +99,7 @@ Off unless explicitly enabled; a sync failure never blocks or fails a card
 ## Seller and checkout site
 
 These are for the checkout/key-delivery site and its deployment helpers, not
-normal Leg CLI use.
+normal Leg use.
 
 | variable | meaning | read in |
 |----------|---------|---------|

@@ -1,7 +1,7 @@
-// share — optional multiplayer for the board, off until `baton share on`
+// share — optional multiplayer for the board, off until `leg share on`
 // writes $BATON_HOME/share.json. With it on, the board binds the Tailscale or
 // LAN address, every human has a name and their own token (kept as a sha256
-// hash: a token is printed once and `baton share rotate` issues a new one),
+// hash: a token is printed once and `leg share rotate` issues a new one),
 // and every session belongs to the human whose terminal started it
 // (`BATON_PERSON`, else the owner). With it off nothing changes: loopback is
 // open and `BATON_TOKEN` is the only token.

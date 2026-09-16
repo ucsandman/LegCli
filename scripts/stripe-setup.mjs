@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Create (idempotently) the two Baton plans in Stripe, their payment links,
+// Create (idempotently) the two Leg plans in Stripe, their payment links,
 // and the webhook endpoint for the site. Test mode by default, --live for the
 // live account. Secrets never print: the webhook signing secret and the link
 // URLs are written to .env (gitignored); ids and public URLs print.

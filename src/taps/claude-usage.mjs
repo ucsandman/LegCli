@@ -3,7 +3,7 @@
 // Why not the status line: Claude Code 2.1.268 renders its built-in status
 // line and does not run a custom `statusLine` command passed via --settings
 // or a project settings file (verified 2026-09-11 with an `echo` command at
-// both levels; hooks from the same --settings file do run). So Baton asks the
+// both levels; hooks from the same --settings file do run). So Leg asks the
 // usage endpoint directly with the OAuth token Claude Code stored at login.
 // The token is read by this process only, sent only to api.anthropic.com,
 // and never written anywhere (the ledger scrubs bearer tokens regardless).

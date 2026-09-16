@@ -194,5 +194,5 @@ writeFileSync(process.env.STUB_DIR + '/agy-' + Date.now() + '.json', JSON.string
     const code = await Promise.race([exited, sleep(5000).then(() => 'timeout')])
     if (code === 'timeout') child.kill()
   }
-  t.diagnostic(stderr.split('\n').filter((line) => line.includes('[baton]')).slice(-8).join('\n'))
+  t.diagnostic(stderr.split('\n').filter((line) => line.includes('[leg]')).slice(-8).join('\n'))
 })

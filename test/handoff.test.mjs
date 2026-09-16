@@ -19,7 +19,7 @@ test('context-handoff-bundle resolves as an argv subprocess and is at least 0.4.
   assert.equal(versionOk('1.0.0'), true)
 })
 
-test('notes carry the four Baton sections under the bundle\'s own headings', () => {
+test('notes carry the four Leg sections under the bundle\'s own headings', () => {
   const notes = buildNotes({ card, station, leg: 0, entry: station.chain[0], run, progress: 'created lib.js\nwrote greet()\n', lastMessage: 'I was about to add the test', changedFiles: ['lib.js', 'test/lib.test.js'], diffStat: ' 2 files changed, 12 insertions(+)' })
   for (const h of ['## Scope', '## Findings', '## Opportunities', '## Open questions', '## Evidence anchors']) assert.ok(notes.includes(h), h)
   for (const s of ['Task:', 'Done so far', 'Diff since leg start', 'Open findings']) assert.ok(notes.includes(s), s)
@@ -40,7 +40,7 @@ test('writeHandoff saves a repo-local bundle in the worktree, validates it, and 
   writeFileSync(join(wt, '.baton', 'PROGRESS.md'), 'created lib.js\nwrote greet()\n')
   writeFileSync(join(wt, 'lib.js'), 'export const greet = (n) => `hi ${n}`\n')
   const h = writeHandoff({ card: c, station, leg: 0, entry: station.chain[0], run, worktree: wt, runDir: null, changedFiles: ['lib.js'], diffStat: '' })
-  assert.match(h.bundle_id, /-baton-card-20260910-1200-demo-build-leg0$/)
+  assert.match(h.bundle_id, /-leg-card-20260910-1200-demo-build-leg0$/)
   assert.ok(existsSync(h.path), 'bundle dir exists')
   for (const f of ['CONTEXT_HANDOFF.md', 'summary.json', 'entities.json', 'relations.json', 'evidence_index.json', 'open_questions.json', 'resume_prompt.txt', 'bundle_metadata.json']) {
     assert.ok(existsSync(join(h.path, f)), f)

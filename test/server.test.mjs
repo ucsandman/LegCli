@@ -274,17 +274,17 @@ test('session record-only removal preserves unmerged and dirty work', async () =
 
   let r = await api(`/api/sessions/${id}`, { method: 'DELETE' })
   assert.equal(r.status, 409, 'unforced remove must not orphan unmerged or dirty work')
-  assert.ok(readSession(id), 'the guarded request keeps the Baton record')
+  assert.ok(readSession(id), 'the guarded request keeps the Leg record')
   assert.match(r.json.error, /uncommitted changes/)
 
   r = await api(`/api/sessions/${id}?keep_worktree=1`, { method: 'DELETE' })
   assert.equal(r.status, 400, 'record-only removal requires explicit force')
-  assert.ok(readSession(id), 'missing force keeps the Baton record')
+  assert.ok(readSession(id), 'missing force keeps the Leg record')
 
   r = await api(`/api/sessions/${id}?force=1&keep_worktree=1`, { method: 'DELETE' })
   assert.equal(r.status, 200)
   assert.equal(r.json.worktree.preserved, true)
-  assert.equal(readSession(id), null, 'only the Baton record is removed')
+  assert.equal(readSession(id), null, 'only the Leg record is removed')
   assert.equal(existsSync(wt.path), true, 'worktree remains')
   assert.equal(existsSync(join(wt.path, 'committed.txt')), true, 'committed file remains')
   assert.equal(existsSync(join(wt.path, 'dirty.txt')), true, 'dirty file remains')

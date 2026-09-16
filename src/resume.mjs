@@ -1,17 +1,18 @@
 // resume — the pointer that cannot describe a picture that is no longer true.
 //
-// `.baton/RESUME.md` is the file humans and other agents open by habit. It used
+// `.leg/RESUME.md` is the file humans and other agents open by habit (legacy
+// `.baton/RESUME.md` is still read). It used
 // to be an unowned convenience copy: written once per hand-off, never touched
 // again, with no stamp and no expiry, so a normally exited terminal left hours
 // old text sitting there looking live.
 //
 // Two rules fix that, and they are the whole module:
-//   1. Every resume file Baton writes carries a stamp of the git state and the
+//   1. Every resume file Leg writes carries a stamp of the git state and the
 //      live terminals it was written against (an HTML comment, invisible in
 //      rendered markdown).
 //   2. Freshness is never remembered — it is recomputed from git at READ time.
 //      A file cannot lie about HEAD to a reader who re-asks git.
-// Baton owns the file: it rewrites it when a session ends and when the board
+// Leg owns the file: it rewrites it when a session ends and when the board
 // starts, so nothing is left describing a terminal that is gone.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
@@ -24,8 +25,8 @@ export const STAMP_PREFIX = '<!-- leg-resume '
 export const LEGACY_STAMP_PREFIX = '<!-- baton-resume '
 const STAMP_SUFFIX = ' -->'
 const STAMP_VERSION = 1
-// Baton's own directories dirty the tree on every write; a reader must not see
-// Baton's bookkeeping as the human's work moving on.
+// Leg's own directories dirty the tree on every write; a reader must not see
+// Leg's bookkeeping as the human's work moving on.
 const LEG_DIRS = /^(\.leg|\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
 const MAX_REASONS = 5
 
@@ -117,7 +118,7 @@ export function readStamp(text) {
   } catch { return null }
 }
 
-// The text without its stamp: what a human reads and what `baton resume` prints.
+// The text without its stamp: what a human reads and what `leg resume` prints.
 export function bodyOf(text) {
   const s = String(text ?? '')
   return readStamp(s) ? s.slice(s.indexOf('\n') + 1).replace(/^\n+/, '') : s
@@ -200,10 +201,10 @@ export function lastHandoffIn(root, sessions = listSessions()) {
 }
 
 function idleBody(last, live) {
-  const lines = ['# Baton: nothing in flight', '']
+  const lines = ['# Leg: nothing in flight', '']
   lines.push(live.length
     ? `No hand-off is waiting to be picked up here. Still live in this checkout: ${live.map((s) => `${s.session_id} (${s.agent})`).join(', ')}.`
-    : 'No Baton terminal is live in this checkout.')
+    : 'No Leg terminal is live in this checkout.')
   lines.push('')
   if (last) {
     const at = last.at ? String(last.at).slice(0, 16).replace('T', ' ') : 'an unrecorded time'
@@ -221,7 +222,7 @@ function idleBody(last, live) {
 }
 
 // The "nothing in flight" pointer. Always writes; the callers that must not
-// create a file in a checkout Baton never handed off in check first.
+// create a file in a checkout Leg never handed off in check first.
 export function writeIdlePointer(root, { sessions = listSessions() } = {}) {
   if (!root) return null
   const dir = existsSync(join(root, '.baton')) && !existsSync(join(root, '.leg')) ? join(root, '.baton') : join(root, '.leg')
@@ -235,7 +236,7 @@ export function writeIdlePointer(root, { sessions = listSessions() } = {}) {
 }
 
 // A session ending must not leave its hand-off sitting there looking live.
-// Only ever rewrites a pointer that already exists: Baton owns RESUME.md where
+// Only ever rewrites a pointer that already exists: Leg owns RESUME.md where
 // it wrote one, and creates none in a checkout it never handed off in.
 export function endSessionPointer(session) {
   const root = workRoot(session)
@@ -243,7 +244,7 @@ export function endSessionPointer(session) {
   return writeIdlePointer(root)
 }
 
-// Board start: every checkout Baton wrote a pointer in gets it recomputed, so a
+// Board start: every checkout Leg wrote a pointer in gets it recomputed, so a
 // terminal that crashed instead of exiting cannot leave a live-looking hand-off
 // behind. A checkout whose terminal really is live keeps its hand-off text.
 // Returns the roots rewritten.
@@ -260,9 +261,9 @@ export function refreshPointers() {
     const v = resumeVerdict(root, { sessions })
     if (v.state === 'fresh') continue
     // The terminal that wrote a hand-off owns it while it is still running: its
-    // text is the live description, and "the repo moved on" is for `baton resume
+    // text is the live description, and "the repo moved on" is for `leg resume
     // --check` to report, not for the board to overwrite. Anything else — a
-    // hand-off from a terminal that is gone, a file no Baton stamped — is
+    // hand-off from a terminal that is gone, a file no Leg stamped — is
     // replaced even when some OTHER terminal happens to be live in the
     // checkout, which is the case that left three day old text sitting there.
     if (v.session?.active) continue
@@ -284,14 +285,14 @@ function describe(list) { return list.map((s) => `${s.id ?? s.session_id} (${s.a
 export function resumeVerdict(cwd, { sessions = listSessions() } = {}) {
   const found = findResume(cwd)
   if (!found) {
-    return { state: 'missing', exit_code: EXIT.missing, root: null, file: null, kind: null, stamp: null, reasons: ['there is no .baton/RESUME.md in this checkout'], summary: 'no resume pointer in this checkout', head: null, dirty: null, live: null, session: null, written_at: null, age_ms: null }
+    return { state: 'missing', exit_code: EXIT.missing, root: null, file: null, kind: null, stamp: null, reasons: ['there is no .leg/RESUME.md in this checkout'], summary: 'no resume pointer in this checkout', head: null, dirty: null, live: null, session: null, written_at: null, age_ms: null }
   }
   const { root, file } = found
   let text = ''
   try { text = readFileSync(file, 'utf8') } catch { /* raced a rewrite */ }
   const stamp = readStamp(text)
   if (!stamp) {
-    return { state: 'unstamped', exit_code: EXIT.unstamped, root, file, kind: null, stamp: null, reasons: ['this file carries no Baton stamp, so its freshness cannot be checked against git'], summary: 'cannot be checked: no Baton stamp', head: null, dirty: null, live: null, session: null, written_at: null, age_ms: null }
+    return { state: 'unstamped', exit_code: EXIT.unstamped, root, file, kind: null, stamp: null, reasons: ['this file carries no Leg stamp, so its freshness cannot be checked against git'], summary: 'cannot be checked: no Leg stamp', head: null, dirty: null, live: null, session: null, written_at: null, age_ms: null }
   }
 
   const now = gitState(root)

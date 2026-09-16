@@ -253,10 +253,10 @@
   }
 
   function formatActor(actor) {
-    if (!actor) return 'baton'
+    if (!actor) return 'leg'
     if (actor.type === 'human') return `human:${actor.id || 'local'}`
     if (actor.type === 'agent') return `agent:${actor.adapter || '?'}`
-    return 'baton'
+    return 'leg'
   }
 
   function baseAdapterName(name) { return String(name || '').replace(/^fake-/, '') }
@@ -1042,7 +1042,7 @@
     for (const a of adapters) adapterSelect.appendChild(el('option', { value: a.name }, [adapterLabel(a)]))
     // Add fallback agent used to default to the first option in the list, which
     // is normally the agent already chosen as First agent: the summary line then
-    // read "Baton tries claude, then agy, then claude", a fallback that cannot
+    // read "Leg tries claude, then agy, then claude", a fallback that cannot
     // fire. rebuildDefaultFallbacks already applies this filter.
     if (!preferred && !first) {
       const used = chosenAdapters(ui)

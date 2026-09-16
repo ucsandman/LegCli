@@ -71,7 +71,7 @@ test('`share on` restarts the board without killing the agents that are running'
     writeFileSync(join(home, 'baton.pid'), pidfileJson())
     baton(['down'], env)
     await sleep(1000)
-    assert.equal(alive(agent.pid), false, '`baton down` still stops the agents')
+    assert.equal(alive(agent.pid), false, '`leg down` still stops the agents')
   } finally {
     agent.kill()
     board.kill()

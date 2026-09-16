@@ -58,7 +58,7 @@ test('build-land: a red test bounces the card to build with the failure in the b
   assert.ok(/tests-red/.test(prompt), 'prompt names the land failure')
   assert.ok(prompt.includes('Why this card came back'))
   // trunk has the landed commit and no broken test
-  assert.match(git(repo, ['log', '--oneline', '-1']), /baton: B/)
+  assert.match(git(repo, ['log', '--oneline', '-1']), /leg: B/)
   assert.ok(!existsSync(join(repo, 'test', 'broken.test.mjs')))
   assert.equal(readFileSync(join(repo, 'b.mjs'), 'utf8').trim(), 'hi')
   const landed = events(home, id).find((e) => e.type === 'landed')
@@ -100,7 +100,7 @@ test('max land attempts → failed with the reason; pr land mode parks the card 
   assert.equal(prCard.station, 'land')
   assert.equal(prCard.pr_url, 'https://example.invalid/pull/7')
   assert.ok(events(home, pr).some((e) => e.type === 'approval_needed' && /pull request opened/.test(e.summary)))
-  assert.doesNotMatch(git(repo, ['log', '--oneline', '-3']), /baton: P/, 'trunk untouched in pr mode')
+  assert.doesNotMatch(git(repo, ['log', '--oneline', '-3']), /leg: P/, 'trunk untouched in pr mode')
   // approve → done
   baton(['card', 'approve', pr], prEnv)
   assert.equal(readCard(home, pr).status, 'done')

@@ -74,13 +74,13 @@ export function printPreflight({ rows }) {
 
 export function plannedProcesses({ port = Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747), bind = process.env.LEG_BIND || process.env.BATON_BIND || '127.0.0.1' } = {}) {
   const procs = [{
-    prefix: 'server', bin: process.execPath, argv: [SERVER], env: { BATON_PORT: String(port), BATON_BIND: bind },
+    prefix: 'server', bin: process.execPath, argv: [SERVER], env: { LEG_PORT: String(port), LEG_BIND: bind, BATON_PORT: String(port), BATON_BIND: bind },
     note: 'board + API + scheduler + merge queue',
   }]
   const on = enabledSyncs()
   const syncs = [
-    { prefix: 'sync:workboard', enabled: on.includes('workboard'), note: 'OpenClaw Workboard mirror (BATON_SYNC_WORKBOARD=1); runs inside the ledger, no extra process' },
-    { prefix: 'sync:dashclaw', enabled: on.includes('dashclaw'), note: 'DashClaw action recording (BATON_SYNC_DASHCLAW=1 + DASHCLAW_URL + DASHCLAW_API_KEY); runs inside the ledger' },
+    { prefix: 'sync:workboard', enabled: on.includes('workboard'), note: 'OpenClaw Workboard mirror (LEG_SYNC_WORKBOARD=1); runs inside the ledger, no extra process' },
+    { prefix: 'sync:dashclaw', enabled: on.includes('dashclaw'), note: 'DashClaw action recording (LEG_SYNC_DASHCLAW=1 + DASHCLAW_URL + DASHCLAW_API_KEY); runs inside the ledger' },
   ]
   return { procs, syncs }
 }
@@ -160,21 +160,21 @@ function killActiveAgents() {
 }
 
 export async function up({ dry = false, open = true, port = Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747), bind = process.env.LEG_BIND || process.env.BATON_BIND || '127.0.0.1' } = {}) {
-  out('baton', `baton ${VERSION} — home ${home()}`)
+  out('leg', `leg ${VERSION} — home ${home()}`)
   const pf = await preflight()
   printPreflight(pf)
-  if (pf.adapters_present === 0) out('baton', 'no real coding-agent CLI found; fake adapters still work for the demo', process.stderr)
+  if (pf.adapters_present === 0) out('leg', 'no real coding-agent CLI found; fake adapters still work for the demo', process.stderr)
   const plan = plannedProcesses({ port, bind })
-  for (const s of plan.syncs) out('baton', `${s.prefix}: ${s.enabled ? 'on' : 'off'} (${s.note})`)
+  for (const s of plan.syncs) out('leg', `${s.prefix}: ${s.enabled ? 'on' : 'off'} (${s.note})`)
   if (dry) {
-    out('baton', 'dry run: nothing spawned. Would run:')
-    for (const p of plan.procs) out('baton', `${p.prefix}: ${JSON.stringify([p.bin, ...p.argv])} env ${JSON.stringify(p.env)}`)
-    out('baton', `then poll http://${bind}:${port}/api/health, ${open ? 'open the board' : 'not open the board'}, write ${pidfile()}`)
+    out('leg', 'dry run: nothing spawned. Would run:')
+    for (const p of plan.procs) out('leg', `${p.prefix}: ${JSON.stringify([p.bin, ...p.argv])} env ${JSON.stringify(p.env)}`)
+    out('leg', `then poll http://${bind}:${port}/api/health, ${open ? 'open the board' : 'not open the board'}, write ${pidfile()}`)
     return 0
   }
   const existing = readPidfile()
   if (existing && existing.pid !== process.pid && await boardAlive(existing)) {
-    out('baton', `already running (pid ${existing.pid}, port ${existing.port}); use \`baton down\` first`, process.stderr)
+    out('leg', `already running (pid ${existing.pid}, port ${existing.port}); use \`leg down\` first`, process.stderr)
     return 1
   }
   if (existing) { try { rmSync(pidfile(), { force: true }) } catch {} }
@@ -197,34 +197,34 @@ export async function up({ dry = false, open = true, port = Number(process.env.L
     await new Promise((r) => setTimeout(r, 250))
   }
   if (!ok) {
-    out('baton', `server not healthy after ${Math.round((Date.now() - t0) / 1000)} s${exited !== null ? ` (exited ${exited})` : ''}; last lines:`, process.stderr)
+    out('leg', `server not healthy after ${Math.round((Date.now() - t0) / 1000)} s${exited !== null ? ` (exited ${exited})` : ''}; last lines:`, process.stderr)
     for (const l of lastLines) out(p.prefix, l, process.stderr)
     killTree(child.pid)
     return 1
   }
   const url = `http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${actualPort}`
   writeFileSync(pidfile(), JSON.stringify({ pid: process.pid, port: actualPort, bind, children: [child.pid], started_at: new Date().toISOString() }, null, 2) + '\n')
-  out('baton', `ready ${url}  (scheduler max ${MAX_CONCURRENT}, ${ok.cards} card${ok.cards === 1 ? '' : 's'})`)
-  if (open) out('baton', openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
-  out('baton', 'Ctrl-C stops everything')
+  out('leg', `ready ${url}  (scheduler max ${MAX_CONCURRENT}, ${ok.cards} card${ok.cards === 1 ? '' : 's'})`)
+  if (open) out('leg', openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
+  out('leg', 'Ctrl-C stops everything')
 
   return await new Promise((resolvePromise) => {
     let stopping = false
     const stop = (why) => {
       if (stopping) return
       stopping = true
-      out('baton', `stopping (${why})`)
+      out('leg', `stopping (${why})`)
       const agents = killActiveAgents()
-      if (agents) out('baton', `killed ${agents} running agent/supervisor process(es)`)
+      if (agents) out('leg', `killed ${agents} running agent/supervisor process(es)`)
       killTree(child.pid)
       try { rmSync(pidfile(), { force: true }) } catch {}
-      out('baton', 'stopped')
+      out('leg', 'stopped')
       resolvePromise(0)
     }
     process.on('SIGINT', () => stop('SIGINT'))
     process.on('SIGTERM', () => stop('SIGTERM'))
     process.on('SIGBREAK', () => stop('SIGBREAK'))
-    child.on('exit', (code) => { if (!stopping) { out('baton', `server exited ${code}`, process.stderr); try { rmSync(pidfile(), { force: true }) } catch {} resolvePromise(code === 0 ? 0 : 1) } })
+    child.on('exit', (code) => { if (!stopping) { out('leg', `server exited ${code}`, process.stderr); try { rmSync(pidfile(), { force: true }) } catch {} resolvePromise(code === 0 ? 0 : 1) } })
   })
 }
 
@@ -241,10 +241,10 @@ export async function stopBoard() {
 
 export async function down() {
   const pf = readPidfile()
-  if (!pf) { out('baton', 'not running'); return 0 }
+  if (!pf) { out('leg', 'not running'); return 0 }
   const agents = killActiveAgents()
   const board = await stopBoard()
-  out('baton', `stopped (pid ${pf.pid}, port ${pf.port}${agents ? `, ${agents} agent process(es) killed` : ''}${board.stale ? ', stale pidfile' : ''})`)
+  out('leg', `stopped (pid ${pf.pid}, port ${pf.port}${agents ? `, ${agents} agent process(es) killed` : ''}${board.stale ? ', stale pidfile' : ''})`)
   return 0
 }
 
@@ -256,14 +256,14 @@ export async function status() {
   const by = (key) => Object.entries(cards.reduce((m, c) => { m[c[key]] = (m[c[key]] ?? 0) + 1; return m }, {})).map(([k, v]) => `${k}=${v}`).join(' ') || '(none)'
   if (running) {
     const up = Math.round((Date.now() - Date.parse(pf.started_at)) / 1000)
-    out('baton', `running  pid ${pf.pid}  port ${pf.port}  up ${Math.floor(up / 60)}m${up % 60}s  http://127.0.0.1:${pf.port}`)
+    out('leg', `running  pid ${pf.pid}  port ${pf.port}  up ${Math.floor(up / 60)}m${up % 60}s  http://127.0.0.1:${pf.port}`)
   } else {
-    out('baton', pf ? `stopped (pid ${pf.pid} is not answering on port ${pf.port}; cleared the stale pidfile)` : 'stopped')
+    out('leg', pf ? `stopped (pid ${pf.pid} is not answering on port ${pf.port}; cleared the stale pidfile)` : 'stopped')
   }
   const s = schedulerStatus()
-  out('baton', `scheduler ${s.running ? `running (pid ${s.pid})` : 'stopped'}  max concurrent ${MAX_CONCURRENT}`)
-  out('baton', `cards ${cards.length}  by status: ${by('status')}`)
-  out('baton', `by station: ${by('station')}`)
+  out('leg', `scheduler ${s.running ? `running (pid ${s.pid})` : 'stopped'}  max concurrent ${MAX_CONCURRENT}`)
+  out('leg', `cards ${cards.length}  by status: ${by('status')}`)
+  out('leg', `by station: ${by('station')}`)
   return running ? 0 : 3
 }
 

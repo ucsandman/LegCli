@@ -19,7 +19,7 @@ export const TRANSITIONS = [
   ['running', 'leg:completed', 'waiting_human', 'agent leg completed and a human station is next'],
   ['running', 'leg:handoff', 'handing_off', 'limit | incomplete | no_progress | stalled | failed and the chain has a next leg'],
   ['running', 'leg:handoff', 'failed', 'same outcomes with the chain exhausted'],
-  ['running', 'leg:auth_failed', 'failed', 'Baton/environment fault; no advance; human fixes and clicks Rerun'],
+  ['running', 'leg:auth_failed', 'failed', 'Leg/environment fault; no advance; human fixes and clicks Rerun'],
   ['running', 'leg:launch_failed', 'failed', 'same'],
   ['running', 'leg:killed', 'killed', 'the leg was killed from the board'],
   ['handing_off', 'bundle_written', 'queued', 'next leg (leg+1) queued at the same station'],

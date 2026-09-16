@@ -84,7 +84,7 @@ test('Incident 2: Land with uncommitted work refused; fix via commit unblocks an
 
   const landRes = await landSession(sess)
   assert.equal(landRes.landed, true)
-  assert.match(git(repo, ['log', '-1', '--oneline']), /baton: save work before landing/)
+  assert.match(git(repo, ['log', '-1', '--oneline']), /leg: save work before landing/)
 })
 
 test('Incident 3: Two worktrees landing onto main at once serialize with no interleaving', async () => {

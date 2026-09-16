@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leg agent adapters for Claude Code, Codex and agy | LegCli</title>
+<title>Leg agent adapters for Claude Code, Codex and agy | Leg</title>
 <meta name="description" content="How each agent adapter spawns its CLI, what it strips from the environment, and how to tell whether a tap is live or docs-only.">
 <link rel="canonical" href="https://legcli.com/docs/adapters">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://legcli.com/docs/adapters">
-<meta property="og:site_name" content="LegCli">
+<meta property="og:site_name" content="Leg">
 <meta property="og:title" content="Leg agent adapters for Claude Code, Codex and agy">
 <meta property="og:image" content="https://legcli.com/og.png?v=3">
 <meta property="og:image:secure_url" content="https://legcli.com/og.png?v=3">
@@ -29,7 +29,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">LegCli</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -169,7 +169,7 @@ chip shows the wall and its reset.</li>
 <li><strong>The wall</strong>: <code>RESOURCE_EXHAUSTED</code>, &quot;it resets in %s&quot; and &quot;out of quota&quot; in
 the log. Those strings are present in <code>agy.exe</code>, and <code>scanLog()</code> also reads a
 relative reset out of &quot;resets in &lt;n&gt;&lt;s|m|h|d&gt;&quot;. Status:
-<strong>docs-only</strong> <!-- live:agy/agy-resource-exhausted --> —
+<strong>observed-live 2026-09-16</strong> <!-- live:agy/agy-resource-exhausted --> —
 <code>RESOURCE_EXHAUSTED (code 429): Individual quota reached … Resets in 71h19m42s.</code> appeared in a session&#39;s <code>agy.log</code> at 08:02:42Z and walled the
 agent. No payload was kept: the capture call in <code>src/attach.mjs</code> was added
 while that session&#39;s runner was already running, so

@@ -24,12 +24,12 @@ test('up --dry prints every would-be argv as JSON, creates no process and no pid
   assert.match(outText, /\[preflight\] node\s+ok/)
   assert.match(outText, /\[preflight\] (claude|codex|agy)\s+(ok|missing)/)
   assert.match(outText, /dry run: nothing spawned/)
-  const m = /\[baton\] server: (\[.*?\]) env (\{.*?\})/.exec(outText)
+  const m = /\[leg\] server: (\[.*?\]) env (\{.*?\})/.exec(outText)
   assert.ok(m, outText)
   const argv = JSON.parse(m[1])
   assert.equal(argv[0], process.execPath)
   assert.ok(argv[1].endsWith('server.mjs'))
-  assert.deepEqual(JSON.parse(m[2]), { BATON_PORT: '4799', BATON_BIND: '127.0.0.1' })
+  assert.deepEqual(JSON.parse(m[2]), { LEG_PORT: '4799', LEG_BIND: '127.0.0.1', BATON_PORT: '4799', BATON_BIND: '127.0.0.1' })
   assert.match(outText, /sync:workboard: off/)
   assert.ok(!existsSync(join(home, 'leg.pid')) && !existsSync(join(home, 'baton.pid')))
 })
@@ -57,16 +57,16 @@ test('up --no-open --port 0: health 200, status running, down closes the port an
   assert.equal(pf.children.length, 1)
   const h = await get(`http://127.0.0.1:${pf.port}/api/health`)
   assert.equal(h.status, 200)
-  while (!/\[baton\] ready http/.test(outText) && Date.now() - t0 < 30000) await sleep(100)
+  while (!/\[leg\] ready http/.test(outText) && Date.now() - t0 < 30000) await sleep(100)
   t.diagnostic(outText.split('\n').slice(0, 20).join('\n'))
   assert.match(outText, /\[server\] \[board\] .* listening on http:\/\/127\.0\.0\.1:\d+/)
-  assert.match(outText, new RegExp(`\\[baton\\] ready http://127\\.0\\.0\\.1:${pf.port}`))
+  assert.match(outText, new RegExp(`\\[leg\\] ready http://127\\.0\\.0\\.1:${pf.port}`))
   assert.ok(!/opened http/.test(outText), '--no-open skips the browser')
 
   const st = baton(['status'], env)
-  assert.match(st, new RegExp(`\\[baton\\] running  pid ${pf.pid}  port ${pf.port}`))
+  assert.match(st, new RegExp(`\\[leg\\] running  pid ${pf.pid}  port ${pf.port}`))
   const dn = baton(['down'], env)
-  assert.match(dn, /\[baton\] stopped \(pid/)
+  assert.match(dn, /\[leg\] stopped \(pid/)
   await new Promise((r) => child.on('exit', r))
   assert.ok(!existsSync(join(home, 'leg.pid')) && !existsSync(join(home, 'baton.pid')))
   let closed = false
@@ -74,7 +74,7 @@ test('up --no-open --port 0: health 200, status running, down closes the port an
   assert.equal(closed, true, 'port closed after down')
   const after = batonFail(['status'], env)
   assert.equal(after.status, 3)
-  assert.match(after.stdout, /\[baton\] stopped/)
+  assert.match(after.stdout, /\[leg\] stopped/)
 })
 
 test('a child that prints a secret shows [REDACTED] on the launcher stdout; held env values never appear', async () => {
@@ -95,7 +95,7 @@ srv.listen(Number(process.env.BATON_PORT), '127.0.0.1', () => process.stdout.wri
   child.stdout.on('data', (d) => { outText += d })
   child.stderr.on('data', (d) => { outText += d })
   const t0 = Date.now()
-  while (!/\[baton\] ready http/.test(outText) && Date.now() - t0 < 20000) await sleep(100)
+  while (!/\[leg\] ready http/.test(outText) && Date.now() - t0 < 20000) await sleep(100)
   child.kill()
   await new Promise((r) => child.on('exit', r))
   // the key=value pattern swallows the whole `api_key=<value>` token
@@ -116,8 +116,8 @@ test('a pidfile whose pid is alive but is not the board: status says stopped and
   try {
     const st = batonFail(['status'], env)
     assert.equal(st.status, 3, `status on a board that is not listening; stdout: ${st.stdout}`)
-    assert.match(st.stdout, /\[baton\] stopped/)
-    assert.ok(!existsSync(pf), 'the stale pidfile is cleared, so `baton up` is not a dead end')
+    assert.match(st.stdout, /\[leg\] stopped/)
+    assert.ok(!existsSync(pf), 'the stale pidfile is cleared, so `leg up` is not a dead end')
 
     stale()
     const child = spawn(process.execPath, [BATON, 'up', '--no-open', '--port', '0'], { env, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -125,10 +125,10 @@ test('a pidfile whose pid is alive but is not the board: status says stopped and
     child.stdout.on('data', (d) => { outText += d })
     child.stderr.on('data', (d) => { outText += d })
     const t0 = Date.now()
-    while (!/\[baton\] (ready http|already running)/.test(outText) && Date.now() - t0 < 30000) await sleep(200)
+    while (!/\[leg\] (ready http|already running)/.test(outText) && Date.now() - t0 < 30000) await sleep(200)
     child.kill()
     await new Promise((r) => child.on('exit', r))
-    assert.match(outText, /\[baton\] ready http/, `up refused over a stale pidfile:\n${outText}`)
+    assert.match(outText, /\[leg\] ready http/, `up refused over a stale pidfile:\n${outText}`)
   } finally {
     squatter.kill()
   }

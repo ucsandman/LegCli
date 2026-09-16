@@ -61,7 +61,7 @@ test('e2e-land: A lands, B bounced by tests-red then lands, C bounced by rebase-
 
   const log = git(repo, ['log', '--oneline', `${base}..HEAD`]).trim().split('\n')
   t.diagnostic(`trunk: ${log.join(' | ')} (${seconds}s)`)
-  assert.deepEqual(log.map((l) => l.replace(/^[0-9a-f]+ /, '')), ['baton: C', 'baton: B', 'baton: A'])
+  assert.deepEqual(log.map((l) => l.replace(/^[0-9a-f]+ /, '')), ['leg: C', 'leg: B', 'leg: A'])
   assert.equal(readFileSync(join(repo, 'shared.txt'), 'utf8').trim(), 'line one (C)', 'C resolved on top of A (the fake rewrites the whole file)')
   assert.equal(readFileSync(join(repo, 'b.mjs'), 'utf8').trim(), 'export const b = 2')
   assert.equal(git(repo, ['status', '--porcelain']).trim(), '')

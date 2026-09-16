@@ -1,7 +1,7 @@
 // Terminals lane: the window rail (5h/7d per login), the sessions started with
-// `baton claude|codex|agy`, overlap flags (two live sessions editing the same
+// `leg claude|codex|agy`, overlap flags (two live sessions editing the same
 // file), and what has landed on trunk. Data: /api/sessions, pushed as the SSE
-// `sessions` event (board.js re-dispatches it as `baton:sessions`).
+// `sessions` event (board.js re-dispatches it as `leg:sessions`).
 //
 // The design is .design/BOARD-DESIGN.md sections 6.1 to 6.6; the ids, class
 // names and frozen source shapes are .design/BUILD-CONTRACT.md section 6.1.
@@ -1502,7 +1502,8 @@
   }
 
   window.addEventListener('leg:sessions', (e) => render(e.detail));
-  window.addEventListener('baton:sessions', (e) => render(e.detail));
+  window.addEventListener('leg:sessions', (e) => render(e.detail));
+  window.addEventListener('baton:sessions', (e) => render(e.detail)); // legacy alias
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return
     if (pendingConfirm) { pendingConfirm = null; if (view) renderSessions(view); return }

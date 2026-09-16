@@ -213,7 +213,7 @@ test('a chain entry\'s model and network reach the agent argv', async (t) => {
   assert.ok(out2.argv.includes('sonnet'))
 })
 
-test('a second `baton scheduler start` refuses while one is running and leaves its pidfile alone', async () => {
+test('a second `leg scheduler start` refuses while one is running and leaves its pidfile alone', async () => {
   const home = makeHome()
   const env = testEnv(home)
   const pidfile = join(home, 'scheduler.pid')

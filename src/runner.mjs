@@ -129,7 +129,7 @@ function errTail(path, lines = 10) {
 
 function killTree(pid, log) {
   if ((process.env.LEG_SKIP_KILL || process.env.BATON_SKIP_KILL) === '1') { // test seam: unkillable agent
-    log('BATON_SKIP_KILL=1: killTree skipped')
+    log('LEG_SKIP_KILL=1: killTree skipped')
     return
   }
   if (process.platform === 'win32') {
@@ -151,7 +151,7 @@ function gitHead(cwd) {
 function gitDiff(cwd, headAtStart) {
   const r = spawnSync('git', ['status', '--porcelain'], { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
   if (r.status !== 0) return null
-  const files = r.stdout.split(/\r?\n/).filter(Boolean).filter((l) => !/\.baton[\\/]/.test(l)).length
+  const files = r.stdout.split(/\r?\n/).filter(Boolean).filter((l) => !/\.(baton|leg)[\\/]/.test(l)).length
   const head = gitHead(cwd)
   return { changed: files > 0 || (headAtStart !== null && head !== headAtStart), files, head_at_start: headAtStart, head }
 }

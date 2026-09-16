@@ -1,4 +1,4 @@
-// Station kind: agent. One chain leg runs here (or, after `baton down` or a
+// Station kind: agent. One chain leg runs here (or, after `leg down` or a
 // crashed server, the orchestrator re-attaches to the run it left behind),
 // the run is settled, and its verdict is applied to the card. `ops` are the
 // orchestrator's helpers; this module never imports the orchestrator.

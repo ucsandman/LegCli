@@ -63,7 +63,7 @@ const PAGES = [
     nav: 'What it reads',
     source: 'docs/cli-contracts.md',
     title: 'What Leg reads from Claude Code, Codex and agy',
-    description: 'The exact usage endpoints, hooks, log lines and limit strings Baton reads from Claude Code, Codex and agy, each cited to its source.',
+    description: 'The exact usage endpoints, hooks, log lines and limit strings Leg reads from Claude Code, Codex and agy, each cited to its source.',
   },
   {
     slug: 'adapters',
@@ -176,14 +176,14 @@ function page ({ slug, title, description, body, headings }) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(/legcli/i.test(title) ? title : `${title} | LegCli`)}</title>
+<title>${escapeHtml(/legcli/i.test(title) ? title : `${title} | Leg`)}</title>
 <meta name="description" content="${escapeHtml(description)}">
 <link rel="canonical" href="${url}">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="${url}">
-<meta property="og:site_name" content="LegCli">
+<meta property="og:site_name" content="Leg">
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:image" content="${ORIGIN}/og.png?v=3">
 <meta property="og:image:secure_url" content="${ORIGIN}/og.png?v=3">
@@ -202,7 +202,7 @@ function page ({ slug, title, description, body, headings }) {
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">LegCli</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>

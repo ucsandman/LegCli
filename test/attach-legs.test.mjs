@@ -1,4 +1,4 @@
-// The legs after the first one, through `baton claude|agy` with stub CLIs (as
+// The legs after the first one, through `leg claude|agy` with stub CLIs (as
 // in attach-e2e): what the next agent's card carries (its own usage, its own
 // chain, its own near-limit warning), a Hand off from the board while every
 // OTHER option is walled, and the agy log + turn readers across two legs of
@@ -35,7 +35,7 @@ writeFileSync(join(STUBS, 'claude.mjs'), `${PRELUDE}
 const legs = seen('claude-')
 record('claude')
 const limit = () => spawnSync(process.execPath, ['${HOOK}', 'claude-hook', '--session', sid], { input: JSON.stringify({ hook_event_name: 'StopFailure', error: 'rate_limit', session_id: 'stub-cs', last_assistant_message: 'API Error: Rate limit reached' }), encoding: 'utf8' })
-// only the first claude leg hits a limit; a leg Baton starts itself just idles
+// only the first claude leg hits a limit; a leg Leg starts itself just idles
 const mode = legs === 0 ? process.env.STUB_MODE : 'idle'
 if (mode === 'warn-then-limit') {
   await untilRecord((s) => s.agent === 'claude' && s.pid)

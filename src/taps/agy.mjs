@@ -1,8 +1,8 @@
 // agy tap — Antigravity CLI 1.2.0 is a closed Go binary with no hooks and no
-// usage percentage on any surface Baton can read (its own status line fetches
+// usage percentage on any surface Leg can read (its own status line fetches
 // a quota summary from the backend; the value is not written anywhere). What
 // it does give:
-//   --log-file <path>       one log per Baton session; the wall shows up as
+//   --log-file <path>       one log per Leg session; the wall shows up as
 //                           RESOURCE_EXHAUSTED / "it resets in <d>" / "out of quota"
 //                           (strings present in agy.exe; docs-only until hit live)
 //   ~/.gemini/antigravity-cli/history.jsonl

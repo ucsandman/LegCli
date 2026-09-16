@@ -46,7 +46,7 @@ export function pickRunnable(cards, { max = MAX_CONCURRENT, landing = new Set() 
 
 export function pidfile() { return join(home(), 'scheduler.pid') }
 
-export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor = { type: 'baton' } } = {}) {
+export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor = { type: 'leg' } } = {}) {
   const state = { blockedKeys: new Map(), inflight: new Map(), stopped: false, ticks: 0 }
 
   async function tick() {

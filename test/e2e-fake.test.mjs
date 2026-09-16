@@ -1,5 +1,5 @@
 // The single-card limit handoff, end to end through the CLI: fake-claude hits
-// a (recorded) usage limit, Baton writes a context-handoff-bundle, fake-codex
+// a (recorded) usage limit, Leg writes a context-handoff-bundle, fake-codex
 // resumes in the same worktree and finishes.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -50,7 +50,7 @@ test('e2e: fake-claude limit → bundle → fake-codex completes, exact event se
   const seq = evs.map((e) => e.type)
   t.diagnostic(`events: ${seq.join(' → ')} (${seconds.toFixed(1)}s)`)
   assert.deepEqual(seq, ['card_created', 'leg_started', 'limit_detected', 'handoff_written', 'leg_started', 'leg_exited', 'station_done', 'done'])
-  // actors: the human created it; Baton did everything else; every event carries card_id/station/leg
+  // actors: the human created it; Leg did everything else; every event carries card_id/station/leg
   assert.deepEqual(evs[0].actor, { type: 'human', id: 'local' })
   for (const e of evs.slice(1)) assert.ok(e.actor.type === 'leg' || e.actor.type === 'baton')
   for (const e of evs) { assert.equal(e.card_id, id); assert.equal(typeof e.station, 'string'); assert.equal(typeof e.leg, 'number') }

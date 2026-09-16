@@ -91,7 +91,7 @@ async function captureErrors(run) {
 async function rejects400(run) {
   await assert.rejects(run, (error) => {
     assert.equal(error.status, 400)
-    assert.match(error.message, /not for a (Leg|Baton) plan/)
+    assert.match(error.message, /not for a (Leg|Leg) plan/)
     return true
   })
 }
@@ -99,7 +99,7 @@ async function rejects400(run) {
 function throws400(run) {
   assert.throws(run, (error) => {
     assert.equal(error.status, 400)
-    assert.match(error.message, /this subscription is not for a (Leg|Baton) Team plan/)
+    assert.match(error.message, /this subscription is not for a (Leg|Leg) Team plan/)
     return true
   })
 }
@@ -177,14 +177,14 @@ test('a subscription-mode Personal checkout is rejected without issuing or email
   assert.equal(calls.filter((url) => url.includes('api.resend.com')).length, 0)
 })
 
-test('a valid Baton Team subscription signs the expected plan and seats', () => {
+test('a valid Leg Team subscription signs the expected plan and seats', () => {
   const { key, payload } = lib.licenseFromSubscription(teamSubscription())
   assert.match(key, /^(LEG|BATON)-[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
   assert.equal(payload.plan, 'team')
   assert.equal(payload.seats, 4)
 })
 
-test('a valid paid Baton Personal checkout signs a personal license', async () => {
+test('a valid paid Leg Personal checkout signs a personal license', async () => {
   globalThis.fetch = async () => jsonResponse({
     id: 'cs_test_personal',
     payment_status: 'paid',

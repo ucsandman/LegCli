@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// hook — the process Claude Code runs for a Baton session's hooks and status
+// hook — the process Claude Code runs for a Leg session's hooks and status
 // line (wired by src/taps/claude.mjs through `--settings`). Reads the JSON
 // payload on stdin, updates the session record, exits 0 always: a broken hook
 // must never stall the user's session.
 //   node hook.mjs claude-hook --session <id>
 //   node hook.mjs claude-statusline --session <id>
 // The status line entry records rate_limits when a Claude Code build runs it
-// (2.1.268 does not; see src/taps/claude-usage.mjs) and prints one Baton line.
+// (2.1.268 does not; see src/taps/claude-usage.mjs) and prints one Leg line.
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { handleHook, handleStatusline } from './taps/claude.mjs'

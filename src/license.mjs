@@ -1,29 +1,30 @@
 // license — the paid-product gate. A license key is a signed, self-contained
-// token that Baton checks offline with the public key embedded below; the
+// token that Leg checks offline with the public key embedded below; the
 // private key never leaves the seller's machine. Two plans:
 //
 //   personal  one-time purchase; every release dated on or before the key's
 //             updates_until activates, later releases refuse the key but the
 //             installed one keeps working (the Sublime Text shape)
 //   team      per-seat subscription; the key carries an expiry a few days past
-//             the billing period, `baton license refresh` fetches a renewed one
+//             the billing period, `leg license refresh` fetches a renewed one
 //
-// There is no trial. Baton pays off in the moment a limit lands mid-flow, which
+// There is no trial. Leg pays off in the moment a limit lands mid-flow, which
 // is not a thing a fortnight of evaluation reliably contains; the risk reversal
 // is a 30-day money-back guarantee instead, which costs no code and no expiry
-// machinery. Key shape: BATON-<base64url payload>.<base64url signature> where
-// the signature is Ed25519 over the payload bytes exactly as encoded.
+// machinery. Key shape: LEG-<base64url payload>.<base64url signature> (legacy
+// BATON- prefix still accepted) where the signature is Ed25519 over the payload
+// bytes exactly as encoded.
 import { createPublicKey, createPrivateKey, verify as cryptoVerify, sign as cryptoSign, createHash } from 'node:crypto'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { home } from './store.mjs'
 
 export const PUBLIC_KEY_B64 = 'MCowBQYDK2VwAyEAIpVQymHHJAkIrZHv0u4o0bgfFmtW3Crm7uMwYHP53X8='
-// The suite has to exercise the gate itself — `baton share on` refusing a
-// Personal key, `baton <agent>` refusing nothing at all — and it cannot sign a
+// The suite has to exercise the gate itself — `leg share on` refusing a
+// Personal key, `leg <agent>` refusing nothing at all — and it cannot sign a
 // key for the real public key, which is the point of the real public key. This
 // env seam lets a spawned CLI verify against a throwaway pair. It weakens
-// nothing: Baton ships as readable JavaScript, so anyone who would set this
+// nothing: Leg ships as readable JavaScript, so anyone who would set this
 // could edit the constant above instead.
 const ACTIVE_PUBLIC_KEY = process.env.LEG_PUBLIC_KEY_B64 || process.env.BATON_PUBLIC_KEY_B64 || PUBLIC_KEY_B64
 // The date this release was cut. A personal key activates when this is on or

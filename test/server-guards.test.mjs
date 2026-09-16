@@ -200,7 +200,7 @@ test('removing a card with ?branch=delete never discards commits the branch alon
   } finally { await srv.stop() }
 })
 
-test('`baton sessions rm` refuses while land.json says the session is landing', () => {
+test('`leg sessions rm` refuses while land.json says the session is landing', () => {
   const id = 's-guard-landing'
   const env = testEnv(HOME)
   createSession({ id, agent: 'claude', cwd: repo, repo, branch: 'main', owner: 'wes' })

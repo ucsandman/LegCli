@@ -229,7 +229,7 @@ station):
   Network off by default: `-c sandbox_workspace_write.network_access=false`.
 - Git workflow: snapshot before a leg, snapshot `--diff-since` after; the
   `worktree` recommendation is Leg's only mode (one worktree per card,
-  branch `baton/<card-id>`); the diff, never prose, is what review and landing
+  branch `leg/<card-id>`); the diff, never prose, is what review and landing
   trust.
 - Failure rules that carry over: exit 11 means a supervisor is already running,
   never relaunch over it; a failed launch is retried once then the chain moves

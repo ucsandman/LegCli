@@ -1,0 +1,11 @@
+{
+  "agent": "agy",
+  "signal": "agy-resource-exhausted",
+  "captured_at": "2026-09-16T07:17:41.481Z",
+  "session_id": "s-20260916-065617-agy-ef0c",
+  "source": "observed-live",
+  "payload": {
+    "log_excerpt": "invalid syntax I0916 03:17:39.470463 43949 run.go:389] Run: attempt 1 failed (RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 2h35m6s.), retrying in 4s",
+    "resets_at": 1789552367
+  }
+}

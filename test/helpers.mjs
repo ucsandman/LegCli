@@ -14,7 +14,7 @@ export function makeHome() {
   return realpathSync(mkdtempSync(join(tmpdir(), 'leg-home-')))
 }
 
-// Baton is a licensed product with no trial, so an unlicensed throwaway home
+// Leg is a licensed product with no trial, so an unlicensed throwaway home
 // refuses every session and most of the suite would be testing the refusal
 // instead of the thing it names. Each test home gets a Team key signed by this
 // pair, and BATON_PUBLIC_KEY_B64 points the spawned CLI at its public half. A

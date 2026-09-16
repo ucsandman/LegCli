@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-// Seeds a throwaway BATON_HOME shaped like a real working board: a few live
+// Seeds a throwaway LEG_HOME shaped like a real working board: a few live
 // terminals and a larger pile of lost and ended ones, long absolute temp paths,
 // and an image tag in a prompt.
 //
@@ -10,12 +10,13 @@ import { tmpdir } from 'node:os'
 // fixture cost more than any other mistake in the v4 redesign.
 //
 //   node scripts/seed-wes-board.mjs                 # seeds ./scripts/wes-home
-//   BATON_HOME=<dir> node scripts/seed-wes-board.mjs
+//   LEG_HOME=<dir> node scripts/seed-wes-board.mjs
 //
-// Serve it on an isolated port with a throwaway BATON_HOME and BATON_TRUST=never.
+// Serve it on an isolated port with a throwaway LEG_HOME and LEG_TRUST=never.
 // NEVER 4747: that is the operator's live board with real sessions on it.
 // a throwaway home under the OS temp dir, so nothing is written into the repo
-process.env.BATON_HOME ||= join(tmpdir(), 'baton-seed-board')
+process.env.LEG_HOME ||= process.env.BATON_HOME || join(tmpdir(), 'leg-seed-board')
+process.env.BATON_HOME ||= process.env.LEG_HOME
 const { createSession, updateSession } = await import('../src/sessions.mjs')
 const { recordUsage, markLimited } = await import('../src/usage.mjs')
 const { spawn } = await import('node:child_process')

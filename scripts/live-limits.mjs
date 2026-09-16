@@ -11,7 +11,7 @@ import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const LIVE = process.env.BATON_LIVE_DIR || join(ROOT, 'fixtures', 'live')
+const LIVE = process.env.BATON_LIVE_DIR || process.env.LEG_LIVE_DIR || join(ROOT, 'fixtures', 'live')
 const DOCS = ['docs/adapters.md', 'docs/cli-contracts.md'].map((p) => join(ROOT, p))
 const MARK = /\*\*(docs-only|observed-live(?: [0-9-]+)?)\*\* <!-- live:([a-z]+)\/([a-z_-]+) -->/g
 

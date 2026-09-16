@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leg README | LegCli</title>
+<title>Leg README | Leg</title>
 <meta name="description" content="The complete Leg README as shipped in the npm package: what it does, what it reads, what it never touches, and the license.">
 <link rel="canonical" href="https://legcli.com/docs/readme">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://legcli.com/docs/readme">
-<meta property="og:site_name" content="LegCli">
+<meta property="og:site_name" content="Leg">
 <meta property="og:title" content="Leg README">
 <meta property="og:image" content="https://legcli.com/og.png?v=3">
 <meta property="og:image:secure_url" content="https://legcli.com/og.png?v=3">
@@ -29,7 +29,7 @@
 <a class="skip" href="#doc">Skip to the document</a>
 <header class="docs-top">
   <div class="docs-top-wrap">
-    <a class="docs-home" href="/">LegCli</a>
+    <a class="docs-home" href="/">Leg</a>
     <nav aria-label="Site"><a href="/docs">Docs</a> <a href="/#pricing">Pricing</a> <a href="/license">License</a></nav>
   </div>
 </header>
@@ -53,7 +53,7 @@
   </nav>
   <main id="doc" class="docs-body">
 <nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#contents">Contents</a></li><li><a href="#60-second-run">60-second run</a></li><li><a href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></li><li><a href="#how-a-handoff-works">How a handoff works</a></li><li><a href="#two-sessions-in-one-repo">Two sessions in one repo</a></li><li><a href="#more-than-one-human">More than one human</a></li><li><a href="#the-board">The board</a></li><li><a href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></li><li><a href="#what-is-and-is-not-touched">What is and is not touched</a></li><li><a href="#cli-reference">CLI reference</a></li><li><a href="#background-tasks-the-v01-extras">Background tasks: the v0.1 extras</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#documentation">Documentation</a></li><li><a href="#contributing">Contributing</a></li><li><a href="#privacy-and-attribution">Privacy and attribution</a></li><li><a href="#license-and-pricing">License and pricing</a></li></ul></nav>
-<h1 id="leg"><a class="anchor" href="#leg">leg</a></h1>
+<h1 id="leg"><a class="anchor" href="#leg">Leg</a></h1>
 <p><strong>Type <code>leg claude</code>, <code>leg codex</code>, <code>leg agy</code> or <code>leg grok</code> instead of the bare command. You get the same interactive agent; Leg opens a board next to it, watches the usage limit, keeps a handoff bundle current, and when the limit hits it starts the next agent in the same terminal from that bundle.</strong></p>
 <p><a href="https://legcli.com/license"><img src="https://img.shields.io/badge/license-commercial-blue.svg" alt="License: commercial"></a>
 <a href="https://legcli.com/docs/getting-started"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node 22+"></a>
@@ -443,7 +443,7 @@ to <code>api.anthropic.com</code> for the usage numbers. The ledger scrubs beare
 and key shapes from every line regardless.</li>
 <li><strong><code>leg uninstall --yes</code></strong>: removes <code>~/.leg</code> (sessions, usage, extra
 account directories with their junctions, v0.1 cards, the board pidfile) and
-nothing else; then <code>npm rm -g legcli</code>.</li>
+nothing else; then <code>npm rm -g @ucsandman/legcli</code>.</li>
 </ul>
 <h2 id="cli-reference"><a class="anchor" href="#cli-reference">CLI reference</a></h2>
 <pre><code>leg claude|codex|agy|grok [agent args…] the interactive agent, board alongside, handoff on limit

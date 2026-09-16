@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // fake-agent — stands in for a coding-agent CLI in tests and the demo. It acts
 // in the process cwd (the card's worktree). FAKE_MODE selects behaviour:
-//   success      write the target file and .baton/DONE, print a result JSON, exit 0
+//   success      write the target file and .leg/DONE, print a result JSON, exit 0
 //   incomplete   write the target file but no DONE marker, exit 0
 //   limit        print the recorded limit text (FAKE_LIMIT_FIXTURE, default
 //                claude-session-limit) to the fixture's stream, exit with its code
@@ -58,8 +58,8 @@ function writeTarget() {
 }
 
 function writeDone(line) {
-  mkdirSync(join(cwd, '.baton'), { recursive: true })
-  writeFileSync(join(cwd, '.baton', 'DONE'), line + '\n')
+  mkdirSync(join(cwd, '.leg'), { recursive: true })
+  writeFileSync(join(cwd, '.leg', 'DONE'), line + '\n')
 }
 
 const prompt = process.stdin.isTTY ? '' : await readStdin()
@@ -68,7 +68,7 @@ if (delay > 0) await sleep(delay)
 if (mode === 'success') {
   writeTarget()
   writeDone(`wrote ${target}`)
-  out({ session_id: 'sess-fake', result: `wrote ${target} and .baton/DONE`, prompt_chars: prompt.length, argv: process.argv.slice(2) })
+  out({ session_id: 'sess-fake', result: `wrote ${target} and .leg/DONE`, prompt_chars: prompt.length, argv: process.argv.slice(2) })
   process.exit(0)
 } else if (mode === 'break-test') {
   // land demo: ship the change together with a failing test

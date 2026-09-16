@@ -1,5 +1,5 @@
-// grok tap - how Baton supervises the xAI grok CLI (xai-org/grok-build).
-// Usage percentages tap: Grok CLI exposes no usage command. Baton reads the
+// grok tap - how Leg supervises the xAI grok CLI (xai-org/grok-build).
+// Usage percentages tap: Grok CLI exposes no usage command. Leg reads the
 // login token from ~/.grok/auth.json and polls:
 //   GET https://cli-chat-proxy.grok.com/v1/billing?format=credits
 //   GET https://cli-chat-proxy.grok.com/v1/user?include=subscription

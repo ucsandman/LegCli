@@ -1,6 +1,6 @@
 // redact — the one list of secret shapes. `scrub()` rewrites (logs, bundles,
 // launcher output); the ledger's assertNoSecrets refuses (src/ledger.mjs).
-// The source tooling kept two copies on purpose; Baton keeps one here.
+// The source tooling kept two copies on purpose; Leg keeps one here.
 // Values the launcher's own process holds for the well-known key variables
 // are read once at startup and never printed.
 // Every prefix shape starts at a token boundary: the `sk-` inside

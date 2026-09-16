@@ -1,4 +1,4 @@
-// handoff — the context-handoff-bundle seam. Baton never re-implements the
+// handoff — the context-handoff-bundle seam. Leg never re-implements the
 // bundle format: it writes a structured notes file, calls the CLI as an argv
 // subprocess (`save --repo-local` inside the worktree so the next agent finds
 // the bundle in its cwd), validates the bundle, and later `load`s the resume.
@@ -68,9 +68,9 @@ function bullets(items) {
 }
 
 // Notes in the CLI's own section vocabulary (Scope / Findings / Opportunities /
-// Open questions / Evidence anchors) carrying Baton's four parts: Task, Done so
+// Open questions / Evidence anchors) carrying Leg's four parts: Task, Done so
 // far, Diff, Open findings. Anything not under a known heading is dropped by
-// the parser, so every Baton line lives under one of those five.
+// the parser, so every Leg line lives under one of those five.
 export function buildNotes({ card, station, leg, entry, run, progress = '', lastMessage = null, diff = null, diffStat = '', changedFiles = [], extra = [] }) {
   const outcome = run?.outcome ?? 'handoff'
   const signal = run?.signal && run.signal !== 'none' ? ` (${run.signal})` : ''
@@ -150,9 +150,9 @@ export function writeHandoff({ card, station, leg, entry, run, worktree, runDir,
   const notesPath = join(legDir, `handoff-${station.name}-leg${leg}.md`)
   writeFileSync(notesPath, notes)
   if (card.repo) ensureExcluded(card.repo, '.context-handoffs/')
-  const slug = `baton-${card.card_id}-${station.name}-leg${leg}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80)
-  const title = `baton ${card.card_id} ${station.name} leg ${leg} ${entry?.adapter ?? run?.adapter ?? 'agent'}`
-  const save = chb(['save', '--repo-local', '--title', title, '--slug', slug, '--notes', notesPath, '--tag', 'baton'], { cwd: worktree })
+  const slug = `leg-${card.card_id}-${station.name}-leg${leg}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80)
+  const title = `leg ${card.card_id} ${station.name} leg ${leg} ${entry?.adapter ?? run?.adapter ?? 'agent'}`
+  const save = chb(['save', '--repo-local', '--title', title, '--slug', slug, '--notes', notesPath, '--tag', 'leg'], { cwd: worktree })
   if (save.status !== 0) throw new Error(`context-handoff-bundle save failed (exit ${save.status}): ${scrub(save.stderr || save.stdout).slice(0, 500)}`)
   let out
   try { out = JSON.parse(save.stdout) } catch { throw new Error(`context-handoff-bundle save printed no JSON: ${scrub(save.stdout).slice(0, 300)}`) }

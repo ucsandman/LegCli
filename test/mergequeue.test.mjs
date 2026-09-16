@@ -54,7 +54,7 @@ test('clean path: worktree changes are committed, rebased, tested, fast-forwarde
   assert.equal(r.committed, true)
   assert.equal(r.tests.command.includes('npm-cli.js'), true, 'npm test ran through node, not a shell')
   assert.match(r.summary, /landed on main: [0-9a-f]{7} → [0-9a-f]{7} \(1 file, \+1\/-0\)/)
-  assert.match(git(repo, ['log', '--oneline', '-1']), /baton: card c-ok/)
+  assert.match(git(repo, ['log', '--oneline', '-1']), /leg: card c-ok/)
   assert.equal(readFileSync(join(repo, 'a.mjs'), 'utf8').trim(), 'export const a = 1')
 })
 
@@ -128,8 +128,8 @@ test('trunk-moved: trunk advances between the test and the ff → one retry land
   assert.equal(a.landed, true)
   assert.equal(b.landed, true)
   const log = git(repo, ['log', '--oneline', '-3'])
-  assert.match(log, /baton: card c-move/)
-  assert.match(log, /baton: card c-other/)
+  assert.match(log, /leg: card c-move/)
+  assert.match(log, /leg: card c-other/)
 })
 
 test('commitWorktree is a no-op on a clean tree and never touches the root', async () => {

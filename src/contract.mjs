@@ -1,6 +1,6 @@
 // contract — the per-leg prompt. Every CLI gets the same contract file at
-// .baton/CONTRACT.md in the worktree (CLI-agnostic completion: write
-// .baton/DONE when finished). Leg 1 prompt = the contract; a later leg or a
+// .leg/CONTRACT.md in the worktree (CLI-agnostic completion: write
+// .leg/DONE when finished). Leg 1 prompt = the contract; a later leg or a
 // resume = the handoff bundle's resume text + the contract.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'

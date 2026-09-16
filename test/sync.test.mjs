@@ -126,14 +126,14 @@ test('dashclaw on: every event becomes POST /api/actions with the validator\'s f
   assert.equal(dc.calls.length, 2)
   for (const c of dc.calls) { assert.equal(c.method, 'POST'); assert.equal(c.url, '/api/actions'); assert.equal(c.apiKey, KEY) }
   const created = dc.calls[0].body
-  assert.equal(created.agent_id, 'baton/human:local')
-  assert.equal(created.action_type, 'baton_card_created')
+  assert.equal(created.agent_id, 'leg/human:local')
+  assert.equal(created.action_type, 'leg_card_created')
   assert.match(created.declared_goal, /card created/)
   assert.equal(created.status, 'pending')
   assert.ok(created.systems_touched.includes(id))
   const limit = dc.calls[1].body
-  assert.equal(limit.agent_id, 'baton/claude')
-  assert.equal(limit.action_type, 'baton_limit_detected')
+  assert.equal(limit.agent_id, 'leg/claude')
+  assert.equal(limit.action_type, 'leg_limit_detected')
   assert.equal(limit.status, 'blocked')
   assert.equal(limit.output_summary, 'signal claude-weekly-limit')
   assert.deepEqual(JSON.parse(limit.input_summary).actor, { type: 'agent', adapter: 'claude' })

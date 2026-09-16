@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Every dated or numbered claim Baton makes in public, checked against one
+// Every dated or numbered claim Leg makes in public, checked against one
 // file. Two separate jobs:
 //
 //   node scripts/check-claims.mjs            consistency, offline, runs in CI

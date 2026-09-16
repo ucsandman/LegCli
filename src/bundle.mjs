@@ -87,13 +87,13 @@ export function resumePrompt(session, bundle, next) {
   // one checkout (--no-worktree, or two started in the same instant) never
   // overwrite each other's handoff, and RESUME.md, the copy everyone opens.
   // Both are stamped with the git state and the live terminals they describe,
-  // so `baton resume --check` can tell a reader when they stopped being true.
+  // so `leg resume --check` can tell a reader when they stopped being true.
   const why = session.limit?.reason ?? session.handoff?.reason ?? 'handoff requested'
   writeHandoffPointer(session, body, { bundle, why })
   const perSession = perSessionFile(cwd, session.session_id)
   const task = session.task ? `\n\nThe task, as the human first stated it: ${session.task.slice(0, 700)}` : ''
   // the absolute path: the next agent is spawned in the session's cwd, which is
-  // a subdirectory of the work root whenever Baton was started in one
+  // a subdirectory of the work root whenever Leg was started in one
   return `You are taking over an interactive coding session from ${session.agent}, which hit its usage limit. Read ${perSession} (the context handoff bundle is at ${bundle.path}), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.${task}`
 }
 

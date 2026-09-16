@@ -41,7 +41,7 @@ export function sessionMessages(session, limit = MESSAGE_LIMIT) {
   if (!path) return []
   const tail = session.agent === 'claude' ? claudeTail(path, limit)
     : session.agent === 'codex' ? codexTail(path, limit)
-      : [] // agy keeps no transcript Baton can read
+      : [] // agy keeps no transcript Leg can read
   return tail.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: scrub(m.text), ts: m.ts ?? null }))
 }
 

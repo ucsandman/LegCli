@@ -1,16 +1,17 @@
-// Seeds a throwaway BATON_HOME with a floor that has something in every lane:
+// Seeds a throwaway LEG_HOME with a floor that has something in every lane:
 // two cards running, two waiting on a human, one queued and blocked by a lease
 // another card holds, and a landing on the trunk. The floor is derived entirely
 // from card records and their events (server.mjs floor()), so the states are
 // written straight to the ledger rather than driven through real runs.
 //
-//   BATON_HOME=<dir> node scripts/seed-floor-board.mjs <repo path>
+//   LEG_HOME=<dir> node scripts/seed-floor-board.mjs <repo path>
 //
-// Serve it on a spare port with BATON_TRUST=never. NEVER 4747.
+// Serve it on a spare port with LEG_TRUST=never. NEVER 4747.
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-process.env.BATON_HOME ||= join(tmpdir(), 'baton-floor-board')
+process.env.LEG_HOME ||= process.env.BATON_HOME || join(tmpdir(), 'leg-floor-board')
+process.env.BATON_HOME ||= process.env.LEG_HOME
 const repo = process.argv[2] || join(tmpdir(), 'toy-demo')
 const { createCard } = await import('../src/cards.mjs')
 const { ledgerAppend, ledgerUpdate, cardDir } = await import('../src/store.mjs')

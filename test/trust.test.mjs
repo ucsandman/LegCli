@@ -1,8 +1,8 @@
-// trust — Baton writes the folder-trust answer each agent CLI would otherwise
+// trust — Leg writes the folder-trust answer each agent CLI would otherwise
 // stop and ask for, so a 3am handoff into a repo the incoming agent has never
 // seen does not sit on a prompt until morning.
 //
-// These tests care about one thing above correctness of the happy path: Baton
+// These tests care about one thing above correctness of the happy path: Leg
 // is writing files it does not own. Every case below is either "it wrote the
 // right thing" or "it kept its hands off", and the second kind is the point.
 import { test } from 'node:test'
@@ -48,7 +48,7 @@ test('BATON_TRUST=never writes nothing at all', () => {
 
 // ---- the repository root is the unit of trust ----
 
-test('a subdirectory and a Baton worktree both resolve to the repository root', () => {
+test('a subdirectory and a Leg worktree both resolve to the repository root', () => {
   const repo = initRepo('baton-trust-repo-')
   const deep = join(repo, '.baton-worktrees', 'card-1', 'src')
   mkdirSync(deep, { recursive: true })
@@ -74,7 +74,7 @@ test('claude: the trust flag is written for the repo root and nothing else is lo
 })
 
 // Regression. Claude Code keys a project by a forward-slash path with an
-// upper-case drive letter; Baton first shipped this with Windows-native
+// upper-case drive letter; Leg first shipped this with Windows-native
 // backslashes, which writes a second entry that Claude Code never reads. The
 // flag was on file, the prompt still appeared, and nothing said why.
 test('claude: the project key is the spelling Claude Code actually looks up', () => {
@@ -156,13 +156,13 @@ test('claude: a second call writes nothing, because the file already says it', (
   assert.equal(readFileSync(file, 'utf8'), after, 'byte-identical on the second run')
 })
 
-test('claude: no config file means claude has never run, so Baton does not create one', () => {
+test('claude: no config file means claude has never run, so Leg does not create one', () => {
   const repo = initRepo('baton-trust-repo-')
   const dir = tmp('baton-claude-empty-')
   const r = ensureClaudeTrust(repo, { env: { CLAUDE_CONFIG_DIR: dir } })
   assert.deepEqual(r.wrote, [])
   assert.match(r.skipped, /no claude config/)
-  assert.equal(existsSync(join(dir, '.claude.json')), false, 'Baton must not create the config')
+  assert.equal(existsSync(join(dir, '.claude.json')), false, 'Leg must not create the config')
 })
 
 test('claude: an unreadable config is left exactly as it was found', () => {

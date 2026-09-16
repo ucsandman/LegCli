@@ -1,8 +1,8 @@
 // trust — records the folder-trust answer each agent CLI asks for on its first
-// run in a directory, before Baton spawns that agent.
+// run in a directory, before Leg spawns that agent.
 //
 // Why this exists: the handoff is the product. When claude hits its 5-hour
-// limit at 3am, Baton writes the bundle and starts codex in the same terminal
+// limit at 3am, Leg writes the bundle and starts codex in the same terminal
 // with nobody there. If the incoming agent has never run in that folder it
 // stops on a full-screen "Is this a project you trust?" prompt and waits for a
 // keypress that is not coming, and the handoff the user paid for silently
@@ -10,7 +10,7 @@
 //
 // Each CLI already stores that answer in a file, so the fix is to write the
 // same answer the user would have clicked, for the repository they already
-// chose by typing `baton claude` in it:
+// chose by typing `leg claude` in it:
 //
 //   claude  ~/.claude.json            projects["<repo>"].hasTrustDialogAccepted
 //           (or $CLAUDE_CONFIG_DIR/.claude.json)
@@ -21,13 +21,13 @@
 // "set projects[<path>].hasTrustDialogAccepted to true in ~/.claude.json, where
 // <path> is the repository root", and its error text prints the same sentence.
 //
-// Three rules this module holds to, because it writes files Baton does not own:
+// Three rules this module holds to, because it writes files Leg does not own:
 //   1. Never create a config file that is not already there. A missing file
 //      means that CLI has never run here, so its own first-run flow (login,
 //      onboarding) is about to happen with the user present anyway. Skip.
 //   2. Never rewrite a file to say what it already says. No write, no risk.
 //   3. Never lose what is already in the file. Read, add, write atomically,
-//      under the same cross-process lock the rest of Baton uses.
+//      under the same cross-process lock the rest of Leg uses.
 //
 // BATON_TRUST=never turns all of it off; the prompts come back.
 import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs'
@@ -37,7 +37,7 @@ import { realPath, withFileLock, writeJsonAtomic } from './fsx.mjs'
 
 // The repository root is the unit of trust: claude walks up from the working
 // directory to the repo root looking for the flag, so one record covers every
-// worktree Baton creates under <repo>/.baton-worktrees/ as well.
+// worktree Leg creates under <repo>/.baton-worktrees/ as well.
 export function repoRootOf(dir) {
   let at = realPath(dir)
   const stop = parse(at).root
@@ -90,7 +90,7 @@ export function claudeProjectKey(repo) {
 
 // The canonical key, plus the spellings Claude Code used in older versions.
 // Older spellings are updated when they are already in the file and never
-// created, so Baton corrects a stale entry without littering the config.
+// created, so Leg corrects a stale entry without littering the config.
 export function projectKeys(repo, existing = {}) {
   const key = claudeProjectKey(repo)
   const out = [key]
@@ -100,7 +100,7 @@ export function projectKeys(repo, existing = {}) {
   // The older spelling is the same path written with Windows separators, so it
   // is recognised by its spelling rather than by asking the host to resolve it:
   // matching on the exact string only worked on a host where a backslash is a
-  // separator, and the entry Baton was meant to correct was left stale
+  // separator, and the entry Leg was meant to correct was left stale
   // anywhere else. Nothing is created here — an entry is only ever brought up
   // to date when it is already in the file.
   for (const k of Object.keys(existing)) {
@@ -113,7 +113,7 @@ export function projectKeys(repo, existing = {}) {
 // is what triggers the second prompt ("Allow external CLAUDE.md file imports?").
 // Claude Code reads a CLAUDE.md from every ancestor directory of the working
 // directory, so an import in C:\Projects\CLAUDE.md is external to a session in
-// C:\Projects\some-repo. Returns the resolved paths, so Baton can print exactly
+// C:\Projects\some-repo. Returns the resolved paths, so Leg can print exactly
 // what it approved instead of approving something invisible.
 export function externalImports(cwd) {
   const start = realPath(cwd)
@@ -200,7 +200,7 @@ export function ensureClaudeTrust(repo, { env = process.env, cwd = repo } = {}) 
     wrote = [...new Set(changed)]
   })
   if (wrote === null) return { agent: 'claude', file, wrote: [], imports, skipped: 'claude config is not readable json' }
-  if (wrote === 'declined') return { agent: 'claude', file, root, wrote: [], imports, skipped: 'you answered no for this folder; Baton leaves that answer alone' }
+  if (wrote === 'declined') return { agent: 'claude', file, root, wrote: [], imports, skipped: 'you answered no for this folder; Leg leaves that answer alone' }
   return { agent: 'claude', file, root, wrote, imports, skipped: null }
 }
 
@@ -225,7 +225,7 @@ export function ensureCodexTrust(repo, { env = process.env } = {}) {
     if (codexTrustedPaths(text).some((p) => samePath(p, root))) return
     const block = `\n[projects."${tomlPath(root)}"]\ntrust_level = "trusted"\n`
     // Append only: a TOML table added at the end cannot change the meaning of
-    // a table above it, and Baton never reformats a file it did not write.
+    // a table above it, and Leg never reformats a file it did not write.
     writeTextAtomic(file, text.endsWith('\n') ? text + block : text + '\n' + block)
     wrote = ['trust_level']
   })
@@ -255,7 +255,7 @@ function writeTextAtomic(file, text) {
   for (let i = 0; i < 20; i++) {
     try { renameSync(tmp, file); return } catch (err) {
       // Windows holds a brief lock on a file another process has open; the
-      // same retry the rest of Baton uses rather than lose the config.
+      // same retry the rest of Leg uses rather than lose the config.
       if (!['EPERM', 'EBUSY', 'EACCES', 'EEXIST'].includes(err.code)) { try { unlinkSync(tmp) } catch {} throw err }
       const until = Date.now() + 25
       while (Date.now() < until) { /* spin */ }
@@ -290,7 +290,7 @@ export function ensureAgyTrust(repo, { env = process.env } = {}) {
     wrote = ['TRUST_FOLDER']
   })
   if (wrote === null) return { agent: 'agy', file, wrote: [], imports: [], skipped: 'agy trust file is not readable json' }
-  if (wrote === 'declined') return { agent: 'agy', file, root, wrote: [], imports: [], skipped: 'you answered no for this folder; Baton leaves that answer alone' }
+  if (wrote === 'declined') return { agent: 'agy', file, root, wrote: [], imports: [], skipped: 'you answered no for this folder; Leg leaves that answer alone' }
   return { agent: 'agy', file, root, wrote, imports: [], skipped: null }
 }
 
@@ -306,13 +306,13 @@ export function ensureTrust(agent, repo, { env = process.env, cwd = repo } = {})
   try {
     return fn(repo, { env, cwd })
   } catch (err) {
-    // A trust record Baton could not write is a prompt the user will answer
+    // A trust record Leg could not write is a prompt the user will answer
     // themselves. It is never a reason to fail the session.
     return { agent, wrote: [], imports: [], skipped: `could not write the trust record: ${err.message}` }
   }
 }
 
-// The line Baton prints. Null when there is nothing worth saying.
+// The line Leg prints. Null when there is nothing worth saying.
 export function trustLine(result) {
   if (!result || !result.wrote?.length) return null
   const what = result.agent === 'claude' && result.imports?.length

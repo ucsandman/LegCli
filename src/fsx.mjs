@@ -16,7 +16,7 @@ export function canonPath(p) {
   return process.platform === 'win32' ? out.toLowerCase() : out
 }
 
-// The real, long-form path (case preserved): what Baton stores and hands to
+// The real, long-form path (case preserved): what Leg stores and hands to
 // git, so a short or symlinked input never leaks into card.json or worktrees.
 export function realPath(p) {
   let base = resolve(p)

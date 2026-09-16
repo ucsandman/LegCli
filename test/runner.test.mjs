@@ -66,7 +66,8 @@ function prepRun(root, id, n = 1, patch = {}) {
 }
 
 function batonEvents(root, id) {
-  const f = join(root, 'cards', id, 'events-baton.jsonl')
+  const dir = join(root, 'cards', id)
+  const f = existsSync(join(dir, 'events-leg.jsonl')) ? join(dir, 'events-leg.jsonl') : join(dir, 'events-baton.jsonl')
   return existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []
 }
 

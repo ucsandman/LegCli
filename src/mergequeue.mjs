@@ -1,6 +1,6 @@
 // mergequeue — the land station. One land at a time per repo root, FIFO: the
 // queue key is the canonical root (two spellings of one path are one queue) and
-// the turn itself is a file lock under BATON_HOME, so a `baton card run` CLI
+// the turn itself is a file lock under LEG_HOME, so a `leg card run` CLI
 // and the board server cannot land into one checkout at the same time.
 // land(card, worktree):
 //   1. root must be on <trunk> and clean, else bounce `dirty-trunk` (root untouched)
@@ -57,7 +57,7 @@ export function rootState(repo, trunk) {
 }
 
 // Commit the agents' work so the branch can be rebased and merged. The commit
-// skips git hooks (--no-verify): the repo's test command is Baton's gate, and
+// skips git hooks (--no-verify): the repo's test command is Leg's gate, and
 // interactive commit hooks (linters, wire-dark style checks) belong to humans
 // typing commits. BATON_COMMIT_VERIFY=1 runs them anyway.
 export function commitWorktree(worktree, message) {
@@ -65,7 +65,7 @@ export function commitWorktree(worktree, message) {
   if (!dirty.length) return { committed: false }
   git(worktree, ['add', '-A'])
   const verify = (process.env.LEG_COMMIT_VERIFY || process.env.BATON_COMMIT_VERIFY) === '1' ? [] : ['--no-verify']
-  git(worktree, ['-c', 'user.email=baton@localhost', '-c', 'user.name=baton', 'commit', '-q', ...verify, '-m', message])
+  git(worktree, ['-c', 'user.email=leg@localhost', '-c', 'user.name=leg', 'commit', '-q', ...verify, '-m', message])
   return { committed: true, files: dirty.length }
 }
 
@@ -147,7 +147,7 @@ async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = 
   if (checkedOut !== branch) return bounce('worktree-branch', `worktree is on ${checkedOut}, not ${branch}; switch it back before landing`)
 
   const busy = operationInProgress(worktree)
-  if (busy) return bounce('worktree-busy', `a ${busy.replace(/-/g, ' ')} is already in progress in ${worktree}; finish or abort it there before landing (Baton will not touch a rebase it did not start)`)
+  if (busy) return bounce('worktree-busy', `a ${busy.replace(/-/g, ' ')} is already in progress in ${worktree}; finish or abort it there before landing (Leg will not touch a rebase it did not start)`)
 
   const root = rootState(repo, trunk)
   if (!root.onTrunk) return bounce('dirty-trunk', `repo root is on ${root.branch}, not ${trunk}; check out ${trunk} and retry`)
@@ -155,7 +155,7 @@ async function landNow(card, worktree, { onWarning = () => {}, allowDirtyRoot = 
   // nature; git's own fast-forward still refuses to overwrite a local change
   if (root.dirty.length && !allowDirtyRoot) return bounce('dirty-trunk', `repo root has ${root.dirty.length} uncommitted change(s): ${root.dirty.slice(0, 10).join(', ')}`)
 
-  const committed = commitWorktree(worktree, `baton: ${card.title ?? card.card_id}`)
+  const committed = commitWorktree(worktree, `leg: ${card.title ?? card.card_id}`)
   const preSha = git(worktree, ['rev-parse', 'HEAD']).stdout.trim()
   const trunkBefore = trunkHead(repo)
 

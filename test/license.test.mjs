@@ -96,7 +96,7 @@ test('refresh posts the installed Team key and preserves it when the site refuse
   assert.equal(readLicense().key, key)
 })
 
-// There is no trial: Baton is bought up front and the risk reversal is a
+// There is no trial: Leg is bought up front and the risk reversal is a
 // 30-day money-back guarantee, which lives on the site and needs no clock here.
 test('an unlicensed machine is refused, and says so without inventing a grace period', () => {
   process.env.BATON_HOME = makeHome()

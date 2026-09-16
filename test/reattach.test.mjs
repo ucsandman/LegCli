@@ -1,4 +1,4 @@
-// Phase 12 finding: `baton down` kills the agents; each supervisor writes its
+// Phase 12 finding: `leg down` kills the agents; each supervisor writes its
 // verdict, but the server that would apply it is already gone, so the card sat
 // in `running` forever. runCard (and the scheduler on its next tick) now
 // re-attaches to that unsettled run instead of launching a fresh leg.
@@ -31,7 +31,7 @@ test('a running card whose driver died is re-attached to its finished run, not r
   assert.notEqual(second.status, 0)
   assert.equal(readCard(home, id).status, 'running')
   assert.deepEqual(readdirSync(join(home, 'cards', id, 'runs')), ['1'])
-  // like `baton down`: the driving orchestrator goes away and the agent is killed
+  // like `leg down`: the driving orchestrator goes away and the agent is killed
   driver.kill()
   process.kill(run.agent_pid)
   for (let i = 0; i < 120 && runJson(home, id, 1).status !== 'exited'; i++) await sleep(250)

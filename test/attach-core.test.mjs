@@ -1,4 +1,4 @@
-// Pure pieces behind `baton claude|codex|agy`: session store + overlap, usage
+// Pure pieces behind `leg claude|codex|agy`: session store + overlap, usage
 // state + the handoff chooser, the three taps, and the claude hook handler.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -303,7 +303,7 @@ test('claude usage endpoint: 404, a body that is not JSON, and a shape with no w
     assert.match(garbage.error, /no JSON/)
     const changed = await fetchClaudeUsage({ configDir, url: `${base}/changed` })
     assert.equal(changed.ok, true, 'the endpoint answered')
-    assert.equal(changed.limits.five_hour, null, 'but nothing in it is a window Baton knows')
+    assert.equal(changed.limits.five_hour, null, 'but nothing in it is a window Leg knows')
     assert.equal(changed.limits.seven_day, null)
     const good = await fetchClaudeUsage({ configDir, url: `${base}/good` })
     assert.equal(good.limits.five_hour.pct, 12.5)

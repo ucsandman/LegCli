@@ -1,4 +1,4 @@
-// End to end through `baton claude` with stub CLIs in place of the real ones
+// End to end through `leg claude` with stub CLIs in place of the real ones
 // (BATON_<AGENT>_BIN pointing at .mjs stubs): the stub claude fires the same
 // StopFailure hook Claude Code would, the runner hands off; with every other
 // option walled the terminal waits for the first reset and then starts that
@@ -70,7 +70,7 @@ test('limit → every option out → waits for the first reset → starts codex 
   let err = ''
   child.stderr.on('data', (d) => { err += d }); child.stdout.resume()
   const code = await new Promise((r) => child.on('exit', r))
-  t.diagnostic(err.split('\n').filter((l) => /\[baton\]/.test(l)).slice(0, 12).join('\n'))
+  t.diagnostic(err.split('\n').filter((l) => /\[leg\]/.test(l)).slice(0, 12).join('\n'))
   assert.equal(code, 0, err)
   const s = listSessions().find((x) => x.lineage?.to === 'codex')
   assert.ok(s, 'a session handed off to codex')
@@ -92,7 +92,7 @@ test('limit → every option out → waits for the first reset → starts codex 
   assert.match(codex.argv[codex.argv.length - 1], /taking over an interactive coding session from claude/)
   assert.equal(codex.session, s.session_id)
   assert.equal(codex.cwd.toLowerCase(), repo.toLowerCase())
-  // the hand-off keeps its own per-session file; RESUME.md is Baton's, and the
+  // the hand-off keeps its own per-session file; RESUME.md is Leg's, and the
   // session ending rewrote it so nothing is left describing a live terminal
   assert.ok(existsSync(join(repo, '.leg', `RESUME-${s.session_id}.md`)) || existsSync(join(repo, '.baton', `RESUME-${s.session_id}.md`)), 'the per-session handoff is written for the next agent')
   const pointerPath = existsSync(join(repo, '.leg', 'RESUME.md')) ? join(repo, '.leg', 'RESUME.md') : join(repo, '.baton', 'RESUME.md')
@@ -165,7 +165,7 @@ test('a second live session in one checkout gets its own worktree and branch; --
   const sc = await waitFor((s) => mine(s) && ![sa.session_id, sb.session_id].includes(s.session_id) && s.pid, 'the third session')
   assert.equal(sc.worktree, null)
   assert.equal(canonPath(sc.cwd), canonPath(repo))
-  // the stub agents ran where their sessions say, and never saw Baton's flag
+  // the stub agents ran where their sessions say, and never saw Leg's flag
   const t0 = Date.now()
   while (records(stubDir, 'claude-').length < 3 && Date.now() - t0 < 10000) await sleep(100)
   const recs = records(stubDir, 'claude-')

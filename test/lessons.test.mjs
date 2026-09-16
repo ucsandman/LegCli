@@ -1,4 +1,4 @@
-// One named test per LESSONS.md line that applies to Baton (docs/REUSE.md
+// One named test per LESSONS.md line that applies to Leg (docs/REUSE.md
 // § LESSONS.md). All run without a real CLI.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -59,7 +59,8 @@ function supervise(root, id, env, adapter = 'fake') {
 }
 const runJson = (root, id) => JSON.parse(readFileSync(join(root, 'cards', id, 'runs', '1', 'run.json'), 'utf8'))
 const batonEvents = (root, id) => {
-  const f = join(root, 'cards', id, 'events-baton.jsonl')
+  const dir = join(root, 'cards', id)
+  const f = existsSync(join(dir, 'events-leg.jsonl')) ? join(dir, 'events-leg.jsonl') : join(dir, 'events-baton.jsonl')
   return existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []
 }
 

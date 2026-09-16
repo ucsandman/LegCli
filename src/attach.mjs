@@ -1,5 +1,5 @@
-// attach — `baton claude|codex|agy [args…]`: the normal interactive agent in
-// this terminal, with Baton alongside it. Baton (1) makes sure the board is
+// attach — `leg claude|codex|agy [args…]`: the normal interactive agent in
+// this terminal, with Leg alongside it. Leg (1) makes sure the board is
 // up and opens it once, (2) registers the session so it shows on the board,
 // (3) taps the agent for usage (claude: hooks + status line via --settings;
 // codex: its rollout file; agy: its log), (4) polls git for the files the
@@ -57,7 +57,7 @@ export function isCurrentLeg(session, { pid, agent, account }) {
 // ---- board ----
 function health(port, host = '127.0.0.1') {
   return new Promise((res) => {
-    const req = http.get({ host, port, path: '/api/health', timeout: 1500 }, (r) => {
+    const req = http.get({ host, port, path: '/api/health', timeout: 4000 }, (r) => {
       let d = ''
       r.on('data', (c) => { d += c })
       r.on('end', () => {
@@ -81,15 +81,16 @@ export async function ensureBoard({ open = true } = {}) {
   if (await health(port, host)) return { url, started: false }
   mkdirSync(home(), { recursive: true })
   const logFd = (await import('node:fs')).openSync(join(home(), 'board.log'), 'a')
-  const child = spawn(process.execPath, [SERVER], { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd], env: { ...process.env, BATON_PORT: String(port), BATON_BIND: host, BATON_QUIET: '0' } })
+  const child = spawn(process.execPath, [SERVER], { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd], env: { ...process.env, LEG_PORT: String(port), LEG_BIND: host, LEG_QUIET: '0', BATON_PORT: String(port), BATON_BIND: host, BATON_QUIET: '0' } })
   child.unref()
   const t0 = Date.now()
   while (Date.now() - t0 < 15000) {
-    if (await health(port, host)) {
+    const h = await health(port, host)
+    if (h) {
       // only claim the pidfile for a child we actually started: under a race,
-      // another `baton` won the port and ours died on EADDRINUSE — writing our
-      // dead pid would make `baton down` kill nothing and report "not running"
-      const ours = child.exitCode === null && Boolean(child.pid)
+      // another `leg` won the port and ours died on EADDRINUSE — writing our
+      // dead pid would make `leg down` kill nothing and report "not running"
+      const ours = h.pid ? h.pid === child.pid : (child.exitCode === null && Boolean(child.pid))
       if (ours) writeFileSync(pidfile(), JSON.stringify({ pid: child.pid, port, bind: host, children: [child.pid], detached: true, started_by: 'attach', started_at: new Date().toISOString() }, null, 2) + '\n')
       if (open) openBoard(url)
       return { url, started: ours }
@@ -194,7 +195,7 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
   const argv = []
   // viaNode: either an npm entry (codex bin/codex.js) or a BATON_<AGENT>_BIN that names a .mjs (tests)
   if (viaNode) argv.push(entry ?? bin)
-  // a leg Baton starts on its own (after a hand-off) takes BATON_<AGENT>_ARGS,
+  // a leg Leg starts on its own (after a hand-off) takes BATON_<AGENT>_ARGS,
   // e.g. BATON_CODEX_ARGS="-m gpt-5-mini" to keep a test chain on cheap models
   if (prompt) args = [...(process.env[`LEG_${agent.toUpperCase()}_ARGS`] ?? process.env[`BATON_${agent.toUpperCase()}_ARGS`] ?? '').split(/\s+/).filter(Boolean), ...args]
   if (agent === 'claude') {
@@ -513,10 +514,10 @@ export function claimHandoffChoice({ sid, agent, account, installed, bundle = nu
 export async function attach(agent, args = [], { open = true } = {}) {
   if (!SUPERVISED_AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy|grok)`)
   // the paid gate: a valid key, or no session (exit 4). The bare agent is never
-  // affected; only what Baton adds is licensed.
+  // affected; only what Leg adds is licensed.
   const ent = entitlement()
   if (!allows(ent, 'run')) { say(describeLicense(ent)); return 4 }
-  // --no-worktree is Baton's flag, not the agent's: it never passes through
+  // --no-worktree is Leg's flag, not the agent's: it never passes through
   const shareCheckout = args.includes('--no-worktree')
   args = args.filter((a) => a !== '--no-worktree')
   let autoApproveCli = null
@@ -645,7 +646,7 @@ export async function attach(agent, args = [], { open = true } = {}) {
   if (fin && fin.status !== 'ended') updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: exit }, { event: { type: 'ended', summary: `session ended (exit ${exit})` } })
   // Every way out of the loop arrives here: a clean exit, a cancelled wait, the
   // 12-leg cap, an agent that never started. The terminal is gone, so RESUME.md
-  // must stop describing it as live — Baton owns that file, and leaving the last
+  // must stop describing it as live — Leg owns that file, and leaving the last
   // hand-off sitting there is exactly the lie this rewrite exists to stop.
   try { endSessionPointer(readSession(sid)) } catch (err) { appendEvent(sid, { type: 'error', summary: `resume pointer not rewritten: ${err.message.slice(0, 160)}` }) }
   try { rmSync(join(sessionDir(sid), 'control.json'), { force: true }) } catch {}

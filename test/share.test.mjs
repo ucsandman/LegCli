@@ -1,4 +1,4 @@
-// `baton share`: per-human tokens, what a guest may see and do, and the
+// `leg share`: per-human tokens, what a guest may see and do, and the
 // security pass that goes with it (a token on every route including SSE, a
 // lockout for guessing, a rate limit, and no terminal content for non-owners).
 import { test, before, after } from 'node:test'

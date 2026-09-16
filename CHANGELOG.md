@@ -2,6 +2,10 @@
 
 ## 0.8.0 (2026-09-16)
 
+- **The product is called Leg.** Website, CLI help, board logs and onboarding
+  copy say **Leg**; the command is `leg`; `legcli.com` is the domain, not the
+  product name. `leg up` prefixes lines with `[leg]`. Historical changelog
+  entries keep the previous name.
 - **Grok is a supervised and handoff agent.** `leg grok` starts Grok the same
   way `leg claude`, `leg codex` and `leg agy` start those agents: board
   alongside, usage tracking, and a live context handoff bundle. At the limit

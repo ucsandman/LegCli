@@ -1,6 +1,6 @@
 // auth — who is allowed in. Loopback with no token is open; any other bind
 // address refuses to start without a token, and with a token every /api
-// request needs `Authorization: Bearer <token>` (timing-safe). With `baton
+// request needs `Authorization: Bearer <token>` (timing-safe). With `leg
 // share` on, each human has their own token and the board knows their name
 // and role (src/share.mjs); a loopback request is still the owner, so the
 // machine's own browser needs nothing.
@@ -75,7 +75,7 @@ export function authorize({ token, req, url, share = null, bind = null, loopback
     return { ok: false, subject: null, person: null }
   }
   // checkBind's invariant, re-applied per request: share.json stops reading as
-  // on (`baton share off`, a truncated file) while the shared address is still
+  // on (`leg share off`, a truncated file) while the shared address is still
   // bound, and nobody but this machine may be the local owner in that window
   if (!token && loopbackOwner === false) return { ok: false, subject: null, person: null }
   if (!token && bind && !isLoopback(bind) && !isLoopback(remoteAddress(req))) return { ok: false, subject: null, person: null }

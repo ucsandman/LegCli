@@ -1,7 +1,7 @@
-// claude tap — how `baton claude` sees inside a normal interactive Claude Code.
+// claude tap — how `leg claude` sees inside a normal interactive Claude Code.
 // Nothing in ~/.claude is edited: the session gets one extra settings file via
 // `--settings` (hooks merge with the user's; statusLine is the only key that
-// replaces, so Baton's status line runs the user's own command first).
+// replaces, so Leg's status line runs the user's own command first).
 // Sources: code.claude.com/docs/en/hooks (StopFailure `error: rate_limit`),
 // docs/en/statusline (rate_limits.five_hour/seven_day used_percentage,
 // resets_at), docs/en/settings (`--settings` sits above user settings).
@@ -41,7 +41,7 @@ export function settingsFor(sessionId, { statusLine = null } = {}) {
       SessionEnd: [{ hooks: [cmd('claude-hook')] }],
     },
     statusLine: { type: 'command', command: `node ${q(HOOK)} claude-statusline --session ${sessionId}`, padding: statusLine?.padding ?? 0 },
-    // Baton owns the limit: it hands the work to the next option instead of
+    // Leg owns the limit: it hands the work to the next option instead of
     // waiting in the session for the reset.
     autoContinueAtUsageLimit: false,
   }

@@ -77,7 +77,7 @@ test('with a token: 401 without the header, 401 with a wrong token, 200 with the
 })
 
 test('share off while the shared address is still bound: only this machine is the local owner', () => {
-  // `baton share off` writes on:false before the listener stops, and a
+  // `leg share off` writes on:false before the listener stops, and a
   // truncated share.json reads as off too: the bind invariant checkBind can
   // only apply at startup has to hold per request as well.
   const url = new URL('http://x/api/health')

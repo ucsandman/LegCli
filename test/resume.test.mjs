@@ -17,7 +17,7 @@ const sessions = await import('../src/sessions.mjs')
 const resume = await import('../src/resume.mjs')
 const detail = await import('../src/session-detail.mjs')
 
-// `baton <args>` from inside a checkout, never throwing: the exit code is the
+// `leg <args>` from inside a checkout, never throwing: the exit code is the
 // thing under test.
 function batonIn(cwd, args, extra = {}) {
   try {
@@ -46,7 +46,7 @@ function liveSession(id, repo, { agent = 'claude', status = 'running', task = 's
 test('every resume file carries a stamp of the git state it was written against', () => {
   const repo = initRepo('resume-stamp-')
   const s = liveSession('s-stamp-1', repo)
-  const body = resume.writeHandoffPointer(s, '# Baton handoff\n\nthe previous agent said things.\n', { bundle: { id: 'b-1' }, why: 'claude usage limit' })
+  const body = resume.writeHandoffPointer(s, '# Leg handoff\n\nthe previous agent said things.\n', { bundle: { id: 'b-1' }, why: 'claude usage limit' })
 
   const file = resume.resumeFile(repo)
   const text = readFileSync(file, 'utf8')
@@ -144,7 +144,7 @@ test('the working tree changing since the write makes the pointer stale', () => 
   assert.ok(v.reasons.some((r) => /working tree/i.test(r)), v.reasons.join('; '))
 })
 
-test('Baton\'s own files moving does not make a pointer stale', () => {
+test('Leg\'s own files moving does not make a pointer stale', () => {
   const repo = initRepo('resume-selfdirty-')
   const s = liveSession('s-self-1', repo)
   resume.writeHandoffPointer(s, 'body\n', { bundle: { id: 'b-1' }, why: 'claude usage limit' })
@@ -188,12 +188,12 @@ test('no pointer at all is missing, not stale', () => {
   assert.equal(v.stamp, null)
 })
 
-// ---- part 2: Baton owns RESUME.md ----
+// ---- part 2: Leg owns RESUME.md ----
 
 test('a session that ends rewrites RESUME.md to "nothing in flight", naming the last handoff and its date', () => {
   const repo = initRepo('resume-ended-')
   const s = liveSession('s-end-1', repo)
-  resume.writeHandoffPointer(s, '# Baton handoff\n\nclaude ran out; codex took over.\n', { bundle: { id: 'b-end-1' }, why: 'claude usage limit' })
+  resume.writeHandoffPointer(s, '# Leg handoff\n\nclaude ran out; codex took over.\n', { bundle: { id: 'b-end-1' }, why: 'claude usage limit' })
   sessions.updateSession('s-end-1', { lineage: { from: 'claude', to: 'codex' }, bundle: { id: 'b-end-1', updated_at: '2026-09-14T23:20:11.000Z' }, handoff: { reason: 'claude usage limit', at: '2026-09-14T23:20:11.000Z' } })
 
   resume.endSessionPointer(sessions.readSession('s-end-1'))
@@ -257,7 +257,7 @@ test('two live sessions in one checkout: RESUME.md names which one it describes 
   const a = liveSession('s-two-a', repo, { agent: 'claude' })
   liveSession('s-two-b', repo, { agent: 'codex' })
 
-  resume.writeHandoffPointer(sessions.readSession('s-two-a'), '# Baton handoff\n\nbody\n', { bundle: { id: 'b-two' }, why: 'claude usage limit' })
+  resume.writeHandoffPointer(sessions.readSession('s-two-a'), '# Leg handoff\n\nbody\n', { bundle: { id: 'b-two' }, why: 'claude usage limit' })
 
   const text = readFileSync(resume.resumeFile(repo), 'utf8')
   assert.ok(text.includes('s-two-a'), `RESUME.md names the session it describes:\n${text.slice(0, 900)}`)
@@ -269,7 +269,7 @@ test('two live sessions in one checkout: RESUME.md names which one it describes 
 test('board start rewrites a pointer left behind by a terminal that is no longer live', () => {
   const repo = initRepo('resume-refresh-')
   const s = liveSession('s-refresh-1', repo)
-  resume.writeHandoffPointer(s, '# Baton handoff\n\nlooks live, is not.\n', { bundle: { id: 'b-r' }, why: 'claude usage limit' })
+  resume.writeHandoffPointer(s, '# Leg handoff\n\nlooks live, is not.\n', { bundle: { id: 'b-r' }, why: 'claude usage limit' })
   sessions.updateSession('s-refresh-1', { status: 'lost', lineage: { from: 'claude', to: 'codex' } })
   assert.equal(resume.resumeVerdict(repo).state, 'stale', 'before the board starts, the pointer still describes a dead terminal')
 
@@ -287,7 +287,7 @@ test('board start replaces an unstamped pointer even while another terminal is l
   // a different terminal was live in the checkout, and nothing rewrote it
   const repo = initRepo('resume-refresh-other-')
   mkdirSync(join(repo, '.baton'), { recursive: true })
-  writeFileSync(resume.resumeFile(repo), '# Baton resume pointer\n\nwritten by hand three days ago.\n')
+  writeFileSync(resume.resumeFile(repo), '# Leg resume pointer\n\nwritten by hand three days ago.\n')
   liveSession('s-refresh-3', repo, { agent: 'codex' })
 
   const touched = resume.refreshPointers()
@@ -303,7 +303,7 @@ ${text}`)
 test('board start leaves a live terminal\'s pointer alone', () => {
   const repo = initRepo('resume-refresh-live-')
   const s = liveSession('s-refresh-2', repo)
-  resume.writeHandoffPointer(s, '# Baton handoff\n\nreally live.\n', { bundle: { id: 'b-r2' }, why: 'claude usage limit' })
+  resume.writeHandoffPointer(s, '# Leg handoff\n\nreally live.\n', { bundle: { id: 'b-r2' }, why: 'claude usage limit' })
 
   resume.refreshPointers()
 
@@ -330,7 +330,7 @@ test('a pointer is found from a subdirectory, the way an agent starting deeper i
 test('baton resume --check exits 0 on a fresh pointer and 1 on a stale one', () => {
   const repo = initRepo('resume-cli-check-')
   const s = liveSession('s-cli-1', repo)
-  resume.writeHandoffPointer(s, '# Baton handoff\n\nbody\n', { bundle: { id: 'b-cli' }, why: 'claude usage limit' })
+  resume.writeHandoffPointer(s, '# Leg handoff\n\nbody\n', { bundle: { id: 'b-cli' }, why: 'claude usage limit' })
 
   const fresh = batonIn(repo, ['resume', '--check'])
   assert.equal(fresh.status, 0, `${fresh.stdout}${fresh.stderr}`)
@@ -347,7 +347,7 @@ test('baton resume --check exits 0 on a fresh pointer and 1 on a stale one', () 
 test('baton resume prints the pointer, with a loud banner and a non-zero exit when it is stale', () => {
   const repo = initRepo('resume-cli-print-')
   const s = liveSession('s-cli-2', repo)
-  resume.writeHandoffPointer(s, '# Baton handoff\n\nTHE-BODY-MARKER\n', { bundle: { id: 'b-cli2' }, why: 'claude usage limit' })
+  resume.writeHandoffPointer(s, '# Leg handoff\n\nTHE-BODY-MARKER\n', { bundle: { id: 'b-cli2' }, why: 'claude usage limit' })
 
   const ok = batonIn(repo, ['resume'])
   assert.equal(ok.status, 0)

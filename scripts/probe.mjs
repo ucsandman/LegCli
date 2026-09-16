@@ -13,7 +13,7 @@ import { scrub } from '../src/runner.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SRC = join(ROOT, 'src')
-const HOME = process.env.BATON_HOME || join(homedir(), '.baton')
+const HOME = process.env.LEG_HOME || process.env.BATON_HOME || (existsSync(join(homedir(), '.leg')) ? join(homedir(), '.leg') : existsSync(join(homedir(), '.baton')) ? join(homedir(), '.baton') : join(homedir(), '.leg'))
 
 const args = {}
 const argv = process.argv.slice(2)
@@ -28,11 +28,12 @@ const timeoutS = parseInt(args['timeout-s'] ?? '300', 10)
 const adapter = await getAdapter(name)
 const mode = args.mode ?? adapter.modes.default
 
-const PROMPT = `Create a file named hello-${name}.txt in the current directory containing exactly the word hi. Then create the directory .baton if it is missing and write the file .baton/DONE containing the single line: done. Do nothing else. Do not ask questions.\n`
+const PROMPT = `Create a file named hello-${name}.txt in the current directory containing exactly the word hi. Then create the directory .leg if it is missing and write the file .leg/DONE containing the single line: done. Do nothing else. Do not ask questions.\n`
 
 const node = (script, a) => execFileSync(process.execPath, [script, ...a], { encoding: 'utf8', env: process.env })
 
 // Fresh DONE marker per probe so "done=yes" is this CLI's own work.
+rmSync(join(repo, '.leg', 'DONE'), { force: true })
 rmSync(join(repo, '.baton', 'DONE'), { force: true })
 rmSync(join(repo, `hello-${name}.txt`), { force: true })
 
@@ -84,7 +85,7 @@ const textOf = (f) => (existsSync(join(runDir, f)) ? readFileSync(join(runDir, f
 const authSource = /another auth source/i.test(textOf('err.log') + textOf('out.log'))
 const file = existsSync(join(repo, `hello-${name}.txt`))
   && readFileSync(join(repo, `hello-${name}.txt`), 'utf8').trim() === 'hi'
-const done = existsSync(join(repo, '.baton', 'DONE'))
+const done = existsSync(join(repo, '.leg', 'DONE')) || existsSync(join(repo, '.baton', 'DONE'))
 const exit = run?.status === 'exited' ? run.exit_code : `${run?.status ?? 'unknown'}`
 const parsed = adapter.parseResult(textOf('out.log'))
 writeFileSync(join(out, 'parsed.json'), scrubPaths(JSON.stringify({ ...parsed, raw: undefined }, null, 2)) + '\n')

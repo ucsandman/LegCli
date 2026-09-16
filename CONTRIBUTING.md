@@ -27,10 +27,12 @@ npm run privacy
 
 - `npm test` runs `node --test` over everything in `test/`, then
   `scripts/privacy-check.mjs` (so a leaked private-source string fails the
-  test run, not just the commit hook).
+  test run, not just the commit hook) and `scripts/check-branding.mjs`
+  (so previous product names cannot reappear on product surfaces).
 - `npm run lint` runs `eslint .` (config: `eslint.config.js`; it ignores
   `docs/**`, `fixtures/**`, `.leg/**` and `.leg-worktrees/**`).
-- `npm run privacy` runs the same check `npm test` runs, standalone.
+- `npm run privacy` runs the same privacy check `npm test` runs, standalone.
+- `npm run branding` runs the branding check standalone.
 
 Prove a clean clone actually works before opening a PR that touches
 install, build, or test wiring:
@@ -93,7 +95,8 @@ It clones the repo into `<scratch-dir>`, runs `npm ci`, `npm test`,
   bottom): date, file, the old shape, the new shape, why.
 - **The pre-commit privacy hook stays on.** `git config core.hooksPath
   .githooks` (above) wires `.githooks/pre-commit`, which runs
-  `node scripts/privacy-check.mjs --staged` and blocks the commit on any
+  `node scripts/privacy-check.mjs --staged` and
+  `node scripts/check-branding.mjs --staged` and blocks the commit on any
   hit. Do not commit with `--no-verify` to skip it.
 - **The test suite never starts a real agent.** Every test drives `fake`,
   `fake-claude`, `fake-codex`, `fake-agy` or `fake-nostdin` with `FAKE_MODE`,

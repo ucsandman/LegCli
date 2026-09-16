@@ -1,7 +1,8 @@
-// worktree — one git worktree per card under <repo>/.baton-worktrees/<cardId>,
-// on branch baton/<cardId>. Every git call runs with MSYS_NO_PATHCONV=1 (see
+// worktree — one git worktree per card under <repo>/.leg-worktrees/<cardId>,
+// on branch leg/<cardId> (legacy .baton-worktrees/ and baton/<id> still
+// resolved). Every git call runs with MSYS_NO_PATHCONV=1 (see
 // git-snapshot.mjs) so Git Bash on Windows never rewrites an absolute path
-// argument. Never pushes; never deletes outside <repo>/.baton-worktrees/.
+// argument. Never pushes; never deletes outside those worktree dirs.
 import { execFileSync } from 'node:child_process'
 import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, sep, isAbsolute } from 'node:path'
@@ -85,7 +86,7 @@ export function list(repo) {
   return parseWorktreeList(out)
 }
 
-// Never committed by a landing: Baton's own directories, and the local state a
+// Never committed by a landing: Leg's own directories, and the local state a
 // DashClaw hook writes into every directory an agent runs in.
 export function ensureExcludeEntries(repo) {
   // a linked worktree or submodule has `.git` as a FILE, so the shared info dir

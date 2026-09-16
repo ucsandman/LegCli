@@ -1,7 +1,7 @@
 // codex tap — an interactive `codex` writes its whole thread to a rollout
 // file, flushed per event (observed live 2026-09-11: file mtime == last line
-// timestamp). Baton tails that file; no hook is injected, so codex never shows
-// its "review new hooks" prompt for a Baton session.
+// timestamp). Leg tails that file; no hook is injected, so codex never shows
+// its "review new hooks" prompt for a Leg session.
 // Shapes (observed live, codex-cli 0.153.4, originator codex-tui):
 //   session_meta.payload  {id, cwd, originator, cli_version, source}
 //   event_msg.token_count.rate_limits {primary:{used_percent,window_minutes,resets_at}, secondary:{…}}

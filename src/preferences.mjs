@@ -1,4 +1,4 @@
-// Machine-wide defaults for interactive Baton terminals. A new terminal takes
+// Machine-wide defaults for interactive Leg terminals. A new terminal takes
 // a copy of these preferences when it starts; later edits do not silently
 // change terminals that are already running.
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'

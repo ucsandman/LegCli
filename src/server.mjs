@@ -2,8 +2,8 @@
 // server — the board's HTTP + SSE backend. Ledger-backed: every handler reads
 // card.json / events-*.jsonl on demand (no module-level card store), so a
 // restart shows the same board and a second process sees the same truth.
-// BATON_BIND (127.0.0.1) + BATON_PORT (4747) + BATON_TOKEN are the
-// multiplayer seams (src/auth.mjs).
+// LEG_BIND (127.0.0.1) + LEG_PORT (4747) + LEG_TOKEN are the
+// multiplayer seams (src/auth.mjs). BATON_* names still work as fallback.
 import http from 'node:http'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
@@ -191,16 +191,17 @@ export async function detectTools({ refresh = false } = {}) {
     return !r.error && r.status === 0
   }
   const agents = {}
-  for (const name of ['claude', 'codex', 'agy']) {
+  for (const name of ['claude', 'codex', 'agy', 'grok']) {
     try {
-      const { bin, viaNode, entry } = (await getAdapter(name)).resolve()
+      const a = name === 'grok' ? (await import('./adapters/grok.mjs')).default : await getAdapter(name)
+      const { bin, viaNode, entry } = a.resolve()
       const target = viaNode ? (entry ?? bin) : bin
       agents[name] = /[\\/]/.test(target) ? existsSync(target) : probe(target)
     } catch { agents[name] = false }
   }
   let chb = false
   try { resolveChb(); chb = true } catch {}
-  toolsCache = { ...agents, grok: probe('grok'), chb, git: probe('git') }
+  toolsCache = { ...agents, chb, git: probe('git') }
   return toolsCache
 }
 
@@ -279,6 +280,7 @@ export function sessionsView({ viewer = null, share = null } = {}) {
     const preferredNext = chain[0] ?? null
     const availabilityKnown = Boolean(s.installed)
     const eligibleNext = availabilityKnown ? (chain.find((next) => s.installed[next.agent] !== false && isAvailable(readUsage(next.agent, next.account))) ?? null) : null
+    const can = s.worktree ? canLand(s) : { ok: false, blockers: [{ code: 'no_worktree', message: 'this terminal works in the checkout itself: there is no branch of its own to land', fix: null }] }
     return {
       ...s,
       handoff_order: handoffOrder,
@@ -296,8 +298,8 @@ export function sessionsView({ viewer = null, share = null } = {}) {
       files: [...new Set([...(s.files_touched ?? []), ...(s.files_dirty ?? [])])].filter(visibleSessionFile),
       // a 'landing' left behind by a board restart is no longer in flight
       land: land?.state === 'landing' && !landingNow(s.session_id) ? { ...land, state: 'interrupted' } : land,
-      can_land: s.worktree ? canLand(s) : { ok: false, blockers: [{ code: 'no_worktree', message: 'this terminal works in the checkout itself: there is no branch of its own to land', fix: null }] },
-      land_blocker: s.worktree ? (canLand(s).ok ? null : canLand(s).blockers[0]?.message) : null,
+      can_land: can,
+      land_blocker: s.worktree ? (can.ok ? null : can.blockers[0]?.message) : null,
     }
   })
   const accounts = []
@@ -458,7 +460,7 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => 
 // ---- the server ----
 export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN || process.env.BATON_TOKEN || '', scheduler = (process.env.LEG_NO_SCHEDULER || process.env.BATON_NO_SCHEDULER) !== '1', share, usagePolling = false, usageReader = readCodexUsage } = {}) {
   // An explicit `share` (tests) is fixed; the real server passes none and reads
-  // share.json from disk, re-reading it per request (mtime-cached) so `baton
+  // share.json from disk, re-reading it per request (mtime-cached) so `leg
   // share add|rotate|rm` takes effect on a live board — a new link works at
   // once and a removed or rotated one stops at once — without a restart.
   const explicitShare = share !== undefined
@@ -564,7 +566,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
         const you = { ...viewer, share: { on: shared, people: shared ? share.people.length : 0 } }
         if (guest) return send(res, 200, { ok: true, version: VERSION, you })
         const cards = listCards()
-        return send(res, 200, { ok: true, version: VERSION, bind, port, home: home(), you, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: await detectTools(), columns: columnsFor(cards), cards: cards.length })
+        return send(res, 200, { ok: true, pid: process.pid, version: VERSION, bind, port, home: home(), you, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: await detectTools(), columns: columnsFor(cards), cards: cards.length })
       }
       if (req.method === 'GET' && path === '/api/adapters') return send(res, 200, { adapters: await adaptersInfo() })
       if (req.method === 'GET' && path === '/api/presets') return send(res, 200, { presets: PRESETS })
@@ -812,12 +814,14 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           const addr = server.address()
           log(`listening on http://${bind}:${addr.port} (home ${home()}${token ? ', token required' : ', loopback open'})`)
           // A terminal that crashed instead of exiting left its hand-off in
-          // .baton/RESUME.md looking live. The board is the thing that starts
+          // .leg/RESUME.md looking live. The board is the thing that starts
           // after a crash, so it is where that gets corrected.
-          try {
-            const touched = refreshPointers()
-            if (touched.length) log(`rewrote ${touched.length} stale resume pointer${touched.length === 1 ? '' : 's'}: the terminal each described is gone, or no Baton stamped it`)
-          } catch (err) { log(`resume pointers not refreshed: ${err.message}`) }
+          setImmediate(() => {
+            try {
+              const touched = refreshPointers()
+              if (touched.length) log(`rewrote ${touched.length} stale resume pointer${touched.length === 1 ? '' : 's'}: the terminal each described is gone, or no Leg stamped it`)
+            } catch (err) { log(`resume pointers not refreshed: ${err.message}`) }
+          })
           if (scheduler) {
             sched = createScheduler()
             sched.run().catch((err) => log(`scheduler crashed: ${err.message}`))

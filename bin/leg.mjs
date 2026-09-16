@@ -86,14 +86,14 @@ function simulateLimit(s) {
   if (s.agent === 'agy') {
     appendFileSync(join(sessionDir(s.session_id), 'agy.log'), '\nrpc error: code = ResourceExhausted desc = RESOURCE_EXHAUSTED quota (simulated by leg sessions simulate-limit)\n')
     appendEvent(s.session_id, { type: 'status', summary: 'simulated RESOURCE_EXHAUSTED appended to the session log' })
-    return out(`simulated: RESOURCE_EXHAUSTED appended to ${join(sessionDir(s.session_id), 'agy.log')}; the runner reads it within ${process.env.BATON_ATTACH_POLL_MS || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
+    return out(`simulated: RESOURCE_EXHAUSTED appended to ${join(sessionDir(s.session_id), 'agy.log')}; the runner reads it within ${(process.env.LEG_ATTACH_POLL_MS || process.env.BATON_ATTACH_POLL_MS) || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
   }
   if (s.agent === 'grok') {
     appendFileSync(join(sessionDir(s.session_id), 'grok.log'), "\nRate limited (429): You've hit the rate limit for your plan. Try again later. (simulated by leg sessions simulate-limit)\n")
     appendEvent(s.session_id, { type: 'status', summary: 'simulated rate limit appended to the grok log' })
-    return out(`simulated: rate limit appended to ${join(sessionDir(s.session_id), 'grok.log')}; the runner reads it within ${process.env.BATON_ATTACH_POLL_MS || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
+    return out(`simulated: rate limit appended to ${join(sessionDir(s.session_id), 'grok.log')}; the runner reads it within ${(process.env.LEG_ATTACH_POLL_MS || process.env.BATON_ATTACH_POLL_MS) || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
   }
-  die(2, `simulate-limit drives the claude hook path (and the agy/grok log); codex's wall comes from its own rollout file, which Baton never writes. Use "leg sessions handoff ${s.session_id}" to force the switch.`)
+  die(2, `simulate-limit drives the claude hook path (and the agy/grok log); codex's wall comes from its own rollout file, which Leg never writes. Use "leg sessions handoff ${s.session_id}" to force the switch.`)
 }
 
 function fmtCard(c) {
@@ -138,7 +138,7 @@ async function main() {
       '            ██████████████████████████',
       '            ████ ████ ████ ████ ████ ████',
     ].join('\n')
-    out('🦿 LegCli: the mechanical relay runner for coding agents.\n')
+    out('🦿 Leg: the mechanical relay runner for coding agents.\n')
     out(LEG_ART)
     out('\nPassing the leg to the next runner when limits hit.')
     return
@@ -146,7 +146,7 @@ async function main() {
   if (SUPERVISED_AGENTS.includes(group)) {
     // leg claude|codex|agy|grok [agent args...]: everything after the agent name
     // goes straight through.
-    const code = await attach(group, [cmd, ...rest].filter((x) => x !== undefined), { open: process.env.BATON_NO_OPEN !== '1' })
+    const code = await attach(group, [cmd, ...rest].filter((x) => x !== undefined), { open: (process.env.LEG_NO_OPEN || process.env.BATON_NO_OPEN) !== '1' })
     process.exit(code)
   }
   if (group === 'sessions') {
@@ -192,15 +192,15 @@ async function main() {
     const v = resumeVerdict(where)
     if (a.json) { out(JSON.stringify(v, null, 2)); process.exit(v.exit_code) }
     if (v.state === 'missing') {
-      out(`no resume pointer in this checkout (looked for .baton/RESUME.md from ${where} upward).`)
-      out('Baton writes one when a terminal hands off; `baton claude` in this directory starts one.')
+      out(`no resume pointer in this checkout (looked for .leg/RESUME.md from ${where} upward).`)
+      out('Leg writes one when a terminal hands off; `leg claude` in this directory starts one.')
       process.exit(v.exit_code)
     }
     const head = v.head?.now ? `${v.head.now.slice(0, 7)}${v.head.branch ? ` on ${v.head.branch}` : ''}` : 'no commit'
     const line = v.state === 'fresh'
       ? `${v.file} is current: written ${v.written_at ? ago(v.age_ms) : 'at an unrecorded time'}, and the repository is still at ${head}.`
       : v.state === 'unstamped'
-        ? `${v.file} is UNSTAMPED: ${v.reasons[0]}. Baton did not write it, or an older Baton did.`
+        ? `${v.file} is UNSTAMPED: ${v.reasons[0]}. Leg did not write it, or an older version did.`
         : `${v.file} is STALE: ${v.reasons.join('; ')}.`
     if (a.check) {
       out(line)
@@ -300,7 +300,7 @@ async function main() {
         out('')
         out('Log in once (paste in PowerShell):')
         out(`  ${r.login}`)
-        out(`Then: $env:BATON_ACCOUNT='${name}'; baton ${agent}   (or let a limit hand off to it)`)
+        out(`Then: $env:LEG_ACCOUNT='${name}'; leg ${agent}   (or let a limit hand off to it)`)
       } catch (err) { die(2, err.message) }
       return
     }
@@ -350,7 +350,7 @@ async function main() {
   }
   if (group === 'uninstall') {
     // Leg never edits ~/.claude or ~/.codex; everything it added lives under
-    // $BATON_HOME (sessions, usage, extra-account dirs, cards).
+    // $LEG_HOME (sessions, usage, extra-account dirs, cards).
     const dir = home()
     if (!args.yes) {
       out(`leg uninstall removes ${dir} (sessions, usage, extra-account dirs, cards, board pidfile) and nothing else.`)
@@ -360,7 +360,7 @@ async function main() {
     for (const r of listAccountRows()) if (r.name !== 'default') removeAccount(r.agent, r.name)
     await down()
     rmSync(dir, { recursive: true, force: true })
-    return out(`removed ${dir}; now: npm rm -g legcli`)
+    return out(`removed ${dir}; now: npm rm -g @ucsandman/legcli`)
   }
   if (group === 'card') {
     if (cmd === 'add') return cardAdd(args)

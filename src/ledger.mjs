@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Ported 2026-09-10 from private ucsandman team tooling; see NOTICE and docs/REUSE.md.
-// ledger — the ONLY writer of Baton's card ledger files under $BATON_HOME/cards/<id>/.
+// ledger — the ONLY writer of Leg's card ledger files under $LEG_HOME/cards/<id>/.
 // Subcommands: create | append | update | sync. Every event carries a validated
 // actor, the card id, the station and the leg, and lands in that actor's own
 // events-<actor-key>.jsonl. Importable: readEvents, parseActor, actorKey.
@@ -26,7 +26,7 @@ export const PATCHABLE = ['pipeline', 'leases', 'land_attempts', 'land_mode', 't
   'bounce_reason', 'kill_requested', 'worktree', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'last_bundle', 'pr_url']
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,39}$/i
 
-export const ROOT = process.env.BATON_HOME || join(homedir(), '.baton')
+export const ROOT = process.env.LEG_HOME || process.env.BATON_HOME || (existsSync(join(homedir(), '.leg')) ? join(homedir(), '.leg') : existsSync(join(homedir(), '.baton')) ? join(homedir(), '.baton') : join(homedir(), '.leg'))
 
 function die(code, msg) {
   process.stderr.write(msg + '\n')
@@ -53,7 +53,7 @@ function need(args, key, allowed) {
   return v
 }
 
-// Actor: who wrote the event. {type:'agent', adapter, model?} | {type:'human', id} | {type:'baton'}.
+// Actor: who wrote the event. {type:'agent', adapter, model?} | {type:'human', id} | {type:'leg'} | {type:'baton'} (legacy).
 // Returns the normalized actor or null when the shape is wrong.
 export function parseActor(raw) {
   let a = raw
@@ -156,7 +156,7 @@ async function syncNotify(kind, ev, card) {
       kind, ev, card, home: ROOT,
       report: (summary) => {
         if (!id) return
-        appendEvent(id, { ts: now(), card_id: id, actor: { type: 'baton' }, station: card?.station ?? '-', leg: card?.leg ?? 0, type: 'status', summary })
+        appendEvent(id, { ts: now(), card_id: id, actor: { type: 'leg' }, station: card?.station ?? '-', leg: card?.leg ?? 0, type: 'status', summary })
       },
     })
   } catch {}

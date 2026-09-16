@@ -1,4 +1,4 @@
-// `baton sessions simulate-limit <id>` drives the real limit path through
+// `leg sessions simulate-limit <id>` drives the real limit path through
 // src/hook.mjs, and src/live-capture.mjs keeps the first real payload only.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

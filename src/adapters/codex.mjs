@@ -19,7 +19,7 @@ const adapter = {
   forbiddenFlags: ['danger-full-access', '--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust', '--full-auto', '--approve-for-me'],
   resolve() {
     if ((process.env.LEG_CODEX_BIN || process.env.BATON_CODEX_BIN)) {
-      const bin = process.env.BATON_CODEX_BIN
+      const bin = process.env.LEG_CODEX_BIN || process.env.BATON_CODEX_BIN
       return { bin, viaNode: /\.(mjs|cjs|js)$/.test(bin), entry: null }
     }
     // The npm package's bin/codex.js only spawns the platform package's native

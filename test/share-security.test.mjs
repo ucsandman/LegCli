@@ -1,4 +1,4 @@
-// The security pass on `baton share`: every route, every way in.
+// The security pass on `leg share`: every route, every way in.
 //
 // Four ways a stranger can knock (no token from a non-loopback address, a
 // wrong token, another human's token, a token that was rotated or removed),

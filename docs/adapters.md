@@ -120,7 +120,7 @@ documentation say docs-only.
 - **The wall**: `RESOURCE_EXHAUSTED`, "it resets in %s" and "out of quota" in
   the log. Those strings are present in `agy.exe`, and `scanLog()` also reads a
   relative reset out of "resets in \<n>\<s|m|h|d>". Status:
-  **docs-only** <!-- live:agy/agy-resource-exhausted --> —
+  **observed-live 2026-09-16** <!-- live:agy/agy-resource-exhausted --> —
   `RESOURCE_EXHAUSTED (code 429): Individual quota reached … Resets in
   71h19m42s.` appeared in a session's `agy.log` at 08:02:42Z and walled the
   agent. No payload was kept: the capture call in `src/attach.mjs` was added

@@ -3,7 +3,7 @@
 // keep the payload with secrets scrubbed, so the docs rows that say
 // "docs-only" can become "observed-live" with evidence. One file per
 // (agent, signal); a later arrival never overwrites the first. A payload a
-// `baton sessions simulate-limit` produced is marked and never captured.
+// `leg sessions simulate-limit` produced is marked and never captured.
 // Where: BATON_LIVE_DIR, else this checkout's fixtures/live/ when it exists
 // (a dev clone), else <BATON_HOME>/live/. In a dev clone the matching docs
 // rows are flipped in the same call (scripts/live-limits.mjs).

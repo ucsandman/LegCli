@@ -1,2 +1,3 @@
 #!/bin/sh
 node scripts/privacy-check.mjs --staged || exit 1
+node scripts/check-branding.mjs --staged || exit 1

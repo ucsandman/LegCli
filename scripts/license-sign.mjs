@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Sign a Baton license key by hand (the site's /api/key does the same for
+// Sign a Leg license key by hand (the site's /api/key does the same for
 // paid orders). Needs BATON_LICENSE_PRIVATE_KEY in the environment:
 //   node --env-file=.env scripts/license-sign.mjs --plan personal --email you@example.com
 //   node --env-file=.env scripts/license-sign.mjs --plan team --email ops@acme.com --seats 5 --months 1
