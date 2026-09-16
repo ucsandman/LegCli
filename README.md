@@ -68,7 +68,7 @@ for the repository you already chose by typing `leg claude` in it:
 | claude | `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`) | `projects["<repo>"].hasTrustDialogAccepted: true` |
 | claude | the same entry, only when such an import exists | `hasClaudeMdExternalIncludesApproved`, `hasClaudeMdExternalIncludesWarningShown` |
 | codex | `~/.codex/config.toml` | `[projects."<repo>"] trust_level = "trusted"` |
-| agy | `~/.gemini/trustedFolders.json` | `"<repo>": "TRUST_FOLDER"` |
+| agy | `~/.gemini/antigravity-cli/settings.json` | `trustedWorkspaces: ["<repo>", "<worktree>"]` |
 
 For Claude Code this is the documented remedy: its permissions guide says to
 set `projects["<path>"].hasTrustDialogAccepted` to `true` in `~/.claude.json`,

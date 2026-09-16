@@ -15,7 +15,8 @@
 //   claude  ~/.claude.json            projects["<repo>"].hasTrustDialogAccepted
 //           (or $CLAUDE_CONFIG_DIR/.claude.json)
 //   codex   ~/.codex/config.toml      [projects."<repo>"] trust_level = "trusted"
-//   agy     ~/.gemini/config/projects/default-cli-project.json   projectResources.resources[{ gitFolder: { folderUri: ... } }]
+//   agy     ~/.gemini/antigravity-cli/settings.json   trustedWorkspaces: ["<repo>", "<worktree>"]
+//           (~/.gemini/config/projects/default-cli-project.json defense in depth)
 //
 // For claude this is the documented remedy: its own permissions docs say to
 // "set projects[<path>].hasTrustDialogAccepted to true in ~/.claude.json, where
@@ -267,12 +268,48 @@ function writeTextAtomic(file, text) {
 
 // ---- agy ----
 
+export function agySettingsFile(env = process.env) {
+  if (env.ANTIGRAVITY_APP_DATA_DIR) {
+    const p = resolve(env.ANTIGRAVITY_APP_DATA_DIR)
+    return p.endsWith('settings.json') ? p : join(p, 'settings.json')
+  }
+  const base = env.GEMINI_CONFIG_DIR ? resolve(env.GEMINI_CONFIG_DIR) : join(homedir(), '.gemini')
+  if (base.endsWith('settings.json')) return base
+  if (base.endsWith('antigravity-cli')) return join(base, 'settings.json')
+  return join(base, 'antigravity-cli', 'settings.json')
+}
+
 export function agyTrustFile(env = process.env) {
   const base = env.GEMINI_CONFIG_DIR ? resolve(env.GEMINI_CONFIG_DIR) : join(homedir(), '.gemini')
   if (base.endsWith('default-cli-project.json')) return base
   if (base.endsWith('projects')) return join(base, 'default-cli-project.json')
   if (base.endsWith('config')) return join(base, 'projects', 'default-cli-project.json')
   return join(base, 'config', 'projects', 'default-cli-project.json')
+}
+
+export function agyTrustedFoldersFile(env = process.env) {
+  const base = env.GEMINI_CONFIG_DIR ? resolve(env.GEMINI_CONFIG_DIR) : join(homedir(), '.gemini')
+  if (base.endsWith('trustedFolders.json')) return base
+  return join(base, 'trustedFolders.json')
+}
+
+export function normalizeWorkspacePath(raw) {
+  const s = String(raw)
+  let p
+  if (DRIVE_ABS.test(s)) {
+    p = process.platform === 'win32' ? realPath(s) : s
+    p = p.replace(/\//g, '\\')
+    if (/^[a-z]:/i.test(p)) p = p[0].toUpperCase() + p.slice(1)
+    return p.length > 3 ? p.replace(/\\+$/, '') : p
+  }
+  p = realPath(s)
+  if (process.platform === 'win32') {
+    p = p.replace(/\//g, '\\')
+    if (/^[a-z]:/i.test(p)) p = p[0].toUpperCase() + p.slice(1)
+    return p.length > 3 ? p.replace(/\\+$/, '') : p
+  }
+  p = p.replace(/\\/g, '/')
+  return p.length > 1 ? p.replace(/\/+$/, '') : p
 }
 
 export function agyFolderUri(repo) {
@@ -290,49 +327,136 @@ export function agyUriMatches(uri, root) {
   return samePath(p, root)
 }
 
-export function ensureAgyTrust(repo, { env = process.env } = {}) {
-  const file = agyTrustFile(env)
-  const root = repoRootOf(repo)
-  if (!existsSync(dirname(file))) return { agent: 'agy', file, wrote: [], imports: [], skipped: 'no agy config yet' }
+export function ensureAgyTrust(repo, { env = process.env, cwd = repo } = {}) {
+  const settingsFile = agySettingsFile(env)
+  const projectFile = agyTrustFile(env)
+  const trustedFoldersFile = agyTrustedFoldersFile(env)
+
+  const settingsDir = dirname(settingsFile)
+  const projectDir = dirname(projectFile)
+
+  if (!existsSync(settingsDir) && !existsSync(projectDir) && !existsSync(settingsFile) && !existsSync(projectFile)) {
+    return { agent: 'agy', file: settingsFile, wrote: [], imports: [], skipped: 'no agy config yet' }
+  }
+
+  const root = normalizeWorkspacePath(repoRootOf(repo))
+  const workDir = normalizeWorkspacePath(cwd || repo)
+  const targets = samePath(root, workDir) ? [root] : [root, workDir]
+
+  // Rule 4: refusal preservation. If user answered "no" in any existing config, respect it.
+  if (existsSync(projectFile)) {
+    const project = readJson(projectFile)
+    if (project?.projectResources?.resources && Array.isArray(project.projectResources.resources)) {
+      const declined = project.projectResources.resources.some((res) => {
+        const uri = res.gitFolder?.folderUri ?? res.folderUri
+        return targets.some((t) => agyUriMatches(uri, t)) && res.gitFolder?.allowWrite === false
+      })
+      if (declined) {
+        return { agent: 'agy', file: settingsFile, root, wrote: [], imports: [], skipped: 'you answered no for this folder; Leg leaves that answer alone' }
+      }
+    }
+  }
+  if (existsSync(trustedFoldersFile)) {
+    const tf = readJson(trustedFoldersFile)
+    if (tf && typeof tf === 'object') {
+      const declined = targets.some((t) => tf[t] === 'DENY' || tf[t] === 'DONT_TRUST' || tf[t] === false)
+      if (declined) {
+        return { agent: 'agy', file: settingsFile, root, wrote: [], imports: [], skipped: 'you answered no for this folder; Leg leaves that answer alone' }
+      }
+    }
+  }
+
   let wrote = []
-  withFileLock(`${file}.baton-lock`, () => {
-    const project = existsSync(file)
-      ? readJson(file)
-      : { id: 'default-cli-project', name: 'CLI Project', projectResources: { resources: [] } }
-    if (!project || typeof project !== 'object') { wrote = null; return }
 
-    if (!project.projectResources || typeof project.projectResources !== 'object') {
-      project.projectResources = {}
+  // 1. ~/.gemini/antigravity-cli/settings.json -> trustedWorkspaces
+  // agy checks this file on startup: workspaceTrusted iterates settings.TrustedWorkspaces
+  // and does an exact string match (runtime.memequal) against Store.workspacePath.
+  const hasSettings = existsSync(settingsFile) || existsSync(settingsDir)
+  if (hasSettings) {
+    withFileLock(`${settingsFile}.baton-lock`, () => {
+      const settings = existsSync(settingsFile) ? readJson(settingsFile) : {}
+      if (!settings || typeof settings !== 'object') { wrote = null; return }
+      const list = Array.isArray(settings.trustedWorkspaces) ? [...settings.trustedWorkspaces] : []
+      let changed = false
+      for (const target of targets) {
+        const idx = list.findIndex((item) => typeof item === 'string' && samePath(item, target))
+        if (idx === -1) {
+          list.push(target)
+          changed = true
+        } else if (list[idx] !== target) {
+          // Fix casing / separator normalization so exact memequal matches in Go
+          list[idx] = target
+          changed = true
+        }
+      }
+      if (changed) {
+        settings.trustedWorkspaces = list
+        writeJsonAtomic(settingsFile, settings)
+        wrote.push('trustedWorkspaces')
+      }
+    })
+    if (wrote === null) {
+      return { agent: 'agy', file: settingsFile, wrote: [], imports: [], skipped: 'agy settings file is not readable json' }
     }
-    if (!Array.isArray(project.projectResources.resources)) {
-      project.projectResources.resources = []
-    }
+  }
 
-    const declined = project.projectResources.resources.some((res) => {
-      const uri = res.gitFolder?.folderUri ?? res.folderUri
-      return agyUriMatches(uri, root) && res.gitFolder?.allowWrite === false
+  // 2. ~/.gemini/config/projects/default-cli-project.json (Gemini project resources)
+  const hasProject = existsSync(projectFile) || existsSync(projectDir)
+  if (hasProject) {
+    withFileLock(`${projectFile}.baton-lock`, () => {
+      const project = existsSync(projectFile)
+        ? readJson(projectFile)
+        : { id: 'default-cli-project', name: 'CLI Project', projectResources: { resources: [] } }
+      if (!project || typeof project !== 'object') return
+      if (!project.projectResources || typeof project.projectResources !== 'object') {
+        project.projectResources = {}
+      }
+      if (!Array.isArray(project.projectResources.resources)) {
+        project.projectResources.resources = []
+      }
+      let changed = false
+      for (const target of targets) {
+        const alreadyTrusted = project.projectResources.resources.some((res) => {
+          const uri = res.gitFolder?.folderUri ?? res.folderUri
+          return agyUriMatches(uri, target)
+        })
+        if (!alreadyTrusted) {
+          project.projectResources.resources.push({
+            gitFolder: {
+              folderUri: agyFolderUri(target),
+              defaultBranch: 'main',
+              allowWrite: true,
+            },
+          })
+          changed = true
+        }
+      }
+      if (changed) {
+        writeJsonAtomic(projectFile, project)
+        wrote.push('gitFolder')
+      }
     })
-    if (declined) { wrote = 'declined'; return }
+  }
 
-    const alreadyTrusted = project.projectResources.resources.some((res) => {
-      const uri = res.gitFolder?.folderUri ?? res.folderUri
-      return agyUriMatches(uri, root)
-    })
-    if (alreadyTrusted) return
+  // 3. ~/.gemini/trustedFolders.json (legacy / extension support)
+  if (existsSync(trustedFoldersFile)) {
+    try {
+      withFileLock(`${trustedFoldersFile}.baton-lock`, () => {
+        const tf = readJson(trustedFoldersFile) || {}
+        let changed = false
+        for (const target of targets) {
+          if (tf[target] !== 'TRUST_FOLDER') {
+            tf[target] = 'TRUST_FOLDER'
+            changed = true
+          }
+        }
+        if (changed) writeJsonAtomic(trustedFoldersFile, tf)
+      })
+    } catch {}
+  }
 
-    project.projectResources.resources.push({
-      gitFolder: {
-        folderUri: agyFolderUri(root),
-        defaultBranch: 'main',
-        allowWrite: true,
-      },
-    })
-    writeJsonAtomic(file, project)
-    wrote = ['gitFolder']
-  })
-  if (wrote === null) return { agent: 'agy', file, wrote: [], imports: [], skipped: 'agy trust file is not readable json' }
-  if (wrote === 'declined') return { agent: 'agy', file, root, wrote: [], imports: [], skipped: 'you answered no for this folder; Leg leaves that answer alone' }
-  return { agent: 'agy', file, root, wrote, imports: [], skipped: null }
+  const primaryFile = hasSettings ? settingsFile : projectFile
+  return { agent: 'agy', file: primaryFile, root, wrote, imports: [], skipped: null }
 }
 
 // ---- the one entry point ----

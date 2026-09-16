@@ -14,7 +14,7 @@ import { initRepo } from './helpers.mjs'
 import {
   ensureTrust, ensureClaudeTrust, ensureCodexTrust, ensureAgyTrust,
   externalImports, repoRootOf, trustPolicy, codexTrustedPaths, claudeConfigFile, trustLine, claudeProjectKey,
-  agyTrustFile, agyFolderUri,
+  agyTrustFile, agySettingsFile, agyFolderUri, normalizeWorkspacePath,
 } from '../src/trust.mjs'
 
 const tmp = (p = 'baton-trust-') => mkdtempSync(join(tmpdir(), p))
@@ -320,6 +320,52 @@ test('agy: the folder is added to default-cli-project.json and the others surviv
   assert.equal(proj.projectResources.resources[0].gitFolder.folderUri, 'file:///C:/Projects/elsewhere')
   assert.ok(proj.projectResources.resources.some((x) => x.gitFolder.folderUri === agyFolderUri(repoRootOf(repo))))
   assert.deepEqual(ensureAgyTrust(repo, { env: { GEMINI_CONFIG_DIR: dir } }).wrote, [], 'idempotent')
+})
+
+test('agy: the folder is added to settings.json trustedWorkspaces and existing entries survive', () => {
+  const repo = initRepo('baton-trust-repo-')
+  const dir = tmp('baton-gemini-settings-')
+  const settingsFile = agySettingsFile({ GEMINI_CONFIG_DIR: dir })
+  mkdirSync(join(dir, 'antigravity-cli'), { recursive: true })
+  writeFileSync(settingsFile, JSON.stringify({
+    trustedWorkspaces: ['C:\\Projects\\existing'],
+  }, null, 2))
+  const r = ensureAgyTrust(repo, { env: { GEMINI_CONFIG_DIR: dir } })
+  assert.ok(r.wrote.includes('trustedWorkspaces'))
+  const settings = read(settingsFile)
+  assert.equal(settings.trustedWorkspaces.length, 2)
+  assert.equal(settings.trustedWorkspaces[0], 'C:\\Projects\\existing')
+  assert.equal(settings.trustedWorkspaces[1], normalizeWorkspacePath(repoRootOf(repo)))
+  assert.deepEqual(ensureAgyTrust(repo, { env: { GEMINI_CONFIG_DIR: dir } }).wrote, [], 'idempotent')
+})
+
+test('agy: worktree run adds both repo root and worktree path to trustedWorkspaces', () => {
+  const repo = initRepo('baton-trust-repo-')
+  const dir = tmp('baton-gemini-wt-')
+  const settingsFile = agySettingsFile({ GEMINI_CONFIG_DIR: dir })
+  mkdirSync(join(dir, 'antigravity-cli'), { recursive: true })
+  writeFileSync(settingsFile, JSON.stringify({
+    trustedWorkspaces: [],
+  }, null, 2))
+  const wt = join(repo, '.leg-worktrees', 's-test-agy-1234')
+  mkdirSync(wt, { recursive: true })
+  const r = ensureAgyTrust(wt, { cwd: wt, env: { GEMINI_CONFIG_DIR: dir } })
+  assert.ok(r.wrote.includes('trustedWorkspaces'))
+  const settings = read(settingsFile)
+  const normRoot = normalizeWorkspacePath(repoRootOf(repo))
+  const normWt = normalizeWorkspacePath(wt)
+  assert.ok(settings.trustedWorkspaces.includes(normRoot), 'repo root is trusted')
+  assert.ok(settings.trustedWorkspaces.includes(normWt), 'worktree path is trusted')
+  assert.equal(settings.trustedWorkspaces.length, 2)
+})
+
+test('agy: normalizeWorkspacePath ensures drive letter is uppercase and separators normalized', () => {
+  const norm = normalizeWorkspacePath('c:/some-test-dir/my-repo')
+  assert.equal(norm.startsWith('C:\\'), true)
+  assert.equal(norm.includes('/'), false)
+  const normTrailing = normalizeWorkspacePath('C:\\some-test-dir\\my-repo\\')
+  assert.equal(normTrailing.endsWith('\\'), false)
+  assert.equal(normTrailing.endsWith('my-repo'), true)
 })
 
 test('agy: no ~/.gemini at all means no write', () => {
