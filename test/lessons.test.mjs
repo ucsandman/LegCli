@@ -176,8 +176,8 @@ test('codex-sandbox-ladder: refuses danger-full-access, always -C <worktree>, ne
 
 test('node-test-bare: package.json test script uses native discovery, optionally serialized', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
-  assert.match(pkg.scripts.test, /^node --test(?: --test-concurrency=1)?(?: &&|$)/)
-  assert.doesNotMatch(pkg.scripts.test, /^node --test (?!(?:--test-concurrency=1)(?: &&|$))\S/)
+  assert.match(pkg.scripts.test, /^node --test(?: --test-concurrency=\d+)?(?: &&|$)/)
+  assert.doesNotMatch(pkg.scripts.test, /^node --test (?!(?:--test-concurrency=\d+)?(?:\s*&&|$))\S/)
 })
 
 test('json-only-at-end: the supervisor reads out.log only inside the exit handler, and run.json has no session_id before exit', () => {

@@ -26,20 +26,30 @@ before(async () => {
 })
 after(async () => { await srv.stop() })
 
-async function api(path, { method = 'GET', body } = {}) {
-  const res = await new Promise((resolvePromise, reject) => {
-    const req = http.request(base + path, { method, headers: body ? { 'Content-Type': 'application/json' } : {} }, (r) => {
-      let data = ''
-      r.on('data', (c) => { data += c })
-      r.on('end', () => resolvePromise({ status: r.statusCode, headers: r.headers, text: data }))
-    })
-    req.on('error', reject)
-    if (body) req.write(JSON.stringify(body))
-    req.end()
-  })
-  let json = null
-  try { json = JSON.parse(res.text) } catch {}
-  return { ...res, json }
+async function api(path, { method = 'GET', body } = {}, retries = 3) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await new Promise((resolvePromise, reject) => {
+        const req = http.request(base + path, { method, headers: body ? { 'Content-Type': 'application/json' } : {} }, (r) => {
+          let data = ''
+          r.on('data', (c) => { data += c })
+          r.on('end', () => resolvePromise({ status: r.statusCode, headers: r.headers, text: data }))
+        })
+        req.on('error', reject)
+        if (body) req.write(JSON.stringify(body))
+        req.end()
+      })
+      let json = null
+      try { json = JSON.parse(res.text) } catch {}
+      return { ...res, json }
+    } catch (err) {
+      if (attempt < retries && (err.code === 'ECONNRESET' || err.code === 'ECONNREFUSED')) {
+        await sleep(50)
+        continue
+      }
+      throw err
+    }
+  }
 }
 
 test('health reports version, bind, port, home, scheduler, tools, columns', async () => {

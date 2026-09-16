@@ -50,7 +50,7 @@
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env bin/leg.mjs up",
-    "test": "node --test --test-concurrency=1 && node scripts/privacy-check.mjs && node scripts/check-claims.mjs",
+    "test": "node --test --test-concurrency=4 && node scripts/privacy-check.mjs && node scripts/check-claims.mjs",
     "lint": "eslint .",
     "privacy": "node scripts/privacy-check.mjs",
     "claims": "node scripts/check-claims.mjs",

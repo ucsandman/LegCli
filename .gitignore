@@ -2,9 +2,12 @@ node_modules/
 .supergoal/
 .env
 .baton/
+.leg/
 *.log
 docs/screenshots/*.tmp
 .baton-worktrees/
+.leg-worktrees/
+.context-handoffs/
 costclaw-report.html
 costclaw-out/
 .dashclaw-local/

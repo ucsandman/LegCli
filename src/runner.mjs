@@ -158,7 +158,7 @@ function gitDiff(cwd, headAtStart) {
 
 // Fallback when the cwd is not a git repo (tests, ad-hoc dirs): a shallow
 // mtime snapshot, so "wrote a file but no DONE" still reads as incomplete.
-const SNAP_SKIP = new Set(['.git', 'node_modules', '.baton', '.baton-worktrees'])
+const SNAP_SKIP = new Set(['.git', 'node_modules', '.baton', '.baton-worktrees', '.leg', '.leg-worktrees'])
 function fsSnapshot(cwd, depth = 3) {
   const out = new Map()
   const walk = (dir, rel, d) => {

@@ -58,7 +58,7 @@ export function testEnv(home, extra = {}) {
   if (rest.BATON_BIND !== undefined && rest.LEG_BIND === undefined) rest.LEG_BIND = rest.BATON_BIND
   if (rest.BATON_MAX_CONCURRENT !== undefined && rest.LEG_MAX_CONCURRENT === undefined) rest.LEG_MAX_CONCURRENT = rest.BATON_MAX_CONCURRENT
   if (rest.BATON_LIVE_DIR !== undefined && rest.LEG_LIVE_DIR === undefined) rest.LEG_LIVE_DIR = rest.BATON_LIVE_DIR
-  const base = { LEG_HOME: home, BATON_HOME: home, LEG_TIMERS_MS: '60000,120000', BATON_TIMERS_MS: '60000,120000', LEG_POLL_MS: '250', BATON_POLL_MS: '250', LEG_QUIET: '1', BATON_QUIET: '1', LEG_TRUST: 'never', BATON_TRUST: 'never', LEG_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64, BATON_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64 }
+  const base = { LEG_HOME: home, BATON_HOME: home, LEG_TIMERS_MS: '60000,120000', BATON_TIMERS_MS: '60000,120000', LEG_POLL_MS: '50', BATON_POLL_MS: '50', LEG_QUIET: '1', BATON_QUIET: '1', LEG_TRUST: 'never', BATON_TRUST: 'never', LEG_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64, BATON_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64 }
   const env = Object.assign({}, process.env, base, rest)
   if (BATON_UNLICENSED !== '1') licenseHome(home)
   delete env.DASHCLAW_URL
