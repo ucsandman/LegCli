@@ -421,3 +421,31 @@ it), and check whether a board was listening on 4747 at the time.
   `canonPath`. And a new `docs/*.md` is two edits, the file and the `PAGES`
   entry, then `npm run docs`; the docs job exists because the second and third
   get forgotten.
+
+## The review that was in flight when the limit hit never ran; the feature shipped with 38 defects (2026-09-17)
+
+- **Symptom.** `c7f24a0` (history discovery) was committed and pushed by the
+  agent that took over after a Claude usage limit. The nine-lens adversarial
+  review the Claude session had launched died with that session. Re-run the
+  next day it confirmed 38 findings, 3 high: the board's Conversations cell
+  could never page past 150 rows (the total was counted after the cursor
+  slice), an unreachable UNC cwd blocked a refresh for seconds per record,
+  and an Antigravity retitle was invisible to every incremental refresh
+  (the directory's mtime was the cache key; an in-place rewrite never moves
+  it).
+- **Root cause.** The hand-off bundle carried "what was established" and
+  "next moves" but not "what was in flight": a background workflow is not a
+  file, so the next agent saw a clean-looking task and shipped it. Nothing
+  in the ship path asks whether the change was reviewed.
+- **Fix.** `582dfe5`: 20 findings closed, each with a test that fails on the
+  previous source (proved on a detached worktree of HEAD before the fix).
+- **Left open, by choice.** Coverage-only findings (live markers, the
+  write-scope guard, the flag surfaces, extra accounts), a low-severity
+  dedup edge (a conversation split over two Claude transcript files when Leg
+  recorded only the older path), the `sessions ls` row format, and the
+  pretty-printed index file.
+- **The lesson that generalises.** A review is part of the change, not a
+  step after it: launch it before the feature is committable and record it
+  in the hand-off as in flight, or the next agent ships without it. And a
+  cache keyed on a directory's mtime sees files added and removed, never a
+  file rewritten in place.
