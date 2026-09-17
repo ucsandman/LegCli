@@ -62,3 +62,16 @@ test('redact also removes values the process holds for the well-known key variab
     _resetHeldValues()
   }
 })
+
+// the shapes added for discovered transcripts must not eat ordinary prose or
+// code: `leg card add` refuses a task that matches, so a false positive is a
+// refusal the person cannot get past
+test('review 2026-09-17: prose and code that only look like secrets pass through, secret shapes still go', () => {
+  for (const s of ['Basic authentication/authorization is off by default', 'const cache_key = buildKey(request)', 'refresh_token: string', 'a partition_key= per tenant', 'SECRET_KEY=\nnext line here']) {
+    assert.equal(scrub(s), s, s)
+  }
+  for (const s of ['MY_APP_TOKEN=abcdef123456', 'AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG', 'Authorization: Basic dXNlcjpwYXNzd29yZA==', 'Authorization: Basic abcdefgh12345678abcd', 'password=hunter22222']) {
+    assert.ok(scrub(s).includes('[REDACTED]'), s)
+  }
+  assert.equal(scrub('SECRET_KEY=abcdefgh1234\nnext line here').split('\n')[1], 'next line here', 'a value never crosses a line break')
+})

@@ -43,12 +43,15 @@ export const LAYOUT = {
 export function accountsFile() { return join(home(), 'accounts.json') }
 export function accountDir(agent, name) { return join(home(), 'accounts', agent, name) }
 
+const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,29}$/i
+
 export function readAccounts() {
   const base = { claude: ['default'], codex: ['default'], agy: ['default'], grok: ['default'] }
   if (!existsSync(accountsFile())) return base
   try {
     const j = JSON.parse(readFileSync(accountsFile(), 'utf8'))
-    for (const k of Object.keys(base)) if (Array.isArray(j[k])) base[k] = ['default', ...j[k].filter((n) => n !== 'default')]
+    // the same shape addAccount accepts: a name is a directory segment, never a path
+    for (const k of Object.keys(base)) if (Array.isArray(j[k])) base[k] = ['default', ...j[k].filter((n) => typeof n === 'string' && n !== 'default' && NAME_RE.test(n))]
   } catch {}
   return base
 }
@@ -74,7 +77,7 @@ function junction(target, link) {
 
 // Create the account dir, junction the shared harness in, copy the settings.
 export function addAccount(agent, name) {
-  if (!/^[a-z0-9][a-z0-9_-]{0,29}$/i.test(name) || name === 'default') throw new Error(`invalid account name "${name}" (letters, digits, - and _; not "default")`)
+  if (!NAME_RE.test(name) || name === 'default') throw new Error(`invalid account name "${name}" (letters, digits, - and _; not "default")`)
   const l = LAYOUT[agent]
   if (!l) throw new Error(`unknown agent "${agent}" (claude|codex|agy|grok)`)
   if (!l.env) throw new Error(`${agent} has no config-dir override in the installed version; extra accounts are not possible`)

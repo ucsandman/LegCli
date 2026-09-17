@@ -6,7 +6,7 @@
 // take the other providers down with it).
 import { existsSync, openSync, readSync, closeSync, fstatSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve, isAbsolute } from 'node:path'
-import { scrub } from '../redact.mjs'
+import { redact } from '../redact.mjs'
 import { canonPath } from '../fsx.mjs'
 
 export const HEAD_BYTES = 256 * 1024
@@ -61,11 +61,12 @@ export function jsonLines(text) {
   return out
 }
 
-// One line of scrubbed, single-spaced text, cut to `max`. Everything a record
+// One line of redacted, single-spaced text, cut to `max`. Everything a record
 // carries as prose goes through here, so the on-disk index never holds a key
-// an agent printed and never holds a whole message.
+// an agent printed (by shape, or by being a value this process holds in a
+// well-known variable) and never holds a whole message.
 export function line(text, max = TITLE_MAX) {
-  const s = scrub(String(text ?? '')).replace(/\s+/g, ' ').trim()
+  const s = redact(String(text ?? '')).replace(/\s+/g, ' ').trim()
   return s.length > max ? s.slice(0, max - 1) + '…' : s
 }
 

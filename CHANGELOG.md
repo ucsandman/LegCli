@@ -21,6 +21,21 @@
   GitLab, Hugging Face keys, JWTs, private-key blocks, basic auth, URL
   credentials, `password=`), and the board token joined the values it strips.
   Support matrix and every file read: docs/history.md.
+- **History, after its review.** The board's Conversations cell pages past
+  150 rows (the total no longer shrank with each cursor page); the board
+  refreshes a stale index in a child process instead of its own event loop;
+  a cwd on an unreachable network share no longer stalls a refresh; an
+  Antigravity retitle or a touched presence lock is seen by an incremental
+  refresh, and only that conversation is re-read; an older Leg session id
+  still opens the conversation it was one leg of; `leg history` prints a
+  failed refresh whatever the last index still lists, `refresh` fails cleanly
+  when another Leg holds the lock, `--limit 0` is a usage error (`--all`),
+  `--offset` works, a Leg-only row's id prints whole; a malformed id on
+  `/api/history/<id>` is a 400; an account name that is a path is ignored;
+  titles are cut to 200 as documented and go through the held-value
+  redaction too; the Copilot chip has a colour. Redaction no longer eats
+  `Basic authentication/authorization`, `cache_key = ...` or
+  `refresh_token: string`, and a value never crosses a line break.
 
 ## 0.9.0 (2026-09-16)
 

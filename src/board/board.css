@@ -130,6 +130,7 @@
   --id-codex: #69DBBA;   /* oklch(0.815 0.115 172) cool green */
   --id-agy: #CC97F3;     /* oklch(0.760 0.140 310) violet, 46 degrees clear of the accent */
   --id-grok: #70B8FF;    /* oklch(0.750 0.130 240) azure blue */
+  --id-copilot: #F0A3B8; /* oklch(0.790 0.110 5) rose; lists and reads, never runs */
   --id-fake: #A0A6AE;    /* oklch(0.720 0.010 258) the scripted adapter, neutral in hue */
 
   /* type scale. Fixed rem, range 13 to 52. The old board ran 13 to 21, which
@@ -222,6 +223,7 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .dot.id-codex { background: var(--id-codex); }
 .dot.id-agy { background: var(--id-agy); }
 .dot.id-grok { background: var(--id-grok); }
+.dot.id-copilot { background: var(--id-copilot); }
 
 /* ---- logins ------------------------------------------------------------- */
 .logins { display: grid; gap: 20px; }
@@ -323,6 +325,7 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .chip-id-codex { color: var(--id-codex); }
 .chip-id-agy { color: var(--id-agy); }
 .chip-id-grok { color: var(--id-grok); }
+.chip-id-copilot { color: var(--id-copilot); }
 .chip-id-fake { color: var(--id-fake); }
 .chip-state-ok { color: var(--ok-text); }
 .chip-state-warn { color: var(--warn-text); }

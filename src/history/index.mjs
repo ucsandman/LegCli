@@ -86,6 +86,9 @@ const providerKey = (name, account) => (account === 'default' ? name : `${name}@
 // (a resolved, case-folded string; no file-system call per record).
 const isUnder = (child, parent) => { const c = canonOrNull(child); const p = canonOrNull(parent); return Boolean(c && p) && (c === p || c.startsWith(p + sep)) }
 const keyPath = (p) => { if (!p) return null; const r = resolve(String(p)); return process.platform === 'win32' ? r.toLowerCase() : r }
+// a UNC path (\\server\share) whose host is unreachable blocks every
+// synchronous file-system call for seconds; a refresh never touches one
+const isUnc = (p) => typeof p === 'string' && /^[\\/]{2}[^\\/]/.test(p)
 const keyUnder = (child, parent) => { const c = keyPath(child); const p = keyPath(parent); return Boolean(c && p) && (c === p || c.startsWith(p + sep)) }
 
 // The only place discovery may write is under Leg's own home, never inside
@@ -101,8 +104,8 @@ function assertWriteScope(file, homes) {
 // each cwd to its repo, write. `force` drops the cache first (a full re-read).
 // `providers` narrows the pass; `homes` overrides a provider's home (tests).
 export function refreshIndex({ homes = null, providers = PROVIDER_NAMES, force = false } = {}) {
-  mkdirSync(historyDir(), { recursive: true })
   assertWriteScope(indexPath(), homes)
+  mkdirSync(historyDir(), { recursive: true })
   // mustHold: two refreshes (the board's and a CLI's) interleaving on one
   // index would tear it; the loser waits or gives up, never writes unlocked
   return withFileLock(join(historyDir(), '.index.lock'), () => {
@@ -139,6 +142,9 @@ export function refreshIndex({ homes = null, providers = PROVIDER_NAMES, force =
     resolveRepos(next)
     next.elapsed_ms = Date.now() - t0
     writeJsonAtomic(indexPath(), next)
+    // the parse cache takes the object just written: a second write of the
+    // same size inside one mtime tick would otherwise serve the previous index
+    try { const st = statSync(indexPath()); indexCache = { file: indexPath(), mtime: st.mtimeMs, size: st.size, index: next } } catch { indexCache = null }
     return { index: next, stats }
   }, { mustHold: true })
 }
@@ -156,6 +162,8 @@ function resolveRepos(index) {
   const lookup = (cwd) => {
     if (!cwd) return { repo: null, worktree: null, exists: false }
     if (cache.has(cwd)) return cache.get(cwd)
+    // a network folder is listed as recorded and never resolved to a repository
+    if (isUnc(cwd)) { const v = { repo: null, worktree: null, exists: null }; cache.set(cwd, v); return v }
     const exists = existsSync(cwd)
     const g = exists ? gitRootOf(cwd) : null
     const v = { repo: g?.repo ?? null, worktree: g?.worktree ?? null, exists }
@@ -191,8 +199,10 @@ function resolveRepos(index) {
         }
       }
       r.repo = repo ?? null
-      r.worktree = wt && (!repo || canonOrNull(wt) !== canonOrNull(repo)) ? { path: wt, branch: r.native?.worktree?.branch ?? r.branch ?? null } : null
+      r.worktree = wt && (!repo || isUnc(wt) || canonOrNull(wt) !== canonOrNull(repo)) ? { path: wt, branch: r.native?.worktree?.branch ?? r.branch ?? null } : null
       r.repo_name = repoNameOf(r.repo) ?? repoNameOf(r.cwd)
+      // F26: a title is a label; the prompt it came from stays under native.first
+      if (r.title) r.title = line(r.title)
     }
   }
 }
@@ -338,6 +348,9 @@ export function listHistory({ provider = null, repo = null, search = null, limit
   if (managed !== null) records = records.filter((r) => r.managed === managed)
   if (live !== null) records = records.filter((r) => Boolean(r.live) === live)
   records.sort((a, b) => stamp(b) - stamp(a))
+  // the count that matches the filters, before the cursor: what "N of M
+  // shown" and the board's show-more guard both mean
+  const total = records.length
   if (before) {
     const bStamp = Date.parse(before) || Number(before)
     if (Number.isFinite(bStamp)) {
@@ -347,7 +360,6 @@ export function listHistory({ provider = null, repo = null, search = null, limit
       if (idx !== -1) records = records.slice(idx + 1)
     }
   }
-  const total = records.length
   const page = limit > 0 ? records.slice(offset, offset + limit) : records.slice(offset)
   return { records: page, total, counts, offset, limit, refreshed_at: index?.refreshed_at ?? null, refresh_error: refreshError, stats, providers: providerSupport() }
 }
@@ -357,11 +369,11 @@ export function findRecord(id, opts = {}) {
   const want = String(id ?? '').trim()
   if (!want) throw new HistoryInputError('which conversation? pass an id from leg history')
   const { records } = listHistory({ ...opts, limit: 0, includeHidden: true })
-  const exact = records.find((r) => r.id === want || r.leg_session_id === want || r.native_id === want)
+  const exact = records.find((r) => r.id === want || r.leg_session_id === want || r.native_id === want || (r.leg_sessions ?? []).includes(want))
   if (exact) return exact
   const [prov, rest] = want.includes(':') ? want.split(':', 2) : [null, want]
   if (rest.length < 4) throw new HistoryInputError(`"${want}" is too short to name a conversation; give at least 4 characters of the id`)
-  const hits = records.filter((r) => (!prov || r.provider === prov) && (String(r.native_id ?? '').startsWith(rest) || String(r.leg_session_id ?? '').startsWith(rest)))
+  const hits = records.filter((r) => (!prov || r.provider === prov) && (String(r.native_id ?? '').startsWith(rest) || String(r.leg_session_id ?? '').startsWith(rest) || (r.leg_sessions ?? []).some((x) => String(x).startsWith(rest))))
   if (hits.length === 1) return hits[0]
   if (hits.length > 1) throw new HistoryInputError(`"${want}" matches ${hits.length} conversations: ${hits.slice(0, 5).map((r) => r.id).join(', ')}${hits.length > 5 ? ', …' : ''}`)
   return null

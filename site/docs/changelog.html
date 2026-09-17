@@ -77,6 +77,21 @@ the shapes another agent&#39;s transcript carries (Stripe, Google, xAI, npm,
 GitLab, Hugging Face keys, JWTs, private-key blocks, basic auth, URL
 credentials, <code>password=</code>), and the board token joined the values it strips.
 Support matrix and every file read: docs/history.md.</li>
+<li><strong>History, after its review.</strong> The board&#39;s Conversations cell pages past
+150 rows (the total no longer shrank with each cursor page); the board
+refreshes a stale index in a child process instead of its own event loop;
+a cwd on an unreachable network share no longer stalls a refresh; an
+Antigravity retitle or a touched presence lock is seen by an incremental
+refresh, and only that conversation is re-read; an older Leg session id
+still opens the conversation it was one leg of; <code>leg history</code> prints a
+failed refresh whatever the last index still lists, <code>refresh</code> fails cleanly
+when another Leg holds the lock, <code>--limit 0</code> is a usage error (<code>--all</code>),
+<code>--offset</code> works, a Leg-only row&#39;s id prints whole; a malformed id on
+<code>/api/history/&lt;id&gt;</code> is a 400; an account name that is a path is ignored;
+titles are cut to 200 as documented and go through the held-value
+redaction too; the Copilot chip has a colour. Redaction no longer eats
+<code>Basic authentication/authorization</code>, <code>cache_key = ...</code> or
+<code>refresh_token: string</code>, and a value never crosses a line break.</li>
 </ul>
 <h2 id="090-2026-09-16"><a class="anchor" href="#090-2026-09-16">0.9.0 (2026-09-16)</a></h2>
 <ul>

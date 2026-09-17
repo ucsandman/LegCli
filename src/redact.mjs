@@ -15,7 +15,7 @@ const PATTERNS = [
   ['GitHub fine-grained token (github_pat_)', /(?<![A-Za-z0-9_-])github_pat_[A-Za-z0-9_]{20,}/g],
   ['AWS key (AKIA)', /(?<![A-Za-z0-9_-])AKIA[0-9A-Z]{12,}/g],
   ['Slack token (xox/xapp)', /(?<![A-Za-z0-9_-])(?:xox[baprs]|xapp)-\S+/g],
-  ['key=value secret', /api[_-]?key\s*[=:]\s*\S+/gi],
+  ['key=value secret', /api[_-]?key[ \t]*[=:][ \t]*\S+/gi],
   // shapes a discovered transcript from another agent carries that the list
   // above missed (measured 2026-09-16: 15 of 18 common shapes went through)
   ['Stripe key (sk_live_/rk_live_)', /(?<![A-Za-z0-9_-])[sr]k_(?:live|test)_[A-Za-z0-9]{8,}/g],
@@ -26,10 +26,15 @@ const PATTERNS = [
   ['Hugging Face token (hf_)', /(?<![A-Za-z0-9_-])hf_[A-Za-z0-9]{20,}/g],
   ['JWT', /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g],
   ['private key block', /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g],
-  ['basic auth header', /Basic\s+[A-Za-z0-9+/=]{16,}/g],
+  // a digit or two capitals somewhere: base64 of any credential has one of
+  // them, "Basic authentication/authorization" in prose has neither
+  ['basic auth header', /Basic\s+(?=[A-Za-z0-9+/=]*(?:[0-9]|[A-Z][A-Za-z0-9+/=]*[A-Z]))[A-Za-z0-9+/=]{16,}/g],
   ['URL with credentials', /(?<=[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:)[^\s@/]{4,}(?=@)/gi],
-  ['env-style secret assign', /(?:[A-Za-z0-9_]*_(?:key|token|secret|password)|aws_secret_access_key)\s*[=:]\s*["']?[^\s"',;]{8,}/gi],
-  ['password=value', /\b(?:password|passwd)\s*[=:]\s*["']?[^\s"',;]{8,}/gi],
+  // an environment-style NAME (upper case): `cache_key = build(...)` and
+  // `refresh_token: string` in code are not secrets; a value never crosses a
+  // line break, so `SECRET_KEY=` at the end of a line takes nothing after it
+  ['env-style secret assign', /(?:[A-Z0-9_]*_(?:KEY|TOKEN|SECRET|PASSWORD)|aws_secret_access_key)[ \t]*[=:][ \t]*["']?[^\s"',;]{8,}/g],
+  ['password=value', /\b(?:password|passwd)[ \t]*[=:][ \t]*["']?[^\s"',;]{8,}/gi],
 ]
 
 export const SECRET_RES = PATTERNS.map(([, re]) => re)

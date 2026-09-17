@@ -200,7 +200,19 @@ are left out unless <code>--subagents</code> (the API&#39;s <code>hidden=1</code
 try; a throw keeps that provider&#39;s last good entries, records the error on
 its stats line, and the others still index.</li>
 <li><strong>The listing refreshes itself</strong> when the index is older than a minute;
-<code>leg history refresh</code> forces it.</li>
+<code>leg history refresh</code> forces it. The CLI refreshes inline; the board hands
+the refresh to a child <code>leg history refresh</code> so its own event loop keeps
+serving (a scan stats thousands of files and walks every cwd). A refresh
+that fails or cannot take the index lock keeps the last index, and the
+listing says so.</li>
+<li><strong>A folder on a network share</strong> (<code>\host\share\...</code>) is listed as the agent
+recorded it and never probed: an unreachable host blocks every synchronous
+file-system call for seconds, so no refresh touches one.</li>
+<li><strong>Antigravity&#39;s titles and activity marks</strong> live one small file per
+conversation (<code>annotations/&lt;id&gt;.pbtxt</code>, <code>presence/&lt;id&gt;.lock</code>). Each is
+stat&#39;ed on every pass and read again only when its own mtime moved; a
+retitle rewrites the file in place and does not change the directory, so
+the directory is no signal.</li>
 </ul>
 <h2 id="worktrees"><a class="anchor" href="#worktrees">Worktrees</a></h2>
 <p><code>leg worktrees</code> merges three sources into one list: what <code>git worktree list</code>

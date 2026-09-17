@@ -100,7 +100,19 @@ cwd encoding undocumented), Hermes, aider and Windsurf (no session store).
   try; a throw keeps that provider's last good entries, records the error on
   its stats line, and the others still index.
 - **The listing refreshes itself** when the index is older than a minute;
-  `leg history refresh` forces it.
+  `leg history refresh` forces it. The CLI refreshes inline; the board hands
+  the refresh to a child `leg history refresh` so its own event loop keeps
+  serving (a scan stats thousands of files and walks every cwd). A refresh
+  that fails or cannot take the index lock keeps the last index, and the
+  listing says so.
+- **A folder on a network share** (`\host\share\...`) is listed as the agent
+  recorded it and never probed: an unreachable host blocks every synchronous
+  file-system call for seconds, so no refresh touches one.
+- **Antigravity's titles and activity marks** live one small file per
+  conversation (`annotations/<id>.pbtxt`, `presence/<id>.lock`). Each is
+  stat'ed on every pass and read again only when its own mtime moved; a
+  retitle rewrites the file in place and does not change the directory, so
+  the directory is no signal.
 
 ## Worktrees
 

@@ -94,6 +94,7 @@ test('the owner lists a page, filters, and opens one conversation whose messages
 })
 
 test('an id is never a path: traversal shapes get 400 or 404 and nothing from disk', async () => {
+  assert.equal((await request(openBase, '/api/history/%E0%A4%A')).status, 400, 'a malformed escape is a bad request, not a 500')
   for (const p of ['/api/history/..%2f..%2fshare.json', '/api/history/%2e%2e%2f%2e%2e%2fshare.json', '/api/history/C%3A%5CWindows%5Cwin.ini', '/api/history/..%5c..%5clicense.json']) {
     const r = await request(openBase, p)
     assert.ok([400, 404].includes(r.status), `${p} → ${r.status}`)

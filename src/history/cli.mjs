@@ -2,7 +2,8 @@
 // Every verb prints for a person by default and JSON with --json; every one
 // of them is read-only except `continue`, which starts a normal `leg <agent>`
 // session on a conversation the agent's own store holds. Exit codes follow
-// the rest of the CLI: 0 fine, 2 usage, 3 not found / not possible.
+// the rest of the CLI: 0 fine, 1 internal error, 2 usage, 3 not found / not
+// possible, 4 license required.
 import { resolve } from 'node:path'
 import { listHistory, findRecord, recordDetail, refreshIndex, resumeSpec, providerSupport, HistoryInputError, PROVIDER_NAMES, DEFAULT_LIMIT } from './index.mjs'
 import { listWorktrees } from './worktrees.mjs'
@@ -11,7 +12,7 @@ import { attach } from '../attach.mjs'
 import { entitlement, allows, describe as describeLicense } from '../license.mjs'
 
 export const HELP = `leg history: every coding-agent conversation on this machine, Leg's own and the ones it only found
-  [ls] [--provider claude,codex,grok,agy,copilot] [--repo <path|name>] [--search <text>] [--limit n] [--all] [--json]
+  [ls] [--provider claude,codex,grok,agy,copilot] [--repo <path|name>] [--search <text>] [--limit n] [--offset n] [--all] [--json]
        [--managed | --external] [--live] [--subagents] [--refresh]
                                   newest first; the index refreshes itself when it is older than a minute
   show <id> [--messages n] [--json]  one conversation: where it ran, its last messages, whether Leg can continue it
@@ -25,7 +26,8 @@ export const WORKTREES_HELP = `leg worktrees [--repo <path>] [--no-dirty] [--jso
   every checkout git lists for the repositories Leg knows, Leg's own worktrees and the ones
   discovered conversations were working in; read only (leg card rm / the board's Remove still own removal)`
 
-const short = (id) => { const [p, n] = String(id).split(':', 2); return n ? `${p}:${n.slice(0, 8)}` : String(id).slice(0, 24) }
+// a Leg-only row's id is the session id whole: cut, it would not round-trip
+const short = (id) => { const [p, n] = String(id).split(':', 2); if (p === 'leg') return String(id); return n ? `${p}:${n.slice(0, 8)}` : String(id).slice(0, 24) }
 const when = (iso) => (iso ? ago(Date.now() - Date.parse(iso)) : '-')
 const flag = (args, k) => args[k] === true || (typeof args[k] === 'string' && args[k] !== 'false')
 
@@ -35,7 +37,7 @@ export function fmtRow(r) {
   return `${short(r.id).padEnd(16)}  ${r.provider.padEnd(6)}  ${who.padEnd(13)}  ${where.slice(0, 40).padEnd(40)}  ${when(r.updated_at).padEnd(20)}  ${String(r.title ?? '').slice(0, 60)}`
 }
 
-function printDetail(out, d) {
+function printDetail(out, d, { requested = 8 } = {}) {
   out(`${d.id}  ${d.provider}${d.account !== 'default' ? '/' + d.account : ''}  ${d.managed ? `Leg session ${d.leg_session_id} (${d.leg_status})` : 'discovered, not started by Leg'}${d.live ? '  LIVE' : ''}`)
   out(`  title:      ${d.title ?? '-'}`)
   out(`  folder:     ${d.cwd ?? '-'}${d.cwd_exists === false ? '  (gone)' : ''}`)
@@ -47,6 +49,7 @@ function printDetail(out, d) {
   out(`  transcript: ${d.transcript_path ?? '-'}${d.transcript === 'unsupported' ? '  (Leg cannot read this provider\'s transcript)' : ''}`)
   out(`  continue:   ${d.resume.supported ? `leg history continue ${d.id}` : `not possible: ${d.resume.reason}`}`)
   if (d.messages === null) out('  messages:   not readable for this provider')
+  else if (requested === 0) out('  messages:   not asked for (--messages 0)')
   else if (!d.messages.length) out('  messages:   none readable')
   else {
     out('  messages:')
@@ -60,22 +63,27 @@ export async function historyCommand(cmd, args, { out, die, raw = [] }) {
   if (!cmd || cmd === 'ls') {
     if (args.limit !== undefined) {
       const n = Number(args.limit)
-      if (!Number.isInteger(n) || n < 0) return die(2, '--limit must be a non-negative integer')
+      if (!Number.isInteger(n) || n < 1) return die(2, '--limit must be a positive integer (--all lists everything)')
+    }
+    if (args.offset !== undefined) {
+      const n = Number(args.offset)
+      if (!Number.isInteger(n) || n < 0) return die(2, '--offset must be a non-negative integer')
     }
     if (args.provider && String(args.provider).split(',').some((p) => !PROVIDER_NAMES.includes(p.trim()))) return die(2, `unknown provider in "${args.provider}" (${PROVIDER_NAMES.join('|')})`)
     let r
     try {
       r = listHistory({
         provider: args.provider ?? null, repo: args.repo ? (/[\\/]/.test(args.repo) ? resolve(String(args.repo)) : args.repo) : null, search: args.search ?? null,
-        limit: flag(args, 'all') ? 0 : (args.limit ? parseInt(args.limit, 10) : DEFAULT_LIMIT),
+        limit: flag(args, 'all') ? 0 : (args.limit ? parseInt(args.limit, 10) : DEFAULT_LIMIT), offset: args.offset ? parseInt(args.offset, 10) : 0,
         includeSubagents: flag(args, 'subagents'), refresh: flag(args, 'refresh') ? true : null,
         managed: flag(args, 'managed') ? true : flag(args, 'external') ? false : null, live: flag(args, 'live') ? true : null,
       })
     } catch (err) { return die(1, `history: ${err.message}`) }
     if (json) { out(JSON.stringify(r, null, 2)); return 0 }
+    // a failed refresh is said whatever the last index still lists
+    if (r.refresh_error) out(`refresh error: ${r.refresh_error} (showing the last index${r.refreshed_at ? ', from ' + when(r.refreshed_at) : ''})`)
     if (!r.total) {
       out('no conversations found.')
-      if (r.refresh_error) out(`refresh error: ${r.refresh_error}`)
       out('Leg looks in the Claude Code, Codex, Grok, Antigravity and Copilot homes on this machine, plus its own sessions. leg history providers lists them.')
       return 0
     }
@@ -85,7 +93,8 @@ export async function historyCommand(cmd, args, { out, die, raw = [] }) {
   }
   if (cmd === 'refresh') {
     const t = Date.now()
-    const r = refreshIndex({ force: flag(args, 'full') })
+    let r
+    try { r = refreshIndex({ force: flag(args, 'full') }) } catch (err) { return die(1, `history refresh: ${err.message}`) }
     if (json) { out(JSON.stringify({ ms: Date.now() - t, refreshed_at: r.index.refreshed_at, stats: r.stats }, null, 2)); return 0 }
     for (const s of r.stats) out(`${s.provider.padEnd(6)} ${s.account === 'default' ? '' : s.account.padEnd(10)} ${s.missing ? 'no store here' : s.error ? `ERROR ${s.error}` : `${s.records} conversation${s.records === 1 ? '' : 's'} (${s.scanned} scanned, ${s.parsed} read)`}  ${s.root}`)
     out(`refreshed in ${Date.now() - t} ms`)
@@ -109,9 +118,10 @@ export async function historyCommand(cmd, args, { out, die, raw = [] }) {
         const n = Number(args.messages)
         if (!Number.isInteger(n) || n < 0) return die(2, '--messages must be a non-negative integer')
       }
-      const d = recordDetail(rec, { messages: args.messages ? parseInt(args.messages, 10) : 8 })
+      const requested = args.messages !== undefined ? parseInt(args.messages, 10) : 8
+      const d = recordDetail(rec, { messages: requested })
       if (json) { out(JSON.stringify(d, null, 2)); return 0 }
-      printDetail(out, d)
+      printDetail(out, d, { requested })
       return 0
     }
     const spec = resumeSpec(rec)

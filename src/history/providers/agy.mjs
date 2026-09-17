@@ -32,12 +32,9 @@ export function scan({ home, prev = {} }) {
   const f = join(home, 'history.jsonl')
   const st = safeStat(f)
   if (!st) return { entries: {}, aux: {}, scanned: 0, parsed: 0 }
-  const old = Object.values(prev.entries ?? {})[0]
+  const prevEntries = prev.entries ?? {}
+  const old = Object.values(prevEntries)[0]
   const unchanged = old && old.mtime === st.mtimeMs && old.size === st.size
-  // the titles and the activity marks live one file per conversation: their
-  // directories are stat'ed, and re-read only when one of them changed
-  const dirs = ['annotations', 'presence'].map((d) => safeStat(join(home, d))?.mtimeMs ?? 0).join(':')
-  if (unchanged && prev.aux?.dirs === dirs) return { entries: prev.entries, aux: prev.aux, scanned: 1, parsed: 0 }
   const groups = {}
   if (!unchanged) {
     for (const j of jsonLines(safeRead(f))) {
@@ -54,22 +51,31 @@ export function scan({ home, prev = {} }) {
   // one entry per conversation, all keyed under the one file so a changed file
   // rebuilds them together and a vanished file drops them together
   const entries = {}
-  const list = unchanged ? Object.values(prev.entries).map((e) => e.record) : Object.values(groups)
+  let parsed = unchanged ? 0 : 1
+  const list = unchanged ? Object.values(prevEntries).map((e) => e.record) : Object.values(groups)
   for (const g of list) {
     if (!unchanged) {
       g.started_at = isoFromMs(g._min === Infinity ? null : g._min) ?? isoFromMs(st.mtimeMs)
       g.updated_at = isoFromMs(g._max) ?? isoFromMs(st.mtimeMs)
       delete g._min; delete g._max
     }
-    // cheap per-conversation facts that live outside history.jsonl
     if (g.first !== undefined) g.native.first = g.first // kept so a removed annotation falls back to it
-    g.title = titleOf(home, g.native_id) ?? g.native.first ?? null
-    const presence = safeStat(join(home, 'presence', `${g.native_id}.lock`))
-    if (presence && presence.mtimeMs > (Date.parse(g.updated_at ?? 0) || 0)) g.updated_at = isoFromMs(presence.mtimeMs)
     delete g.first
-    entries[`${f}#${g.native_id}`] = { mtime: st.mtimeMs, size: st.size, record: g }
+    // the title and the activity mark live one file per conversation. Each is
+    // stat'ed every pass and read again only when its own mtime moved: a
+    // retitle rewrites the file in place and a turn touches the lock, and
+    // neither changes the directory's mtime, so the directory is no signal.
+    const key = `${f}#${g.native_id}`
+    const anno = safeStat(join(home, 'annotations', `${g.native_id}.pbtxt`))?.mtimeMs ?? 0
+    const presence = safeStat(join(home, 'presence', `${g.native_id}.lock`))?.mtimeMs ?? 0
+    const was = prevEntries[key]
+    if (unchanged && was && was.anno === anno && was.presence === presence) { entries[key] = was; continue }
+    g.title = titleOf(home, g.native_id) ?? g.native.first ?? null
+    if (presence > (Date.parse(g.updated_at ?? 0) || 0)) g.updated_at = isoFromMs(presence)
+    if (unchanged) parsed += 1
+    entries[key] = { mtime: st.mtimeMs, size: st.size, anno, presence, record: g }
   }
-  return { entries, aux: { dirs }, scanned: 1, parsed: unchanged ? 0 : 1 }
+  return { entries, aux: {}, scanned: 1, parsed }
 }
 
 export function messages() { return null }

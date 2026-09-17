@@ -3,13 +3,15 @@
 // real ~/.claude, ~/.codex, ~/.grok, ~/.gemini and ~/.copilot are never read.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync, statSync, renameSync } from 'node:fs'
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync, statSync, renameSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
 import { makeHome, initRepo, git, testEnv, leg, legFail } from './helpers.mjs'
 import { allStores, claudeStore, id as uuid } from './history-fixture.mjs'
 // a Windows runner hands out a short 8.3 TEMP path while git reports the long
 // one, so a repo or checkout path only matches after both are canonicalized
 import { canonPath } from '../src/fsx.mjs'
+import { fmtRow } from '../src/history/cli.mjs'
+import { readAccounts } from '../src/accounts.mjs'
 
 const HOME = makeHome()
 process.env.LEG_HOME = HOME
@@ -372,6 +374,11 @@ test('leg history: ls, show, providers, refresh and worktrees through the CLI, J
   assert.equal(wt.repos, 1)
   assert.equal(wt.worktrees[0].main, true)
   assert.equal(wt.worktrees[0].conversations.count, 5)
+  // --limit 0 is a usage error (--all lists everything); --offset pages
+  assert.equal(legFail(['history', '--limit', '0'], env).status, 2)
+  const paged = JSON.parse(leg(['history', '--limit', '2', '--offset', '3', '--json'], env))
+  assert.deepEqual([paged.records.length, paged.offset, paged.total], [2, 3, 5])
+  assert.match(leg(['history', 'show', '00007001', '--messages', '0'], env), /not asked for/)
   assert.match(leg(['worktrees'], env), /checkout\s+5 conv/)
   assert.match(leg(['--help'], env), /history \[ls\]/)
 })
@@ -438,6 +445,87 @@ test('leg history continue: a stub claude gets --resume <id> in the conversation
     assert.fail('should exit 2')
   } catch (err) {
     assert.equal(err.status, 2)
-    assert.match(err.stderr, /--limit must be a non-negative integer/)
+    assert.match(err.stderr, /--limit must be a positive integer/)
   }
+})
+
+// ---- findings of the 2026-09-17 adversarial review ----
+
+test('paging with a cursor keeps the total: "N of M shown" counts what matches the filters, not what is left after the cursor', () => {
+  const root = fresh('cursor')
+  const f = allStores(root, { claude: [1, 2, 3, 4].map((i) => ({ id: uuid(6100 + i), title: `page ${i}`, updated: `2026-09-1${i}T00:00:00.000Z` })) })
+  H.refreshIndex({ homes: f.homes })
+  const p1 = H.listHistory({ homes: f.homes, refresh: false, sessions: [], limit: 2 })
+  assert.deepEqual([p1.total, p1.records.length], [4, 2])
+  const p2 = H.listHistory({ homes: f.homes, refresh: false, sessions: [], limit: 2, before: p1.records[1].id })
+  assert.deepEqual([p2.total, p2.records.map((r) => r.title)], [4, ['page 2', 'page 1']], 'the cursor moves the page, never the total')
+  const p3 = H.listHistory({ homes: f.homes, refresh: false, sessions: [], limit: 2, before: p2.records[1].id })
+  assert.deepEqual([p3.total, p3.records.length], [4, 0])
+})
+
+test('an older Leg session id still names the conversation it was one leg of', () => {
+  const root = fresh('legs')
+  const f = allStores(root, { claude: [{ id: uuid(6201), title: 'two legs' }] })
+  H.refreshIndex({ homes: f.homes })
+  const sessions = [
+    { session_id: 's-20260910-000000-claude-aaaa', agent: 'claude', agent_session_id: uuid(6201), status: 'ended', updated_at: '2026-09-10T00:00:00.000Z' },
+    { session_id: 's-20260911-000000-claude-bbbb', agent: 'claude', agent_session_id: uuid(6201), status: 'ended', updated_at: '2026-09-11T00:00:00.000Z' },
+  ]
+  const r = H.listHistory({ homes: f.homes, refresh: false, sessions }).records
+  assert.equal(r.length, 1, 'one conversation, two Leg sessions')
+  assert.equal(r[0].leg_session_id, 's-20260911-000000-claude-bbbb')
+  assert.equal(H.findRecord('s-20260910-000000-claude-aaaa', { homes: f.homes, refresh: false, sessions })?.id, `claude:${uuid(6201)}`, 'exact older id')
+  assert.equal(H.findRecord('s-20260910-000000', { homes: f.homes, refresh: false, sessions })?.id, `claude:${uuid(6201)}`, 'prefix of the older id')
+  // a Leg-only row prints its id whole, so the printed id round-trips through show
+  const row = fmtRow({ id: 'leg:s-20260912-000000-claude-cccc', provider: 'claude', managed: true, live: false, updated_at: null, title: 't' })
+  assert.ok(row.startsWith('leg:s-20260912-000000-claude-cccc'), row)
+})
+
+test('agy: a retitle written in place and a touched presence lock are seen by an incremental refresh, and only that conversation is re-read', () => {
+  const root = fresh('agy-inplace')
+  const f = allStores(root, { agy: [{ id: uuid(6301), title: 'old title', presence: '2026-09-13T09:01:00.000Z' }, { id: uuid(6302), title: 'other', presence: '2026-09-13T09:02:00.000Z' }] })
+  const r1 = H.refreshIndex({ homes: f.homes })
+  const agyStat = (r) => r.stats.find((s) => s.provider === 'agy')
+  assert.equal(agyStat(r1).parsed, 1)
+  const rec = () => H.listHistory({ homes: f.homes, refresh: false, sessions: [], provider: 'agy' }).records.find((r) => r.native_id === uuid(6301))
+  assert.deepEqual([rec().title, rec().updated_at], ['old title', '2026-09-13T09:01:00.000Z'])
+  assert.equal(agyStat(H.refreshIndex({ homes: f.homes })).parsed, 0, 'nothing changed: nothing read')
+  const anno = join(f.homes.agy, 'annotations', `${uuid(6301)}.pbtxt`)
+  writeFileSync(anno, 'title:"NEW TITLE"\n')
+  utimesSync(anno, new Date('2026-09-20T09:00:00.000Z'), new Date('2026-09-20T09:00:00.000Z'))
+  const lock = join(f.homes.agy, 'presence', `${uuid(6301)}.lock`)
+  utimesSync(lock, new Date('2026-09-20T09:05:00.000Z'), new Date('2026-09-20T09:05:00.000Z'))
+  const r2 = H.refreshIndex({ homes: f.homes })
+  assert.equal(agyStat(r2).parsed, 1, 'one conversation re-read, not both')
+  assert.deepEqual([rec().title, rec().updated_at], ['NEW TITLE', '2026-09-20T09:05:00.000Z'])
+})
+
+test('a conversation from a network folder indexes without a single file-system call on the path', () => {
+  const root = fresh('unc')
+  const unc = '\\\\leg-no-such-host-3f9a\\share\\proj'
+  const f = allStores(root, { claude: [{ id: uuid(6401), title: 'on a share', cwd: unc }] })
+  const t = Date.now()
+  H.refreshIndex({ homes: f.homes })
+  const ms = Date.now() - t
+  const r = H.listHistory({ homes: f.homes, refresh: false, sessions: [] }).records.find((x) => x.native_id === uuid(6401))
+  assert.deepEqual([r.cwd, r.cwd_exists, r.repo], [unc, null, null])
+  assert.ok(ms < 2000, `refresh took ${ms} ms: an unreachable host was probed`)
+})
+
+test('an account name that is a path never widens the known stores', () => {
+  writeFileSync(join(HOME, 'accounts.json'), JSON.stringify({ claude: ['../../../..', 'work', 'C:\\x'], codex: [42] }))
+  assert.deepEqual(readAccounts().claude, ['default', 'work'])
+  assert.deepEqual(readAccounts().codex, ['default'])
+  rmSync(join(HOME, 'accounts.json'))
+})
+
+test('a title is cut to 200 characters in the index; the prompt it came from keeps its 300 under native.first', () => {
+  const root = fresh('title-max')
+  const long = 'w'.repeat(280)
+  // agy with no annotation: the title is the first prompt
+  const f = allStores(root, { agy: [{ id: uuid(6501), prompts: [long] }] })
+  H.refreshIndex({ homes: f.homes })
+  const r = H.listHistory({ homes: f.homes, refresh: false, sessions: [] }).records.find((x) => x.native_id === uuid(6501))
+  assert.ok(r.title.length <= 200, `title is ${r.title.length} chars`)
+  assert.equal(r.native.first.length, 280, 'the prompt itself is kept whole up to 300')
 })

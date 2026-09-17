@@ -5,7 +5,7 @@
 // LEG_BIND (127.0.0.1) + LEG_PORT (4747) + LEG_TOKEN are the
 // multiplayer seams (src/auth.mjs). BATON_* names still work as fallback.
 import http from 'node:http'
-import { spawnSync } from 'node:child_process'
+import { spawnSync, execFile } from 'node:child_process'
 import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -231,20 +231,27 @@ async function adaptersInfo() {
 // The worktree list runs git once per known repository: cached for a short
 // while so a board that polls does not fork fifty processes a second.
 const WORKTREES_TTL = 20000
-let worktreesCache = null
+const worktreesCache = new Map()
+// A stale index is refreshed by a child `leg history refresh`, never in this
+// process: the scan stats thousands of files and walks every cwd, and inside
+// the board's event loop that is seconds of no SSE frames and no clicks. The
+// child takes the same index lock a CLI refresh would, so the two never tear
+// one file; the next listing reads what it wrote.
+const LEG_BIN = join(dirname(SELF), '..', 'bin', 'leg.mjs')
 let historyRefreshing = false
 function backgroundHistoryRefresh() {
   if (historyRefreshing) return
   historyRefreshing = true
-  setImmediate(() => {
-    try { refreshIndex() } catch {} finally { historyRefreshing = false }
-  })
+  try {
+    execFile(process.execPath, [LEG_BIN, 'history', 'refresh', '--json'], { env: process.env, windowsHide: true, timeout: 120000 }, () => { historyRefreshing = false })
+  } catch { historyRefreshing = false }
 }
 function worktreesFor({ repo = null, dirty = true } = {}) {
   const key = `${repo ?? ''}|${dirty}`
-  if (worktreesCache && worktreesCache.key === key && Date.now() - worktreesCache.at < WORKTREES_TTL) return worktreesCache.data
+  const hit = worktreesCache.get(key)
+  if (hit && Date.now() - hit.at < WORKTREES_TTL) return hit.data
   const data = listWorktrees({ repo, dirty, dirtyLimit: 20, repoLimit: 20 })
-  worktreesCache = { key, at: Date.now(), data }
+  worktreesCache.set(key, { at: Date.now(), data })
   return data
 }
 
@@ -832,7 +839,9 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           // the id is a lookup key, never a path: findRecord compares strings,
           // and the transcript it names is read only from inside a known store
           let rec
-          try { rec = findRecord(decodeURIComponent(parts[2]), { refresh: false }) } catch (err) {
+          let wanted
+          try { wanted = decodeURIComponent(parts[2]) } catch { return send(res, 400, { error: 'malformed id' }) }
+          try { rec = findRecord(wanted, { refresh: false }) } catch (err) {
             if (err instanceof HistoryInputError) return send(res, 400, { error: err.message })
             throw err
           }
