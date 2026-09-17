@@ -409,3 +409,140 @@ test('rank 8.5 sorts under the login warning and over the activity fallback', ()
   const ranks = B.rankedNotes(s).map((n) => n.rank)
   assert.deepEqual(ranks, [8, 8.5, 10])
 })
+
+// ---------------------------------------------------------------------------
+// B.6: the hand-off picker's rows, the ladder editor's round trip, and the
+// Back to fable predicate. All three are pure functions in sessions.js, so
+// they are asserted here rather than through a browser.
+// ---------------------------------------------------------------------------
+const target = (extra = {}) => ({ agent: 'claude', account: 'default', model: 'opus', available: true, reason: null, resets_at: null, keeps_conversation: false, cost: 'plan', ...extra })
+
+test('a picker row names the rung, what it does to the conversation, and what it costs now', () => {
+  assert.equal(
+    B.handoffOptionText(target({ keeps_conversation: true })),
+    'claude / opus · same terminal, keeps the conversation · ready',
+  )
+  assert.equal(
+    B.handoffOptionText(target({ model: 'sonnet' })),
+    'claude / sonnet · new agent, from the bundle · ready',
+  )
+  // a rung with no model is the agent alone: a model nobody chose is never printed
+  assert.equal(
+    B.handoffOptionText(target({ agent: 'codex', model: null })),
+    'codex · new agent, from the bundle · ready',
+  )
+  // a login that is not `default` is part of the rung's name
+  assert.equal(B.rungLabel({ agent: 'claude', account: 'work', model: 'haiku' }), 'claude/work / haiku')
+})
+
+test('an unavailable picker row carries the server reason and its clock, and is the one disabled', () => {
+  const walled = target({ agent: 'codex', model: null, available: false, reason: 'at its usage limit', resets_at: nowS() + 29 * HOUR })
+  assert.match(B.handoffOptionText(walled), /^codex · new agent, from the bundle · at its usage limit until /)
+  // the wasted switch: every model shares the window that is out
+  assert.equal(
+    B.handoffOptionText(target({ available: false, reason: 'shares the window that is out, buys nothing' })),
+    'claude / opus · new agent, from the bundle · shares the window that is out, buys nothing',
+  )
+  // an AVAILABLE row with a reason keeps it as text and stays pickable: the
+  // reserve is a note to a human, not a refusal
+  assert.equal(
+    B.handoffOptionText(target({ reason: 'past your 10% reserve' })),
+    'claude / opus · new agent, from the bundle · past your 10% reserve',
+  )
+  // what it costs is on the row before it is pressed
+  assert.equal(
+    B.handoffOptionText(target({ model: 'fable', cost: 'credits' })),
+    'claude / fable · new agent, from the bundle · ready, spends usage credits',
+  )
+  assert.equal(
+    B.handoffOptionText(target({ model: 'fable', cost: 'credits', available: false, reason: 'it spends usage credits and you have not allowed that' })),
+    'claude / fable · new agent, from the bundle · it spends usage credits and you have not allowed that',
+  )
+})
+
+test('the ladder editor round trips every rule a rung can carry', () => {
+  for (const [when, kind, pct] of [['always', 'always', 50], ['walled-only', 'walled-only', 50], ['below:80', 'below', 80], ['below:1', 'below', 1]]) {
+    assert.equal(B.whenKind(when), kind, when)
+    assert.equal(B.whenPct(when), pct, when)
+    assert.equal(B.whenString(B.whenKind(when), B.whenPct(when)), when, `${when} survives the round trip`)
+  }
+  // the number input is clamped where the server clamps it, so a save is never
+  // refused for a number the editor itself produced
+  assert.equal(B.whenString('below', 0), 'below:1')
+  assert.equal(B.whenString('below', 140), 'below:99')
+  assert.equal(B.whenString('below', 'nonsense'), 'below:1')
+  assert.equal(B.whenKind(undefined), 'always', 'a rung with no rule is taken always')
+  assert.equal(B.costWord('credits'), 'spends usage credits')
+  assert.equal(B.costWord('free'), 'free')
+  assert.equal(B.costWord(undefined), 'on the plan', 'the subscription already paid for is the default word')
+})
+
+test('Up and Down move one rung and refuse to fall off either end', () => {
+  const ladder = [{ agent: 'claude', model: 'fable' }, { agent: 'claude', model: 'opus' }, { agent: 'codex', model: null }]
+  assert.deepEqual(B.moveRung(ladder, 1, -1).map((r) => r.model), ['opus', 'fable', null])
+  assert.deepEqual(B.moveRung(ladder, 1, 1).map((r) => r.model), ['fable', null, 'opus'])
+  assert.deepEqual(B.moveRung(ladder, 0, -1).map((r) => r.model), ['fable', 'opus', null], 'the top rung has nowhere to go')
+  assert.deepEqual(B.moveRung(ladder, 2, 1).map((r) => r.model), ['fable', 'opus', null], 'and neither has the last')
+  // the draft line: what this terminal would try next, its own rung skipped
+  const on = { agent: 'claude', account: 'default', model: 'opus' }
+  assert.deepEqual(B.rungsAfter(on, ladder.map((r) => ({ ...r, account: 'default' }))).map(B.rungLabel), ['claude / fable', 'codex'])
+})
+
+test('the mirrored model list is the one src/buckets.mjs publishes', () => {
+  // sessions.js runs in a browser and cannot import it, so the copy is checked
+  // against the source of truth rather than trusted
+  const src = readFileSync(join(ROOT, 'src', 'buckets.mjs'), 'utf8')
+  const block = src.slice(src.indexOf('export const MODEL_ALIASES'))
+  const claude = block.slice(block.indexOf('claude:'), block.indexOf(']', block.indexOf('claude:')))
+  for (const m of B.MODEL_ALIASES.claude) assert.ok(claude.includes(`'${m}'`), `${m} is in the board's copy and not in src/buckets.mjs`)
+  assert.equal(B.MODEL_ALIASES.claude.length, (claude.match(/'/g) || []).length / 2, 'the two lists are the same length')
+  assert.deepEqual(B.LADDER_AGENTS, ['claude', 'codex', 'agy', 'grok'])
+})
+
+// Back to fable: present only when BOTH facts are known, because the whole
+// point of the control is that it works when pressed.
+const LADDER = [
+  { agent: 'claude', account: 'default', model: 'fable', when: 'always', cost: 'plan' },
+  { agent: 'claude', account: 'default', model: 'opus', when: 'always', cost: 'plan' },
+  { agent: 'codex', account: 'default', model: null, when: 'always', cost: 'plan' },
+]
+const downshifted = (extra = {}) => session({ model: 'opus', handoff_ladder: LADDER, ...extra })
+
+test('Back to fable appears on a downshifted row whose top rung is known open', () => {
+  const open = [acct({ buckets: [bucket('weekly_scoped', 63, { model: 'fable', is_active: true })] })]
+  assert.equal(B.climbTarget(downshifted(), open).model, 'fable')
+  assert.equal(B.topRungFor(downshifted()).model, 'fable', 'the top rung is the first one on this row own login')
+  // on the top rung already: nothing to climb to
+  assert.equal(B.climbTarget(session({ model: 'fable', handoff_ladder: LADDER }), open), null)
+  // a row with no model at all is not known to be below anything
+  assert.equal(B.climbTarget(session({ handoff_ladder: LADDER }), open), null)
+  // a finished row hands off nowhere
+  assert.equal(B.climbTarget(downshifted({ active: false }), open), null)
+})
+
+test('Back to fable is absent whenever the top rung is not known open', () => {
+  const walledModel = [acct({ walls: { fable: { limited_until: nowS() + 2 * HOUR, limited_reason: 'model_limit' } } })]
+  assert.equal(B.climbTarget(downshifted(), walledModel), null, 'the model itself is walled')
+  const walledLogin = [acct({ limited_until: nowS() + 2 * HOUR, buckets: [bucket('weekly_scoped', 10, { model: 'fable' })] })]
+  assert.equal(B.climbTarget(downshifted(), walledLogin), null, 'the whole login is out')
+  const spent = [acct({ buckets: [bucket('weekly_scoped', 100, { model: 'fable' })] })]
+  assert.equal(B.climbTarget(downshifted(), spent), null, 'the bucket is spent')
+  assert.equal(B.climbTarget(downshifted(), []), null, 'no record for the login is unknown, not open')
+  // no bucket and no wall is open: the only way to learn a bucket exists is to try it
+  assert.equal(B.climbTarget(downshifted(), [acct()]).model, 'fable')
+})
+
+test('the account-scoped verdict names the rung a hand-off would actually take', () => {
+  const accounts = [
+    acct({ live: 1, buckets: [bucket('weekly_all', 97, { is_active: true }), bucket('weekly_scoped', 20, { model: 'fable' })] }),
+    acct({ agent: 'codex', seven_day: { pct: 10, resets_at: nowS() + 40 * HOUR } }),
+  ]
+  // with no eligibility answer on the row, the nearest open login is named
+  assert.equal(B.verdictLines(accounts, [session()]).sub, 'Switching to fable buys nothing. Next off claude: codex.')
+  // with one, the chooser's own answer wins, model and all: a login being open
+  // is not the same fact as a rung being eligible
+  const withNext = [session({ eligible_next: { agent: 'codex', account: 'default' } })]
+  assert.equal(B.verdictLines(accounts, withNext).sub, 'Switching to fable buys nothing. Next off claude: codex.')
+  const named = [session({ eligible_next: { agent: 'claude', account: 'work', model: 'haiku' } })]
+  assert.equal(B.verdictLines(accounts, named).sub, 'Switching to fable buys nothing. Next off claude: claude/work / haiku.')
+})

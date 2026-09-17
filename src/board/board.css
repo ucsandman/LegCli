@@ -249,6 +249,11 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .model-rail { display: inline-flex; align-items: baseline; gap: 14px; flex-wrap: wrap; font-size: var(--t--1); color: var(--text-3); }
 .model-chip { white-space: nowrap; }
 .model-chip.is-out { color: var(--danger-text); }
+/* an open model this login has a live terminal on is a control: pressing it
+   puts that rung at the top of the terminal's ladder. The one the terminal is
+   already on, and a walled one, stay text: there is nothing to press. */
+.model-chip--pick { font-size: var(--t--1); min-height: 28px; }
+.model-chip.is-current { color: var(--text-2); }
 
 /* ---- panel: a raised object, not a drawn rectangle ---------------------- */
 .panel { position: relative; background: var(--e2); border: 1px solid var(--edge); border-radius: var(--r-panel); padding: 32px; box-shadow: var(--lift); }
@@ -326,7 +331,10 @@ code { font-family: var(--mono); font-size: 0.94em; }
    the region head carries the share clause for the login. */
 .term-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 24px; flex-wrap: wrap; }
 .term-meta .files { flex: 1 1 24ch; min-width: 0; }
-.term-capacity { margin-top: 10px; flex: none; font-size: var(--t--1); color: var(--text-3); white-space: nowrap; }
+.term-capacity { margin-top: 10px; flex: none; display: inline-flex; align-items: baseline; gap: 10px; font-size: var(--t--1); color: var(--text-3); white-space: nowrap; }
+/* the climb is a link beside the figure that explains it, never a fifth button
+   in the 2x2 grid, which is the shipped shape */
+.term-climb { font-size: var(--t--1); }
 /* the keyboard ring: a row the keys act on, marked on the edge the eye scans
    down rather than by a fill that would compete with is-urgent */
 .term.is-focused { box-shadow: inset 3px 0 0 var(--focus); }
@@ -558,8 +566,22 @@ code { font-family: var(--mono); font-size: 0.94em; }
 /* ---- chain rail, order rows, confirm ------------------------------------ */
 .chain-rail { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--t-0); color: var(--text-3); }
 .cap-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; font-size: var(--t-0); color: var(--text-3); margin-top: 8px; }
-.order-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: var(--t-0); }
-.order-row-name { flex: 1 1 auto; }
+/* the ladder editor: one rung per row, numbered, with its when, its cost word
+   and three buttons. The name takes the free space so every row's controls line
+   up in one column whatever the rung is called. */
+.ladder-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: var(--t-0); flex-wrap: wrap; }
+.ladder-num { flex: none; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.ladder-name { flex: 1 1 12ch; min-width: 10ch; }
+.ladder-rule { flex: 0 0 auto; width: 22ch; display: flex; align-items: center; gap: 8px; }
+.ladder-cost { flex: none; font-size: var(--t--1); color: var(--text-3); }
+/* the cost word is a column of its own so the three buttons line up down the
+   list whatever a rung costs */
+.ladder-costcol { width: 12ch; }
+.ladder-when { flex: none; min-height: 36px; font-size: var(--t--1); }
+.ladder-pct { flex: none; width: 7ch; min-height: 36px; font-size: var(--t--1); }
+.ladder-add { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0 2px; font-size: var(--t-0); border-top: 1px solid var(--line); }
+.ladder-policy { display: grid; gap: 8px; margin-top: 18px; border: 0; padding: 0; }
+.ladder-policy legend { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); padding: 0; }
 /* the label on each agent row in the New card dialog */
 .fallback-row-title { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
 .confirm-row { margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--e4); border-radius: var(--r-control); padding: 12px 14px; font-size: var(--t-0); }

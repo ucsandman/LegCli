@@ -392,6 +392,14 @@ table.reads .sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .rc-chip { color: var(--on-blue-faint); }
 .rc-prompt { margin-top: 10px; font-size: 15px; line-height: 1.45; max-width: 60ch; }
 .rc-empty { color: var(--on-blue-faint); }
+.rc-dim { color: var(--on-blue-faint); }
+.rc-model { font-family: var(--mono); }
+.rc-model.claude { color: var(--claude); }
+.rc-model.codex { color: var(--codex); }
+.rc-note-wait { margin-top: 8px; font-size: 14px; color: var(--warn-text); }
+.rc-meta { margin-top: 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px 24px; flex-wrap: wrap; }
+.rc-meta .rc-files { margin-top: 0; }
+.rc-cap-phrase { flex: none; font-size: 14px; color: var(--on-blue-faint); white-space: nowrap; }
 .rc-files { margin-top: 8px; font-size: 14px; color: var(--on-blue-faint); }
 .rc-files .hot { color: var(--warn-text); }
 .rc-note-ok { margin-top: 8px; font-size: 14px; color: var(--ok-text); }

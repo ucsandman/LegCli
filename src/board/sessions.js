@@ -23,6 +23,14 @@
   }
   const WIN_WORDS = { '5h': '5 hour', '7d': '7 day' }
   const IDS = ['claude', 'codex', 'agy', 'grok', 'fake']
+  // Mirrors MODEL_ALIASES and ALL_HANDOFF_AGENTS in src/buckets.mjs and
+  // src/preferences.mjs. This file is served to a browser and cannot import
+  // from either, so the lists are copied here and nowhere else on the board; a
+  // new alias is a change to both files in the same commit. The server is still
+  // the authority: it answers a rung it has never heard of with a 400 sentence,
+  // which the editor prints verbatim.
+  const MODEL_ALIASES = { claude: ['fable', 'opus', 'sonnet', 'haiku'], codex: [], agy: [], grok: [] }
+  const LADDER_AGENTS = ['claude', 'codex', 'agy', 'grok']
 
   let view = null
   const NO_BRANCH_BLOCKER = 'this terminal works in the checkout itself: there is no branch of its own to land'
@@ -34,7 +42,7 @@
   const alsoOpen = new Set()
   const actionNotes = new Map()
   const lastTone = new Map()
-  const defaultEditor = { order: null, dirty: false, saving: false, status: '', statusClass: '' }
+  const defaultEditor = { ladder: null, climb_back: 'next-handoff', may_spend: false, reserve: {}, dirty: false, saving: false, status: '', statusClass: '' }
 
   function getToken() { return localStorage.getItem('legToken') || localStorage.getItem('batonToken') || '' }
   async function api(path, opts = {}) {
@@ -484,13 +492,52 @@
     const models = knownModels(a)
     if (!models.length) return null
     const rail = el('span', { class: 'model-rail', 'aria-label': `${accountLabel(a)} models` })
+    // B.6: an open chip is the one control that turns a figure into a decision,
+    // so it becomes a button that puts that rung at the top of ONE terminal's
+    // ladder: the one open in the detail region, else the first live row on
+    // this login. With no live terminal on the login there is nothing to
+    // re-point and the chip stays what it was, a reading.
+    const target = railTerminal(a)
     for (const m of models) {
       const wall = wallFor(a, m)
       const b = modelBucket(a, m)
       const text = wall ? `${m} out until ${until(wall.limited_until)}` : b ? `${m} ${Math.round(b.percent)}%` : m
-      rail.appendChild(el('span', { class: `model-chip${wall ? ' is-out' : ''}`, title: wall && wall.evidence ? wall.evidence : null }, [text]))
+      const pickable = !wall && target && target.model !== m
+      if (!pickable) {
+        rail.appendChild(el('span', { class: `model-chip${wall ? ' is-out' : ''}${target && target.model === m ? ' is-current' : ''}`, title: wall && wall.evidence ? wall.evidence : null }, [text]))
+        continue
+      }
+      const chip = el('button', {
+        type: 'button', class: 'btn btn-text model-chip model-chip--pick',
+        'data-focus-key': `rail:${a.agent}:${a.account || 'default'}:${m}`,
+        title: `Put ${a.agent} / ${m} at the top of ${rowName(target)}'s ladder`,
+      }, [text])
+      chip.addEventListener('click', () => pickRung(target, { agent: a.agent, account: a.account || 'default', model: m }, chip))
+      rail.appendChild(chip)
     }
     return rail
+  }
+  // the terminal a rail chip re-points: the open one if it is on this login,
+  // else the first live row on it
+  function railTerminal(a) {
+    const live = ((view && view.sessions) || []).filter((s) => s.active && !s.hidden && s.agent === a.agent && (s.account || 'default') === (a.account || 'default') && s.can_edit_handoff_order)
+    return live.find((s) => s.session_id === drawer.id) || live[0] || null
+  }
+  // Moving a rung to the top of one terminal's ladder is the same POST the
+  // ladder editor makes, so the two cannot drift: one route, one shape.
+  async function pickRung(s, rung, btn) {
+    btn.disabled = true
+    actionNotes.delete(s.session_id)
+    const rest = (s.handoff_ladder || []).filter((r) => rungKey(r) !== rungKey(rung))
+    const kept = (s.handoff_ladder || []).find((r) => rungKey(r) === rungKey(rung))
+    const ladder = [kept || { ...rung, when: 'always', cost: rung.agent === 'agy' ? 'free' : rung.agent === 'grok' ? 'metered' : 'plan' }, ...rest]
+    try {
+      await api(`/api/sessions/${encodeURIComponent(s.session_id)}/handoff-order`, { method: 'POST', body: { handoff_ladder: ladder } })
+      actionNotes.set(s.session_id, { at: Date.now(), tone: 'ok', text: `${rungLabel(rung)} is the next rung for this terminal` })
+    } catch (err) {
+      actionNotes.set(s.session_id, { at: Date.now(), tone: 'danger', text: err.message })
+    }
+    refresh()
   }
 
   // A login is a raised object, and how much surface it gets is the design
@@ -661,12 +708,19 @@
       // with no model buckets there is no switch to warn anyone off.
       if (b && b.scope === 'account' && knownModels(subject).length) {
         const alt = openModels(subject)[0]
-        const next = openElsewhere[0]
+        // the rung a hand-off off this login would ACTUALLY take, from the
+        // chooser's own answer for a terminal running here, and only the
+        // nearest open login when no live row has one. A login that is open is
+        // not the same fact as a rung that is eligible: a reserve, a cost gate
+        // or a `below N%` rung can rule one out, and the sentence that names it
+        // is the sentence the reader acts on.
+        const eligible = live.filter((s) => acctOf(s) === subject).map((s) => s.eligible_next).find(Boolean)
+        const next = eligible || openElsewhere[0]
         return {
           line: headline(`${accountLabel(subject)} has ${leftOf(b)}% left, shared by every model.`, `${accountLabel(subject)} has ${leftOf(b)}% left, for every model.`),
           sub: subLine(
             alt ? `Switching to ${alt} buys nothing.` : null,
-            next ? `Next off ${accountLabel(subject)}: ${accountLabel(next)}.` : 'Nothing else is open.',
+            next ? `Next off ${accountLabel(subject)}: ${eligible ? rungLabel(next) : accountLabel(next)}.` : 'Nothing else is open.',
             staleClause(subject, b),
           ),
         }
@@ -949,30 +1003,134 @@
     return el('div', { class: 'kv' }, rows)
   }
 
-  function moveOrder(order, index, delta) {
+  // ---- B.3 the fallback ladder, as an editable list -----------------------
+  // A rung is a destination, not an agent: {agent, account, model, when, cost}.
+  // Everything below is pure, so the round trip from a saved ladder to the
+  // controls and back is testable without a DOM.
+  function moveRung(ladder, index, delta) {
     const target = index + delta
-    if (target < 0 || target >= order.length) return [...order]
-    const next = [...order]
+    if (target < 0 || target >= ladder.length) return [...ladder]
+    const next = [...ladder]
     ;[next[index], next[target]] = [next[target], next[index]]
     return next
   }
+  // `claude / opus`, `codex`, `claude/work / sonnet`: the login first, then the
+  // model, and a model is never invented for an agent that published none.
+  function rungLabel(r) {
+    if (!r || !r.agent) return 'none'
+    const login = r.account && r.account !== 'default' ? `${r.agent}/${r.account}` : r.agent
+    return r.model ? `${login} / ${r.model}` : login
+  }
+  const rungKey = (r) => `${r.agent}--${r.account || 'default'}--${r.model || ''}`
+  // What a rung spends, in words. `plan` is the subscription already paid for,
+  // which is why it is the only cost that reads as nothing extra.
+  const COST_WORDS = { free: 'free', plan: 'on the plan', credits: 'spends usage credits', metered: 'spends metered credits' }
+  function costWord(cost) { return COST_WORDS[cost] || COST_WORDS.plan }
 
-  function orderRows(order, onMove, scope) {
+  // B.6, one option in the Hand off picker. Three fields, always in this order:
+  // the rung, what taking it does to the conversation, and what it costs you
+  // right now. A rung that cannot be taken carries the SERVER'S reason
+  // verbatim, never a board paraphrase: that sentence is the one the chooser
+  // itself would print in the ledger, and two wordings for one refusal is how a
+  // greyed row starts lying. The separator is a middot because a browser
+  // collapses runs of spaces inside an <option>.
+  function handoffOptionText(t) {
+    const mode = t.keeps_conversation ? 'same terminal, keeps the conversation' : 'new agent, from the bundle'
+    let state
+    if (!t.available) state = `${t.reason || 'not available right now'}${Number.isFinite(t.resets_at) ? ` until ${until(t.resets_at)}` : ''}`
+    else if (t.reason) state = t.reason
+    else state = ['credits', 'metered'].includes(t.cost) ? `ready, ${costWord(t.cost)}` : 'ready'
+    return [rungLabel(t), mode, state].join(' · ')
+  }
+  // `when` is one string on the record and two controls on screen.
+  function whenKind(when) { return String(when || 'always').startsWith('below:') ? 'below' : (when === 'walled-only' ? 'walled-only' : 'always') }
+  function whenPct(when) { const n = Number(String(when || '').slice('below:'.length)); return Number.isFinite(n) && n > 0 ? n : 50 }
+  function whenString(kind, pct) {
+    if (kind === 'walled-only') return 'walled-only'
+    if (kind !== 'below') return 'always'
+    const n = Math.max(1, Math.min(99, Math.round(Number(pct) || 0)))
+    return `below:${n}`
+  }
+  const WHEN_WORDS = [['always', 'always'], ['below', 'below N%'], ['walled-only', 'walled only']]
+
+  // The editor. Numbered rows, one select and one optional number per rung, and
+  // three buttons that survive a rebuild by data-focus-key the way the order
+  // editor's did. No drag: a list this short is faster with two buttons, and a
+  // drag has no keyboard.
+  function ladderRows(ladder, onChange, scope) {
     const box = el('div', {})
-    order.forEach((agent, index) => {
-      const attrs = (direction) => ({
-        'data-order-scope': scope,
-        'data-order-agent': agent,
-        'data-order-direction': direction,
-        'data-focus-key': `order:${scope}:${agent}:${direction}`,
-      })
-      const up = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-label': `Move ${agent} earlier`, disabled: index === 0 ? '' : null, ...attrs('up') }, ['Up'])
-      const down = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-label': `Move ${agent} later`, disabled: index === order.length - 1 ? '' : null, ...attrs('down') }, ['Down'])
-      up.addEventListener('click', () => onMove(index, -1))
-      down.addEventListener('click', () => onMove(index, 1))
-      box.appendChild(el('div', { class: 'order-row' }, [el('span', { class: `order-row-name chip-id-${idOf(agent)}` }, [`${index + 1}. ${agent}`]), up, down]))
+    ladder.forEach((r, index) => {
+      const key = rungKey(r)
+      const label = rungLabel(r)
+      const row = el('div', { class: 'ladder-row' })
+      row.appendChild(el('span', { class: 'ladder-num' }, [`${index + 1}.`]))
+      row.appendChild(el('span', { class: `dot id-${idOf(r.agent)}`, 'aria-hidden': 'true' }))
+      row.appendChild(el('span', { class: `ladder-name chip-id-${idOf(r.agent)}` }, [label]))
+
+      const kind = whenKind(r.when)
+      const whenId = `ladder-when-${scope}-${key}`
+      const when = el('select', { id: whenId, class: 'ladder-when', 'aria-label': `When to take ${label}`, 'data-focus-key': `ladder:${scope}:${key}:when` })
+      for (const [value, text] of WHEN_WORDS) {
+        const opt = el('option', { value }, [text])
+        if (value === kind) opt.setAttribute('selected', 'selected')
+        when.appendChild(opt)
+      }
+      when.value = kind
+      when.addEventListener('change', () => onChange(ladder.map((x, i) => (i === index ? { ...x, when: whenString(when.value, whenPct(r.when)) } : x))))
+      // one cell for the rule and its number, so the selects line up in a
+      // column whether or not a rung carries a percentage
+      const rule = el('span', { class: 'ladder-rule' }, [when])
+      row.appendChild(rule)
+      if (kind === 'below') {
+        const pct = el('input', {
+          type: 'number', min: '1', max: '99', class: 'ladder-pct', value: String(whenPct(r.when)),
+          'aria-label': `Take ${label} only under this percent`, 'data-focus-key': `ladder:${scope}:${key}:pct`,
+        })
+        pct.addEventListener('change', () => onChange(ladder.map((x, i) => (i === index ? { ...x, when: whenString('below', pct.value) } : x))))
+        rule.appendChild(pct)
+        rule.appendChild(el('span', { class: 'ladder-cost' }, ['%']))
+      }
+      row.appendChild(el('span', { class: 'ladder-cost ladder-costcol' }, [costWord(r.cost)]))
+
+      const up = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-label': `Move ${label} earlier`, disabled: index === 0 ? '' : null, 'data-focus-key': `ladder:${scope}:${key}:up` }, ['Up'])
+      const down = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-label': `Move ${label} later`, disabled: index === ladder.length - 1 ? '' : null, 'data-focus-key': `ladder:${scope}:${key}:down` }, ['Down'])
+      const drop = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-label': `Remove ${label} from the ladder`, disabled: ladder.length < 2 ? '' : null, 'data-focus-key': `ladder:${scope}:${key}:remove` }, ['Remove'])
+      up.addEventListener('click', () => onChange(moveRung(ladder, index, -1)))
+      down.addEventListener('click', () => onChange(moveRung(ladder, index, 1)))
+      drop.addEventListener('click', () => onChange(ladder.filter((_, i) => i !== index)))
+      row.append(up, down, drop)
+      box.appendChild(row)
     })
     return box
+  }
+
+  // `[+ Add a rung]`: an agent and one of its models, or `default` for the
+  // model the CLI picks itself. An agent Leg knows no model names for offers
+  // `default` alone rather than a guess.
+  function addRungRow(ladder, onChange, scope) {
+    const row = el('div', { class: 'ladder-add' })
+    const agentId = `ladder-add-agent-${scope}`
+    const modelId = `ladder-add-model-${scope}`
+    const agent = el('select', { id: agentId, class: 'ladder-when', 'aria-label': 'Agent for the new rung', 'data-focus-key': `ladder:${scope}:add:agent` })
+    for (const a of LADDER_AGENTS) agent.appendChild(el('option', { value: a }, [a]))
+    agent.value = LADDER_AGENTS[0]
+    const model = el('select', { id: modelId, class: 'ladder-when', 'aria-label': 'Model for the new rung', 'data-focus-key': `ladder:${scope}:add:model` })
+    const fillModels = () => {
+      model.textContent = ''
+      model.appendChild(el('option', { value: '' }, ['default']))
+      for (const m of MODEL_ALIASES[agent.value] || []) model.appendChild(el('option', { value: m }, [m]))
+      model.value = ''
+    }
+    fillModels()
+    agent.addEventListener('change', fillModels)
+    const add = el('button', { type: 'button', class: 'btn btn-secondary', 'data-focus-key': `ladder:${scope}:add:go` }, ['+ Add a rung'])
+    add.addEventListener('click', () => {
+      const rung = { agent: agent.value, account: 'default', model: model.value || null, when: 'always', cost: agent.value === 'agy' ? 'free' : agent.value === 'grok' ? 'metered' : 'plan' }
+      if (ladder.some((r) => rungKey(r) === rungKey(rung))) return
+      onChange([...ladder, rung])
+    })
+    row.append(el('label', { for: agentId }, ['Add']), agent, el('label', { for: modelId }, ['model']), model, add)
+    return row
   }
 
   // Every region on this page is wiped and rebuilt on a timer, so a control the
@@ -1024,8 +1182,52 @@
 
   // Absolute priority, not a rotation: the saved list decides, minus the agent
   // already running here, so an agent placed last stays last.
-  function agentsAfter(current, order) {
-    return order.filter((agent) => agent !== current)
+  // The rungs below the one a terminal is on: what it would try next, in order.
+  function rungsAfter(current, ladder) {
+    return ladder.filter((r) => !(r.agent === current.agent && (r.account || 'default') === (current.account || 'default') && (r.model || null) === (current.model || null)))
+  }
+
+  // B.6 `Back to fable`. Two conditions, both of which must be KNOWN true from
+  // data this page already has: the row is running a model below the top rung
+  // of its own login's ladder, and that top rung is open. "Open" means no
+  // active wall on the model, no wall on the login, and either no bucket for it
+  // at all or a bucket under 100. A login this board has no record for is not
+  // "open", it is unknown, and an unknown destination gets no button: the whole
+  // point of the control is that it will work when pressed.
+  function topRungFor(s) {
+    const ladder = Array.isArray(s && s.handoff_ladder) ? s.handoff_ladder : []
+    return ladder.find((r) => r.agent === s.agent && (r.account || 'default') === (s.account || 'default')) || null
+  }
+  function climbTarget(s, accounts) {
+    if (!s || !s.active || !s.model || s.hidden) return null
+    const top = topRungFor(s)
+    if (!top || !top.model || top.model === s.model) return null
+    const names = MODEL_ALIASES[s.agent] || []
+    const best = names.indexOf(top.model)
+    const here = names.indexOf(s.model)
+    if (best < 0 || here < 0 || here <= best) return null
+    const acct = (accounts || []).find((x) => x.agent === s.agent && (x.account || 'default') === (s.account || 'default'))
+    if (!acct || acctState(acct) === 'walled' || wallFor(acct, top.model)) return null
+    const b = modelBucket(acct, top.model)
+    if (b && b.percent >= 100) return null
+    return top
+  }
+
+  // B.5: the one sentence beside the checkbox, and the one that replaces it on
+  // a login whose credits are off, where there is nothing to spend and so no
+  // decision to offer. A dead control is worse than none.
+  const MAY_SPEND_SENTENCE = 'A rung that spends usage credits or metered balance may be taken by an automatic hand-off.'
+  const NO_CREDITS_SENTENCE = 'Usage credits are off, so there is nothing to spend through the wall.'
+  // B.7, printed under the choice because it is not one: killing a working
+  // agent to save budget loses the turn.
+  const CLIMB_RULE = 'Leg never interrupts a running turn to climb.'
+  const CLIMB_WORDS = {
+    'next-handoff': 'Leg climbs back to the top rung at the next hand-off.',
+    never: 'Stay on the lower rung until you press Back to fable.',
+  }
+  function creditsOff(v) {
+    const a = ((v && v.accounts) || []).find((x) => x.agent === 'claude' && (x.account || 'default') === 'default')
+    return Boolean(a && a.extra_usage && a.extra_usage.enabled === false)
   }
 
   function renderDefaultOrder(v) {
@@ -1033,19 +1235,89 @@
     if (!field) return
     field.hidden = !v.preferences
     if (!v.preferences) return
-    if (!defaultEditor.order || (!defaultEditor.dirty && !defaultEditor.saving)) defaultEditor.order = [...v.preferences.handoff_order]
-    const list = document.getElementById('default-order-list')
-    const focus = takeFocus(document)
-    list.textContent = ''
-    list.appendChild(orderRows(defaultEditor.order, (index, delta) => {
-      defaultEditor.order = moveOrder(defaultEditor.order, index, delta)
+    const fresh = !defaultEditor.ladder || (!defaultEditor.dirty && !defaultEditor.saving)
+    if (fresh) {
+      defaultEditor.ladder = (v.preferences.handoff_ladder || []).map((r) => ({ ...r }))
+      defaultEditor.climb_back = v.preferences.climb_back || 'next-handoff'
+      defaultEditor.may_spend = Boolean(v.preferences.may_spend)
+      defaultEditor.reserve = { ...(v.preferences.reserve || {}) }
+    }
+    const touch = (next) => {
+      if (next) defaultEditor.ladder = next
       defaultEditor.dirty = true
       defaultEditor.status = ''
       renderDefaultOrder(view)
-    }, 'default'))
+    }
+    const focus = takeFocus(document)
+
+    const list = document.getElementById('default-order-list')
+    list.textContent = ''
+    list.appendChild(ladderRows(defaultEditor.ladder, touch, 'default'))
+    list.appendChild(addRungRow(defaultEditor.ladder, touch, 'default'))
+
+    // may_spend
+    const spend = document.getElementById('ladder-spend')
+    if (spend) {
+      spend.textContent = ''
+      const box = el('input', { type: 'checkbox', id: 'ladder-may-spend', 'aria-label': 'Let an automatic hand-off spend', 'data-focus-key': 'ladder:default:may-spend' })
+      if (defaultEditor.may_spend) box.setAttribute('checked', 'checked')
+      box.checked = defaultEditor.may_spend
+      box.addEventListener('change', () => { defaultEditor.may_spend = Boolean(box.checked); touch(null) })
+      spend.appendChild(el('label', { class: 'notify-toggle', for: 'ladder-may-spend' }, [box, ' Let an automatic hand-off spend']))
+      spend.appendChild(el('p', { class: 'field-help' }, [MAY_SPEND_SENTENCE]))
+      // B.5: with credits off and `can_toggle` false there is nothing to turn
+      // on from here, so this states the fact and offers no button. A control
+      // that cannot do anything is worse than none.
+      if (creditsOff(v)) spend.appendChild(el('p', { class: 'field-help' }, [NO_CREDITS_SENTENCE]))
+    }
+
+    // climb back
+    const climb = document.getElementById('ladder-climb')
+    if (climb) {
+      climb.textContent = ''
+      climb.appendChild(el('legend', {}, ['Climbing back']))
+      for (const [value, sentence] of Object.entries(CLIMB_WORDS)) {
+        const id = `ladder-climb-${value}`
+        const radio = el('input', { type: 'radio', name: 'ladder-climb-back', id, value, 'aria-label': sentence, 'data-focus-key': `ladder:default:climb:${value}` })
+        if (defaultEditor.climb_back === value) radio.setAttribute('checked', 'checked')
+        radio.checked = defaultEditor.climb_back === value
+        radio.addEventListener('change', () => { defaultEditor.climb_back = value; touch(null) })
+        climb.appendChild(el('label', { class: 'notify-toggle', for: id }, [radio, ` ${sentence}`]))
+      }
+      climb.appendChild(el('p', { class: 'field-help' }, [CLIMB_RULE]))
+    }
+
+    // reserve, one number per login
+    const reserve = document.getElementById('ladder-reserve')
+    if (reserve) {
+      reserve.textContent = ''
+      const logins = []
+      for (const r of defaultEditor.ladder) if (!logins.includes(r.agent)) logins.push(r.agent)
+      for (const agent of logins) {
+        const id = `ladder-reserve-${agent}`
+        const n = el('input', {
+          type: 'number', min: '0', max: '100', class: 'ladder-pct', id,
+          value: Number.isFinite(Number(defaultEditor.reserve[agent])) ? String(defaultEditor.reserve[agent]) : '0',
+          'aria-label': `Keep this percent of ${agent} for your own terminals`,
+          'data-focus-key': `ladder:default:reserve:${agent}`,
+        })
+        n.addEventListener('change', () => {
+          const pct = Math.max(0, Math.min(100, Math.round(Number(n.value) || 0)))
+          if (pct > 0) defaultEditor.reserve[agent] = pct
+          else delete defaultEditor.reserve[agent]
+          touch(null)
+        })
+        reserve.appendChild(el('div', { class: 'ladder-row' }, [
+          el('label', { for: id }, [`Keep`]), n,
+          el('span', { class: 'ladder-cost' }, [`% of ${agent} for your own terminals`]),
+        ]))
+      }
+      reserve.appendChild(el('p', { class: 'field-help' }, ['0 keeps nothing back. An automatic hand-off skips a rung past the floor; a hand-off you press yourself still takes it, and the picker says so.']))
+    }
+
     const save = document.getElementById('default-order-save')
     save.disabled = defaultEditor.saving || !defaultEditor.dirty
-    save.textContent = defaultEditor.saving ? 'Saving…' : 'Save default'
+    save.textContent = defaultEditor.saving ? 'Saving…' : 'Save ladder'
     const status = document.getElementById('default-order-status')
     status.textContent = defaultEditor.status
     status.className = `field-status ${defaultEditor.statusClass}`
@@ -1057,13 +1329,22 @@
     defaultEditor.status = ''
     renderDefaultOrder(view)
     try {
-      const data = await api('/api/settings', { method: 'PATCH', body: { handoff_order: defaultEditor.order } })
+      const data = await api('/api/settings', {
+        method: 'PATCH',
+        body: {
+          handoff_ladder: defaultEditor.ladder,
+          climb_back: defaultEditor.climb_back,
+          may_spend: defaultEditor.may_spend,
+          reserve: defaultEditor.reserve,
+        },
+      })
       if (view) view.preferences = data.preferences
-      defaultEditor.order = [...data.preferences.handoff_order]
+      defaultEditor.ladder = (data.preferences.handoff_ladder || []).map((r) => ({ ...r }))
       defaultEditor.dirty = false
-      defaultEditor.status = 'Saved for new terminals.'
+      defaultEditor.status = `Saved for new terminals. Order off the ladder: ${(data.preferences.handoff_order || []).join(', ')}.`
       defaultEditor.statusClass = 'ok'
     } catch (err) {
+      // the server's own sentence, verbatim: it is the one that names the rung
       defaultEditor.status = err.message
       defaultEditor.statusClass = 'bad'
     } finally {
@@ -1093,7 +1374,7 @@
         sysMessage('removed the Leg record; the worktree and the branch are kept', 'ok')
       } else {
         await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body })
-        if (action === 'handoff') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: body && body.agent ? `hand-off to ${optionLabel(body)} requested; this terminal switches agents in a few seconds` : 'hand-off requested; this terminal switches agents in a few seconds' })
+        if (action === 'handoff') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: body && body.agent ? `hand-off to ${rungLabel(body)} requested; this terminal switches agents in a few seconds` : 'hand-off requested; this terminal switches agents in a few seconds' })
         else if (action === 'end') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: 'end requested; the agent stops after its current turn' })
         else if (action === 'land/fix') actionNotes.set(id, { at: Date.now(), tone: 'ok', text: 'applied fix' })
       }
@@ -1112,13 +1393,15 @@
     // `now: codex · then · claude`, a five-item list with two items called
     // "then". The agent names keep their identity colour inside it.
     const sequence = el('div', { class: 'chain-rail', 'aria-label': 'Terminal handoff sequence' })
-    const chain = el('span', { class: 'chip' }, ['now: ', el('span', { class: `chip-id-${idOf(s.agent)}` }, [optionLabel(s)])])
+    const chain = el('span', { class: 'chip' }, ['now: ', el('span', { class: `chip-id-${idOf(s.agent)}` }, [rungLabel(s)])])
     // the fonts carry no arrow glyph, so the word does the arrow's job
-    for (const next of s.chain || []) chain.append(document.createTextNode(', then '), el('span', { class: `chip-id-${idOf(next.agent)}` }, [optionLabel(next)]))
+    for (const next of s.chain || []) chain.append(document.createTextNode(', then '), el('span', { class: `chip-id-${idOf(next.agent)}` }, [rungLabel(next)]))
     sequence.appendChild(chain)
     wrap.appendChild(sequence)
-    const preferred = optionLabel(s.preferred_next)
-    const eligible = optionLabel(s.eligible_next)
+    // the rung, not just the login: `claude / opus` and `claude / sonnet` are
+    // two destinations and the sequence above already names both
+    const preferred = s.preferred_next ? rungLabel(s.preferred_next) : 'none'
+    const eligible = s.eligible_next ? rungLabel(s.eligible_next) : 'none'
     if (!s.handoff_availability_known) wrap.appendChild(el('p', { class: 'sentence tone-muted' }, [`preferred: ${preferred}, and current eligibility is unavailable for this older terminal`]))
     else if (!s.eligible_next) wrap.appendChild(el('p', { class: 'sentence tone-warn' }, [`preferred: ${preferred}. No fallback is eligible now; Leg waits if every account is at its limit.`]))
     else if (eligible !== preferred) wrap.appendChild(el('p', { class: 'sentence tone-muted' }, [`preferred: ${preferred}, first eligible now: ${eligible}`]))
@@ -1134,17 +1417,28 @@
       const pick = el('div', { class: 'form-row' })
       const selectId = `handoff-to-${s.session_id}`
       pick.appendChild(el('label', { for: selectId }, ['Hand off now to']))
-      const select = el('select', { id: selectId })
+      const select = el('select', { id: selectId, 'aria-label': 'Hand off now to' })
       select.appendChild(el('option', { value: '' }, ['the next option in the order']))
       targets.forEach((t, i) => {
-        const note = t.available ? '' : ` — ${t.reason}${Number.isFinite(t.resets_at) ? `, back ${until(t.resets_at)}` : ''}`
         // the index is the value: an account name is not ours to parse
-        select.appendChild(el('option', { value: String(i), disabled: t.available ? null : 'disabled' }, [optionLabel(t) + note]))
+        select.appendChild(el('option', { value: String(i), disabled: t.available ? null : 'disabled' }, [handoffOptionText(t)]))
       })
       const go = el('button', { type: 'button', class: 'btn btn-secondary' }, ['Hand off'])
       go.addEventListener('click', () => {
         const t = select.value === '' ? null : targets[Number(select.value)]
-        act(s.session_id, 'handoff', go, t ? { agent: t.agent, account: t.account } : null)
+        // the confirm row names the destination and says whether the
+        // conversation survives, because those are the two things that differ
+        // between one rung and the next and neither is guessable from the row
+        pendingConfirm = {
+          id: s.session_id,
+          question: t
+            ? `Hands off to ${rungLabel(t)}. ${t.keeps_conversation ? 'Same terminal, and the conversation is kept.' : 'A new agent starts in this terminal, primed from the bundle.'}`
+            : 'Hands off to the first open rung of this terminal\'s ladder. The current turn stops.',
+          verb: 'Hand off',
+          action: 'handoff',
+          body: t ? { agent: t.agent, account: t.account, ...(t.model ? { model: t.model } : {}) } : null,
+        }
+        renderSessions(view)
       })
       pick.appendChild(el('div', { class: 'chain-rail' }, [select, go]))
       if (!targets.some((t) => t.available)) {
@@ -1156,38 +1450,39 @@
     const editableNow = ['starting', 'running', 'warning', 'limit', 'waiting'].includes(s.status)
     if (!s.hidden && editableNow) {
       let state = sessionEditors.get(s.session_id)
-      const sourceOrder = s.can_edit_handoff_order ? s.handoff_order : (view?.preferences?.handoff_order ?? s.handoff_order)
+      // this terminal's own ladder, else the machine default it would take on
+      // its next launch. A terminal that cannot be edited in place still shows
+      // the list it is about to inherit, so the save below means something.
+      const source = (s.can_edit_handoff_order ? s.handoff_ladder : (view?.preferences?.handoff_ladder ?? s.handoff_ladder)) || []
+      const copy = () => source.map((r) => ({ ...r }))
       if (!state) {
-        state = { open: false, order: [...sourceOrder], dirty: false, saving: false, status: '', statusClass: '' }
+        state = { open: false, ladder: copy(), dirty: false, saving: false, status: '', statusClass: '' }
         sessionEditors.set(s.session_id, state)
-      } else if (!state.dirty && !state.saving) state.order = [...sourceOrder]
-      const change = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-expanded': state.open ? 'true' : 'false', 'data-focus-key': `order-toggle:${s.session_id}` }, [state.open ? 'Close order editor' : 'Change order'])
+      } else if (!state.dirty && !state.saving) state.ladder = copy()
+      const change = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-expanded': state.open ? 'true' : 'false', 'data-focus-key': `order-toggle:${s.session_id}` }, [state.open ? 'Close ladder editor' : 'Change the ladder'])
       change.addEventListener('click', () => { state.open = !state.open; renderDrawer() })
       wrap.appendChild(change)
       if (state.open) {
         const editor = el('div', { class: 'detail-section' })
         editor.appendChild(el('p', { class: 'blocker' }, [s.can_edit_handoff_order
-          ? 'Move agents to set the priority for this terminal. All three stay available; the agent running now is skipped, and the rest keep this order.'
-          : 'This terminal started before order changes were available. Save this order for the next terminal, then restart when ready.']))
-        editor.appendChild(orderRows(state.order, (index, delta) => {
-          state.order = moveOrder(state.order, index, delta)
-          state.dirty = true
-          state.status = ''
-          renderDrawer()
-        }, s.session_id))
-        editor.appendChild(el('p', { class: 'blocker' }, [`Draft priority after ${s.agent}: ${agentsAfter(s.agent, state.order).join(', then ')}`]))
+          ? 'Each rung is an agent, a login and a model. Leg walks down from the top and takes the first rung that is open; the rung this terminal is already on is skipped.'
+          : 'This terminal started before ladder changes were available. Save this ladder as the default, then restart when ready.']))
+        const touch = (next) => { state.ladder = next; state.dirty = true; state.status = ''; renderDrawer() }
+        editor.appendChild(ladderRows(state.ladder, touch, s.session_id))
+        editor.appendChild(addRungRow(state.ladder, touch, s.session_id))
+        editor.appendChild(el('p', { class: 'blocker' }, [`Draft ladder after ${rungLabel(s)}: ${rungsAfter(s, state.ladder).map(rungLabel).join(', then ') || 'nothing left'}`]))
         const status = el('span', { class: `field-status ${state.statusClass}`, 'aria-live': 'polite' }, [state.status])
         const save = el('button', { type: 'button', class: 'btn btn-secondary', disabled: state.saving || !state.dirty ? '' : null, 'data-focus-key': `order-save:${s.session_id}` }, [state.saving ? 'Saving…' : s.can_edit_handoff_order ? 'Save for this terminal' : 'Save as default for next launch'])
         save.addEventListener('click', async () => {
           state.saving = true; state.status = ''; renderDrawer()
           try {
             if (s.can_edit_handoff_order) {
-              await api(`/api/sessions/${encodeURIComponent(s.session_id)}/handoff-order`, { method: 'POST', body: { handoff_order: state.order } })
+              await api(`/api/sessions/${encodeURIComponent(s.session_id)}/handoff-order`, { method: 'POST', body: { handoff_ladder: state.ladder } })
               state.status = 'Saved for this terminal.'
             } else {
-              const data = await api('/api/settings', { method: 'PATCH', body: { handoff_order: state.order } })
+              const data = await api('/api/settings', { method: 'PATCH', body: { handoff_ladder: state.ladder } })
               if (view) view.preferences = data.preferences
-              defaultEditor.order = [...data.preferences.handoff_order]
+              defaultEditor.ladder = (data.preferences.handoff_ladder || []).map((r) => ({ ...r }))
               defaultEditor.dirty = false
               state.status = 'Saved as the default. Restart this terminal when ready.'
             }
@@ -1195,6 +1490,7 @@
             state.statusClass = 'ok'
             await refresh()
           } catch (err) {
+            // the 409 or the 400 in the server's own words
             state.status = err.message
             state.statusClass = 'bad'
           } finally {
@@ -1296,10 +1592,29 @@
     // region head carries the share clause that stops anyone adding three
     // rows' figures together (A.7).
     const phrase = s.hidden ? null : capacityPhrase(s)
-    if (files || phrase) {
+    // B.6: the climb is a link on the capacity line, not a fifth button in the
+    // 2x2 grid. It belongs beside the figure that explains why the row was
+    // dropped a rung in the first place, and the grid is the shipped shape.
+    const top = climbTarget(s, view && view.accounts)
+    let climb = null
+    if (top) {
+      const back = (s.handoff_targets || []).find((t) => t.agent === top.agent && t.account === top.account && t.model === top.model)
+      climb = el('button', { type: 'button', class: 'btn btn-text term-climb', 'data-focus-key': `climb:${s.session_id}` }, [`Back to ${top.model}`])
+      climb.addEventListener('click', () => {
+        pendingConfirm = {
+          id: s.session_id,
+          question: `Hands off now. The current turn stops and ${top.model} continues from ${back && back.keeps_conversation ? 'the conversation' : 'the bundle'}.`,
+          verb: `Back to ${top.model}`,
+          action: 'handoff',
+          body: { agent: top.agent, account: top.account, model: top.model },
+        }
+        renderSessions(view)
+      })
+    }
+    if (files || phrase || climb) {
       body.appendChild(el('div', { class: 'term-meta' }, [
         files,
-        phrase ? el('span', { class: 'term-capacity' }, [phrase]) : null,
+        phrase || climb ? el('span', { class: 'term-capacity' }, [phrase, climb]) : null,
       ]))
     }
     row.appendChild(body)
@@ -1322,7 +1637,7 @@
       // TypeError going only to the console.
       const pending = pendingConfirm
       term.appendChild(row)
-      term.appendChild(confirmRow(pending.question, pending.verb, (btn) => act(s.session_id, pending.action, btn)))
+      term.appendChild(confirmRow(pending.question, pending.verb, (btn) => act(s.session_id, pending.action, btn, pending.body ?? null)))
       return term
     }
     const actions = el('div', { class: 'term-actions' })
@@ -2260,6 +2575,11 @@
       verdictLines, VERDICT_CH, SUB_CH, WARN_PCT, bindingOf, capFigure, capToken, shareClause, headline,
       rankedNotes, needsYou, registerTokens, capacityPhrase, capacityNote, waitingNote, notifyWait, resetWait,
       KEY_BUTTONS, KEY_MOVES,
+      // B.6: the picker's option text, the ladder's round trip and the climb
+      // predicate are pure, so they are asserted without a DOM
+      handoffOptionText, rungLabel, costWord, whenKind, whenPct, whenString, moveRung, rungsAfter,
+      climbTarget, topRungFor, MODEL_ALIASES, LADDER_AGENTS,
+      MAY_SPEND_SENTENCE, NO_CREDITS_SENTENCE, CLIMB_RULE, CLIMB_WORDS,
     }
   }
 

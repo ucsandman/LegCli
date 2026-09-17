@@ -231,6 +231,14 @@ function checkJsControls(t, src, name) {
 test('board.js: every control it creates has an accessible name', (t) => checkJsControls(t, BOARD_JS, 'board.js'))
 test('floor.js: every control it creates has an accessible name', (t) => checkJsControls(t, FLOOR_JS, 'floor.js'))
 test('history.js: every control it creates has an accessible name', (t) => checkJsControls(t, HISTORY_JS, 'history.js'))
+// sessions.js draws the terminal rows, the hand-off picker and the ladder
+// editor, and until the ladder landed it was scanned by nothing: its header
+// says so in as many words. Every control it builds now carries a visible name
+// or an 'aria-label' by test rather than by hand rule. A checkbox inside a
+// <label> is named correctly in a browser, but this scan reads source and
+// cannot see the wrapper, so those carry an explicit aria-label with the same
+// words as the label beside them.
+test('sessions.js: every control it creates has an accessible name', (t) => checkJsControls(t, readFileSync(join(ROOT, 'src/board/sessions.js'), 'utf8'), 'sessions.js'))
 
 // .chip is flat by design: no padding, no background, colour only. Anything
 // that sets one beside other text therefore has to supply the gap itself, or
@@ -264,8 +272,12 @@ test('the file row carries the class its gap is written against', () => {
 // either dead or a miss; both are worth knowing about, so the exceptions are
 // listed by name with a reason rather than left to a grep.
 const NO_RULE_NEEDED = new Set([
-  // queried from JS as selectors, never styled
+  // queried from JS as selectors, never styled. `region-background` is the
+  // Background panel that holds the live cards: its rows are `.term` rows and
+  // its head is a `.section-head`, exactly as the terminals region, so the
+  // section itself carries no rule of its own either.
   'region-settings', 'region-terminals', 'region-finished', 'region-trunk', 'region-history',
+  'region-background',
   'disclosure', 'default-order', 'finished-list', 'trunk-list',
   'region', 'region-title', 'lease-blocked-row',
   // floor table columns: the cells are styled through table/th/td

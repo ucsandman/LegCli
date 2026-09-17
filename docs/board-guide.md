@@ -147,6 +147,14 @@ measured and a wall is attributed from wording, so the two are never printed as
 each other. The drawer remembers whether you left it open. The
 `Times are local.` caption lives inside it.
 
+An **open chip is a button**: pressing it puts that rung at the top of one
+terminal's ladder, so the next hand-off takes it. The terminal is the one whose
+expansion is open if it is on this login, else the first live row on it, and the
+press is the same `POST /api/sessions/:id/handoff-order` the ladder editor
+makes. A chip stays plain text when it is walled, when it is the model that
+terminal is already running, or when no live terminal on this login can take a
+ladder change: a control that would do nothing is not drawn as one.
+
 **The login panels**, in that drawer, are one per login, and how much surface a
 panel gets is the design saying how much it matters:
 
@@ -246,6 +254,17 @@ been at it, and what you can do about it.
   together is stopped by the share clause at the region head, once. Nothing is
   printed when no bucket is known: a percentage nobody measured is worse than
   no percentage at all.
+- **`Back to fable`**, a link on the capacity line beside that figure, on a row
+  that Leg dropped to a lower model and can climb again. It appears only when
+  both facts are known: the row's model is below the top rung of its own
+  login's ladder, and that top rung is open (no wall on the model, no wall on
+  the login, and either no bucket for it or a bucket under 100). Pressing it
+  replaces the button row with one sentence, `Hands off now. The current turn
+  stops and fable continues from the bundle.`, or `from the conversation` when
+  that rung is one a `--resume` keeps. Confirming posts the hand-off with the
+  model on it; a rung that walled between the draw and the press comes back as
+  the server's own 409 sentence in the row. It is a link and not a fifth button:
+  the 2x2 grid is the shipped shape and does not reflow.
 - **The clock**: elapsed since the session started (`4h 24m`), and the session's
   short id. The id used to print as `claude-7f3a` immediately after the word
   `claude`; the prefix is the agent name twice and it is gone.
@@ -363,15 +382,15 @@ availability: a button that does not apply is omitted, never moved.
 | Approve `<name>` / Dismiss `<name>` | the board is shared and someone asked for a hand-off on your terminal | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
 | Details | any terminal of yours | `GET /api/sessions/:id/detail`: the transcript, the files changed with their line counts, the timeline and the current bundle; `GET /api/sessions/:id/diff?file=<path>` for one file, capped at 400 lines, refused for any path outside that terminal's own tree |
 | Hand off now | the session is active | `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal |
-| Change order | inside the expansion, while the status is `starting`, `running`, `warning`, `limit` or `waiting` | saves its validated claude/codex/agy priority; an older wrapper instead saves the machine default and says to restart the terminal |
+| Change the ladder | inside the expansion, while the status is `starting`, `running`, `warning`, `limit` or `waiting` | `POST /api/sessions/:id/handoff-order` with the whole `handoff_ladder`; an older wrapper instead saves the machine default and says to restart the terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
 | Remove | the session is not active | `DELETE /api/sessions/:id`: safely prunes the session record, worktree, and merged branch only when the worktree is clean and the branch is already on its base; otherwise it leaves them and explains why |
 | Remove record | the session is not active and has an own worktree | `DELETE /api/sessions/:id?force=1&keep_worktree=1`: removes only Leg's record and keeps the worktree, branch, unmerged commits, and dirty files |
 
 End, Remove and Remove record confirm first: the button row is replaced in place
 by one sentence and two buttons, focus moves to Cancel, and Escape cancels.
-There is no modal and no browser `confirm()`. Settings has the same order editor
-for the default copied by new terminals.
+There is no modal and no browser `confirm()`. Settings has the same ladder
+editor for the default copied by new terminals.
 
 ### The expansion
 
@@ -394,11 +413,12 @@ from the right, and the page keeps one scroll container
    `new` or `committed` when there are no counts against `HEAD`. A row expands
    to that file's diff, capped at 400 lines.
 6. **Timeline**: the last 40 events, newest first.
-7. **What happens next**: `now: claude, then codex, then agy`, which fallback is
-   preferred and which is eligible now, the line `Used after a usage limit or
-   Hand off now. A normal exit ends this terminal.`, the **Change order**
-   editor, the current bundle id, and whether `.leg/RESUME.md` still describes
-   the repository (recomputed from git on every poll).
+7. **What happens next**: `now: claude / opus, then claude / fable, then
+   claude / sonnet, then codex, then agy`, which rung is preferred and which is
+   eligible now, the line `Used after a usage limit or Hand off now. A normal
+   exit ends this terminal.`, the **Hand off now to** picker, the **Change the
+   ladder** editor, the current bundle id, and whether `.leg/RESUME.md` still
+   describes the repository (recomputed from git on every poll).
 8. **Harness** (only when the [portable harness](harness.md) is on): the
    source client, when it was captured and synced, the policy, one line for
    the leg now running (`codex harness partial · 8/8 components, 3 dropped ·
@@ -414,11 +434,64 @@ stays live, so the panel's own buttons keep working. Messages and diffs are
 scrubbed for secrets on the way out, and the whole region is refused for a
 terminal that belongs to someone else. **Close** or the Escape key closes it.
 
-**Change order** moves the three agents without removing one; same-agent
-secondary accounts still come before the other agents. The list is an absolute
-priority: an agent moved to the bottom is tried last from every starting agent.
-The editor previews the resulting priority, with the agent running now skipped,
-before saving.
+**The Hand off now to picker** lists one row per rung of this terminal's ladder,
+each of them three fields separated by a middot:
+
+```
+claude / opus · same terminal, keeps the conversation · ready
+claude / sonnet · new agent, from the bundle · ready
+codex · new agent, from the bundle · at its usage limit until Sat 10:11 PM
+claude / fable · new agent, from the bundle · ready, spends usage credits
+agy · new agent, from the bundle · only when every rung above it is walled
+```
+
+The rung first, then what taking it does to the conversation, then what it costs
+you right now. The state word is `ready` for a rung that is simply open; a rung
+that cannot be taken carries **the server's own reason**, verbatim, and is
+disabled, with `until <clock>` when there is a reset to name. A rung that is
+open but worth a warning keeps its reason as plain text and stays clickable:
+`past your 10% reserve` is the one you will see, because a human pressing this
+button ignores the reserve and a floor you cannot see is a floor you swear at.
+The refusal that reads `shares the window that is out, buys nothing` is a
+same-login rung under an account-wide wall: every model shares that window, so
+switching model would buy nothing. The rung Leg would take on its own is not in
+the list twice; the terminal's current rung is not in it at all. Picking one
+replaces the row's button grid with a sentence naming the destination and
+whether the conversation survives, and the hand-off carries the model.
+
+**Change the ladder** edits this terminal's own copy. Each rung is a numbered
+row: the agent and model with the login's dot, a `when` select (`always`,
+`below N%` with a number from 1 to 99, or `walled only`), the cost word, and
+**Up**, **Down**, **Remove**. `+ Add a rung` takes an agent and one of its
+models, or `default` for the model the CLI picks itself. There is no drag: a
+list this short is faster with two buttons and a drag has no keyboard. Saving
+posts the whole ladder; a rung the server will not accept comes back as its own
+sentence (`claude has no model "gpt-5"`) in the status line, and nothing is
+saved. The draft line under the list previews what this terminal would try
+next, with the rung it is on skipped.
+
+**Settings** carries the same editor for the machine default, under
+`New terminal handoff ladder`, plus the three rules that are machine-wide:
+
+- **Let an automatic hand-off spend**, with the sentence `A rung that spends
+  usage credits or metered balance may be taken by an automatic hand-off.` Off
+  by default. While it is off, a `credits` or `metered` rung is skipped by an
+  unattended hand-off and the ledger says which and why; a human pressing Hand
+  off can still take it. When the claude login reports credits off, the panel
+  adds `Usage credits are off, so there is nothing to spend through the wall.`
+  and offers no button to turn them on, because that cannot be done from here.
+- **Climbing back**, two radios: `Leg climbs back to the top rung at the next
+  hand-off.` (the default) or `Stay on the lower rung until you press Back to
+  fable.` Under them, the rule that is not a choice:
+  `Leg never interrupts a running turn to climb.`
+- **Keep N% of `<login>` for your own terminals**, one number per login on the
+  ladder. 0 keeps nothing back. An automatic hand-off skips a rung whose login
+  is past the floor; a hand-off you press yourself still takes it, and the
+  picker prints `past your 10% reserve` on that row rather than hiding it.
+
+Saving Settings writes `handoff_ladder`, `climb_back`, `may_spend` and
+`reserve` in one `PATCH /api/settings`, and the status line reports the
+`handoff_order` the ladder derives, which is what older terminals still read.
 
 ## The ledger
 
@@ -500,7 +573,8 @@ region head prints the counts instead: `2 running, 1 queued, 3 finished`.
 
 **Settings** holds the **API token** field (only needed when the server is bound
 off loopback; see [configuration.md](configuration.md#network-exposure)), the
-**New terminal handoff order** editor used by terminals started after you save,
+**New terminal handoff ladder** editor used by terminals started after you save
+(the rungs, the spend rule, the climb-back policy and the per-login reserve),
 **Notifications**, and the board's own facts: version and bind address, who you are signed in as,
 whether share is on, the scheduler, and the board home. **Notifications** holds
 two toggles, both about a terminal that is waiting on you: *Terminal toast when

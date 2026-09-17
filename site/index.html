@@ -205,7 +205,7 @@
     </div>
 
     <figure class="recreated">
-      <div class="board" role="img" aria-label="The Leg board: a headline reading that Fable is at 63 percent of its week and is the only login open, a capacity strip with one token per login (claude at 63 percent of the Fable week, codex back Saturday 10:11 PM, agy with no figure), a button reading Capacity and models, four terminal rows, and counts for finished and landed work">
+      <div class="board" role="img" aria-label="The Leg board: a headline reading that Fable is at 63 percent of its week and is the only login open, a capacity strip with one token per login (claude at 63 percent of the Fable week, codex back Saturday 10:11 PM, agy with no figure), a button reading Capacity and models, three terminal rows each naming its state, its repository, the model it is running and how much of that model's week is left, the first of them waiting on you for permission to run a command, and counts for finished and landed work">
         <p class="rc-verdict">Fable is at 63% of its week, the only login open.</p>
         <p class="rc-sub">Measured 41s ago. 3 terminals run on it, so the real figure is higher, never lower. codex is at its limit until Saturday 10:11 PM.</p>
 
@@ -230,24 +230,26 @@
         <div class="rc-terms">
           <div class="rc-term">
             <div class="rc-body">
-              <div class="rc-reg"><span class="rc-state"><i class="rc-mark bad"></i>near limit</span><span class="rc-where">acme/api on main</span></div>
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark bad"></i>waiting on you</span><span class="rc-where">acme/api on main</span><span class="rc-dim">dirty 3</span><span class="rc-dim">ahead 2</span><span class="rc-model claude">claude/fable</span></div>
               <p class="rc-prompt">add an idempotency key to the refund path and cover it with tests</p>
-              <p class="rc-files">create.ts, idempotency.ts</p>
+              <p class="rc-note-wait">waiting on you: permission to run Bash(git push origin HEAD), asked 40s ago</p>
+              <div class="rc-meta"><p class="rc-files">create.ts, idempotency.ts</p><span class="rc-cap-phrase">63% of the fable week</span></div>
             </div>
             <div class="rc-clock"><span>2h 40m</span><span class="rc-id">a3f8</span></div>
             <div class="rc-btns"><b>Hand off now</b><span>Details</span></div>
           </div>
           <div class="rc-term">
             <div class="rc-body">
-              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">acme/docs on main</span></div>
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">acme/docs on main</span><span class="rc-model claude">claude/sonnet</span><span class="rc-dim">quiet 12m</span></div>
               <p class="rc-prompt">rewrite the install page for the docs site</p>
+              <div class="rc-meta"><p class="rc-files">install.mdx</p><span class="rc-cap-phrase">sonnet week: no figure</span></div>
             </div>
             <div class="rc-clock"><span>48m</span><span class="rc-id">4b77</span></div>
             <div class="rc-btns"><b>Land</b><span>Details</span></div>
           </div>
           <div class="rc-term">
             <div class="rc-body">
-              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">C:\Projects</span></div>
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">C:\Projects</span><span class="rc-model codex">codex/gpt-5.6-sol</span></div>
               <p class="rc-prompt rc-empty">No prompt yet. This terminal has been open 6 minutes without a first turn.</p>
             </div>
             <div class="rc-clock"><span>6m</span><span class="rc-id">8e8a</span></div>
@@ -279,7 +281,7 @@
         <h2 id="two-h">Two agents in one repo, without either one stepping on the other.</h2>
         <p>Run a second agent in a repo where one is already working and they would normally fight over the same files. Leg gives the second one its own private copy of the checkout instead, on its own branch, so both edit freely and neither sees the other's half-finished work. Nothing is merged until you say so.</p>
         <p class="small muted">Under the hood that private copy is a git worktree at <code>.leg-worktrees/&lt;id&gt;</code> on branch <code>leg/&lt;id&gt;</code>, cut from whatever branch the checkout has out. The terminal prints one line saying where it is. If you have never used worktrees, you do not need to: Leg makes it and cleans it up.</p>
-        <p>The board's second lane is for background cards: work an agent does with no interactive terminal, each in its own worktree. Build stops with the changes sitting in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. You pick the first agent, and the fallback agents under Advanced options are the same handoff order.</p>
+        <p>The board's second lane is for background cards: work an agent does with no interactive terminal, each in its own worktree. Build stops with the changes sitting in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. You pick the first agent, and the fallback agents under Advanced options are the same handoff order. That order is a ladder now: each rung is an agent, a login and a model, so <code>claude/opus</code> and <code>claude/sonnet</code> are two separate steps down before Leg leaves the login at all, and Settings on the board is where you reorder them.</p>
         <p>Its row has a <b>Land</b> button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the row says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of the output, <code>dirty-trunk</code> when the checkout has local changes the landing would overwrite. Nothing is ever pushed.</p>
       </div>
       <figure class="recreated">

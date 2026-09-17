@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 // a throwaway home under the OS temp dir, so nothing is written into the repo
 process.env.LEG_HOME ||= process.env.BATON_HOME || join(tmpdir(), 'leg-seed-board')
 process.env.BATON_HOME ||= process.env.LEG_HOME
-const { createSession, updateSession } = await import('../src/sessions.mjs')
+const { createSession, updateSession, HANDOFF_ORDER_CAPABILITY } = await import('../src/sessions.mjs')
 const { recordUsage, markLimited } = await import('../src/usage.mjs')
 const { spawn } = await import('node:child_process')
 const { writeFileSync } = await import('node:fs')
@@ -77,9 +77,36 @@ const rows = [
 // distinct from files_touched below: the board prints basenames, and two
 // different paths ending in the same name read as one file listed twice
 const DIRTY = ['server.mjs', 'attach.mjs', 'usage.mjs']
+// The ladder a terminal started with (docs/redesign-2026-09-17.md B.3): the
+// claude models first, because a same-login switch keeps the conversation, then
+// the other CLIs. Written onto the record the way src/attach.mjs writes it, so
+// the picker, the per-terminal ladder editor and `Back to fable` all have the
+// shape they render from. `orderFromLadder` of this list is the default order,
+// which is what `ladderFor` insists on.
+const SEED_LADDER = [
+  { agent: 'claude', account: 'default', model: 'fable', when: 'always', cost: 'plan' },
+  { agent: 'claude', account: 'default', model: 'opus', when: 'always', cost: 'plan' },
+  { agent: 'claude', account: 'default', model: 'sonnet', when: 'always', cost: 'plan' },
+  { agent: 'codex', account: 'default', model: null, when: 'always', cost: 'plan' },
+  { agent: 'agy', account: 'default', model: null, when: 'walled-only', cost: 'free' },
+]
 for (const r of rows) {
-  createSession({ id: r.id, agent: r.agent, cwd: r.cwd, repo: r.repo, branch: r.branch, argv: [r.agent], runner_pid: r.ended ? 1 : livePid(), model: r.model ?? null })
+  createSession({
+    id: r.id, agent: r.agent, cwd: r.cwd, repo: r.repo, branch: r.branch, argv: [r.agent],
+    runner_pid: r.ended ? 1 : livePid(), model: r.model ?? null,
+    // what a terminal started by this Leg carries: without it the board offers
+    // the ladder editor read-only and the model rail stays text
+    runtimeCapabilities: r.ended ? [] : [HANDOFF_ORDER_CAPABILITY],
+    // which CLIs were on the PATH when this terminal started. Without it the
+    // server cannot say which rung is eligible and the row prints the caveat
+    // for an older record instead of a destination.
+    installed: r.ended ? null : { claude: true, codex: true, agy: true, grok: false },
+  })
   updateSession(r.id, {
+    ...(r.ended ? {} : { handoff_ladder: SEED_LADDER.map((x) => ({ ...x })) }),
+    // the claude conversation id: a downshift on the same login resumes it,
+    // which is the only reason a picker row can say it keeps the conversation
+    ...(r.ended || r.agent !== 'claude' ? {} : { agent_session_id: `conv-${r.id.slice(-4)}` }),
     status: r.status,
     started_at: ago(r.started),
     last_activity: ago(r.ended ?? r.quiet ?? 0),
@@ -110,7 +137,16 @@ recordUsage('claude', 'default',
       { kind: 'session', group: 'session', model: null, percent: 38, resets_at: fiveHourReset, is_active: false, severity: 'normal' },
       { kind: 'weekly_all', group: 'weekly', model: null, percent: 95, resets_at: weekReset, is_active: false, severity: 'normal' },
       { kind: 'weekly_scoped', group: 'weekly', model: 'fable', percent: 63, resets_at: weekReset, is_active: true, severity: 'normal' },
-    ] },
+      // a second model family with a reading of its own. The live payload on
+      // 2026-09-17 had `seven_day_opus` null, so this is the shape the endpoint
+      // publishes once opus has been used, not a figure anyone measured; it is
+      // here because the model rail and the per-model capacity phrase have
+      // nothing to draw with one bucket.
+      { kind: 'weekly_scoped', group: 'weekly', model: 'opus', percent: 12, resets_at: weekReset, is_active: false, severity: 'normal' },
+    ],
+    // the live payload on 2026-09-17: credits are off and cannot be turned on
+    // from the API, which is what the ladder editor says under may_spend
+    extra_usage: { enabled: false, reason: 'out_of_credits', can_toggle: false, limit_minor: 12500, used_minor: 0 } },
   'statusline', { observed_at: ago(2 * hour + 13 * min) })
 markLimited('codex', 'default', { resets_at: Math.floor((Date.now() + 29 * hour) / 1000), reason: 'limit', source: 'hook' })
 // agy publishes no usage figure, ever. Left unwritten on purpose.
