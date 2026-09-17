@@ -1,0 +1,11 @@
+{
+  "id": "claude-fable-limit",
+  "adapter": "claude",
+  "source": "observed-live",
+  "produced_by": "fixtures/live/claude/limit-rate_limit.json: StopFailure error rate_limit, last_assistant_message on the real run, 2026-09-11 (a per-model wall: the account's session and weekly windows were open)",
+  "where": "any",
+  "text": "You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.",
+  "pattern": "You.ve reached your Fable limit",
+  "exit_code": null,
+  "classification": "limit"
+}

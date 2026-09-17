@@ -125,3 +125,19 @@ test('adapter-specific fixture wins over the generic one; generic still fires fo
   assert.equal(agy.outcome, 'limit')
   assert.equal(agy.signal, 'generic-429')
 })
+
+// The only Claude wall ever captured live says "reached", not the docs' "hit"
+// (fixtures/live/claude/limit-rate_limit.json). Before 2026-09-17 it classified
+// no_progress and the headless path never handed off on a real Fable wall.
+test('the live Fable wording classifies as a limit on its own observed-live signal', () => {
+  const live = "You've reached your Fable limit. Run /usage-credits to continue or switch models with /model."
+  const v = classify({ ...base, exitCode: 0, stdout: live })
+  assert.equal(v.outcome, 'limit')
+  assert.equal(v.signal, 'claude-fable-limit')
+  const opus = classify({ ...base, exitCode: 0, stdout: "You've reached your Opus limit" })
+  assert.equal(opus.signal, 'claude-model-limit')
+  const weekly = classify({ ...base, exitCode: 0, stdout: "You've reached your weekly limit" })
+  assert.equal(weekly.signal, 'claude-weekly-limit')
+  const session = classify({ ...base, exitCode: 0, stdout: "You've reached your session limit" })
+  assert.equal(session.signal, 'claude-session-limit')
+})

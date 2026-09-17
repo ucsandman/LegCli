@@ -5,7 +5,7 @@
   "produced_by": "https://code.claude.com/docs/en/costs (section: When a developer asks about a limit)",
   "where": "any",
   "text": "You’ve hit your weekly limit",
-  "pattern": "You.ve hit your weekly limit",
+  "pattern": "You.ve (hit|reached) your weekly limit",
   "exit_code": null,
   "classification": "limit"
 }
