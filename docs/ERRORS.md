@@ -3,6 +3,59 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-17: a new field on the session view leaked the owner's reset times to a guest, through the guest's own terminal
+
+**Fixed in `src/server.mjs` (`sessionsView` decides `guest` before the map and
+blanks `handoff_targets[].resets_at` for one). Caught by
+`test/share-security.test.mjs`, which was already asserting it.**
+
+The hand-off picker needed each destination's availability, so `handoff_targets`
+went onto every session in `sessionsView` carrying `resets_at`. The obvious
+mental model was "a guest gets `redactSession`, which lists its fields
+explicitly, so a new field is invisible to them". That is only true of someone
+else's terminal. `mine(s)` is true for a guest's **own** terminal, and that path
+spreads the whole object. So a guest's own card carried the exact reset
+timestamp of every account on the machine, including the owner's, which is
+precisely the usage data the share design keeps off a guest's board.
+
+The lesson is about where redaction lives, not about this field. There are two
+paths out of `sessionsView`: `redactSession` (allow-list, safe by default) and
+the `mine(s)` spread (deny-list, unsafe by default). **Any field added to a
+session object is visible to whoever owns that session, and a guest owns one.**
+A field that carries machine-level data has to be blanked where it is built, not
+left to a redactor that never sees it.
+
+What made this cheap: the security suite already asserted the whole guest
+response text contains no reset time, so the leak failed a test in the same run
+that introduced it. The test was written against the property ("a guest board
+carries no reset time"), not against the fields that existed when it was
+written, which is why it still caught a field invented months later.
+
+Two smaller ones from the same change, both worth the line:
+
+- Registering `grok` broke three tests that asserted `unknown adapter "grok"`.
+  A test that encodes "not supported yet" as an assertion becomes a tripwire on
+  the day support lands. Assert the refusal with a name nothing will ever
+  provide (`no-such-agent`), so the test outlives the gap it was describing.
+- `names()` started reading `$LEG_HOME/adapters` from disk, and `/api/health`
+  calls it once for the list and once per adapter. That put a readdir, a read
+  and a JSON parse per spec on the same event loop the terminals lane is pushed
+  from, and `/api/health` went over its 1 s budget in
+  `test/board-responsiveness.test.mjs`. Cached against the directory's entry
+  list with a one-second floor. The board's hot path is `/api/health` plus the
+  sessions view; anything new they call has to be counted, not assumed cheap.
+  (This is the same event-loop failure as the entry below, from the other end.)
+- `test/board-responsiveness.test.mjs` failed the ship twice at 1055 ms and
+  1140 ms against a hard `< 1000 ms`, and passed three times out of three when
+  run alone. An absolute millisecond budget on a four-way-concurrent runner
+  measures the machine, not the code. It now takes an idle baseline in the same
+  process and asserts the busy request is not 20x it, with a 3 s ceiling for the
+  symptom the test is named for. **It was only trusted after being made to
+  fail**: putting the original shape back (no floor, no fingerprint, a 1.2 s
+  blocking view on every watcher event) made it report 4,810 ms and fail both
+  assertions, which is the "four to fourteen seconds" the entry below describes.
+  A perf test that has never been watched failing is a number, not a guard.
+
 ## 2026-09-17: one running terminal saturated the board's event loop, and four separate symptoms came out of it
 
 **Fixed in `src/server.mjs` (watcher filter, stat fingerprint, push floor, cached

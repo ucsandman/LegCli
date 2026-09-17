@@ -2,7 +2,7 @@
   "_comment": "The single source of truth for every dated, numbered claim Leg makes in public. scripts/check-claims.mjs asserts that each surface listed here states exactly these values, and --strict additionally compares the pinned CLI versions against what those CLIs currently publish. Re-verify on a real machine, then edit this file and every surface in the same commit.",
   "verifiedOn": "2026-09-11",
   "verifiedOnLong": "11 September 2026",
-  "tests": 473,
+  "tests": 674,
   "clis": {
     "claude": {
       "label": "Claude Code",
@@ -22,6 +22,13 @@
       "npm": null,
       "probe": "agy --version",
       "note": "Antigravity CLI is a closed Go binary with no npm package, so drift is only visible from a machine that has it installed."
+    },
+    "grok": {
+      "label": "grok",
+      "version": "1.0.34",
+      "npm": null,
+      "probe": "grok --version",
+      "note": "Grok Build ships as a downloaded binary, not an npm package. Probed on 2026-09-17, separately from the 2026-09-11 sweep above: the flags came from grok --help and the headless envelope from the shipped exe, and scripts/probe.mjs reached the account and returned a real 402 wall. The success path of a grok leg is still unprobed for want of balance on the account."
     }
   },
   "surfaces": [

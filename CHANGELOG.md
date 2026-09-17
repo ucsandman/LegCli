@@ -1,5 +1,75 @@
 # Changelog
 
+## 0.11.0 (2026-09-17)
+
+- **grok is a card adapter, not just a terminal.** `--chain grok` works. Its
+  flags were read from `grok --help` on grok 1.0.34 (`3736acbc8658`) and its
+  result envelope out of the shipped binary, both on 2026-09-17, replacing the
+  guessed field names the unregistered adapter carried. The prompt now travels
+  by `--prompt-file` (a hand-off prompt carries the whole bundle summary, and
+  Windows caps a command line near 32k) and `--cwd` is passed explicitly,
+  because grok can run against a shared leader process and a leg must edit its
+  own worktree. The probe reached the account and came back with a real wall.
+- **A grok terminal at the wall now hands off.** An exhausted Grok Build
+  account answers `402 Payment Required: Grok Build usage balance exhausted`,
+  and none of the rate-limit strings the tap looked for appear in it. The
+  terminal sat on a dead login instead of moving on. Both the tap
+  (`src/taps/grok.mjs`) and the leg classifier (a new observed-live fixture)
+  now read it as a limit. Found by running the probe against an exhausted
+  account on 2026-09-17.
+- **Any CLI can be a card agent, from a JSON spec and no code.** `leg adapter
+  template --name muse > muse.json`, `leg adapter add muse.json`, then
+  `--chain muse,claude`. `leg adapter check muse` prints the exact command line
+  a leg would run before one does; `leg adapter list|show|rm` are the rest.
+  Placeholders (`{{prompt}}`, `{{promptFile}}`, `{{cwd}}`, `{{mode}}`,
+  `{{model}}`, `{{resume}}`, `{{maxTurns}}`, `{{runDir}}`) fill the argv, and a
+  group in the args is dropped whole when a placeholder inside it is unset, so
+  an absent model never leaves a bare `--model`. The flags that turn a
+  supervised agent into an unsupervised one are refused whatever a spec says.
+  A broken spec is reported by name and reason, never thrown, so one typo
+  cannot stop the board. See [docs/adapters.md](docs/adapters.md#custom-adapters).
+- **Hand off now can name its destination.** The button still takes the next
+  option in the order; Details → **Hand off now to** lists every destination
+  with the reason a greyed one cannot be picked, and `leg sessions handoff
+  <id> --to codex` is the same choice from a terminal. A destination that is
+  not on the chain, not installed, or at its wall is refused at the click with
+  the reset time. If the one you picked walls between the click and the
+  hand-off, the work continues down the order and the terminal says which
+  agent took it instead, rather than going somewhere else in silence.
+- **TLS for a shared board.** `leg share on --tls-cert <file> --tls-key <file>`,
+  or `LEG_TLS_CERT` / `LEG_TLS_KEY`. Leg issues no certificate: a self-signed
+  pair teaches everyone to click through a warning, which is worse than
+  plaintext on a network that is already private, so it takes a pair you have
+  (`tailscale cert <machine>.<tailnet>.ts.net` is one command). Half a pair, a
+  missing file or an empty one stops the board with exit 3 rather than quietly
+  serving plaintext. The loopback companion stays http, because the certificate
+  is for the shared name and that traffic never leaves the machine.
+- **An `operator` role, between owner and guest.** An operator runs the
+  pipeline board — adds, runs, approves, reassigns and kills cards — and their
+  own terminals, and sees nothing that describes this machine: no settings, no
+  home path, no repository paths, no conversation index, no audit. `leg share
+  add dana --role operator`. What each role may reach is decided in one place
+  (`mayUseCards` / `mayUseMachine` in `src/share.mjs`) instead of per endpoint.
+- **An audit trail: who did what, across every terminal and every card.**
+  Settings → **Audit trail** on the board, `GET /api/audit` for a script, owner
+  only. Hand-offs, landings, approvals, reassignments and kills, newest first,
+  each with the person or agent that did it. It reads what the ledger already
+  recorded and stores nothing new, and every answer carries how much it read
+  (`14 terminals and 3 cards, 812 events read`) so an empty trail cannot be
+  mistaken for a quiet week.
+- **Fixed: a guest's own terminal leaked the owner's reset times.** The new
+  hand-off destination list carried the exact reset timestamp of every
+  account, and a guest owns their own terminal, so it reached them through it.
+  A guest and an operator now get the destinations and the coarse reason
+  (`at its usage limit`) without the timestamp. Caught by the share-security
+  suite in the same change.
+- **Fixed: the board slowed down as soon as a custom adapter existed.**
+  `/api/health` asks every adapter where its binary is, and reading the spec
+  directory on each of those calls put a readdir, a read and a JSON parse per
+  spec on the event loop the terminals lane is pushed from. The parsed list is
+  now cached against the directory's entries with a one-second floor, so a
+  spec added or removed is still seen at once.
+
 ## 0.10.0 (2026-09-17)
 
 - **The board is responsive again, `leg` starts straight away, and the board

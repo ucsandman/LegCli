@@ -157,21 +157,37 @@ export function candidates({ agent, account = 'default', accounts, order = AGENT
   return out
 }
 
-// → { next: {agent, account} | null, out: [{agent, account, resets_at}] sorted by reset }
+// → { next: {agent, account} | null, out: [{agent, account, resets_at}] sorted
+//     by reset, preferred_taken: bool }
 // `exclude` names (agent, account) pairs this choice must skip: a destination
 // the strict harness policy refused is neither available nor out, it is off
 // the list for this hand-off.
-export function chooseNext({ agent, account, accounts, installed, order = AGENTS, nowS = Math.floor(Date.now() / 1000), exclude = [] }) {
+// `prefer` is a human's pick from the board ("Hand off now to codex"). It wins
+// over the saved order when it is installed, available and not excluded. When
+// it is none of those the order decides instead and `preferred_taken` is false,
+// which is what the session event says: a pick made a minute ago must not leave
+// a terminal stopped because that account walled in the meantime.
+export function chooseNext({ agent, account, accounts, installed, order = AGENTS, nowS = Math.floor(Date.now() / 1000), exclude = [], prefer = null }) {
   const out = []
-  for (const c of candidates({ agent, account, accounts, order })) {
+  const list = candidates({ agent, account, accounts, order })
+  const eligible = (c) => {
+    if (installed && installed[c.agent] === false) return false
+    if (exclude.some((x) => x.agent === c.agent && x.account === c.account)) return false
+    return isAvailable(readUsage(c.agent, c.account), nowS)
+  }
+  if (prefer) {
+    const hit = list.find((c) => c.agent === prefer.agent && c.account === (prefer.account ?? 'default'))
+    if (hit && eligible(hit)) return { next: hit, out, preferred_taken: true }
+  }
+  for (const c of list) {
     if (installed && installed[c.agent] === false) continue
     if (exclude.some((x) => x.agent === c.agent && x.account === c.account)) continue
     const u = readUsage(c.agent, c.account)
-    if (isAvailable(u, nowS)) return { next: c, out }
+    if (isAvailable(u, nowS)) return { next: c, out, preferred_taken: false }
     out.push({ ...c, resets_at: u.limited_until, reason: u.limited_reason })
   }
   out.sort((a, b) => (a.resets_at ?? Infinity) - (b.resets_at ?? Infinity))
-  return { next: null, out }
+  return { next: null, out, preferred_taken: false }
 }
 
 export function fmtReset(epochS) {

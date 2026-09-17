@@ -54,8 +54,75 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#0110-2026-09-17">0.11.0 (2026-09-17)</a></li><li><a href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
 <h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
+<h2 id="0110-2026-09-17"><a class="anchor" href="#0110-2026-09-17">0.11.0 (2026-09-17)</a></h2>
+<ul>
+<li><strong>grok is a card adapter, not just a terminal.</strong> <code>--chain grok</code> works. Its
+flags were read from <code>grok --help</code> on grok 1.0.34 (<code>3736acbc8658</code>) and its
+result envelope out of the shipped binary, both on 2026-09-17, replacing the
+guessed field names the unregistered adapter carried. The prompt now travels
+by <code>--prompt-file</code> (a hand-off prompt carries the whole bundle summary, and
+Windows caps a command line near 32k) and <code>--cwd</code> is passed explicitly,
+because grok can run against a shared leader process and a leg must edit its
+own worktree. The probe reached the account and came back with a real wall.</li>
+<li><strong>A grok terminal at the wall now hands off.</strong> An exhausted Grok Build
+account answers <code>402 Payment Required: Grok Build usage balance exhausted</code>,
+and none of the rate-limit strings the tap looked for appear in it. The
+terminal sat on a dead login instead of moving on. Both the tap
+(<code>src/taps/grok.mjs</code>) and the leg classifier (a new observed-live fixture)
+now read it as a limit. Found by running the probe against an exhausted
+account on 2026-09-17.</li>
+<li><strong>Any CLI can be a card agent, from a JSON spec and no code.</strong> <code>leg adapter template --name muse &gt; muse.json</code>, <code>leg adapter add muse.json</code>, then
+<code>--chain muse,claude</code>. <code>leg adapter check muse</code> prints the exact command line
+a leg would run before one does; <code>leg adapter list|show|rm</code> are the rest.
+Placeholders (<code>{{prompt}}</code>, <code>{{promptFile}}</code>, <code>{{cwd}}</code>, <code>{{mode}}</code>,
+<code>{{model}}</code>, <code>{{resume}}</code>, <code>{{maxTurns}}</code>, <code>{{runDir}}</code>) fill the argv, and a
+group in the args is dropped whole when a placeholder inside it is unset, so
+an absent model never leaves a bare <code>--model</code>. The flags that turn a
+supervised agent into an unsupervised one are refused whatever a spec says.
+A broken spec is reported by name and reason, never thrown, so one typo
+cannot stop the board. See <a href="/docs/adapters#custom-adapters">docs/adapters.md</a>.</li>
+<li><strong>Hand off now can name its destination.</strong> The button still takes the next
+option in the order; Details → <strong>Hand off now to</strong> lists every destination
+with the reason a greyed one cannot be picked, and <code>leg sessions handoff &lt;id&gt; --to codex</code> is the same choice from a terminal. A destination that is
+not on the chain, not installed, or at its wall is refused at the click with
+the reset time. If the one you picked walls between the click and the
+hand-off, the work continues down the order and the terminal says which
+agent took it instead, rather than going somewhere else in silence.</li>
+<li><strong>TLS for a shared board.</strong> <code>leg share on --tls-cert &lt;file&gt; --tls-key &lt;file&gt;</code>,
+or <code>LEG_TLS_CERT</code> / <code>LEG_TLS_KEY</code>. Leg issues no certificate: a self-signed
+pair teaches everyone to click through a warning, which is worse than
+plaintext on a network that is already private, so it takes a pair you have
+(<code>tailscale cert &lt;machine&gt;.&lt;tailnet&gt;.ts.net</code> is one command). Half a pair, a
+missing file or an empty one stops the board with exit 3 rather than quietly
+serving plaintext. The loopback companion stays http, because the certificate
+is for the shared name and that traffic never leaves the machine.</li>
+<li><strong>An <code>operator</code> role, between owner and guest.</strong> An operator runs the
+pipeline board — adds, runs, approves, reassigns and kills cards — and their
+own terminals, and sees nothing that describes this machine: no settings, no
+home path, no repository paths, no conversation index, no audit. <code>leg share add dana --role operator</code>. What each role may reach is decided in one place
+(<code>mayUseCards</code> / <code>mayUseMachine</code> in <code>src/share.mjs</code>) instead of per endpoint.</li>
+<li><strong>An audit trail: who did what, across every terminal and every card.</strong>
+Settings → <strong>Audit trail</strong> on the board, <code>GET /api/audit</code> for a script, owner
+only. Hand-offs, landings, approvals, reassignments and kills, newest first,
+each with the person or agent that did it. It reads what the ledger already
+recorded and stores nothing new, and every answer carries how much it read
+(<code>14 terminals and 3 cards, 812 events read</code>) so an empty trail cannot be
+mistaken for a quiet week.</li>
+<li><strong>Fixed: a guest&#39;s own terminal leaked the owner&#39;s reset times.</strong> The new
+hand-off destination list carried the exact reset timestamp of every
+account, and a guest owns their own terminal, so it reached them through it.
+A guest and an operator now get the destinations and the coarse reason
+(<code>at its usage limit</code>) without the timestamp. Caught by the share-security
+suite in the same change.</li>
+<li><strong>Fixed: the board slowed down as soon as a custom adapter existed.</strong>
+<code>/api/health</code> asks every adapter where its binary is, and reading the spec
+directory on each of those calls put a readdir, a read and a JSON parse per
+spec on the event loop the terminals lane is pushed from. The parsed list is
+now cached against the directory&#39;s entries with a one-second floor, so a
+spec added or removed is still seen at once.</li>
+</ul>
 <h2 id="0100-2026-09-17"><a class="anchor" href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></h2>
 <ul>
 <li><p><strong>The board is responsive again, <code>leg</code> starts straight away, and the board

@@ -48,7 +48,8 @@ test('validatePipeline refuses: empty, duplicate names, unknown kind, agent with
   assert.throws(() => validatePipeline([{ name: 'a', kind: 'test' }, { name: 'a', kind: 'test' }], modes), /duplicate station name "a"/)
   assert.throws(() => validatePipeline([{ name: 'a', kind: 'robot' }], modes), /unknown kind "robot"/)
   assert.throws(() => validatePipeline([{ name: 'a', kind: 'agent', chain: [] }], modes), /needs a non-empty chain/)
-  assert.throws(() => validatePipeline([{ name: 'a', kind: 'agent', chain: [{ adapter: 'grok' }] }], modes), /unknown adapter "grok"/)
+  // grok is a registered adapter now; the refusal is for a name nothing provides
+  assert.throws(() => validatePipeline([{ name: 'a', kind: 'agent', chain: [{ adapter: 'no-such-agent' }] }], modes), /unknown adapter "no-such-agent"/)
   assert.throws(() => validatePipeline([{ name: 'a', kind: 'agent', chain: [{ adapter: 'claude', mode: 'bypassPermissions' }] }], modes), /forbidden mode "bypassPermissions" for claude/)
   assert.throws(() => validatePipeline([{ name: 'a', kind: 'agent', chain: [{ adapter: 'codex', mode: 'danger-full-access' }] }], modes), /forbidden mode "danger-full-access" for codex/)
   assert.throws(() => validatePipeline([{ name: 'land', kind: 'land' }, { name: 'b', kind: 'test' }], modes), /land station must be last/)

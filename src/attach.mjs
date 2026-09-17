@@ -263,7 +263,10 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
 }
 
 // ---- one agent leg ----
-// Returns { reason: 'exit'|'limit'|'handoff', code }
+// Returns { reason: 'exit'|'limit'|'handoff', code, target } — `target` is the
+// destination a human picked on the board ("Hand off now to codex"), carried
+// out to the loop below, which is what chooses the next leg.
+
 async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApprove = resolveAutoApprove() }) {
   const sid = session.session_id
   refreshAccount(agent, account)
@@ -474,8 +477,12 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
       // record can carry both; End (stop entirely) is the stronger, latest intent
       if (ctl?.end) { if (ctl.by) appendEvent(sid, { type: 'status', by: ctl.by, summary: `end requested from the board by ${ctl.by}` }); clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'exit', code: null, ended: true }); return }
       if (ctl?.handoff) {
-        updateSession(sid, { status: 'handing_off', handoff: { reason: `requested from the board${ctl.by ? ` by ${ctl.by}` : ''}`, at: new Date().toISOString(), by: ctl.by ?? null } }, { event: { type: 'handoff_requested', by: ctl.by ?? null, summary: `hand off requested from the board${ctl.by ? ` by ${ctl.by}` : ''}` } })
-        clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'handoff', code: null }); return
+        const picked = ctl.target && typeof ctl.target === 'object' && ctl.target.agent
+          ? { agent: String(ctl.target.agent), account: String(ctl.target.account ?? 'default') }
+          : null
+        const toWhom = picked ? ` to ${picked.agent}${picked.account !== 'default' ? '/' + picked.account : ''}` : ''
+        updateSession(sid, { status: 'handing_off', handoff: { reason: `requested from the board${ctl.by ? ` by ${ctl.by}` : ''}`, at: new Date().toISOString(), by: ctl.by ?? null, requested_to: picked } }, { event: { type: 'handoff_requested', by: ctl.by ?? null, summary: `hand off${toWhom} requested from the board${ctl.by ? ` by ${ctl.by}` : ''}` } })
+        clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'handoff', code: null, target: picked }); return
       }
       // a stale warning patch can overwrite status:'limit' from the hook, but the
       // limit OBJECT survives the clobber — hand off on either signal
@@ -529,14 +536,14 @@ function messagesFor(agent, s) {
 // an order save is consumed here, or the editor sees handing_off and refuses.
 // No eligible choice leaves the session unclaimed so all-out waiting can keep
 // accepting order edits.
-export function claimHandoffChoice({ sid, agent, account, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000), exclude = [] }) {
+export function claimHandoffChoice({ sid, agent, account, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000), exclude = [], prefer = null }) {
   let choice = { next: null, out: [] }
   let claimed = false
   const session = updateSession(sid, (current) => {
     const accounts = readAccounts()
     const order = normalizeHandoffOrder(current.handoff_order)
-    choice = chooseNext({ agent, account, accounts, installed, order, nowS, exclude })
-    if (!choice.next && isAvailable(readUsage(agent, account), nowS) && !exclude.some((x) => x.agent === agent && x.account === account)) choice = { next: { agent, account }, out: [] }
+    choice = chooseNext({ agent, account, accounts, installed, order, nowS, exclude, prefer })
+    if (!choice.next && isAvailable(readUsage(agent, account), nowS) && !exclude.some((x) => x.agent === agent && x.account === account)) choice = { next: { agent, account }, out: [], preferred_taken: false }
     if (!choice.next) return {}
     claimed = true
     return {
@@ -548,6 +555,10 @@ export function claimHandoffChoice({ sid, agent, account, installed, bundle = nu
         to: choice.next,
         bundle_id: bundle?.id ?? null,
         reason: reason === 'limit' ? 'usage limit' : 'requested',
+        // what was asked for, beside what was chosen: when a picked
+        // destination walled between the click and the hand-off, the card
+        // must say so rather than look like the pick was ignored
+        requested_to: prefer ?? null,
         at: new Date().toISOString(),
       },
     }
@@ -669,7 +680,9 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     const notesFile = join(workRoot(cur) ?? cur.cwd, '.leg', `session-${sid}.md`)
     // destinations the strict harness policy refused during this hand-off
     const excluded = []
-    let claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded })
+    // the destination a human picked on the board, if they picked one
+    const prefer = r.target ?? null
+    let claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded, prefer })
     let choice = claim.choice
     let cancelled = false
     let blocked = false
@@ -690,7 +703,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
       const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
       if (r2 === 'cancelled') { cancelled = true; break }
-      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded })
+      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded, prefer })
       choice = claim.choice
     }
     if (cancelled) {
@@ -706,7 +719,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       if (prepared.proceed) break
       excluded.push(choice.next)
       say(`${choice.next.agent} refused by the strict harness policy: ${prepared.reason ?? prepared.state}`)
-      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded })
+      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded, prefer })
       choice = claim.choice
       if (!choice.next) blocked = true
     }
@@ -717,6 +730,19 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       break
     }
     const next = choice.next
+    // A pick that could not be taken is never silent: between the click and
+    // this moment that account can wall, or the strict harness policy can
+    // refuse it, and a terminal that quietly went somewhere else is the kind
+    // of surprise this board exists to remove.
+    if (prefer && !choice.preferred_taken) {
+      const asked = `${prefer.agent}${prefer.account !== 'default' ? '/' + prefer.account : ''}`
+      const got = `${next.agent}${next.account !== 'default' ? '/' + next.account : ''}`
+      const why = excluded.some((x) => x.agent === prefer.agent && x.account === prefer.account)
+        ? 'the strict harness policy refused it'
+        : `it is at its limit until ${fmtReset(readUsage(prefer.agent, prefer.account).limited_until)}`
+      say(`${asked} was picked but ${why}; handing off to ${got} instead`)
+      appendEvent(sid, { type: 'status', summary: `${asked} was picked for this hand-off but ${why}; ${got} took it instead` })
+    }
     // bound the number of hand-offs in one terminal so a chain that limits
     // instantly can never loop forever; stopping is explicit, not a silent exit 0
     if (leg >= 11) {

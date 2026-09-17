@@ -19,14 +19,16 @@ import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../sr
 import { availableActions } from '../src/chain.mjs'
 import { up, down, stopBoard, status, openBoard } from '../src/launcher.mjs'
 import { attach, ensureBoard } from '../src/attach.mjs'
-import { readShare, addPerson, removePerson, rotate as rotateToken, turnOn, turnOff, linkFor, personNamed } from '../src/share.mjs'
+import { readShare, addPerson, removePerson, rotate as rotateToken, turnOn, turnOff, linkFor, personNamed, scheme, tlsConfigured, ROLES } from '../src/share.mjs'
+import { normalizeHandoffOrder } from '../src/preferences.mjs'
 import { SUPERVISED_AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, readLand, sessionDir, appendEvent } from '../src/sessions.mjs'
-import { addAccount, removeAccount, listAccountRows, LAYOUT } from '../src/accounts.mjs'
-import { listUsage, fmtReset } from '../src/usage.mjs'
+import { addAccount, removeAccount, listAccountRows, readAccounts, LAYOUT } from '../src/accounts.mjs'
+import { listUsage, fmtReset, readUsage, isAvailable, candidates } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
 import { entitlement, allows, describe as describeLicense, activate as activateLicense, deactivate as deactivateLicense, refresh as refreshLicense, licensePath, BUY_URL } from '../src/license.mjs'
 import { resumeVerdict, bodyOf, ago } from '../src/resume.mjs'
 import { harnessCommand } from '../src/harness/cli.mjs'
+import { adapterCommand } from '../src/adapters/cli.mjs'
 import { historyCommand, worktreesCommand } from '../src/history/cli.mjs'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
@@ -159,11 +161,32 @@ async function main() {
       for (const s of list) out(`${s.session_id}  [${s.status}]  ${s.agent}${s.account !== 'default' ? '/' + s.account : ''}  ${s.repo_name ?? s.cwd}${s.branch ? '@' + s.branch : ''}  turns=${s.turns}  ${s.limits ? `5h ${s.limits.five_hour?.pct ?? '-'}% 7d ${s.limits.seven_day?.pct ?? '-'}%` : ''}  ${String(s.task ?? '').slice(0, 50)}`)
       return
     }
-    const id = args._[0] || die(2, `usage: leg sessions ${cmd} <session-id>`)
+    const id = args._[0] || die(2, `usage: leg sessions ${cmd} <session-id>${cmd === 'handoff' ? ' [--to <agent>[/<account>]]' : ''}`)
     const s = readSession(id) || die(3, `session not found: ${id}`)
     if (cmd === 'show') return out(JSON.stringify({ session: s, events: readSessionEvents(id) }, null, 2))
     if (cmd === 'events') { for (const e of readSessionEvents(id)) out(`${e.ts}  ${String(e.type).padEnd(18)}  ${e.summary}`); return }
-    if (cmd === 'handoff') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { handoff: true }); return out(`handoff requested for ${id}`) }
+    if (cmd === 'handoff') {
+      if (!isActive(s)) die(3, `session ${id} is not active`)
+      // --to names the destination, the same choice the board's picker makes.
+      // Validated here for the same reason it is validated there: a pick that
+      // is not a destination, is not installed, or is at its wall must be
+      // refused now, not silently turn into "whatever is next".
+      if (typeof args.to === 'string') {
+        const [wantAgent, wantAccount = 'default'] = args.to.split('/')
+        const order = normalizeHandoffOrder(s.handoff_order)
+        const chain = candidates({ agent: s.agent, account: s.account, accounts: readAccounts(), order })
+        const hit = chain.find((c) => c.agent === wantAgent && c.account === wantAccount)
+        const label = `${wantAgent}${wantAccount !== 'default' ? '/' + wantAccount : ''}`
+        if (!hit) die(2, `${label} is not a destination for this terminal (${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(', ') || 'none'})`)
+        if (s.installed && s.installed[wantAgent] === false) die(3, `${label} is not installed on this machine`)
+        const u = readUsage(wantAgent, wantAccount)
+        if (!isAvailable(u)) die(3, `${label} is at its usage limit until ${fmtReset(u.limited_until)}; pick another, or drop --to to take the next option in the order`)
+        requestControl(id, { handoff: true, target: hit })
+        return out(`handoff to ${label} requested for ${id}`)
+      }
+      requestControl(id, { handoff: true })
+      return out(`handoff requested for ${id}`)
+    }
     if (cmd === 'end') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { end: true }); return out(`end requested for ${id}`) }
     if (cmd === 'rm') {
       if (isActive(s)) die(3, `session ${id} is still active; end it first`)
@@ -226,7 +249,9 @@ async function main() {
     const showLink = (person, token, s) => {
       out(`${person.name} is on the board (${person.role}). Their link, shown once:`)
       out(`  ${linkFor(s, token)}`)
-      out(person.role === 'owner' ? 'Open it on this machine, or any machine that can reach that address.' : 'They see the terminals lane read-only: no prompts, no file names, no logs, no bundles. They can ask for a hand-off; you approve it on the card.')
+      out(person.role === 'owner' ? 'Open it on this machine, or any machine that can reach that address.'
+        : person.role === 'operator' ? 'They get the pipeline board — cards, the floor, the adapters — and their own terminals. Not this machine’s settings, not its history index, not anyone else’s terminal.'
+        : 'They see the terminals lane read-only: no prompts, no file names, no logs, no bundles. They can ask for a hand-off; you approve it on the card.')
     }
     if (!cmd || cmd === 'ls' || cmd === 'status') {
       if (!share.on || !share.people.length) {
@@ -234,9 +259,12 @@ async function main() {
         out('Turn it on: leg share on            (the Tailscale address; --bind lan, or --bind <address>)')
         return
       }
-      out(`share is on: http://${share.bind}:${share.port} (${share.bind_kind})`)
-      for (const p of share.people) out(`  ${p.name.padEnd(16)} ${p.role.padEnd(6)} added ${String(p.created_at).slice(0, 10)}${p.last_seen ? `  last seen ${String(p.last_seen).slice(0, 16).replace('T', ' ')}` : ''}`)
+      out(`share is on: ${scheme(share)}://${share.bind}:${share.port} (${share.bind_kind})`)
+      for (const p of share.people) out(`  ${p.name.padEnd(16)} ${p.role.padEnd(9)} added ${String(p.created_at).slice(0, 10)}${p.last_seen ? `  last seen ${String(p.last_seen).slice(0, 16).replace('T', ' ')}` : ''}`)
       out('')
+      out(tlsConfigured(share)
+        ? `TLS: certificate ${share.tls?.cert ?? '(from the environment)'}. The board on 127.0.0.1 stays plain http for this machine's own browser.`
+        : 'No TLS: keep this on Tailscale or a network you trust. Add one with leg share on --tls-cert <file> --tls-key <file> (tailscale cert <machine>.<tailnet>.ts.net issues a trusted pair).')
       out('A token is shown once. Lost one? leg share rotate <name>. Everyone out: leg share off')
       return
     }
@@ -246,19 +274,26 @@ async function main() {
       const ent = entitlement()
       if (!allows(ent, 'share')) die(2, ent.ok ? `leg share is part of the Team plan (per seat); this machine has a ${ent.plan} license. ${BUY_URL}` : describeLicense(ent))
       try {
-        const r = await turnOn({ bind: a.bind ?? 'tailscale', port: a.port ? parseInt(a.port, 10) : undefined, owner: a.owner })
+        const r = await turnOn({
+          bind: a.bind ?? 'tailscale', port: a.port ? parseInt(a.port, 10) : undefined, owner: a.owner,
+          tlsCert: typeof a['tls-cert'] === 'string' ? a['tls-cert'] : null,
+          tlsKey: typeof a['tls-key'] === 'string' ? a['tls-key'] : null,
+        })
         await restartBoard()
-        out(`share is on: the board is at http://${r.share.bind}:${r.share.port} (${r.share.bind_kind})`)
+        out(`share is on: the board is at ${scheme(r.share)}://${r.share.bind}:${r.share.port} (${r.share.bind_kind})`)
         if (r.token) showLink(r.owner, r.token, r.share)
-        out('Add someone: leg share add <name>')
-        out('No TLS: keep this on Tailscale or a network you trust. Anyone with a link sees that your terminals exist and how much usage is left.')
+        out('Add someone: leg share add <name> [--role operator|guest]')
+        out(tlsConfigured(r.share)
+          ? `TLS is on, from ${r.share.tls?.cert ?? 'the environment'}. Renew the pair and run leg down && leg up to pick up a new one.`
+          : 'No TLS: keep this on Tailscale or a network you trust. Anyone with a link sees that your terminals exist and how much usage is left. leg share on --tls-cert <file> --tls-key <file> turns it on; tailscale cert <machine>.<tailnet>.ts.net issues a trusted pair.')
       } catch (err) { die(2, err.message) }
       return
     }
     if (cmd === 'add') {
-      const name = args._[0] || die(2, 'usage: leg share add <name> [--role owner|guest]')
+      const name = args._[0] || die(2, `usage: leg share add <name> [--role ${ROLES.join('|')}]`)
       try {
-        const r = addPerson(name, { role: args.role === 'owner' ? 'owner' : 'guest', share })
+        if (args.role !== undefined && !ROLES.includes(String(args.role))) die(2, `bad role "${args.role}" (${ROLES.join('|')})`)
+      const r = addPerson(name, { role: typeof args.role === 'string' ? args.role : 'guest', share })
         showLink(r.person, r.token, r.share)
         if (!r.share.on) out('share is still off: leg share on')
       } catch (err) { die(2, err.message) }
@@ -328,6 +363,12 @@ async function main() {
     // The portable harness: the working environment a hand-off carries with
     // the task. Off until `leg harness enable` (src/harness/index.mjs).
     const code = await harnessCommand(cmd, args, { out, die })
+    process.exit(code)
+  }
+  if (group === 'adapter' || group === 'adapters') {
+    // Custom adapters: any CLI as a card agent, from a JSON spec on disk
+    // (src/adapters/custom.mjs). The built-ins need none of this.
+    const code = await adapterCommand(cmd, args, { out, die })
     process.exit(code)
   }
   if (group === 'history' || group === 'worktrees') {

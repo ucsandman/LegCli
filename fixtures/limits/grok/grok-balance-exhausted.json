@@ -1,0 +1,11 @@
+{
+  "id": "grok-balance-exhausted",
+  "adapter": "grok",
+  "source": "observed-live",
+  "produced_by": "grok 1.0.34 -p --output-format json on an account with no balance left, 2026-09-17: stdout {\"type\":\"error\",\"message\":\"Internal error: {\n  \\\"message\\\": \\\"API error (status 402 Payment Required): Grok Build usage balance exhausted\\\",\n  \\\"http_status\\\": 402\n}\"}, exit 1",
+  "where": "any",
+  "text": "API error (status 402 Payment Required): Grok Build usage balance exhausted",
+  "pattern": "usage balance exhausted|status 402 Payment Required",
+  "exit_code": null,
+  "classification": "limit"
+}

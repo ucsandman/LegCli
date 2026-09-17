@@ -275,11 +275,20 @@ token at all.
 
 ```
 leg share on              your own link, printed once
-leg share add sam         sam's link, printed once
+leg share add sam         sam's link, printed once (a guest)
+leg share add dana --role operator    dana runs cards, not this machine
 leg share                 who is on the board (never a token again)
 leg share rotate sam      sam's old link stops working
 leg share off             back to 127.0.0.1; every link stops working
 ```
+
+There are three roles. **owner** is everything: the machine's settings, the
+harness, every terminal, the cards, the history index and the audit trail.
+**operator** is the pipeline board and their own terminals: they add, run,
+approve, reassign and kill cards, and they never see this machine's settings,
+its home path, its repository paths, its conversation index or the audit.
+**guest** is the terminals lane, read-only and redacted, with **Request
+handoff** as their only button.
 
 A token is kept as a sha256 hash, so a lost link is re-issued, never re-read.
 The board takes the token out of the address bar and keeps it in the browser.
@@ -301,11 +310,41 @@ The security pass that goes with it: every `/api` route needs a token, the
 event stream included; twenty wrong tokens from one address and that address
 waits a minute; one identity gets 600 requests a minute; a guest gets 403 on
 everything that is not theirs; and the tests send a bad and a missing token to
-every route. There is still no TLS, so keep this on Tailscale or a network you
-trust. Verified live on 2026-09-11: two terminals on one machine, one wes's and
+every route. Verified live on 2026-09-11: two terminals on one machine, one wes's and
 one sam's; sam's board showed wes's card with the prompt hidden and only
 **Request handoff**, and sam's request reached wes's board (`~/.leg/board.log`:
 "hand-off requested … by sam").
+
+### TLS
+
+Off unless you hand it a certificate. Leg does not issue one: a self-signed
+pair teaches everyone on the board to click through a warning, which is worse
+than plaintext on a network that is already private. On Tailscale the pair is
+one command:
+
+```
+tailscale cert <machine>.<tailnet>.ts.net
+leg share on --tls-cert <machine>.<tailnet>.ts.net.crt --tls-key <machine>.<tailnet>.ts.net.key
+```
+
+`LEG_TLS_CERT` and `LEG_TLS_KEY` do the same without writing the paths into
+`share.json`, and they win over it. With a pair configured the shared address
+serves https and every printed link says `https://`; the companion listener on
+`127.0.0.1`, which exists so this machine's own browser needs no token, stays
+plain http, because the certificate is for the shared name and loopback traffic
+never leaves the machine. A pair that is half-configured, missing, unreadable
+or empty stops the board with exit 3 rather than quietly serving plaintext.
+Renew the pair, then `leg down && leg up` to pick it up.
+
+### Who did what
+
+Settings → **Audit trail** is one list across every terminal and every card,
+newest first: hand-offs, landings, approvals, reassignments, kills, each with
+the person or agent that did it, the repo and the time. Filter by person or by
+kind. It reads what the ledger already recorded, so nothing new is stored, and
+it prints how much it read beside the answer (`14 terminals and 3 cards, 812
+events read`) so an empty trail cannot be mistaken for a quiet week. Owner
+only: the trail names repositories and people.
 
 ## The board
 
@@ -337,6 +376,13 @@ one sam's; sam's board showed wes's card with the prompt hidden and only
 - **Buttons**, in a fixed order that never reflows: Land, Hand off now,
   Details, End. Once a session has ended, Remove and Remove record take End's
   place. Details opens an expansion in flow under the panel.
+  **Hand off now** takes the next option in the order. To name the destination
+  instead, open Details and use **Hand off now to**, which lists every
+  destination with the reason a greyed one cannot be picked (`at its usage
+  limit, back 11:40`, `not installed on this machine`). `leg sessions handoff
+  <id> --to codex` is the same choice from a terminal. If the destination you
+  picked walls between the click and the hand-off, the work still continues
+  down the order and the terminal says which one took it instead.
 - Below it, **Conversations**: every coding-agent conversation on this machine
   as a count that opens, the ones Leg started and the ones Claude Code, Codex,
   Grok, Antigravity and Copilot keep in their own stores. Filter by agent,
@@ -460,6 +506,7 @@ leg claude|codex|agy|grok [agent args…] the interactive agent, board alongside
 leg sessions ls [--json]             every session and its usage
 leg sessions show|events <id>
 leg sessions handoff|end <id>        same as the board buttons
+leg sessions handoff <id> --to <agent>[/<account>]   hand off to a destination you name
 leg sessions rm <id>                 forget an ended session
 leg sessions simulate-limit <id>     the real limit path without a real wall (claude, agy, grok)
 leg history [ls] [--provider p] [--repo r] [--search q] [--managed|--external] [--live] [--all] [--json]
@@ -474,9 +521,12 @@ leg harness sync [--to codex,agy] [--force] [--dry-run] | diff <client> | doctor
 leg harness capture [claude|codex] | source <client> | policy <mode> | disable
 leg license                          the license on this machine, or where to buy one
 leg license activate <key> | deactivate | refresh   (refresh renews a Team key)
+leg adapter list|show <n>|check <n>  every adapter, built-in and custom
+leg adapter template [--name n]      a starter spec to fill in
+leg adapter add <file.json> | rm <n> any CLI as a card agent, from JSON
 leg share                            who is on the board (off by default; Team plan)
-leg share on [--bind tailscale|lan|<addr>] [--port N] | off
-leg share add|rotate|rm <name>       one link per human, printed once
+leg share on [--bind tailscale|lan|<addr>] [--port N] [--tls-cert <f> --tls-key <f>] | off
+leg share add|rotate|rm <name> [--role owner|operator|guest]   one link per human, printed once
 leg open | down | status             the board
 leg uninstall [--yes]
 ```
@@ -488,8 +538,10 @@ open the browser), `LEG_USAGE_POLL_MS` (60000), `LEG_CLAUDE_ARGS` /
 `LEG_CODEX_ARGS` / `LEG_AGY_ARGS` / `LEG_GROK_ARGS` (extra args for a leg Leg starts after
 a hand-off, e.g. `-m gpt-5.3-codex-spark`), `LEG_CLAUDE_BIN`,
 `LEG_CODEX_BIN`, `LEG_AGY_BIN`, `LEG_GROK_BIN`, `LEG_CHB_BIN`, `LEG_PERSON` (whose
-terminal this is when the board is shared), `LEG_RATE_MAX` (600 requests a
-minute per human) and `LEG_RATE_MAX_FAILURES` (20 wrong tokens per address).
+terminal this is when the board is shared), `LEG_TLS_CERT` / `LEG_TLS_KEY`
+(serve the shared board over https; they win over `share.json`),
+`LEG_RATE_MAX` (600 requests a minute per human) and `LEG_RATE_MAX_FAILURES`
+(20 wrong tokens per address).
 
 ## Background tasks: the v0.1 extras
 
@@ -514,8 +566,17 @@ under Advanced options.
 - Adapters spawn the CLIs headless as argv, never through a shell, with their
   own permission modes and never a bypass flag: `claude -p --output-format json
   --permission-mode <m>`, `codex exec --json -s <m> -C <worktree>`,
-  `agy -p --output-format json --mode <m> --add-dir <worktree>`; `fake`,
-  `fake-claude`, `fake-codex`, `fake-agy` for tests and demos.
+  `agy -p --output-format json --mode <m> --add-dir <worktree>`,
+  `grok --prompt-file <f> --output-format json --permission-mode <m> --cwd
+  <worktree>`; `fake`, `fake-claude`, `fake-codex`, `fake-agy` for tests and
+  demos.
+- **Any other CLI** is a card adapter too, from a JSON spec and no code:
+  `leg adapter template --name muse > muse.json`, fill in the command and its
+  flags, `leg adapter add muse.json`, then `--chain muse,claude`. `leg adapter
+  check muse` prints the exact command line a leg would run before one does.
+  See [docs/adapters.md](docs/adapters.md#custom-adapters). A custom adapter
+  runs cards; it is not an interactive `leg <agent>` terminal, because that
+  needs a usage tap and a wall signal, which only the four above expose.
 - A leg that ends on a limit signal, a stall, a crash or exit 0 without
   `.leg/DONE` hands off with a bundle to the next adapter in the same
   worktree; a `land` station rebases, tests and fast-forwards trunk or bounces

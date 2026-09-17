@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>What Leg reads from Claude Code, Codex and agy | Leg</title>
-<meta name="description" content="The exact usage endpoints, hooks, log lines and limit strings Leg reads from Claude Code, Codex and agy, each cited to its source.">
+<title>What Leg reads from Claude Code, Codex, agy and Grok | Leg</title>
+<meta name="description" content="The exact usage endpoints, hooks, log lines and limit strings Leg reads from Claude Code, Codex, agy and Grok, each cited to its source.">
 <link rel="canonical" href="https://legcli.com/docs/cli-contracts">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://legcli.com/docs/cli-contracts">
 <meta property="og:site_name" content="Leg">
-<meta property="og:title" content="What Leg reads from Claude Code, Codex and agy">
+<meta property="og:title" content="What Leg reads from Claude Code, Codex, agy and Grok">
 <meta property="og:image" content="https://legcli.com/og.png?v=3">
 <meta property="og:image:secure_url" content="https://legcli.com/og.png?v=3">
 <meta property="og:image:type" content="image/png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="What Leg reads from Claude Code, Codex and agy">
-<meta name="twitter:description" content="The exact usage endpoints, hooks, log lines and limit strings Leg reads from Claude Code, Codex and agy, each cited to its source.">
+<meta name="twitter:title" content="What Leg reads from Claude Code, Codex, agy and Grok">
+<meta name="twitter:description" content="The exact usage endpoints, hooks, log lines and limit strings Leg reads from Claude Code, Codex, agy and Grok, each cited to its source.">
 <meta name="twitter:image" content="https://legcli.com/og.png?v=3">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
@@ -102,9 +102,9 @@ questions.&quot;</p>
 </tr>
 <tr>
 <td>grok</td>
-<td>0.2.51</td>
-<td>exit 0, <code>stopReason: Cancelled</code>, no file: not logged in (device-code prompt)</td>
-<td><code>src/adapters/grok.mjs</code> exists, NOT registered</td>
+<td>1.0.34</td>
+<td>exit 1, no file, no DONE: the account answered <code>402 Payment Required: Grok Build usage balance exhausted</code>, classified <code>limit</code> (re-probed 2026-09-17; the 2026-09-11 run on 0.2.51 was not logged in)</td>
+<td><code>src/adapters/grok.mjs</code></td>
 </tr>
 </tbody></table>
 <p>The auth-source check: the build shell carried <code>ANTHROPIC_API_KEY</code> and
@@ -312,16 +312,28 @@ allowed the write headless (observed-live).</p>
 </ul>
 <h2 id="grok"><a class="anchor" href="#grok">grok</a></h2>
 <ul>
-<li><p>Version grok 0.2.51 (f4f85a649) [stable] (source: <code>grok --version</code>).</p>
+<li><p>Version grok 1.0.34 (3736acbc8658) [stable] (source: <code>grok --version</code>,
+2026-09-17). The 2026-09-11 sweep saw 0.2.51 on a machine with no login; every
+line below was re-read on 1.0.34.</p>
 </li>
 <li><p>Binary: <code>~/.grok/bin/grok.exe</code> (native; also an npm shim on PATH);
 <code>LEG_GROK_BIN</code> overrides (source: <code>where grok</code>).</p>
 </li>
-<li><p>Headless argv (from cmd.txt): <code>grok.exe -p &quot;&lt;prompt&gt;&quot; --output-format json --permission-mode acceptEdits</code>; stdin <code>ignore</code>.
-<code>--prompt-file &lt;path&gt;</code> also exists (source: <code>grok --help</code>).</p>
+<li><p>Headless argv (from cmd.txt): <code>grok.exe --prompt-file &lt;run&gt;/prompt.txt --output-format json --permission-mode acceptEdits --cwd &lt;worktree&gt;</code>; stdin
+<code>ignore</code>. The file form is used whenever the runner has written a prompt file,
+because a hand-off prompt carries the whole bundle summary and Windows caps a
+command line near 32k; with none, the adapter falls back to <code>-p &quot;&lt;prompt&gt;&quot;</code>
+(source: <code>grok --help</code>, <code>-p, --single &lt;PROMPT&gt;</code> and <code>--prompt-file &lt;PATH&gt;</code>).
+<code>--cwd &lt;CWD&gt;</code> is passed explicitly rather than trusting the spawn&#39;s working
+directory, because grok can run against a shared leader process
+(<code>~/.grok/leader.sock</code>) and a leg must edit its own worktree.</p>
 </li>
-<li><p>Output: one JSON object <code>{text, stopReason, sessionId, requestId, thought}</code>
-(observed-live, fixtures/live/grok/out.log).</p>
+<li><p>Output: the Claude Code result envelope. <code>&quot;type&quot;:&quot;result&quot;</code>, <code>subtype</code>,
+<code>is_error</code>, <code>session_id</code>, <code>result</code>, <code>num_turns</code>, <code>stop_reason</code>, <code>total_cost</code>,
+read out of the shipped <code>grok.exe</code> on 2026-09-17 alongside the streaming
+types (<code>assistant</code>, <code>system</code>, <code>text</code>, <code>usage</code>, <code>end</code>, <code>error</code>). An error is
+the other envelope, <code>{&quot;type&quot;:&quot;error&quot;,&quot;message&quot;:…}</code> (observed-live,
+<code>fixtures/live/grok/out.log</code>).</p>
 </li>
 <li><p>Exit codes:</p>
 <table>
@@ -333,24 +345,34 @@ allowed the write headless (observed-live).</p>
 </tr>
 </thead>
 <tbody><tr>
+<td>1</td>
+<td>printed <code>{&quot;type&quot;:&quot;error&quot;,&quot;message&quot;:&quot;Internal error: … API error (status 402 Payment Required): Grok Build usage balance exhausted&quot;}</code> and did no work: the account had no balance left</td>
+<td>observed-live 2026-09-17, fixtures/live/grok/out.log</td>
+</tr>
+<tr>
 <td>0</td>
-<td>printed JSON with <code>stopReason:&quot;Cancelled&quot;</code> and did no work: the CLI was not logged in, printed a device-code prompt on stderr (<code>https://accounts.x.ai/oauth2/device?user_code=…</code>, &quot;Waiting for authorization...&quot;) and gave up after ~58 s</td>
-<td>observed-live, fixtures/live/grok/err.log</td>
+<td>printed JSON with <code>stopReason:&quot;Cancelled&quot;</code> and did no work: the CLI was not logged in, printed a device-code prompt on stderr and gave up after ~58 s</td>
+<td>observed-live 2026-09-11 on 0.2.51</td>
 </tr>
 </tbody></table>
-<p>A zero exit with no DONE marker and no diff is exactly the <code>no_progress</code> class
-the completion contract exists for.</p>
+<p>The 402 is a wall, not a failure: <code>fixtures/limits/grok/grok-balance-exhausted.json</code>
+classifies it <code>limit</code>, so the card hands off instead of stopping. None of the
+rate-limit strings the tap watched for appear in a 402, which is why an
+exhausted grok terminal used to sit there; <code>src/taps/grok.mjs</code> reads it too now.</p>
 </li>
-<li><p>Permission modes: <code>default</code>, <code>acceptEdits</code>, <code>auto</code>, <code>dontAsk</code>,
-<code>bypassPermissions</code>, <code>plan</code> (source: <code>grok --help</code>). Leg: default
-<code>acceptEdits</code>; forbidden <code>bypassPermissions</code>, <code>--always-approve</code>.</p>
+<li><p>Permission modes: <code>default</code>, <code>acceptEdits</code>, <code>auto</code>, <code>dontAsk</code>, <code>plan</code>, and a
+bypass mode Leg never passes (source: <code>grok --help</code>). Leg: default
+<code>acceptEdits</code>; forbidden the bypass mode and <code>--always-approve</code>.</p>
 </li>
 <li><p>Login: <code>grok login</code> (source: <code>grok --help</code> Commands).</p>
 </li>
-<li><p><strong>Verdict: not verified, no adapter registered.</strong> <code>src/adapters/grok.mjs</code> is
-built from <code>--help</code> and unit-tested for shape and forbidden flags, but stays
-out of <code>src/adapters/index.mjs</code> until <code>grok login</code> has been completed on the
-machine and <code>node scripts/probe.mjs --adapter grok --repo &lt;toy&gt;</code> passes.</p>
+<li><p><strong>Verdict: registered, wall path verified, success path not.</strong> The probe
+reached the account through the real runner, so the binary resolution, the
+argv, the auth and the limit classification are all observed-live. A leg that
+completes its task has not been seen, because that needs balance on the
+account; until it is, a grok leg whose envelope does not parse is judged by
+its <code>.leg/DONE</code> marker and its diff, as every adapter is. Re-run
+<code>node scripts/probe.mjs --adapter grok --repo &lt;toy&gt;</code> with balance to close it.</p>
 </li>
 </ul>
 <h2 id="leg-harness-the-portable-harness"><a class="anchor" href="#leg-harness-the-portable-harness"><code>leg harness</code> (the portable harness)</a></h2>

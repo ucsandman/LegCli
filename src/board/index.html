@@ -158,6 +158,27 @@
         <button type="button" class="btn btn-secondary" id="default-order-save">Save default</button>
         <span class="field-status" id="default-order-status" aria-live="polite"></span>
       </fieldset>
+      <!-- Who did what, across every terminal and every card. The owner's, like
+           the rest of this panel: the trail names repositories and people. It
+           loads when asked rather than on every board render. -->
+      <fieldset class="audit" id="audit" hidden>
+        <legend>Audit trail</legend>
+        <p class="field-help">Every hand-off, landing, approval, reassignment and kill on this board, newest first, with the person or the agent that did it.</p>
+        <div class="audit-filters">
+          <label for="audit-who">Who</label>
+          <select id="audit-who"><option value="">anyone</option></select>
+          <label for="audit-kind">Kind</label>
+          <select id="audit-kind">
+            <option value="">people and agents</option>
+            <option value="human">people</option>
+            <option value="agent">agents</option>
+            <option value="leg">Leg itself</option>
+          </select>
+          <button type="button" class="btn btn-secondary" id="audit-load">Load</button>
+        </div>
+        <p class="region-meta" id="audit-meta" role="status" aria-atomic="true"></p>
+        <div class="audit-list" id="audit-list"></div>
+      </fieldset>
       <div class="field board-facts"></div>
     </div>
   </section>
@@ -280,5 +301,6 @@
 <script src="board.js" defer></script>
 <script src="sessions.js" defer></script>
 <script src="history.js" defer></script>
+<script src="audit.js" defer></script>
 </body>
 </html>

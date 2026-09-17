@@ -5,12 +5,14 @@
 // LEG_BIND (127.0.0.1) + LEG_PORT (4747) + LEG_TOKEN are the
 // multiplayer seams (src/auth.mjs). BATON_* names still work as fallback.
 import http from 'node:http'
+import https from 'node:https'
 import { spawnSync, execFile } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkBind, authorize, remoteAddress, presentedToken, isLoopback, isLoopbackRequest, tokenMatches } from './auth.mjs'
-import { readShare, isOn as shareIsOn, sharePath, identify, personNamed } from './share.mjs'
+import { readShare, isOn as shareIsOn, sharePath, identify, personNamed, mayUseCards, mayUseMachine, readTls } from './share.mjs'
+import { auditTrail, ACTOR_KINDS } from './audit.mjs'
 import { createLimiter } from './ratelimit.mjs'
 import { realPath, canonPath } from './fsx.mjs'
 import { listCards, readCard, readRuns, readEvents, cardDir, home } from './store.mjs'
@@ -29,7 +31,7 @@ import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs
 import { hasRecentSynthesis } from './synthesis.mjs'
 import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
-import { readUsage, recordUsage, usageIsStale, candidates, isAvailable } from './usage.mjs'
+import { readUsage, recordUsage, usageIsStale, candidates, isAvailable, fmtReset } from './usage.mjs'
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
 import { readCodexUsage } from './taps/codex.mjs'
 import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder } from './preferences.mjs'
@@ -343,6 +345,11 @@ function visibleSessionFile(file) {
 
 export function sessionsView({ viewer = null, share = null } = {}) {
   const shared = Boolean(share && shareIsOn(share))
+  // Decided before the map below, because the per-session payload has to know
+  // it: a guest owns their own terminal and may hand it off, so they get its
+  // list of destinations — but a reset time is this machine's usage data and
+  // belongs to nobody else, even on a terminal that is theirs.
+  const guest = shared && viewer && viewer.role !== 'owner'
   const list = reapLost(listSessions())
   const ov = overlaps(list)
   const configuredAccounts = readAccounts()
@@ -360,6 +367,21 @@ export function sessionsView({ viewer = null, share = null } = {}) {
       chain,
       preferred_next: preferredNext,
       eligible_next: eligibleNext,
+      // every destination this terminal could be handed to, each with the
+      // reason it cannot be picked right now. The board's picker renders this
+      // list directly, so a greyed option always carries its own explanation.
+      handoff_targets: chain.map((c) => {
+        const u = readUsage(c.agent, c.account)
+        const missing = availabilityKnown && s.installed[c.agent] === false
+        const walled = !isAvailable(u)
+        return {
+          agent: c.agent,
+          account: c.account,
+          available: !missing && !walled,
+          reason: missing ? 'not installed on this machine' : walled ? 'at its usage limit' : null,
+          resets_at: walled && !guest ? (u.limited_until ?? null) : null,
+        }
+      }),
       handoff_availability_known: availabilityKnown,
       can_edit_handoff_order: s.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY) ?? false,
       active: isActive(s),
@@ -387,7 +409,6 @@ export function sessionsView({ viewer = null, share = null } = {}) {
   const canon = new Map()
   const landingsFor = (key) => landings.filter((l) => { if (!canon.has(l.repo)) canon.set(l.repo, canonPath(l.repo)); return canon.get(l.repo) === key })
   const trunk = [...repos].map(([key, r]) => { try { return withLandings(trunkFor(r), landingsFor(key)) } catch { return { repo: r, commits: [] } } })
-  const guest = shared && viewer && viewer.role !== 'owner'
   const mine = (s) => !shared || !viewer || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
   const shown = sessions.map((s) => (mine(s) ? { ...s, requests: readRequests(s.session_id).filter((r) => r.state === 'pending') } : redactSession(s)))
   return {
@@ -461,14 +482,15 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, sessionsDebounce
   // resets the count the first is reading from.
   const refreshCard = (id) => {
     const card = readCard(id)
-    // pipeline cards and their events are the owner's: a guest never gets them
-    const forOwner = (payload) => (viewer) => (viewer && viewer.role !== 'owner' ? null : payload)
+    // pipeline cards and their events belong to the people who may run them:
+    // the owner and any operator. A guest never gets them.
+    const forOwner = (payload) => (viewer) => (viewer && !mayUseCards(viewer.role) ? null : payload)
     if (!card) { for (const c of clients) c.sig.delete(id); broadcast('removed', forOwner({ card_id: id })); return }
     const events = readEvents(id)
     // broadcast() refreshes each client's viewer (and drops revoked ones) first
     broadcast('card', forOwner(summarize(card)))
     for (const c of [...clients]) {
-      if (!c.viewer || c.viewer.role !== 'owner') { c.sig.set(id, events.length); continue }
+      if (!c.viewer || !mayUseCards(c.viewer.role)) { c.sig.set(id, events.length); continue }
       const from = c.sig.get(id) ?? 0
       c.sig.set(id, events.length)
       for (const e of events.slice(from)) { try { c.res.write(`event: event\ndata: ${JSON.stringify(e)}\n\n`) } catch {} }
@@ -613,7 +635,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
   }
   const limiter = createLimiter()
   const viewFor = (viewer, sh) => sessionsView({ viewer, share: sh ?? currentShare() })
-  const forOwner = (payload) => (viewer) => (viewer && viewer.role !== 'owner' ? null : payload)
+  const forOwner = (payload) => (viewer) => (viewer && !mayUseCards(viewer.role) ? null : payload)
   // SSE re-identifies each client from the live roster on every push
   const reauthClient = (c) => {
     const sh = currentShare()
@@ -688,19 +710,23 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
     const rl = limiter.request(auth.person ? viewer.name : ip)
     if (!rl.ok) return send(res, 429, { error: `rate limit: more than ${limiter.max} requests a minute` }, { 'Retry-After': String(rl.retry_after) })
     const actor = { type: 'human', id: viewer.name }
-    // a guest sees the terminals lane, read-only; the pipeline side is the owner's
-    const guest = shared && viewer.role !== 'owner'
+    // What this viewer may reach, decided once from their role (src/share.mjs).
+    // `canCards` is the pipeline board: cards, the floor, the adapters and the
+    // leases, which an operator runs. `canMachine` is everything that describes
+    // this computer rather than the work — the settings, the trunk's repo
+    // paths, the history index, the worktree map — and stays the owner's.
+    const canCards = !shared || mayUseCards(viewer.role)
+    const canMachine = !shared || mayUseMachine(viewer.role)
     const ownsSession = (s) => !shared || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
     const parts = path.split('/').filter(Boolean) // ['api', ...]
-    // history and worktrees are the whole machine's project map (every path,
-    // every conversation on it): the owner's, never a guest's, as a group
-    if (guest && ['cards', 'floor', 'presets', 'adapters', 'leases', 'trunk', 'history', 'worktrees'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner of this machine' })
+    if (!canCards && ['cards', 'floor', 'presets', 'adapters', 'leases'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner and the operators of this machine' })
+    if (!canMachine && ['trunk', 'history', 'worktrees', 'audit'].includes(parts[1])) return send(res, 403, { error: 'this is the map of the machine itself: every repository path and every conversation on it. It belongs to the owner of this machine.' })
     try {
       if (req.method === 'GET' && path === '/api/health') {
         const you = { ...viewer, share: { on: shared, people: shared ? share.people.length : 0 } }
-        if (guest) return send(res, 200, { ok: true, version: VERSION, you })
+        if (!canCards) return send(res, 200, { ok: true, version: VERSION, you })
         const cards = listCards()
-        return send(res, 200, { ok: true, pid: process.pid, version: VERSION, bind, port, home: home(), you, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: await detectTools(), columns: columnsFor(cards), cards: cards.length })
+        return send(res, 200, { ok: true, pid: process.pid, version: VERSION, bind, port, home: canMachine ? home() : null, you, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: await detectTools(), columns: columnsFor(cards), cards: cards.length })
       }
       if (req.method === 'GET' && path === '/api/adapters') return send(res, 200, { adapters: await adaptersInfo() })
       if (req.method === 'GET' && path === '/api/presets') return send(res, 200, { presets: PRESETS })
@@ -721,14 +747,14 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
       }
       if (req.method === 'GET' && path === '/api/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
-        const cards = guest ? [] : listCards()
+        const cards = canCards ? listCards() : []
         res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map(summarize), sessions: viewFor(viewer), ts: new Date().toISOString() })}\n\n`)
         sse.add(res, cards, viewer, { token: presentedToken(req, url), loopback: isLoopbackRequest(req) })
         return
       }
       if (req.method === 'GET' && path === '/api/sessions') return send(res, 200, viewFor(viewer))
       if (path === '/api/settings') {
-        if (guest) return send(res, 403, { error: 'the machine settings belong to the owner of this board' })
+        if (!canMachine) return send(res, 403, { error: 'the machine settings belong to the owner of this board' })
         if (req.method === 'GET') return send(res, 200, { preferences: readPreferences() })
         if (req.method === 'POST' || req.method === 'PATCH') {
           const body = await readBody(req)
@@ -865,9 +891,30 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
         }
         if (req.method === 'POST' && (parts[3] === 'handoff' || parts[3] === 'end')) {
           if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
-          requestControl(id, parts[3] === 'handoff' ? { handoff: true, by: actor.id } : { end: true, by: actor.id })
-          log(`${parts[3]} requested for ${id} by ${actor.id}`)
-          return send(res, 200, { ok: true, requested: parts[3] })
+          if (parts[3] === 'end') {
+            requestControl(id, { end: true, by: actor.id })
+            log(`end requested for ${id} by ${actor.id}`)
+            return send(res, 200, { ok: true, requested: 'end' })
+          }
+          // Hand off now, optionally to a named destination. With no body the
+          // chain decides, exactly as it did before the picker existed.
+          const body = await readBody(req)
+          let target = null
+          if (body && body.agent !== undefined && body.agent !== null && body.agent !== '') {
+            const want = { agent: String(body.agent), account: String(body.account ?? 'default') }
+            const order = normalizeHandoffOrder(sess.handoff_order)
+            const chain = candidates({ agent: sess.agent, account: sess.account, accounts: readAccounts(), order })
+            const hit = chain.find((c) => c.agent === want.agent && c.account === want.account)
+            const label = `${want.agent}${want.account !== 'default' ? '/' + want.account : ''}`
+            if (!hit) return send(res, 400, { error: `${label} is not a destination for this terminal (${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(', ') || 'none'})` })
+            if (sess.installed && sess.installed[want.agent] === false) return send(res, 409, { error: `${label} is not installed on this machine` })
+            const u = readUsage(want.agent, want.account)
+            if (!isAvailable(u)) return send(res, 409, { error: `${label} is at its usage limit until ${fmtReset(u.limited_until)}; pick another or use Hand off now without a destination` })
+            target = hit
+          }
+          requestControl(id, target ? { handoff: true, target, by: actor.id } : { handoff: true, by: actor.id })
+          log(`handoff requested for ${id} by ${actor.id}${target ? ` to ${target.agent}/${target.account}` : ''}`)
+          return send(res, 200, { ok: true, requested: 'handoff', target })
         }
         if (req.method === 'DELETE' && parts.length === 3) {
           if (isActive(sess)) return send(res, 409, { error: 'end the session before removing it' })
@@ -944,6 +991,18 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
         const q = url.searchParams
         return send(res, 200, worktreesFor({ repo: q.get('repo') || null, dirty: q.get('dirty') !== '0' }))
       }
+      if (req.method === 'GET' && path === '/api/audit') {
+        const q = url.searchParams
+        const kind = q.get('kind')
+        if (kind && !ACTOR_KINDS.includes(kind)) return send(res, 400, { error: `kind is one of ${ACTOR_KINDS.join(', ')}` })
+        const limit = parseInt(q.get('limit') ?? '200', 10)
+        return send(res, 200, auditTrail({
+          limit: Number.isFinite(limit) ? limit : 200,
+          since: q.get('since'),
+          who: q.get('who'),
+          kind,
+        }))
+      }
       if (req.method === 'GET' && path === '/api/floor') return send(res, 200, floor(listCards()))
       if (req.method === 'GET' && path === '/api/trunk') return send(res, 200, trunk(listCards(), parseSince(url.searchParams.get('since'))))
       if (req.method === 'GET' && path === '/api/leases') return send(res, 200, { leases: held(listCards()) })
@@ -1004,21 +1063,28 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
   }
 
   const onReq = (req, res) => { handle(req, res).catch((err) => { try { send(res, 500, { error: scrub(err.message) }) } catch {} }) }
-  const server = http.createServer(onReq)
+  // TLS when a certificate pair is configured (leg share on --tls-cert/--tls-key,
+  // or LEG_TLS_CERT/LEG_TLS_KEY). readTls throws rather than fall back to
+  // plaintext: a board told to use TLS and quietly serving http would be the
+  // worst outcome of the three.
+  const tls = readTls(initialShare)
+  const server = tls ? https.createServer({ cert: tls.cert, key: tls.key }, onReq) : http.createServer(onReq)
   // When the board is bound to a non-loopback address (share on), also listen on
   // 127.0.0.1 so the machine's own browser has a tokenless owner URL — a real
-  // remote peer's address is never loopback, so it still needs a token.
+  // remote peer's address is never loopback, so it still needs a token. That one
+  // stays plain http even under TLS: the certificate is for the shared name, and
+  // loopback traffic never leaves this machine.
   const loopbackCompanion = !isLoopback(bind) ? http.createServer(onReq) : null
 
   return {
     server,
-    bind, port,
+    bind, port, tls: tls ? { cert_path: tls.cert_path, key_path: tls.key_path } : null,
     start() {
       return new Promise((resolvePromise, reject) => {
         server.once('error', reject)
         server.listen(port, bind, () => {
           const addr = server.address()
-          log(`listening on http://${bind}:${addr.port} (home ${home()}${token ? ', token required' : ', loopback open'})`)
+          log(`listening on ${tls ? 'https' : 'http'}://${bind}:${addr.port} (home ${home()}${token ? ', token required' : ', loopback open'}${tls ? `, TLS from ${tls.cert_path}` : ''})`)
           // A terminal that crashed instead of exiting left its hand-off in
           // .leg/RESUME.md looking live. The board is the thing that starts
           // after a crash, so it is where that gets corrected.

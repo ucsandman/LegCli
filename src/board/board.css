@@ -391,6 +391,21 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .history-filters { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 14px; align-items: center; margin: 4px 0 18px; max-width: 64ch; }
 .history-filters label { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
 .history-filters label:has(input[type="checkbox"]) { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-weight: var(--w-text); }
+/* Audit trail (Settings). Same grammar as the history rows: a flat list with
+   hairline separators, the time on the left, the actor as a chip. */
+.audit { border: 0; padding: 0; margin: 22px 0 0; }
+.audit legend { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); padding: 0; }
+.audit-filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 10px 0 14px; }
+.audit-filters label { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
+.audit-list { display: block; }
+.audit-row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; padding: 10px 0; font-size: var(--t-0); }
+.audit-row + .audit-row { border-top: 1px solid var(--line); }
+.audit-when { color: var(--text-3); font-variant-numeric: tabular-nums; min-width: 12ch; }
+.audit-what { font-weight: var(--w-head); }
+.audit-summary { color: var(--text-2); flex: 1 1 46ch; min-width: 0; overflow-wrap: anywhere; }
+.audit-ago { color: var(--text-3); margin-left: auto; }
+@media (max-width: 640px) { .audit-ago { margin-left: 0; } }
+
 .history-list { display: block; }
 .history-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 20px; align-items: baseline; padding: 12px 0; font-size: var(--t-0); }
 .history-row + .history-row, .history-row + .history-detail, .history-detail + .history-row { border-top: 1px solid var(--line); }

@@ -79,7 +79,8 @@ mkdirSync(out, { recursive: true })
 for (const f of ['out.log', 'err.log', 'run.json', 'supervisor.log', 'last.md']) {
   if (existsSync(join(runDir, f))) writeFileSync(join(out, f), scrubPaths(readFileSync(join(runDir, f), 'utf8')))
 }
-const spec = adapter.argv({ mode, cwd: repo, prompt: PROMPT, runDir, killMs: 5400000 })
+// the same opts the runner passed, so cmd.txt is the command that really ran
+const spec = adapter.argv({ mode, cwd: repo, prompt: PROMPT, promptFile: join(runDir, 'prompt.txt'), runDir, killMs: 5400000 })
 writeFileSync(join(out, 'cmd.txt'), scrubPaths([spec.bin, ...spec.args].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')) + '\n')
 const textOf = (f) => (existsSync(join(runDir, f)) ? readFileSync(join(runDir, f), 'utf8') : '')
 const authSource = /another auth source/i.test(textOf('err.log') + textOf('out.log'))

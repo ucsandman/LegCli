@@ -661,7 +661,7 @@
         sysMessage('removed the Leg record; the worktree and the branch are kept', 'ok')
       } else {
         await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body })
-        if (action === 'handoff') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: 'hand-off requested; this terminal switches agents in a few seconds' })
+        if (action === 'handoff') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: body && body.agent ? `hand-off to ${optionLabel(body)} requested; this terminal switches agents in a few seconds` : 'hand-off requested; this terminal switches agents in a few seconds' })
         else if (action === 'end') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: 'end requested; the agent stops after its current turn' })
         else if (action === 'land/fix') actionNotes.set(id, { at: Date.now(), tone: 'ok', text: 'applied fix' })
       }
@@ -692,6 +692,34 @@
     else if (eligible !== preferred) wrap.appendChild(el('p', { class: 'sentence tone-muted' }, [`preferred: ${preferred}, first eligible now: ${eligible}`]))
     else wrap.appendChild(el('p', { class: 'sentence tone-muted' }, [`first eligible now: ${eligible}`]))
     wrap.appendChild(el('p', { class: 'blocker' }, ['Used after a usage limit or Hand off now. A normal exit ends this terminal.']))
+
+    // The picker. The Hand off now button on the panel stays the one-click
+    // path (it takes the order); this names a destination instead. An option
+    // that cannot be picked carries the reason in its own label, so nothing is
+    // greyed out without saying why.
+    const targets = Array.isArray(s.handoff_targets) ? s.handoff_targets : []
+    if (s.active && targets.length) {
+      const pick = el('div', { class: 'form-row' })
+      const selectId = `handoff-to-${s.session_id}`
+      pick.appendChild(el('label', { for: selectId }, ['Hand off now to']))
+      const select = el('select', { id: selectId })
+      select.appendChild(el('option', { value: '' }, ['the next option in the order']))
+      targets.forEach((t, i) => {
+        const note = t.available ? '' : ` — ${t.reason}${Number.isFinite(t.resets_at) ? `, back ${until(t.resets_at)}` : ''}`
+        // the index is the value: an account name is not ours to parse
+        select.appendChild(el('option', { value: String(i), disabled: t.available ? null : 'disabled' }, [optionLabel(t) + note]))
+      })
+      const go = el('button', { type: 'button', class: 'btn btn-secondary' }, ['Hand off'])
+      go.addEventListener('click', () => {
+        const t = select.value === '' ? null : targets[Number(select.value)]
+        act(s.session_id, 'handoff', go, t ? { agent: t.agent, account: t.account } : null)
+      })
+      pick.appendChild(el('div', { class: 'chain-rail' }, [select, go]))
+      if (!targets.some((t) => t.available)) {
+        pick.appendChild(el('p', { class: 'field-help' }, ['Every destination is at its limit or not installed; a hand-off now waits for the first reset.']))
+      }
+      wrap.appendChild(pick)
+    }
 
     const editableNow = ['starting', 'running', 'warning', 'limit', 'waiting'].includes(s.status)
     if (!s.hidden && editableNow) {

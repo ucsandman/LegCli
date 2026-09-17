@@ -183,6 +183,10 @@ const LIMIT_RES = [
   ['grok-rate-limit-event', /"rate_limit"/i],
   ['grok-free-usage-exhausted', /subscription:free-usage-exhausted|You've used all of your free queries/i],
   ['grok-too-many-requests', /TOO_MANY_REQUESTS/],
+  // Observed live 2026-09-17 on grok 1.0.34: an account with no balance left
+  // answers 402, never 429, and none of the strings above appear. Without this
+  // the terminal sat on an exhausted login instead of handing off.
+  ['grok-balance-exhausted', /usage balance exhausted|status 402 Payment Required/i],
 ]
 
 // Scans log or stream text for Grok rate limit signals.

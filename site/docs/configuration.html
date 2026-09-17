@@ -410,8 +410,13 @@ resolves to by default.</p>
 </tr>
 <tr>
 <td><code>LEG_GROK_BIN</code></td>
-<td>grok (not registered by default)</td>
+<td>grok</td>
 <td><code>src/adapters/grok.mjs</code></td>
+</tr>
+<tr>
+<td><code>LEG_&lt;NAME&gt;_BIN</code></td>
+<td>a custom adapter called <code>&lt;name&gt;</code> (dashes become underscores, so <code>my-agent</code> reads <code>LEG_MY_AGENT_BIN</code>)</td>
+<td><code>src/adapters/custom.mjs</code></td>
 </tr>
 <tr>
 <td><code>LEG_GH_BIN</code></td>
@@ -542,9 +547,10 @@ other address without also setting <code>LEG_TOKEN</code> makes the server refus
 start, exit code <code>3</code> (<code>src/auth.mjs</code> <code>checkBind</code>/<code>BindRefused</code>). With a
 token set, every <code>/api/*</code> request needs an <code>Authorization: Bearer &lt;token&gt;</code>
 header; the event stream (<code>EventSource</code>, which cannot set headers) accepts
-the same token as a <code>?token=</code> query parameter instead. There is no TLS; keep
-<code>LEG_BIND</code> on loopback unless you are using <code>leg share</code>, which gives
-each human their own token (see <a href="#share-more-than-one-human">Share</a>).</p>
+the same token as a <code>?token=</code> query parameter instead. Keep <code>LEG_BIND</code> on
+loopback unless you are using <code>leg share</code>, which gives each human their own
+token (see <a href="#share-more-than-one-human">Share</a>) and can serve the board over
+TLS.</p>
 <h2 id="share-more-than-one-human"><a class="anchor" href="#share-more-than-one-human">Share (more than one human)</a></h2>
 <p>Off until <code>leg share on</code> writes <code>$LEG_HOME/share.json</code>. That file is the
 switch and the roster; the env variables below only tune the limits.</p>
@@ -569,7 +575,11 @@ switch and the roster; the env variables below only tune the limits.</p>
 </tr>
 <tr>
 <td><code>people[]</code></td>
-<td><code>{ name, role: owner|guest, token_sha256, created_at }</code>; the token itself is printed once and never stored</td>
+<td><code>{ name, role: owner|operator|guest, token_sha256, created_at }</code>; the token itself is printed once and never stored</td>
+</tr>
+<tr>
+<td><code>tls</code></td>
+<td><code>{ cert, key }</code>, the paths to a certificate pair; absent means plain http</td>
 </tr>
 <tr>
 <td><code>loopback_owner</code></td>
@@ -599,6 +609,82 @@ switch and the roster; the env variables below only tune the limits.</p>
 </tr>
 </tbody></table>
 <p><code>LEG_TOKEN</code> is the single-token mode and is ignored while share is on.</p>
+<h3 id="roles"><a class="anchor" href="#roles">Roles</a></h3>
+<table>
+<thead>
+<tr>
+<th>role</th>
+<th>terminals</th>
+<th>cards</th>
+<th>this machine</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>owner</code></td>
+<td>every one</td>
+<td>every one</td>
+<td>settings, harness policy, the trunk&#39;s repo paths, the history index, the worktree map, the audit trail</td>
+</tr>
+<tr>
+<td><code>operator</code></td>
+<td>their own; someone else&#39;s is read-only and redacted</td>
+<td>adds, runs, approves, reassigns, kills</td>
+<td>nothing: <code>/api/settings</code>, <code>/api/history</code>, <code>/api/worktrees</code>, <code>/api/trunk</code> and <code>/api/audit</code> all answer 403, and <code>/api/health</code> omits the home path</td>
+</tr>
+<tr>
+<td><code>guest</code></td>
+<td>their own; someone else&#39;s is read-only and redacted, with <strong>Request handoff</strong> as the only button</td>
+<td>nothing: 403</td>
+<td>nothing</td>
+</tr>
+</tbody></table>
+<p>A guest and an operator both see their own terminal&#39;s hand-off destinations,
+so they can use the picker on it — but never the reset times behind them,
+which are this machine&#39;s usage data. <code>src/share.mjs</code> <code>mayUseCards</code> and
+<code>mayUseMachine</code> are the only place a role is turned into permission.</p>
+<h3 id="tls"><a class="anchor" href="#tls">TLS</a></h3>
+<p>Off unless a certificate pair is configured. Leg never issues one: a
+self-signed pair teaches everyone on the board to click through a warning,
+which is worse than plaintext on a network that is already private. On
+Tailscale, <code>tailscale cert &lt;machine&gt;.&lt;tailnet&gt;.ts.net</code> issues a pair browsers
+already trust.</p>
+<table>
+<thead>
+<tr>
+<th>variable</th>
+<th>meaning</th>
+<th>read in</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LEG_TLS_CERT</code></td>
+<td>path to the certificate; wins over <code>share.json</code>&#39;s <code>tls.cert</code></td>
+<td><code>src/share.mjs</code> <code>readTls</code></td>
+</tr>
+<tr>
+<td><code>LEG_TLS_KEY</code></td>
+<td>path to the private key; wins over <code>share.json</code>&#39;s <code>tls.key</code></td>
+<td><code>src/share.mjs</code> <code>readTls</code></td>
+</tr>
+</tbody></table>
+<p><code>leg share on --tls-cert &lt;file&gt; --tls-key &lt;file&gt;</code> writes the pair into
+<code>share.json</code> and reads it once, so a bad pair fails there rather than at the
+next board start. With a pair configured the shared address serves https and
+every link <code>leg share</code> prints says <code>https://</code>. The companion listener on
+<code>127.0.0.1</code> — the one that lets this machine&#39;s own browser in without a token
+— stays plain http, because the certificate is for the shared name and
+loopback traffic never leaves the machine. Half a pair, a missing file, an
+unreadable file or an empty one stops the board with exit <code>3</code> rather than
+falling back to plaintext. A renewed pair is picked up by <code>leg down &amp;&amp; leg up</code>.</p>
+<h3 id="the-audit-trail"><a class="anchor" href="#the-audit-trail">The audit trail</a></h3>
+<p><code>GET /api/audit</code> (owner only) and Settings → <strong>Audit trail</strong> on the board: one
+list across every terminal and every card, newest first, of the actions a
+person or an agent took — hand-offs, landings, approvals, reassignments,
+kills. It reads the events already on disk and stores nothing new. Query
+parameters: <code>limit</code> (default 200, max 1000), <code>since</code> (an ISO timestamp), <code>who</code>
+(a name), <code>kind</code> (<code>human</code>, <code>agent</code> or <code>leg</code>). Every answer carries <code>scanned</code>
+— how many terminals, cards and events it read — so an empty trail cannot be
+mistaken for a quiet week.</p>
 <h2 id="card-level-options"><a class="anchor" href="#card-level-options">Card-level options</a></h2>
 <p>These configure one card, not the whole install (set with <code>card add</code> flags
 or the New card form; see <a href="/docs/getting-started">getting-started.md</a> and

@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leg agent adapters for Claude Code, Codex and agy | Leg</title>
-<meta name="description" content="How each agent adapter spawns its CLI, what it strips from the environment, and how to tell whether a tap is live or docs-only.">
+<title>Leg agent adapters for Claude Code, Codex, agy and Grok | Leg</title>
+<meta name="description" content="How each agent adapter spawns its CLI, what it strips from the environment, how to tell whether a tap is live or docs-only, and how to add any other CLI from a JSON spec.">
 <link rel="canonical" href="https://legcli.com/docs/adapters">
 <meta name="theme-color" content="#0E1012">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://legcli.com/docs/adapters">
 <meta property="og:site_name" content="Leg">
-<meta property="og:title" content="Leg agent adapters for Claude Code, Codex and agy">
+<meta property="og:title" content="Leg agent adapters for Claude Code, Codex, agy and Grok">
 <meta property="og:image" content="https://legcli.com/og.png?v=3">
 <meta property="og:image:secure_url" content="https://legcli.com/og.png?v=3">
 <meta property="og:image:type" content="image/png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Leg agent adapters for Claude Code, Codex and agy">
-<meta name="twitter:description" content="How each agent adapter spawns its CLI, what it strips from the environment, and how to tell whether a tap is live or docs-only.">
+<meta name="twitter:title" content="Leg agent adapters for Claude Code, Codex, agy and Grok">
+<meta name="twitter:description" content="How each agent adapter spawns its CLI, what it strips from the environment, how to tell whether a tap is live or docs-only, and how to add any other CLI from a JSON spec.">
 <meta name="twitter:image" content="https://legcli.com/og.png?v=3">
 <link rel="preload" href="/fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
@@ -54,7 +54,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></li><li><a href="#headless-adapters-the-v01-pipeline">Headless adapters (the v0.1 pipeline)</a></li><li><a href="#how-to-add-an-adapter">How to add an adapter</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></li><li><a href="#headless-adapters-the-v01-pipeline">Headless adapters (the v0.1 pipeline)</a></li><li><a href="#custom-adapters">Custom adapters</a></li><li><a href="#how-to-add-a-built-in-adapter">How to add a built-in adapter</a></li><li><a href="#see-also">See also</a></li></ul></nav>
 <h1 id="adapters"><a class="anchor" href="#adapters">Adapters</a></h1>
 <p>Two things per agent: what Leg reads from an interactive session
 (<code>leg claude|codex|agy|grok</code>), and the headless argv the v0.1 pipeline spawns.
@@ -284,24 +284,97 @@ for the full list of modes). <code>fake-claude</code> / <code>fake-codex</code> 
 <code>emulates</code> to that CLI&#39;s name, so the limit classifier applies that CLI&#39;s own
 fixtures to it and a demo chain reads like a real fallback.</li>
 </ul>
-<h3 id="grok-built-not-registered"><a class="anchor" href="#grok-built-not-registered">grok (built, not registered)</a></h3>
+<h3 id="grok-headless"><a class="anchor" href="#grok-headless">grok (headless)</a></h3>
 <ul>
 <li><strong>Binary</strong>: <code>LEG_GROK_BIN</code>, else <code>~/.grok/bin/grok.exe</code>, else <code>grok</code> on
 PATH.</li>
-<li><strong>Argv</strong>: <code>grok -p &quot;&lt;prompt&gt;&quot; --output-format json --permission-mode &lt;mode&gt;</code>, plus <code>-m &lt;model&gt;</code>, <code>-r &lt;session-id&gt;</code>.</li>
+<li><strong>Argv</strong>: <code>grok --prompt-file &lt;run&gt;/prompt.txt --output-format json --permission-mode &lt;mode&gt; --cwd &lt;worktree&gt;</code>, plus <code>--max-turns &lt;n&gt;</code>,
+<code>-m &lt;model&gt;</code>, <code>-r &lt;session-id&gt;</code>. Every flag was read from <code>grok --help</code> on
+grok 1.0.34 (<code>3736acbc8658</code>) on 2026-09-17. The prompt travels by file
+rather than on argv because a hand-off prompt carries the whole bundle
+summary and Windows caps one command line at about 32k; with no prompt file
+the adapter falls back to <code>-p &quot;&lt;prompt&gt;&quot;</code>. <code>--cwd</code> is passed explicitly
+rather than relying on the spawn&#39;s working directory: grok can run against a
+shared leader process (<code>~/.grok/leader.sock</code>), and a leg must edit its own
+worktree, not whatever directory the leader started in.</li>
 <li><strong>Stdin</strong>: <code>ignore</code>.</li>
 <li><strong>Modes</strong>: default <code>acceptEdits</code>; allowed <code>default</code>, <code>acceptEdits</code>,
 <code>auto</code>, <code>dontAsk</code>, <code>plan</code>.</li>
 <li><strong>Forbidden flags</strong>: <code>--always-approve</code>, <code>bypassPermissions</code>,
 <code>--permission-mode=bypassPermissions</code>.</li>
-<li><strong>Status</strong>: <code>src/adapters/grok.mjs</code> exists and is unit-tested, but is
-<strong>not</strong> in <code>src/adapters/index.mjs</code>&#39;s registry. The build machine had no
-<code>grok</code> login: the probe printed a device-code prompt and exited
-<code>Cancelled</code>. Register it (add an entry to <code>REGISTRY</code> in
-<code>src/adapters/index.mjs</code>) once <code>grok login</code> has been completed and
-<code>node scripts/probe.mjs --adapter grok --repo &lt;toy-repo&gt;</code> passes.</li>
+<li><strong>Result</strong>: grok&#39;s headless writer emits the Claude Code result envelope.
+The field names (<code>&quot;type&quot;:&quot;result&quot;</code>, <code>subtype</code>, <code>is_error</code>, <code>session_id</code>,
+<code>result</code>, <code>num_turns</code>, <code>stop_reason</code>, <code>total_cost</code>) were read out of the
+shipped <code>grok.exe</code> on 2026-09-17. An error is the other envelope,
+<code>{&quot;type&quot;:&quot;error&quot;,&quot;message&quot;:…}</code>, observed live the same day.</li>
+<li><strong>Status</strong>: registered on 2026-09-17. The probe reached the account and came
+back with a real wall — <code>API error (status 402 Payment Required): Grok Build usage balance exhausted</code>, exit 1, classified <code>limit</code> and handed off — so the
+spawn, the argv, the auth and the wall path are all verified live
+(<code>fixtures/live/grok/</code>). The <strong>success</strong> path of a grok leg is still
+unprobed: that needs balance on the account. Until it is, a grok leg whose
+envelope does not parse falls back to the <code>.leg/DONE</code> marker and the diff,
+which is what every adapter does when <code>parseResult</code> returns null. Re-run
+<code>node scripts/probe.mjs --adapter grok --repo &lt;toy-repo&gt;</code> with balance to
+close it.</li>
 </ul>
-<h2 id="how-to-add-an-adapter"><a class="anchor" href="#how-to-add-an-adapter">How to add an adapter</a></h2>
+<h2 id="custom-adapters"><a class="anchor" href="#custom-adapters">Custom adapters</a></h2>
+<p>Any other coding-agent CLI becomes a card adapter through a JSON spec in
+<code>$LEG_HOME/adapters/&lt;name&gt;.json</code>, with no code in this package. This is the
+open end of the chain: claude, codex, agy and grok ship with taps and a probe,
+and anything else joins as &quot;argv in, JSON out&quot;.</p>
+<p>A custom adapter runs <strong>cards</strong>: headless, in a worktree, handing off like any
+other leg. It is not an interactive <code>leg &lt;agent&gt;</code> terminal, because that needs
+a usage tap and a wall signal, which only the four built-ins expose.</p>
+<pre><code>leg adapter template --name muse &gt; muse.json   # a starter spec
+leg adapter add muse.json                      # validate and install it
+leg adapter check muse                         # the exact command a leg would run
+leg card add --repo &lt;path&gt; --task &quot;&lt;t&gt;&quot; --chain muse,claude --queue
+leg adapter list | show muse | rm muse
+</code></pre>
+<p>The spec:</p>
+<pre><code class="language-json">{
+  &quot;name&quot;: &quot;muse&quot;,
+  &quot;bin&quot;: &quot;muse&quot;,
+  &quot;stdin&quot;: &quot;ignore&quot;,
+  &quot;args&quot;: [&quot;run&quot;, &quot;--json&quot;,
+           [&quot;--dir&quot;, &quot;{{cwd}}&quot;],
+           [&quot;--model&quot;, &quot;{{model}}&quot;],
+           &quot;--prompt-file&quot;, &quot;{{promptFile}}&quot;],
+  &quot;modes&quot;: { &quot;default&quot;: &quot;auto&quot;, &quot;allowed&quot;: [&quot;auto&quot;, &quot;readonly&quot;] },
+  &quot;forbiddenFlags&quot;: [&quot;--unsafe&quot;],
+  &quot;result&quot;: { &quot;format&quot;: &quot;json&quot;, &quot;sessionId&quot;: &quot;session_id&quot;,
+              &quot;message&quot;: &quot;result&quot;, &quot;stopReason&quot;: &quot;stop_reason&quot; }
+}
+</code></pre>
+<ul>
+<li><strong><code>bin</code></strong> is argv[0]. It is spawned directly, never through a shell, so it
+cannot contain <code>&lt; &gt; | &amp; ;</code>. <code>LEG_&lt;NAME&gt;_BIN</code> overrides it. A <code>.mjs</code>, <code>.cjs</code>
+or <code>.js</code> path runs under this Node.</li>
+<li><strong><code>args</code></strong> is a list of strings and groups. Placeholders: <code>{{prompt}}</code>,
+<code>{{promptFile}}</code>, <code>{{cwd}}</code>, <code>{{mode}}</code>, <code>{{model}}</code>, <code>{{resume}}</code>,
+<code>{{maxTurns}}</code>, <code>{{runDir}}</code>. A bare string is always kept; a <strong>group</strong> (a
+nested array) is dropped whole when a placeholder inside it has no value, so
+<code>[&quot;--model&quot;, &quot;{{model}}&quot;]</code> disappears rather than passing a bare <code>--model</code>.
+Something has to carry the prompt: <code>{{prompt}}</code>, <code>{{promptFile}}</code>, or
+<code>&quot;stdin&quot;: &quot;pipe&quot;</code>.</li>
+<li><strong><code>modes</code></strong> is validated before anything spawns, the same way a built-in&#39;s
+is: a chain entry naming a mode outside <code>allowed</code> throws <code>forbidden flag</code>.</li>
+<li><strong><code>forbiddenFlags</code></strong> is yours to add to. The flags that turn a supervised
+agent into an unsupervised one are refused whatever the spec says, in <code>args</code>,
+in <code>modes</code> and at argv time (<code>NEVER_ALLOWED</code>, <code>src/adapters/custom.mjs</code>).</li>
+<li><strong><code>result.format</code></strong> is <code>json</code> (the first parseable object in stdout),
+<code>jsonl</code> (the last line carrying the message field) or <code>text</code> (no parsing).
+<code>sessionId</code>, <code>message</code> and <code>stopReason</code> are dotted paths, so
+<code>&quot;sessionId&quot;: &quot;thread.id&quot;</code> reads <code>{&quot;thread&quot;:{&quot;id&quot;:…}}</code>. With <code>text</code>, or when
+nothing parses, the leg is judged by its <code>.leg/DONE</code> marker and its diff,
+which is what happens for any adapter whose <code>parseResult</code> returns null.</li>
+</ul>
+<p>A broken spec is reported, never thrown: <code>leg adapter list</code> names the file and
+the reason, and the board, the scheduler and <code>leg card add</code> carry on without
+it. A spec may not take a built-in&#39;s name. The directory is re-read whenever
+the list is asked for, keyed on its entries, so a spec added while the board is
+up appears in the New card form without a restart.</p>
+<h2 id="how-to-add-a-built-in-adapter"><a class="anchor" href="#how-to-add-a-built-in-adapter">How to add a built-in adapter</a></h2>
 <p>An adapter is a plain object (see <code>src/adapters/common.mjs</code> for the shared
 helpers, <code>src/adapters/fake.mjs</code> for the simplest full example):</p>
 <pre><code class="language-js">{

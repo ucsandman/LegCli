@@ -25,7 +25,7 @@ questions."
 | claude | 2.1.268 | exit 0, file yes, DONE yes, 20 s | `src/adapters/claude.mjs` |
 | codex | codex-cli 0.153.4 | exit 0, file yes, DONE yes, 28 s | `src/adapters/codex.mjs` |
 | agy | 1.2.0 | attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (`--add-dir`) exit 0, file yes, DONE yes, 41 s | `src/adapters/agy.mjs` |
-| grok | 0.2.51 | exit 0, `stopReason: Cancelled`, no file: not logged in (device-code prompt) | `src/adapters/grok.mjs` exists, NOT registered |
+| grok | 1.0.34 | exit 1, no file, no DONE: the account answered `402 Payment Required: Grok Build usage balance exhausted`, classified `limit` (re-probed 2026-09-17; the 2026-09-11 run on 0.2.51 was not logged in) | `src/adapters/grok.mjs` |
 
 The auth-source check: the build shell carried `ANTHROPIC_API_KEY` and
 `OPENAI_API_KEY` (injected by the shell profile). Every adapter's `env()` deletes
@@ -165,29 +165,48 @@ stderr are 0 bytes, and codex's is the one stdin notice. observed-live.
 
 ## grok
 
-- Version grok 0.2.51 (f4f85a649) [stable] (source: `grok --version`).
+- Version grok 1.0.34 (3736acbc8658) [stable] (source: `grok --version`,
+  2026-09-17). The 2026-09-11 sweep saw 0.2.51 on a machine with no login; every
+  line below was re-read on 1.0.34.
 - Binary: `~/.grok/bin/grok.exe` (native; also an npm shim on PATH);
   `LEG_GROK_BIN` overrides (source: `where grok`).
-- Headless argv (from cmd.txt): `grok.exe -p "<prompt>" --output-format json --permission-mode acceptEdits`; stdin `ignore`.
-  `--prompt-file <path>` also exists (source: `grok --help`).
-- Output: one JSON object `{text, stopReason, sessionId, requestId, thought}`
-  (observed-live, fixtures/live/grok/out.log).
+- Headless argv (from cmd.txt): `grok.exe --prompt-file <run>/prompt.txt
+  --output-format json --permission-mode acceptEdits --cwd <worktree>`; stdin
+  `ignore`. The file form is used whenever the runner has written a prompt file,
+  because a hand-off prompt carries the whole bundle summary and Windows caps a
+  command line near 32k; with none, the adapter falls back to `-p "<prompt>"`
+  (source: `grok --help`, `-p, --single <PROMPT>` and `--prompt-file <PATH>`).
+  `--cwd <CWD>` is passed explicitly rather than trusting the spawn's working
+  directory, because grok can run against a shared leader process
+  (`~/.grok/leader.sock`) and a leg must edit its own worktree.
+- Output: the Claude Code result envelope. `"type":"result"`, `subtype`,
+  `is_error`, `session_id`, `result`, `num_turns`, `stop_reason`, `total_cost`,
+  read out of the shipped `grok.exe` on 2026-09-17 alongside the streaming
+  types (`assistant`, `system`, `text`, `usage`, `end`, `error`). An error is
+  the other envelope, `{"type":"error","message":…}` (observed-live,
+  `fixtures/live/grok/out.log`).
 - Exit codes:
 
   | exit | meaning | source |
   |------|---------|--------|
-  | 0 | printed JSON with `stopReason:"Cancelled"` and did no work: the CLI was not logged in, printed a device-code prompt on stderr (`https://accounts.x.ai/oauth2/device?user_code=…`, "Waiting for authorization...") and gave up after ~58 s | observed-live, fixtures/live/grok/err.log |
+  | 1 | printed `{"type":"error","message":"Internal error: … API error (status 402 Payment Required): Grok Build usage balance exhausted"}` and did no work: the account had no balance left | observed-live 2026-09-17, fixtures/live/grok/out.log |
+  | 0 | printed JSON with `stopReason:"Cancelled"` and did no work: the CLI was not logged in, printed a device-code prompt on stderr and gave up after ~58 s | observed-live 2026-09-11 on 0.2.51 |
 
-  A zero exit with no DONE marker and no diff is exactly the `no_progress` class
-  the completion contract exists for.
-- Permission modes: `default`, `acceptEdits`, `auto`, `dontAsk`,
-  `bypassPermissions`, `plan` (source: `grok --help`). Leg: default
-  `acceptEdits`; forbidden `bypassPermissions`, `--always-approve`.
+  The 402 is a wall, not a failure: `fixtures/limits/grok/grok-balance-exhausted.json`
+  classifies it `limit`, so the card hands off instead of stopping. None of the
+  rate-limit strings the tap watched for appear in a 402, which is why an
+  exhausted grok terminal used to sit there; `src/taps/grok.mjs` reads it too now.
+- Permission modes: `default`, `acceptEdits`, `auto`, `dontAsk`, `plan`, and a
+  bypass mode Leg never passes (source: `grok --help`). Leg: default
+  `acceptEdits`; forbidden the bypass mode and `--always-approve`.
 - Login: `grok login` (source: `grok --help` Commands).
-- **Verdict: not verified, no adapter registered.** `src/adapters/grok.mjs` is
-  built from `--help` and unit-tested for shape and forbidden flags, but stays
-  out of `src/adapters/index.mjs` until `grok login` has been completed on the
-  machine and `node scripts/probe.mjs --adapter grok --repo <toy>` passes.
+- **Verdict: registered, wall path verified, success path not.** The probe
+  reached the account through the real runner, so the binary resolution, the
+  argv, the auth and the limit classification are all observed-live. A leg that
+  completes its task has not been seen, because that needs balance on the
+  account; until it is, a grok leg whose envelope does not parse is judged by
+  its `.leg/DONE` marker and its diff, as every adapter is. Re-run
+  `node scripts/probe.mjs --adapter grok --repo <toy>` with balance to close it.
 
 ## `leg harness` (the portable harness)
 

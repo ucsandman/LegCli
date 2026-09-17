@@ -186,7 +186,7 @@
               <tr><td><span class="sw claude"></span>leg claude</td><td>Claude Code's own usage endpoint, the same numbers as <code>/usage</code>, polled every 60 seconds</td><td>the <code>StopFailure</code> hook with <code>rate_limit</code></td></tr>
               <tr><td><span class="sw codex"></span>leg codex</td><td>the rate limits Codex writes to its session rollout file</td><td><code>usage_limit_exceeded</code> in the same file</td></tr>
               <tr><td><span class="sw agy"></span>leg agy</td><td>none; agy exposes no percentages</td><td><code>RESOURCE_EXHAUSTED</code> in agy's log</td></tr>
-              <tr><td><span class="sw grok"></span>leg grok</td><td>Grok's billing proxy endpoint</td><td>rate-limit text in grok's log</td></tr>
+              <tr><td><span class="sw grok"></span>leg grok</td><td>Grok's billing proxy endpoint</td><td>rate-limit text in grok's log, or a 402 when the balance is spent</td></tr>
             </tbody>
           </table>
         </div>
@@ -376,7 +376,7 @@
           <li><code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>, <code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>, <code>OPENAI_API_BASE</code>, <code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>, <code>GOOGLE_GEMINI_BASE_URL</code>, <code>GOOGLE_GENAI_USE_VERTEXAI</code>, <code>GOOGLE_GENAI_USE_ENTERPRISE</code>, <code>GOOGLE_CLOUD_PROJECT</code>, <code>GOOGLE_CLOUD_LOCATION</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code>, <code>CLAUDECODE</code>, <code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code> and <code>CLAUDE_PLUGIN_DATA</code> are removed from every agent's environment; <code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS</code> is set to <code>0</code> for a detached Claude print session</li>
           <li>Claude Code's stored login is read for the usage numbers and sent only to <code>api.anthropic.com</code>; it is never written or printed</li>
           <li>the ledger scrubs bearer tokens and key shapes from every line</li>
-          <li>the board binds <code>127.0.0.1</code>; <code>leg share on</code> is the one way to listen elsewhere, with a token per human</li>
+          <li>the board binds <code>127.0.0.1</code>; <code>leg share on</code> is the one way to listen elsewhere, with a token per human and, if you hand it a certificate, TLS</li>
           <li><code>leg uninstall --yes</code> removes <code>~/.leg</code> and nothing else</li>
         </ul>
       </div>
@@ -407,8 +407,9 @@
         <p class="price"><b>$12</b> per seat, per month</p>
         <ul>
           <li>Everything in Personal, for each person on the board</li>
-          <li><code>leg share on</code>: the board on Tailscale or your LAN, a token per human</li>
-          <li>Guests see redacted rows and can request a handoff; you approve it</li>
+          <li><code>leg share on</code>: the board on Tailscale or your LAN, a token per human, TLS from a certificate you supply</li>
+          <li>Three roles: owners run the machine, operators run the cards, guests see redacted rows and can request a handoff you approve</li>
+          <li>An audit trail of who did what, across every terminal and every card</li>
           <li>The key renews with the subscription; <code>leg license refresh</code> fetches it</li>
         </ul>
         <a class="buy" href="https://buy.stripe.com/3cIaEX0DJ3X61qW1erew80k" data-plan="team">Buy Team, $12 a seat</a>
@@ -427,7 +428,7 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
       <div class="cmd"><code>cd &lt;any repo&gt; &amp;&amp; leg claude</code><button class="copy" type="button" data-copy="leg claude">Copy</button></div>
     </div>
-    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 473 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
+    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 674 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
     <div class="links">
       <a href="https://www.npmjs.com/package/@ucsandman/legcli">README and changelog on npm</a>
       <a href="license">License agreement</a>

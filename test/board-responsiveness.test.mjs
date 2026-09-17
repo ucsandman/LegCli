@@ -118,24 +118,35 @@ test('a real record change still pushes, and the rebuild is floored to one per i
 // anything ever puts real work back on the path between a watcher event and
 // the next request.
 test('the board stays responsive while its own watcher is busy', async () => {
-  const { frames, stop } = listen()
-  await sleep(300)
-  const churn = setInterval(() => { try { writeRecord({ turns: Date.now() % 1000 }) } catch { /* torn down */ } }, 120)
-  await sleep(1500)
-
-  const t0 = Date.now()
-  await new Promise((resolvePromise, reject) => {
-    const req = http.get(base + '/api/health', (r) => { r.resume(); r.on('end', resolvePromise) })
+  const health = () => new Promise((resolvePromise, reject) => {
+    const t0 = Date.now()
+    const req = http.get(base + '/api/health', (r) => { r.resume(); r.on('end', () => resolvePromise(Date.now() - t0)) })
     req.on('error', reject)
   })
-  const ms = Date.now() - t0
+
+  const { frames, stop } = listen()
+  await sleep(300)
+  // The baseline is taken in this process, on this machine, right now. An
+  // absolute millisecond budget measured the runner instead of the code: at
+  // four-way concurrency on a loaded machine this asked for under a second and
+  // got 1055 and 1140, while the same test alone passed every time. What the
+  // regression actually looked like was /api/health behind a blocked event
+  // loop, four to fourteen seconds against an idle baseline of two.
+  const idle = Math.max(await health(), await health(), 1)
+
+  const churn = setInterval(() => { try { writeRecord({ turns: Date.now() % 1000 }) } catch { /* torn down */ } }, 120)
+  await sleep(1500)
+  const busy = await health()
   clearInterval(churn)
   stop()
   void frames
 
-  // the symptom was /api/health taking four to fourteen seconds behind a
-  // blocked event loop; a second is already far outside anything healthy
-  assert.ok(ms < 1000, `/api/health answered in ${ms} ms while the watcher was busy`)
+  // Two ways to fail, and the original bug trips both by a wide margin: the
+  // watcher must not make a request an order of magnitude slower than it is
+  // when nothing is happening, and it must never reach the seconds the symptom
+  // was named for, however slow the machine is.
+  assert.ok(busy < Math.max(idle * 20, 500), `/api/health took ${busy} ms with the watcher busy against an idle baseline of ${idle} ms`)
+  assert.ok(busy < 3000, `/api/health answered in ${busy} ms while the watcher was busy`)
 })
 
 test('a board too busy to answer a health probe is still a board: leg attaches to it', async () => {

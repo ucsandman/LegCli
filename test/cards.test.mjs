@@ -17,9 +17,10 @@ test('card add refuses a forbidden mode, an unknown adapter, and a land station 
   const yolo = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'agy', '--mode', 'agy=yolo'], env)
   assert.equal(yolo.status, 2)
   assert.match(yolo.stderr, /forbidden mode "yolo" for agy/)
-  const unknown = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'grok'], env)
+  // grok is a registered adapter now; the refusal is for a name nothing provides
+  const unknown = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'no-such-agent'], env)
   assert.equal(unknown.status, 2)
-  assert.match(unknown.stderr, /unknown adapter "grok"/)
+  assert.match(unknown.stderr, /unknown adapter "no-such-agent"/)
   const f = join(home, 'bad-pipeline.json')
   writeFileSync(f, JSON.stringify([{ name: 'land', kind: 'land' }, { name: 'build', kind: 'agent' }]))
   const land = batonFail(['card', 'add', '--repo', repo, '--task', 't', '--chain', 'fake', '--pipeline', f], env)

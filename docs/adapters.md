@@ -239,25 +239,107 @@ These are what a pipeline card's chain spawns. Unchanged since 0.2.0.
   `emulates` to that CLI's name, so the limit classifier applies that CLI's own
   fixtures to it and a demo chain reads like a real fallback.
 
-### grok (built, not registered)
+### grok (headless)
 
 - **Binary**: `LEG_GROK_BIN`, else `~/.grok/bin/grok.exe`, else `grok` on
   PATH.
-- **Argv**: `grok -p "<prompt>" --output-format json --permission-mode
-  <mode>`, plus `-m <model>`, `-r <session-id>`.
+- **Argv**: `grok --prompt-file <run>/prompt.txt --output-format json
+  --permission-mode <mode> --cwd <worktree>`, plus `--max-turns <n>`,
+  `-m <model>`, `-r <session-id>`. Every flag was read from `grok --help` on
+  grok 1.0.34 (`3736acbc8658`) on 2026-09-17. The prompt travels by file
+  rather than on argv because a hand-off prompt carries the whole bundle
+  summary and Windows caps one command line at about 32k; with no prompt file
+  the adapter falls back to `-p "<prompt>"`. `--cwd` is passed explicitly
+  rather than relying on the spawn's working directory: grok can run against a
+  shared leader process (`~/.grok/leader.sock`), and a leg must edit its own
+  worktree, not whatever directory the leader started in.
 - **Stdin**: `ignore`.
 - **Modes**: default `acceptEdits`; allowed `default`, `acceptEdits`,
   `auto`, `dontAsk`, `plan`.
 - **Forbidden flags**: `--always-approve`, `bypassPermissions`,
   `--permission-mode=bypassPermissions`.
-- **Status**: `src/adapters/grok.mjs` exists and is unit-tested, but is
-  **not** in `src/adapters/index.mjs`'s registry. The build machine had no
-  `grok` login: the probe printed a device-code prompt and exited
-  `Cancelled`. Register it (add an entry to `REGISTRY` in
-  `src/adapters/index.mjs`) once `grok login` has been completed and
-  `node scripts/probe.mjs --adapter grok --repo <toy-repo>` passes.
+- **Result**: grok's headless writer emits the Claude Code result envelope.
+  The field names (`"type":"result"`, `subtype`, `is_error`, `session_id`,
+  `result`, `num_turns`, `stop_reason`, `total_cost`) were read out of the
+  shipped `grok.exe` on 2026-09-17. An error is the other envelope,
+  `{"type":"error","message":…}`, observed live the same day.
+- **Status**: registered on 2026-09-17. The probe reached the account and came
+  back with a real wall — `API error (status 402 Payment Required): Grok Build
+  usage balance exhausted`, exit 1, classified `limit` and handed off — so the
+  spawn, the argv, the auth and the wall path are all verified live
+  (`fixtures/live/grok/`). The **success** path of a grok leg is still
+  unprobed: that needs balance on the account. Until it is, a grok leg whose
+  envelope does not parse falls back to the `.leg/DONE` marker and the diff,
+  which is what every adapter does when `parseResult` returns null. Re-run
+  `node scripts/probe.mjs --adapter grok --repo <toy-repo>` with balance to
+  close it.
 
-## How to add an adapter
+## Custom adapters
+
+Any other coding-agent CLI becomes a card adapter through a JSON spec in
+`$LEG_HOME/adapters/<name>.json`, with no code in this package. This is the
+open end of the chain: claude, codex, agy and grok ship with taps and a probe,
+and anything else joins as "argv in, JSON out".
+
+A custom adapter runs **cards**: headless, in a worktree, handing off like any
+other leg. It is not an interactive `leg <agent>` terminal, because that needs
+a usage tap and a wall signal, which only the four built-ins expose.
+
+```
+leg adapter template --name muse > muse.json   # a starter spec
+leg adapter add muse.json                      # validate and install it
+leg adapter check muse                         # the exact command a leg would run
+leg card add --repo <path> --task "<t>" --chain muse,claude --queue
+leg adapter list | show muse | rm muse
+```
+
+The spec:
+
+```json
+{
+  "name": "muse",
+  "bin": "muse",
+  "stdin": "ignore",
+  "args": ["run", "--json",
+           ["--dir", "{{cwd}}"],
+           ["--model", "{{model}}"],
+           "--prompt-file", "{{promptFile}}"],
+  "modes": { "default": "auto", "allowed": ["auto", "readonly"] },
+  "forbiddenFlags": ["--unsafe"],
+  "result": { "format": "json", "sessionId": "session_id",
+              "message": "result", "stopReason": "stop_reason" }
+}
+```
+
+- **`bin`** is argv[0]. It is spawned directly, never through a shell, so it
+  cannot contain `< > | & ;`. `LEG_<NAME>_BIN` overrides it. A `.mjs`, `.cjs`
+  or `.js` path runs under this Node.
+- **`args`** is a list of strings and groups. Placeholders: `{{prompt}}`,
+  `{{promptFile}}`, `{{cwd}}`, `{{mode}}`, `{{model}}`, `{{resume}}`,
+  `{{maxTurns}}`, `{{runDir}}`. A bare string is always kept; a **group** (a
+  nested array) is dropped whole when a placeholder inside it has no value, so
+  `["--model", "{{model}}"]` disappears rather than passing a bare `--model`.
+  Something has to carry the prompt: `{{prompt}}`, `{{promptFile}}`, or
+  `"stdin": "pipe"`.
+- **`modes`** is validated before anything spawns, the same way a built-in's
+  is: a chain entry naming a mode outside `allowed` throws `forbidden flag`.
+- **`forbiddenFlags`** is yours to add to. The flags that turn a supervised
+  agent into an unsupervised one are refused whatever the spec says, in `args`,
+  in `modes` and at argv time (`NEVER_ALLOWED`, `src/adapters/custom.mjs`).
+- **`result.format`** is `json` (the first parseable object in stdout),
+  `jsonl` (the last line carrying the message field) or `text` (no parsing).
+  `sessionId`, `message` and `stopReason` are dotted paths, so
+  `"sessionId": "thread.id"` reads `{"thread":{"id":…}}`. With `text`, or when
+  nothing parses, the leg is judged by its `.leg/DONE` marker and its diff,
+  which is what happens for any adapter whose `parseResult` returns null.
+
+A broken spec is reported, never thrown: `leg adapter list` names the file and
+the reason, and the board, the scheduler and `leg card add` carry on without
+it. A spec may not take a built-in's name. The directory is re-read whenever
+the list is asked for, keyed on its entries, so a spec added while the board is
+up appears in the New card form without a restart.
+
+## How to add a built-in adapter
 
 An adapter is a plain object (see `src/adapters/common.mjs` for the shared
 helpers, `src/adapters/fake.mjs` for the simplest full example):

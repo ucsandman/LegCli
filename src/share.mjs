@@ -6,15 +6,29 @@
 // (`BATON_PERSON`, else the owner). With it off nothing changes: loopback is
 // open and `BATON_TOKEN` is the only token.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { existsSync, readFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync, statSync } from 'node:fs'
 import { networkInterfaces, userInfo } from 'node:os'
 import { createSocket } from 'node:dgram'
 import { join } from 'node:path'
 import { home } from './store.mjs'
 import { writeJsonAtomic } from './fsx.mjs'
 
-export const OFF = { version: 1, on: false, bind: null, bind_kind: null, port: null, owner: null, people: [] }
-export const ROLES = ['owner', 'guest']
+export const OFF = { version: 1, on: false, bind: null, bind_kind: null, port: null, owner: null, people: [], tls: null }
+
+// Three roles, because two were not enough to describe a second human who runs
+// cards on this machine but has no business in its settings or its project map.
+//   owner     everything: machine settings, the harness, every terminal, cards
+//   operator  the pipeline board and their own terminals; not the settings,
+//             not the history index, not anyone else's terminal
+//   guest     the terminals lane, read-only and redacted; may ask for a hand-off
+export const ROLES = ['owner', 'operator', 'guest']
+
+// One place that says what a role may reach, so no endpoint decides for itself.
+// `cards` is the pipeline side of the board. `machine` is everything that
+// describes this computer rather than the work: the settings, the harness
+// policy, the history index and the worktree map.
+export function mayUseCards(role) { return role === 'owner' || role === 'operator' }
+export function mayUseMachine(role) { return role === 'owner' }
 
 export function sharePath() { return join(home(), 'share.json') }
 
@@ -55,9 +69,49 @@ export function identify(share, presented) {
 export function personNamed(share, name) { return share.people.find((p) => p.name.toLowerCase() === String(name ?? '').toLowerCase()) ?? null }
 export function isOwner(person) { return person?.role === 'owner' }
 
+// ---- TLS ----
+// Leg does not make certificates. It uses a pair you already have, which on a
+// Tailscale network is one command (`tailscale cert <machine>.<tailnet>.ts.net`)
+// and gives a certificate browsers already trust. A self-signed pair would
+// teach everyone on the board to click through a warning, which is worse than
+// no TLS at all on a network that is already private.
+export class TlsRefused extends Error {
+  constructor(msg) { super(msg); this.name = 'TlsRefused'; this.exitCode = 3 }
+}
+
+function tlsPaths(share, env) {
+  return {
+    cert: env.LEG_TLS_CERT || env.BATON_TLS_CERT || share?.tls?.cert || null,
+    key: env.LEG_TLS_KEY || env.BATON_TLS_KEY || share?.tls?.key || null,
+  }
+}
+
+// → { cert, key, cert_path, key_path } | null. Throws TlsRefused when a pair is
+// configured but unusable: a board that quietly fell back to plaintext after
+// being told to use TLS is the one failure this must not have.
+export function readTls(share = readShare(), env = process.env) {
+  const { cert: certPath, key: keyPath } = tlsPaths(share, env)
+  if (!certPath && !keyPath) return null
+  if (!certPath || !keyPath) throw new TlsRefused('TLS needs both a certificate and a key (--tls-cert and --tls-key, or LEG_TLS_CERT and LEG_TLS_KEY)')
+  for (const [label, file] of [['certificate', certPath], ['key', keyPath]]) {
+    if (!existsSync(file)) throw new TlsRefused(`TLS ${label} not found: ${file}`)
+    try { statSync(file) } catch (err) { throw new TlsRefused(`TLS ${label} ${file}: ${err.message}`) }
+  }
+  let cert
+  let key
+  try { cert = readFileSync(certPath) } catch (err) { throw new TlsRefused(`TLS certificate ${certPath}: ${err.message}`) }
+  try { key = readFileSync(keyPath) } catch (err) { throw new TlsRefused(`TLS key ${keyPath}: ${err.message}`) }
+  if (!cert.length || !key.length) throw new TlsRefused('the TLS certificate or key is empty')
+  return { cert, key, cert_path: certPath, key_path: keyPath }
+}
+
+export function tlsConfigured(share = readShare(), env = process.env) { return Boolean(tlsPaths(share, env).cert) }
+
+export function scheme(share = readShare(), env = process.env) { return tlsConfigured(share, env) ? 'https' : 'http' }
+
 export function addPerson(name, { role = 'guest', share = readShare() } = {}) {
   if (!validName(name)) throw new Error(`bad name "${name}": letters, digits, dash and underscore, up to 32 characters`)
-  if (!ROLES.includes(role)) throw new Error(`bad role "${role}" (owner|guest)`)
+  if (!ROLES.includes(role)) throw new Error(`bad role "${role}" (${ROLES.join('|')})`)
   if (personNamed(share, name)) throw new Error(`"${name}" is already on the board; baton share rotate ${name} issues a new link`)
   const token = newToken()
   const person = { name, role, token_sha256: hashToken(token), created_at: new Date().toISOString(), last_seen: null }
@@ -122,7 +176,7 @@ export async function resolveBind(kind = 'tailscale') {
   return lan.address
 }
 
-export function linkFor(share, token) { return `http://${share.bind}:${share.port}/?token=${token}` }
+export function linkFor(share, token) { return `${scheme(share)}://${share.bind}:${share.port}/?token=${token}` }
 
 // Whose terminal this is: BATON_PERSON, else the board's owner, else 'local'.
 export function whoami(share = readShare()) {
@@ -131,9 +185,15 @@ export function whoami(share = readShare()) {
   return share.owner || 'local'
 }
 
-export async function turnOn({ bind = 'tailscale', port = Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747), owner } = {}) {
+export async function turnOn({ bind = 'tailscale', port = Number(process.env.LEG_PORT || process.env.BATON_PORT || 4747), owner, tlsCert = null, tlsKey = null } = {}) {
   const share = readShare()
   const address = await resolveBind(bind)
+  if (tlsCert || tlsKey) {
+    if (!tlsCert || !tlsKey) throw new TlsRefused('TLS needs both --tls-cert and --tls-key')
+    share.tls = { cert: tlsCert, key: tlsKey }
+    // read the pair now, so a bad one fails here and not at the next board start
+    readTls(share, {})
+  }
   share.on = true
   share.bind = address
   share.bind_kind = ['tailscale', 'lan'].includes(String(bind).toLowerCase()) ? String(bind).toLowerCase() : 'address'

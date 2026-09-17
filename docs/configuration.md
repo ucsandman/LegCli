@@ -126,7 +126,8 @@ resolves to by default.
 | `LEG_CLAUDE_BIN` | claude | `src/adapters/claude.mjs` |
 | `LEG_CODEX_BIN` | codex | `src/adapters/codex.mjs` |
 | `LEG_AGY_BIN` | agy | `src/adapters/agy.mjs` |
-| `LEG_GROK_BIN` | grok (not registered by default) | `src/adapters/grok.mjs` |
+| `LEG_GROK_BIN` | grok | `src/adapters/grok.mjs` |
+| `LEG_<NAME>_BIN` | a custom adapter called `<name>` (dashes become underscores, so `my-agent` reads `LEG_MY_AGENT_BIN`) | `src/adapters/custom.mjs` |
 | `LEG_GH_BIN` | the `pr` land-mode stub | `src/stations/pr.mjs`; unset, `land_mode: pr` returns an error rather than running a real `gh` |
 | `LEG_CHB_BIN` | `context-handoff-bundle` | `src/handoff.mjs`; unset, Leg tries `context-handoff-bundle` on PATH, then `python -m context_handoff_bundle` |
 
@@ -210,9 +211,10 @@ other address without also setting `LEG_TOKEN` makes the server refuse to
 start, exit code `3` (`src/auth.mjs` `checkBind`/`BindRefused`). With a
 token set, every `/api/*` request needs an `Authorization: Bearer <token>`
 header; the event stream (`EventSource`, which cannot set headers) accepts
-the same token as a `?token=` query parameter instead. There is no TLS; keep
-`LEG_BIND` on loopback unless you are using `leg share`, which gives
-each human their own token (see [Share](#share-more-than-one-human)).
+the same token as a `?token=` query parameter instead. Keep `LEG_BIND` on
+loopback unless you are using `leg share`, which gives each human their own
+token (see [Share](#share-more-than-one-human)) and can serve the board over
+TLS.
 
 ## Share (more than one human)
 
@@ -224,7 +226,8 @@ switch and the roster; the env variables below only tune the limits.
 | `on` | share is on (it also needs a `bind` and at least one person) |
 | `bind`, `bind_kind`, `port` | where the board listens: the Tailscale address by default, `lan`, or one you named |
 | `owner` | the name a terminal belongs to when nothing else says (`LEG_PERSON`), and the name a loopback browser is treated as |
-| `people[]` | `{ name, role: owner\|guest, token_sha256, created_at }`; the token itself is printed once and never stored |
+| `people[]` | `{ name, role: owner\|operator\|guest, token_sha256, created_at }`; the token itself is printed once and never stored |
+| `tls` | `{ cert, key }`, the paths to a certificate pair; absent means plain http |
 | `loopback_owner` | default `true`: a browser on this machine is the owner without a token. Set it to `false` to ask for a link even here |
 
 | variable | default | meaning | read in |
@@ -233,6 +236,53 @@ switch and the roster; the env variables below only tune the limits.
 | `LEG_RATE_MAX_FAILURES` | `20` | wrong tokens a minute from one address before that address waits the window out; a request with no token at all is not counted | `src/ratelimit.mjs` |
 
 `LEG_TOKEN` is the single-token mode and is ignored while share is on.
+
+### Roles
+
+| role | terminals | cards | this machine |
+|------|-----------|-------|--------------|
+| `owner` | every one | every one | settings, harness policy, the trunk's repo paths, the history index, the worktree map, the audit trail |
+| `operator` | their own; someone else's is read-only and redacted | adds, runs, approves, reassigns, kills | nothing: `/api/settings`, `/api/history`, `/api/worktrees`, `/api/trunk` and `/api/audit` all answer 403, and `/api/health` omits the home path |
+| `guest` | their own; someone else's is read-only and redacted, with **Request handoff** as the only button | nothing: 403 | nothing |
+
+A guest and an operator both see their own terminal's hand-off destinations,
+so they can use the picker on it — but never the reset times behind them,
+which are this machine's usage data. `src/share.mjs` `mayUseCards` and
+`mayUseMachine` are the only place a role is turned into permission.
+
+### TLS
+
+Off unless a certificate pair is configured. Leg never issues one: a
+self-signed pair teaches everyone on the board to click through a warning,
+which is worse than plaintext on a network that is already private. On
+Tailscale, `tailscale cert <machine>.<tailnet>.ts.net` issues a pair browsers
+already trust.
+
+| variable | meaning | read in |
+|----------|---------|---------|
+| `LEG_TLS_CERT` | path to the certificate; wins over `share.json`'s `tls.cert` | `src/share.mjs` `readTls` |
+| `LEG_TLS_KEY` | path to the private key; wins over `share.json`'s `tls.key` | `src/share.mjs` `readTls` |
+
+`leg share on --tls-cert <file> --tls-key <file>` writes the pair into
+`share.json` and reads it once, so a bad pair fails there rather than at the
+next board start. With a pair configured the shared address serves https and
+every link `leg share` prints says `https://`. The companion listener on
+`127.0.0.1` — the one that lets this machine's own browser in without a token
+— stays plain http, because the certificate is for the shared name and
+loopback traffic never leaves the machine. Half a pair, a missing file, an
+unreadable file or an empty one stops the board with exit `3` rather than
+falling back to plaintext. A renewed pair is picked up by `leg down && leg up`.
+
+### The audit trail
+
+`GET /api/audit` (owner only) and Settings → **Audit trail** on the board: one
+list across every terminal and every card, newest first, of the actions a
+person or an agent took — hand-offs, landings, approvals, reassignments,
+kills. It reads the events already on disk and stores nothing new. Query
+parameters: `limit` (default 200, max 1000), `since` (an ISO timestamp), `who`
+(a name), `kind` (`human`, `agent` or `leg`). Every answer carries `scanned`
+— how many terminals, cards and events it read — so an empty trail cannot be
+mistaken for a quiet week.
 
 ## Card-level options
 

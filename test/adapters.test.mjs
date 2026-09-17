@@ -1,22 +1,28 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { get as getAdapter, names } from '../src/adapters/index.mjs'
+import { makeHome } from './helpers.mjs'
 
-const REAL = ['claude', 'codex', 'agy']
+// names() also reports the custom specs in $LEG_HOME/adapters, so this file
+// gets a home of its own: without it the suite asserted against whatever
+// adapters the developer happened to have installed.
+process.env.BATON_HOME = makeHome()
+
+const { get: getAdapter, names, BUILTIN_NAMES } = await import('../src/adapters/index.mjs')
+
+const REAL = ['claude', 'codex', 'agy', 'grok']
 const FORBIDDEN_FLAGS = ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions',
   '--dangerously-bypass-approvals-and-sandbox', '--yolo', '--always-approve']
 
-test('registry lists fake plus every probed CLI; grok stays out until it is verified live', async () => {
-  assert.deepEqual(names(), ['fake', 'fake-claude', 'fake-codex', 'fake-agy', 'fake-nostdin', ...REAL])
-  await assert.rejects(getAdapter('grok'), /unknown adapter: grok/)
+test('registry lists fake plus every probed CLI, grok included', async () => {
+  assert.deepEqual(BUILTIN_NAMES, ['fake', 'fake-claude', 'fake-codex', 'fake-agy', 'fake-nostdin', ...REAL])
+  // an empty home has no custom specs, so the two lists agree
+  assert.deepEqual(names(), BUILTIN_NAMES)
+  await assert.rejects(getAdapter('muse'), /unknown adapter: muse/)
 })
 
-// grok.mjs is unit-tested through the shape/guard loops below even though it
-// is unregistered, so registering it later needs no new tests.
-const grokModule = (await import('../src/adapters/grok.mjs')).default
-const load = (name) => (name === 'grok' ? Promise.resolve(grokModule) : getAdapter(name))
+const load = (name) => getAdapter(name)
 
-for (const name of [...REAL, 'grok']) {
+for (const name of REAL) {
   test(`${name}: common export shape and argv in default mode`, async () => {
     const a = await load(name)
     assert.equal(a.name, name)
@@ -77,6 +83,35 @@ test('agy: print timeout follows the kill timer in Go duration syntax', async ()
   const { args } = a.argv({ prompt: 'x', killMs: 5400000 })
   assert.equal(args[args.indexOf('--print-timeout') + 1], '90m')
   assert.equal(a.argv({ prompt: 'x', killMs: 90000 }).args.at(-1), '90s')
+})
+
+test('grok: prompt goes by file when the runner wrote one, --cwd names the worktree', async () => {
+  const a = await getAdapter('grok')
+  assert.equal(a.stdin, 'ignore')
+  const { args } = a.argv({ prompt: 'do it', promptFile: 'C:\\run\\prompt.txt', cwd: 'C:\\wt', resume: 's1' })
+  assert.deepEqual(args.slice(0, 2), ['--prompt-file', 'C:\\run\\prompt.txt'])
+  assert.ok(!args.includes('-p'), 'the prompt is never also passed on argv')
+  assert.equal(args[args.indexOf('--cwd') + 1], 'C:\\wt')
+  assert.deepEqual(args.slice(2, 6), ['--output-format', 'json', '--permission-mode', 'acceptEdits'])
+  assert.equal(args[args.indexOf('-r') + 1], 's1')
+  // no prompt file (a direct call): the prompt falls back to argv
+  assert.deepEqual(a.argv({ prompt: 'do it', cwd: 'C:\\wt' }).args.slice(0, 2), ['-p', 'do it'])
+})
+
+test('grok: parseResult reads the result envelope and the live 402 error envelope', async () => {
+  const a = await getAdapter('grok')
+  const ok = a.parseResult(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: 'g1', result: 'Done.', num_turns: 3, stop_reason: 'end_turn' }))
+  assert.equal(ok.session_id, 'g1')
+  assert.equal(ok.last_message, 'Done.')
+  assert.equal(ok.stop_reason, 'end_turn')
+  assert.equal(ok.is_error, false)
+  assert.equal(ok.num_turns, 3)
+  // observed live 2026-09-17 on an account with no balance left
+  const err = a.parseResult('{"type":"error","message":"Internal error: API error (status 402 Payment Required): Grok Build usage balance exhausted"}')
+  assert.equal(err.is_error, true)
+  assert.equal(err.stop_reason, 'error')
+  assert.match(err.last_message, /usage balance exhausted/)
+  assert.equal(a.parseResult('not json'), null)
 })
 
 test('parseResult: claude json, codex jsonl', async () => {

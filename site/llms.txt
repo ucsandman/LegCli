@@ -36,7 +36,7 @@ A second `leg <agent>` in a checkout that already has a live session gets its ow
 
 ## More than one human
 
-Off by default. `leg share on` binds the board to a Tailscale or LAN address and gives every human their own token; guests see redacted rows and can request a handoff.
+Off by default. `leg share on` binds the board to a Tailscale or LAN address and gives every human their own token. Three roles: owner (the machine, every terminal, the cards), operator (the cards and their own terminals, nothing that describes the machine) and guest (redacted rows, and a handoff they can request and you approve). TLS is served from a certificate pair you supply (`--tls-cert`/`--tls-key`, or `LEG_TLS_CERT`/`LEG_TLS_KEY`); Leg issues none. Settings holds an audit trail of who did what across every terminal and every card.
 
 ## What is never touched
 
@@ -48,7 +48,7 @@ Off by default. `leg harness enable` makes a handoff carry the working environme
 
 ## Verified
 
-Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 473 tests.
+Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 674 tests.
 
 ## Docs
 
