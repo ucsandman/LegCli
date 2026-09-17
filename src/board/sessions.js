@@ -836,8 +836,14 @@
     ]))
 
     if (pendingConfirm && pendingConfirm.id === s.session_id) {
+      // Snapshot it: confirmRow clears pendingConfirm before it calls back, so
+      // a callback that read the variable instead of this value dereferenced
+      // null and threw on the way to act(). That was every Yes on this page —
+      // Remove, Remove record, End and Land all did nothing, with the
+      // TypeError going only to the console.
+      const pending = pendingConfirm
       term.appendChild(row)
-      term.appendChild(confirmRow(pendingConfirm.question, pendingConfirm.verb, (btn) => act(s.session_id, pendingConfirm.action, btn)))
+      term.appendChild(confirmRow(pending.question, pending.verb, (btn) => act(s.session_id, pending.action, btn)))
       return term
     }
     const actions = el('div', { class: 'term-actions' })
@@ -1563,7 +1569,13 @@
     }
     renderAccounts(v.accounts || [])
     renderDefaultOrder(v)
-    renderSessions(v)
+    // A rebuild replaces every button in the grid. A confirm row is a question
+    // the reader is answering right now, and a push landing between their
+    // mousedown and their mouseup dropped the click: the browser fires `click`
+    // only when both landed on the same element, so Remove did nothing however
+    // often it was pressed. The rows hold still until the question is answered
+    // — `view` is already current, and answering it re-renders from that.
+    if (!pendingConfirm) renderSessions(v)
     renderTrunk(v)
     // the panel behind the expansion just changed: status, turns and what is
     // next live in the session view, so redraw the region from it
@@ -1574,9 +1586,11 @@
     try { render(await api('/api/sessions')) } catch (err) { sysMessage(err.message, 'danger') }
   }
 
-  window.addEventListener('leg:sessions', (e) => render(e.detail));
-  window.addEventListener('leg:sessions', (e) => render(e.detail));
-  window.addEventListener('baton:sessions', (e) => render(e.detail)); // legacy alias
+  // Exactly one listener. board.js publishes `leg:sessions` and the legacy
+  // `baton:sessions` alias for every push; this file had been registered on
+  // `leg:sessions` twice and on the alias once, so one push rebuilt the entire
+  // terminals grid three times over.
+  window.addEventListener('leg:sessions', (e) => render(e.detail))
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return
     if (pendingConfirm) { pendingConfirm = null; if (view) renderSessions(view); return }
@@ -1589,6 +1603,6 @@
     setInterval(tickElapsed, 1000)
     // the timed re-sort exists to move the needs-you partition, which can wait a
     // few seconds: it stands down mid-selection rather than clearing the drag
-    setInterval(() => { if (view && !selectionInsideGrid()) renderSessions(view) }, 15000)
+    setInterval(() => { if (view && !pendingConfirm && !selectionInsideGrid()) renderSessions(view) }, 15000)
   })
 })()

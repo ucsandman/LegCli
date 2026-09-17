@@ -3,6 +3,86 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-17: one running terminal saturated the board's event loop, and four separate symptoms came out of it
+
+**Fixed in `src/server.mjs` (watcher filter, stat fingerprint, push floor, cached
+`canLand`), `src/attach.mjs` (a taken port is a board; always open it) and
+`src/board/{board,sessions}.js` (one render per push, hold an open confirm row).
+Regression tests: `test/board-responsiveness.test.mjs`.**
+
+Reported as four bugs: `leg claude` took a long time to start, the board never
+opened by itself, the board was slow to load and to react, and Remove under
+Terminals did nothing. All four were one cause. The board server had burned
+17,080 seconds of CPU — it answered `/api/health` in 7 to 14 seconds and a
+40 KB stylesheet in 14. A live agent rewrites its session record every six
+seconds or so and takes a control lock about once a second; the recursive
+watcher over the sessions directory answered every one of those — including
+`.control.lock`, `.session.lock` and the `session.json.*.tmp` files atomic
+writes leave behind — with a full rebuild of the terminals view, which costs
+about two seconds (1.1 s of it `canLand` shelling out to git across twenty
+worktrees). 105 filesystem events in 30 seconds against a 300 ms debounce and a
+2,000 ms rebuild: the queue could never drain.
+
+What that one stall produced:
+
+- **Slow start.** `ensureBoard`'s health probe times out at 2 s, so a merely
+  busy board read as no board. `leg` spawned a second server, which died of
+  `EADDRINUSE` (the evidence was already in `~/.baton/board.log`), then polled
+  the dead child every 200 ms for the full 15 s.
+- **The board never opened.** `openBoard(url)` sat only on the branch that
+  successfully started a server. With one already running, or on the 15 s
+  give-up path, nothing was ever opened.
+- **Slow to react.** `board.js` dispatched `leg:sessions` and `baton:sessions`
+  per push, parsing the quarter-megabyte payload twice, with the second
+  dispatch outside the `state.es === es` staleness guard (missing braces on a
+  one-line `if`). `sessions.js` was registered on `leg:sessions` twice and on
+  the alias once. One push rebuilt the whole grid three times.
+- **Slow to react, part two.** `renderSessions` starts with
+  `grid.textContent = ''`, so with three rebuilds per push every button was
+  destroyed and recreated several times a second.
+
+**Remove was a second, independent bug, and fixing the first did not fix it.**
+Reported again as "it's still not removing them" after all of the above
+shipped. `confirmRow` does `pendingConfirm = null; onYes(yes)`, and the call
+site passed `(btn) => act(s.session_id, pendingConfirm.action, btn)` — a
+closure over the module variable, not over its value. Every Yes on the
+Terminals panel threw `TypeError: Cannot read properties of null (reading
+'action')` before reaching `act()`, so Remove, Remove record, End and Land had
+never worked from the confirm row; the exception went to the console and
+nowhere the reader would see it. Fixed by snapshotting
+`const pending = pendingConfirm` before building the row. Caught by driving the
+real page: the click produced zero network requests, which pointed at the
+handler rather than at anything server-side. The instrument that found it was
+five lines — wrap `window.fetch`, listen for `window.onerror`, click, read
+both.
+
+Three lessons. First, a name filter is not enough to classify a filesystem event:
+taking a lock inside a directory changes that directory's own mtime, and the
+event arrives naming only the directory. The watcher now treats an event as a
+hint and compares a stat fingerprint of the files the view is really built from
+— sub-millisecond, against a 2 s rebuild. Second, the CPU counter on a
+long-lived process names a stall in one command, before any code is read.
+
+Third, and the one that cost a round trip: several symptoms reported together
+are not thereby one bug. Three of these four were, and finding that cause made
+the fourth *look* explained — the render churn is a real way to drop a click,
+so "Remove doesn't work" fit the story. It was a different bug in a different
+file, and it was still there after the fix shipped. A symptom is only closed
+once it has been driven and watched, not once a plausible cause for it has been
+found and fixed. Clicking Remove in the real page would have taken two minutes
+and would have shown zero network requests and a `TypeError` in the console.
+
+Verified by running the new tests against `da453b7`: 7 of 8 fail there, 8 of 8
+pass after, and the busy-board test takes 21 s before versus 4 s after. On the
+live board, same 66 sessions: `/api/health` 14.19 s → 2.4 ms, `/board.css`
+14.24 s → 1.5 ms, `/api/sessions` 15.64 s → 109 ms, view rebuild 2,049 ms →
+115 ms, renders per push 3 → 1.
+
+Also found while verifying: `npm run lint` reported "ESLint: No issues found"
+with `node_modules/.bin` empty and eslint not installed — a wrapper was printing
+it. Run `npm install` first and check that ESLint really ran; a lint result from
+a tool that is not on disk is not a lint result.
+
 ## 2026-09-16: a hand-edited `package.json` version left `package-lock.json` behind, and the publish gate refused 0.9.0
 
 **Fixed by bumping the lockfile root version; the gate is `scripts/npm-publish-gate.mjs`.**

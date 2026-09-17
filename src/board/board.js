@@ -292,6 +292,15 @@
       : `${s === 'reconnecting' ? 'Reconnecting' : 'Connecting'} to Leg on ${state.bind}.`
   }
 
+  // sessions.js owns the terminals region and listens for `leg:sessions`.
+  // `baton:sessions` is the old name, still emitted for anything outside this
+  // page that listens for it; nothing in the board may listen for both, because
+  // each listener rebuilds the whole grid.
+  function publishSessions(detail) {
+    window.dispatchEvent(new CustomEvent('leg:sessions', { detail }))
+    window.dispatchEvent(new CustomEvent('baton:sessions', { detail }))
+  }
+
   function connectSse() {
     if (state.es) { try { state.es.close() } catch { /* ignore */ } }
     const request = ++state.sseRequest
@@ -312,9 +321,12 @@
       // nothing between the drop and this hello was replayed: an open detail
       // region is as old as the gap
       scheduleDrawerRefresh()
-      if (data.sessions) window.dispatchEvent(new CustomEvent('leg:sessions', { detail: data.sessions })); window.dispatchEvent(new CustomEvent('baton:sessions', { detail: data.sessions }));
+      if (data.sessions) publishSessions(data.sessions)
     })
-    es.addEventListener('sessions', (e) => { if (state.es === es && request === state.sseRequest) window.dispatchEvent(new CustomEvent('leg:sessions', { detail: JSON.parse(e.data) })); window.dispatchEvent(new CustomEvent('baton:sessions', { detail: JSON.parse(e.data) })); })
+    // one parse, one publish, and both inside the staleness guard: the missing
+    // braces meant a superseded EventSource still drove a full rebuild, and the
+    // payload (a quarter of a megabyte) was parsed twice to do it
+    es.addEventListener('sessions', (e) => { if (state.es === es && request === state.sseRequest) publishSessions(JSON.parse(e.data)) })
     es.addEventListener('card', (e) => { if (state.es === es && request === state.sseRequest) upsertCard(JSON.parse(e.data)) })
     es.addEventListener('removed', (e) => { if (state.es === es && request === state.sseRequest) dropCard(JSON.parse(e.data).card_id) })
     es.addEventListener('event', (e) => { if (state.es === es && request === state.sseRequest) onLedgerEvent(JSON.parse(e.data)) })

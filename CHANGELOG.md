@@ -1,6 +1,45 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 (2026-09-17)
+
+- **The board is responsive again, `leg` starts straight away, and the board
+  opens every time.** One running terminal was enough to saturate the board
+  server: it rewrites its record every few seconds and takes a control lock
+  about once a second, and the watcher over the sessions directory rebuilt the
+  whole terminals view — over a second of `git` — for every one of those
+  touches, including the lock files and the temp files atomic writes leave
+  behind. The server spent all its time in that loop, so it answered a
+  stylesheet in fourteen seconds and `/api/health` in seven. Four consequences,
+  all fixed:
+  - The watcher now drops locks and temp files by name, and checks the rest
+    against a stat fingerprint of the files the view is actually built from,
+    because a lock taken inside a session directory changes that directory's
+    own mtime and arrives as an event naming nothing else. What survives is
+    floored to one rebuild per interval. `canLand` is cached per record
+    revision with staggered expiries, so twenty worktrees are never re-read in
+    one pass. The terminals view went from 2,000 ms to 115 ms; on a board with
+    66 sessions `/api/health` went from 14.2 s to 2.4 ms and `/board.css` from
+    14.2 s to 1.5 ms.
+  - `leg claude` treated a board too busy to answer a health probe as no board
+    at all, spawned a second server that could only die of `EADDRINUSE`, then
+    polled the dead child for fifteen seconds. A listener on the port is now a
+    board: `leg` attaches to it.
+  - The board is opened whether or not this terminal is the one that started
+    it. Previously the browser was only opened on the path that spawned the
+    server, so with a board already running nothing ever opened.
+  - One push rebuilt the terminals grid three times (two listeners registered
+    for `leg:sessions` and one for the legacy alias, with the payload parsed
+    twice per push and one dispatch outside the staleness guard). Every button
+    was destroyed and recreated several times a second. One push now rebuilds
+    once, and an open confirm row is left alone until it is answered.
+
+- **Remove, Remove record, End and Land work.** Confirming any of them did
+  nothing at all. `confirmRow` clears `pendingConfirm` and then calls its
+  callback, and the callback read `pendingConfirm.action` — off the variable it
+  had just cleared. Every Yes on the Terminals panel threw
+  `TypeError: Cannot read properties of null (reading 'action')` into the
+  console and never reached the request. The callback now closes over a
+  snapshot taken before the row is built.
 
 - **Every conversation on this machine (`leg history`, `leg worktrees`, the
   board's Conversations cell).** One read-only index over the conversations

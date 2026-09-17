@@ -6,7 +6,7 @@
 // multiplayer seams (src/auth.mjs). BATON_* names still work as fallback.
 import http from 'node:http'
 import { spawnSync, execFile } from 'node:child_process'
-import { existsSync, readFileSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkBind, authorize, remoteAddress, presentedToken, isLoopback, isLoopbackRequest, tokenMatches } from './auth.mjs'
@@ -255,6 +255,37 @@ function worktreesFor({ repo = null, dirty = true } = {}) {
   return data
 }
 
+// canLand shells out to git several times for one worktree, and the view runs
+// it for every terminal that ever had one — over a second of subprocesses on a
+// board with a few dozen records, paid again on every SSE push. A terminal that
+// has ended never moves, so the answer is cached against the record's own
+// revision with the short TTL the trunk already uses, which still notices a
+// commit made by hand in the worktree within that window.
+// A terminal that is still running can change what it can land from one turn to
+// the next. One that has ended only moves if someone works in its worktree by
+// hand, and a landing clears this cache outright, so it is re-read a great deal
+// less often.
+const CAN_LAND_TTL = 15000
+const CAN_LAND_TTL_ENDED = 60000
+const canLandCache = new Map()
+function canLandFor(s) {
+  const key = `${s.session_id}|${s.updated_at ?? ''}`
+  const hit = canLandCache.get(key)
+  if (hit && Date.now() < hit.until) return hit.data
+  const data = canLand(s)
+  // Expiries are spread across the window instead of falling together: twenty
+  // worktrees re-read in one pass is another second of git inside the event
+  // loop, which is the stall this cache exists to remove. Staggered, the board
+  // pays for about one of them per push and never blocks on the set.
+  const ttl = isActive(s) ? CAN_LAND_TTL : CAN_LAND_TTL_ENDED
+  const until = Date.now() + ttl / 2 + Math.random() * ttl
+  // the key carries updated_at, so a busy terminal leaves a dead entry per
+  // write: drop the whole map rather than grow it for the life of the process
+  if (canLandCache.size > 500) canLandCache.clear()
+  canLandCache.set(key, { until, data })
+  return data
+}
+
 const trunkCache = new Map()
 function trunkFor(repo) {
   const hit = trunkCache.get(repo)
@@ -322,7 +353,7 @@ export function sessionsView({ viewer = null, share = null } = {}) {
     const preferredNext = chain[0] ?? null
     const availabilityKnown = Boolean(s.installed)
     const eligibleNext = availabilityKnown ? (chain.find((next) => s.installed[next.agent] !== false && isAvailable(readUsage(next.agent, next.account))) ?? null) : null
-    const can = s.worktree ? canLand(s) : { ok: false, blockers: [{ code: 'no_worktree', message: 'this terminal works in the checkout itself: there is no branch of its own to land', fix: null }] }
+    const can = s.worktree ? canLandFor(s) : { ok: false, blockers: [{ code: 'no_worktree', message: 'this terminal works in the checkout itself: there is no branch of its own to land', fix: null }] }
     return {
       ...s,
       handoff_order: handoffOrder,
@@ -405,7 +436,7 @@ function serveStatic(res, urlPath) {
 }
 
 // ---- SSE: watch $BATON_HOME/cards for fs events and push only what changed ----
-function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => sessionsView(), reauth = (c) => c.viewer } = {}) {
+function createSse({ healthIntervalMs = 10000, debounceMs = 30, sessionsDebounceMs = 300, sessionsMinIntervalMs = 2000, viewFor = () => sessionsView(), reauth = (c) => c.viewer } = {}) {
   const clients = new Set() // { res, viewer, token, loopback, sig }
   let watcher = null
   let healthTimer = null
@@ -455,13 +486,70 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, viewFor = () => 
   }
   let sessionsWatcher = null
   let sessionsTimer = null
-  const pushSessions = () => { sessionsTimer = null; try { broadcast('sessions', (viewer) => viewFor(viewer)) } catch (err) { log(`sessions view: ${err.message}`) } }
+  let lastSessionsPush = 0
+  const pushSessions = () => {
+    sessionsTimer = null
+    try { broadcast('sessions', (viewer) => viewFor(viewer)) } catch (err) { log(`sessions view: ${err.message}`) }
+    lastSessionsPush = Date.now()
+    // the health tick pushes on its own schedule: record what it sent, so the
+    // next watcher hint is measured against the page's real contents
+    lastFingerprint = sessionsFingerprint()
+  }
+  // One live agent rewrites its record about every six seconds and takes a
+  // control lock about once a second, and every one of those touches the
+  // sessions tree. Rebuilding the whole view costs a second or more of `git`,
+  // so a watcher that answers every touch turns a single running terminal into
+  // a permanent busy loop on the one event loop this board serves every
+  // request from: the board then takes seconds to hand over a stylesheet and
+  // `leg` itself times out probing /api/health.
+  //
+  // A watcher event is only a hint. Locks and the temp files an atomic write
+  // leaves behind are dropped by name, but taking a lock inside a session
+  // directory also changes that directory's own mtime, and that event arrives
+  // carrying nothing but the directory name — no filter on the name can tell
+  // it from a real write. So the hint is checked against the data: a stat over
+  // the files the view is actually built from costs a fraction of a
+  // millisecond and answers the question the event cannot.
+  const NOISE = /(\.lock|\.tmp)$/i
+  const sessionsChangeMatters = (filename) => !filename || !NOISE.test(String(filename))
+  const sessionsFingerprint = () => {
+    const root = sessionsRoot()
+    let dirs
+    try { dirs = readdirSync(root) } catch { return '' }
+    let sig = ''
+    for (const name of dirs) {
+      if (!name.startsWith('s-')) continue
+      for (const file of ['session.json', 'land.json', 'requests.json']) {
+        try { const st = statSync(join(root, name, file)); sig += `${name}/${file}:${st.mtimeMs}:${st.size};` } catch { /* not written yet */ }
+      }
+    }
+    return sig
+  }
+  let lastFingerprint = null
+  const pushIfChanged = () => {
+    sessionsTimer = null
+    const sig = sessionsFingerprint()
+    // the hint was noise: the view would rebuild to exactly what the page
+    // already has, so nothing is rebuilt and nothing is sent
+    if (sig === lastFingerprint) return
+    lastFingerprint = sig
+    pushSessions()
+  }
+  const scheduleSessionsPush = () => {
+    if (sessionsTimer) return
+    const wait = Math.max(sessionsDebounceMs, sessionsMinIntervalMs - (Date.now() - lastSessionsPush))
+    sessionsTimer = setTimeout(pushIfChanged, wait)
+  }
   const startWatch = () => {
     if (watcher) return
     try {
       const sdir = sessionsRoot()
       mkdirSync(sdir, { recursive: true })
-      sessionsWatcher = fsWatch(realPath(sdir), { recursive: true }, () => { if (!sessionsTimer) sessionsTimer = setTimeout(pushSessions, 300) })
+      // the client that opened this watch was handed the current view with its
+      // hello frame, so the fingerprint starts from what it already has: an
+      // unprimed one makes the first hint of any kind look like a change
+      lastFingerprint = sessionsFingerprint()
+      sessionsWatcher = fsWatch(realPath(sdir), { recursive: true }, (_event, filename) => { if (sessionsChangeMatters(filename)) scheduleSessionsPush() })
     } catch (err) { log(`sessions watch: ${err.message}`); sessionsWatcher = null }
     // watch the real long path: libuv's recursive watcher asserts when the
     // watched dir is an 8.3 short path (fs-event.c, seen on a GitHub runner)
@@ -769,7 +857,9 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           if (why) return send(res, 409, { error: why })
           landSession(sess, { by: actor.id, autoCommit: true })
             .catch((err) => log(`land ${id}: ${err.message}`))
-            .finally(() => { trunkCache.clear(); try { sse.broadcast('sessions', (v) => viewFor(v)) } catch {} })
+            // a landing moves the branch under every worktree cut from it, so
+            // the cached land-ability goes with the cached trunk
+            .finally(() => { trunkCache.clear(); canLandCache.clear(); try { sse.broadcast('sessions', (v) => viewFor(v)) } catch {} })
           log(`land requested for ${id} by ${actor.id}`)
           return send(res, 202, { ok: true, requested: 'land' })
         }

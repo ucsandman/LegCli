@@ -8,6 +8,7 @@
 // same terminal from that bundle. Subscription logins only: API keys are
 // stripped from the child environment (src/env.mjs).
 import http from 'node:http'
+import net from 'node:net'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join, dirname, resolve, relative } from 'node:path'
@@ -81,6 +82,19 @@ function health(port, host = '127.0.0.1') {
   })
 }
 
+// Does anything own this port? A completed TCP connect is the question, so a
+// board too busy to answer /api/health still counts as one. Nothing is sent.
+function portTaken(port, host = '127.0.0.1') {
+  return new Promise((res) => {
+    const sock = net.connect({ host: host === '0.0.0.0' ? '127.0.0.1' : host, port })
+    const done = (v) => { sock.destroy(); res(v) }
+    sock.setTimeout(2000)
+    sock.on('connect', () => done(true))
+    sock.on('error', () => done(false))
+    sock.on('timeout', () => done(false))
+  })
+}
+
 export async function ensureBoard({ open = true } = {}) {
   // with share on the board lives on the shared address, not loopback
   const share = readShare()
@@ -89,7 +103,20 @@ export async function ensureBoard({ open = true } = {}) {
   const host = shared ? share.bind : '127.0.0.1'
   const url = `http://${host}:${port}`
   if ((process.env.LEG_NO_BOARD || process.env.BATON_NO_BOARD) === '1') return { url: null, started: false, skipped: true }
-  if (await health(port, host)) return { url, started: false }
+  // the board is opened whether or not this terminal is the one that started
+  // it: `leg claude` in a second terminal still means "show me the board"
+  if (await health(port, host)) { if (open) openBoard(url); return { url, started: false } }
+  // A board that is merely busy misses the health deadline while still owning
+  // the port. Treating that as "no board" spawned a second server that could
+  // only die of EADDRINUSE, and the poll below then waited the full fifteen
+  // seconds for a child already gone — the whole delay before the agent
+  // starts, and the reason no browser ever opened. A listener on the port is
+  // a board: attach to it and open it.
+  if (await portTaken(port, host)) {
+    say(`the board on ${url} is busy; attaching to it`)
+    if (open) openBoard(url)
+    return { url, started: false, busy: true }
+  }
   mkdirSync(home(), { recursive: true })
   const logFd = (await import('node:fs')).openSync(join(home(), 'board.log'), 'a')
   const child = spawn(process.execPath, [SERVER], { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd], env: { ...process.env, LEG_PORT: String(port), LEG_BIND: host, LEG_QUIET: '0', BATON_PORT: String(port), BATON_BIND: host, BATON_QUIET: '0' } })
