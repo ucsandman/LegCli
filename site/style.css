@@ -372,36 +372,12 @@ table.reads .sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .rc-quiet { color: var(--on-blue-faint); }
 .rc-open { margin-left: auto; padding: 8px 14px; border: 1px solid var(--control-edge); border-radius: var(--r-control); background: var(--e3); font-weight: 700; font-size: 14px; white-space: nowrap; }
 
-.rc-logins { margin-top: 28px; display: grid; gap: 14px; }
-.rc-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-.rc-panel {
-  background: var(--e2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-well);
-  padding: 18px;
-  box-shadow: var(--lift);
-}
-.rc-lit { box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 1px 2px rgba(0,0,0,.45), 0 22px 52px -14px rgba(0,0,0,.75); }
-.rc-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
-.rc-who { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
 .rc-dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
 .rc-dot.claude { background: var(--claude); }
 .rc-dot.codex { background: var(--codex); }
 .rc-dot.agy { background: var(--agy); }
 .rc-note { font-size: 14px; color: var(--on-blue-faint); }
 
-.rc-gauge { display: flex; align-items: center; gap: 14px; }
-.rc-gauge + .rc-gauge { margin-top: 16px; }
-.rc-label { flex: none; width: 56px; font-size: 14px; color: var(--on-blue-faint); }
-.rc-track { flex: 1 1 auto; min-width: 0; position: relative; height: 14px; background: var(--track); border-radius: 999px; box-shadow: inset 0 1px 2px rgba(0,0,0,.45); overflow: hidden; }
-.rc-minor .rc-track { height: 8px; }
-.rc-track i { position: absolute; inset: 0 auto 0 0; width: var(--p); border-radius: 999px; background: linear-gradient(to right, var(--claude) 0 var(--stop), var(--bad) var(--stop) 100%); }
-.rc-track u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--e1); }
-.rc-read { flex: none; min-width: 4ch; text-align: right; font-size: clamp(1.25rem, 2vw, 1.75rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
-.rc-minor .rc-read { font-size: 1.1875rem; }
-.rc-reading { font-size: 1.1875rem; font-weight: 700; letter-spacing: -0.012em; }
-.rc-readsub { margin-top: 6px; font-size: 14px; color: var(--on-blue-muted); }
-.rc-lead { margin-top: 16px; }
 
 .rc-terms { margin-top: 14px; background: var(--e2); border: 1px solid var(--line); border-radius: var(--r-well); box-shadow: var(--lift); }
 .rc-term { display: flex; align-items: center; gap: 20px; padding: 18px; }
@@ -483,7 +459,7 @@ footer a { color: var(--on-blue); }
   /* PRODUCT.md floors body text at 14px on mobile. Every run that sits below
      it at desktop is raised here, once, instead of in each rule. */
   .term, .term-strip, .small, .links, .marker, table.reads thead th,
-  .rc-note, .rc-label, .rc-reg, .rc-files, .rc-clock, .rc-readsub,
+  .rc-note, .rc-reg, .rc-files, .rc-clock,
   .rc-ledger span, .rc-sub, figure.recreated > figcaption,
   .card .meta, .chip, .pill, .landed, .before-after, .touched code,
   .steps .step > code, .marker code { font-size: 14px; }
