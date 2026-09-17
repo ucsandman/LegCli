@@ -9,7 +9,7 @@
 // (2.1.268 does not; see src/taps/claude-usage.mjs) and prints one Leg line.
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { handleHook, handleStatusline } from './taps/claude.mjs'
+import { handleHook, handleStatusline, terminalSequenceFor } from './taps/claude.mjs'
 import { sessionDir } from './sessions.mjs'
 import { captureLive } from './live-capture.mjs'
 
@@ -40,6 +40,12 @@ try {
     if (payload.hook_event_name === 'StopFailure' && payload.error) {
       try { captureLive('claude', String(payload.error), payload, { sessionId }) } catch {}
     }
+    // Notification hooks cannot block or modify anything and their
+    // systemMessage is discarded, but Claude Code still emits terminalSequence
+    // for them (hooks doc 1490, 622). That is the toast, and it is the only
+    // thing this process prints on stdout for a hook.
+    const seq = terminalSequenceFor(payload)
+    if (seq) process.stdout.write(JSON.stringify({ terminalSequence: seq }) + '\n')
   } else if (kind === 'claude-statusline') {
     const { text } = handleStatusline(sessionId, payload)
     try { appendFileSync(join(sessionDir(sessionId), 'hook.log'), `${new Date().toISOString()} statusline rate_limits=${JSON.stringify(payload.rate_limits ?? null)}\n`) } catch {}

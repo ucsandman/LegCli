@@ -326,7 +326,12 @@ function redactSession(s) {
     owner: s.owner ?? null, limits: s.limits ?? null, lineage: s.lineage ?? null,
     warning: s.warning ? { window: s.warning.window, pct: s.warning.pct, resets_at: s.warning.resets_at } : null,
     limit: s.limit ? { reason: s.limit.reason, resets_at: s.limit.resets_at ?? null } : null,
-    waiting: s.waiting ?? null,
+    // `waiting` and `model` are owner-only, and a guest keeps both on their own
+    // terminal (that row is not redacted at all). On someone else's row they are
+    // dropped: `waiting` carries either the verbatim question an agent asked —
+    // the prompt text this function exists to hide — or a reset time, which is
+    // this machine's usage data (.design/BOARD-DESIGN.md 6.13); and `model` is
+    // which of this machine's model buckets someone else's work is spending.
     worktree: s.worktree ? { branch: s.worktree.branch, base: s.worktree.base } : null,
     // the branch is already on the worktree chip: naming it again costs nothing
     // and is what the board's land line reads

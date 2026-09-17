@@ -45,6 +45,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `limit` | a usage limit was detected; carries the agent's own wording, `(simulated)` when `leg sessions simulate-limit` produced it |
 | `handoff_requested` | someone pressed Hand off now, ran `leg sessions handoff`, or (on a shared board) asked for or approved a hand-off; `by` names the human (a dismissed request logs as `status` instead) |
 | `handoff` | the switch happened: from, to, reason, bundle id |
+| `waiting` | a claude `Notification` said a human is being waited on: the type (`permission_prompt`, `idle_prompt`, `agent_needs_input`) and the question verbatim; the next prompt or the end of the turn clears it |
 | `all_out` | every option is walled; the resets are printed and the terminal waits for the first one (`ended` with "quit while waiting" if Ctrl-C or End cuts the wait short, exit 3) |
 | `agent_exit` | the agent process exited, with its code |
 | `continued` | the session was started by `leg history continue` on a conversation the agent's own store holds; `session.json` carries `continued_from: { id, provider, native_id }` |

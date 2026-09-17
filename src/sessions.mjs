@@ -48,10 +48,22 @@ export function isActive(s) { return ACTIVE.includes(s?.status) }
 // it one (repo stays the main checkout, for grouping and landing), else the repo.
 export function workRoot(s) { return s?.worktree?.path ?? s?.repo ?? s?.cwd ?? null }
 
-export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [], worktree = null, owner = null, handoffOrder = AGENTS, installed = null, runtimeCapabilities = [] }) {
+export function createSession({ id, agent, account = 'default', cwd, repo = null, branch = null, argv = [], runner_pid = process.pid, chain = [], worktree = null, owner = null, handoffOrder = AGENTS, installed = null, runtimeCapabilities = [], model = null }) {
   const session = {
     session_id: id, agent, account, cwd, repo, branch, argv, worktree, owner,
     repo_name: repo ? repo.split(/[\\/]/).filter(Boolean).pop() : null,
+    // the model this leg resolved to: the `--model`/`-m` the human passed, else
+    // null. Never a guessed default — a printed model nobody chose is a wrong
+    // number in disguise. For claude the runner refreshes it from the
+    // transcript's per-assistant-line `message.model`, so a silent fallback off
+    // Fable becomes visible on the row (docs/redesign-2026-09-17.md B.1).
+    model,
+    // what this terminal is waiting for, or null. Two shapes, told apart by
+    // `type`: `{ type: 'reset', agent, account, resets_at, since }` is the
+    // all-out countdown the runner writes (src/attach.mjs), and
+    // `{ type: 'permission_prompt'|'idle_prompt'|'agent_needs_input'|'quota_auto_resume', message, since }`
+    // is a human being waited on, from Claude Code's Notification hook.
+    waiting: null,
     status: 'starting', runner_pid, pid: null,
     started_at: now(), updated_at: now(), ended_at: null, last_activity: now(),
     agent_session_id: null, transcript_path: null,

@@ -33,6 +33,28 @@ A session's status is one of `starting`, `running`, `warning`, `limit`,
 that owned the terminal is gone (closed window, crash); the board never shows
 it as live.
 
+Two fields on `session.json` say what the row is running and what it is stuck
+on. `model` is the model this leg resolved to: the `--model` or `-m` the human
+passed, else null. It is never a guessed default, because a model token nobody
+chose is a wrong number in disguise. For claude the runner corrects it from the
+transcript's per-message `model` while the agent works, so a silent fallback
+off Fable is visible instead of being reported as the model you asked for.
+
+`waiting` is null, or what this terminal is waiting for, in one of two shapes
+told apart by `type`. `{ type: 'reset', agent, account, resets_at, since }` is
+the all-out countdown: every option is walled and the terminal is waiting for
+the first one back. `{ type, message, since }` with `type` one of
+`permission_prompt`, `idle_prompt`, `agent_needs_input` or `quota_auto_resume`
+is a human being waited on, from Claude Code's `Notification` hook (claude
+sessions only); `message` is the question verbatim, cut at 160 characters, and
+the next prompt or the end of the turn clears it. `quota_auto_resume` means
+Claude Code is waiting at the limit by itself, and Leg's automatic hand-off
+stands down for that terminal rather than making it wait twice.
+
+Both are owner-only on a shared board, and a guest keeps both on their own
+terminal: a terminal stopped at a permission prompt is useless to the person
+sitting at it if the board will not say so, and it is nobody else's business.
+
 The board is started detached on `127.0.0.1:4747` by the first session that
 finds it down, and opened once. Later sessions reuse it.
 

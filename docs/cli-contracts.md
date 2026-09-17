@@ -243,20 +243,65 @@ variable and `LEG_SESSION` (source: src/attach.mjs, src/env.mjs).
 
 ### claude tap
 
-- Attach: `claude <args> --settings <LEG_HOME>/sessions/<id>/claude-settings.json`
+- Attach: `claude <args> -n "leg#<short id> <repo>/<branch>" --settings <LEG_HOME>/sessions/<id>/claude-settings.json`
   (source: src/attach.mjs `spawnSpec`; src/taps/claude.mjs `writeSettings`).
   Hooks in a `--settings` file merge with the user's rather than replacing
   them; `statusLine` is the one key that replaces, so Leg runs the user's own
   command first (source: code.claude.com/docs/en/settings;
   src/taps/claude.mjs `userStatusLine`). observed-live 2026-09-11: a Leg
   session ran with every user hook still firing.
+- Terminal title: `-n, --name <name>` "Set a display name for this session
+  (shown in the prompt box, /resume picker, and terminal title)" —
+  fixtures/help/claude.txt line 132. It sits in the general Options block, not
+  among the flags marked "only works with --print", and two of its three
+  surfaces (the prompt box, the `/resume` picker) exist only in interactive
+  mode, so it is the interactive title flag. Leg passes
+  `leg#<short id> <repo>/<branch>`; a `-n` or `--name` the human passed is
+  never overwritten. codex, agy and grok have no such flag, so Leg writes OSC 2
+  (`\x1b]2;leg#7f3a leg/main\x07`) to stdout once before the child spawns, and
+  only on a TTY. **ASSUMED**: that the child does not overwrite the title once
+  it starts drawing; no terminal has been read either way yet.
 - Hooks written (source: src/taps/claude.mjs `settingsFor`): `SessionStart`,
   `UserPromptSubmit`, `PostToolUse` with matcher `Edit|Write|MultiEdit|NotebookEdit`,
+  `Notification` with matcher
+  `permission_prompt|idle_prompt|agent_needs_input|quota_auto_resume_fired`,
   `Stop`, `StopFailure`, `SessionEnd`, each
   `node <src>/hook.mjs claude-hook --session <id>` with a 20 s timeout.
-  observed-live 2026-09-11 (hook.log in the session directory).
+  observed-live 2026-09-11 for the six that shipped then (hook.log in the
+  session directory); the `Notification` entry is docs-only until a real
+  permission prompt is captured.
+- Waiting on a human: the `Notification` hook. It "matches on notification
+  type" and, not being one of the two narrower events (FileChanged,
+  StopFailure), takes `|` as its alternation separator
+  (https://code.claude.com/docs/en/hooks lines 1424, 173, 165). The payload
+  carries `message`, an optional `title` and `notification_type` (line 1480).
+  `permission_prompt`, `idle_prompt` and `agent_needs_input` write
+  `session.waiting = { type, message (verbatim, 160 chars), since }`;
+  `UserPromptSubmit` and `Stop` clear it. `permission_prompt` fires only after
+  the prompt has waited about six seconds and shares its timing with desktop
+  notifications, so in a terminal it arrives only when the human appears to be
+  away (lines 1162, 1443): "waiting on you" is late by design and must not be
+  sold as instant.
+- The toast: the hook prints `{"terminalSequence":"\x1b]9;<message>\x07"}`.
+  Notification hooks cannot block or modify anything and their `systemMessage`
+  and `continue` are discarded, but Claude Code still emits `terminalSequence`
+  for them (lines 1490, 622). The field is restricted to OSC 0/1/2/9/99/777 and
+  BEL, and is ignored wholesale if anything outside that rides in it (line
+  608), so control bytes in the message are stripped first. OSC 9 is what
+  Windows Terminal, iTerm2, ConEmu and WezTerm render (line 617). Gated on
+  `preferences.notify_terminal`, default true.
 - `autoContinueAtUsageLimit: false` in the same file, because Leg owns the
-  hand-off (source: src/taps/claude.mjs `settingsFor`).
+  hand-off (source: src/taps/claude.mjs `settingsFor`). If the human's own
+  settings re-enable it, the `quota_auto_resume_fired` notification arrives
+  anyway; Leg then writes `waiting = { type: 'quota_auto_resume' }` and the
+  automatic hand-off stands down for that terminal (src/attach.mjs
+  `handoffStoodDown`). Two waiters on one terminal is the failure to avoid.
+- The model that answered: each assistant line of the transcript carries
+  `message.model` (VERIFIED: 29 lines of the newest jsonl for this repo read
+  `claude-fable-5-1`). The runner reads the tail of that file on the usage poll
+  and says it as its alias (`fable`), so a silent fallback off Fable shows on
+  the row; an id matching no alias is kept raw (src/taps/claude.mjs
+  `modelFromTranscript`, `modelAlias`).
 - Usage: `GET https://api.anthropic.com/api/oauth/usage`
   (`LEG_CLAUDE_USAGE_URL` overrides) with `Authorization: Bearer <accessToken>`
   from `<CLAUDE_CONFIG_DIR>/.credentials.json` key `claudeAiOauth`, and header

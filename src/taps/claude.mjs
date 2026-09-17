@@ -5,13 +5,14 @@
 // Sources: code.claude.com/docs/en/hooks (StopFailure `error: rate_limit`),
 // docs/en/statusline (rate_limits.five_hour/seven_day used_percentage,
 // resets_at), docs/en/settings (`--settings` sits above user settings).
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sessionDir, updateSession, appendEvent, readSession, workRoot } from '../sessions.mjs'
 import { recordUsage, markLimited, WARN_PCT } from '../usage.mjs'
-import { bucketFromWall } from '../buckets.mjs'
+import { bucketFromWall, MODEL_ALIASES } from '../buckets.mjs'
 import { writeJsonAtomic } from '../fsx.mjs'
+import { readPreferences } from '../preferences.mjs'
 import { LAYOUT } from '../accounts.mjs'
 
 const HOOK = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'hook.mjs')
@@ -30,6 +31,19 @@ export function userStatusLine(configDir = LAYOUT.claude.home()) {
   return null
 }
 
+// The four Notification types Leg acts on, as one matcher. Notification
+// "matches on notification type" and, not being FileChanged or StopFailure,
+// takes `|` as the alternation separator (hooks doc lines 173, 165, 1424).
+// The other eight types (auth_success, the elicitation family, agent_completed,
+// quota_auto_resume_stale, quota_auto_resume_disabled) say nothing about a
+// human being waited on, so they never start a hook process.
+export const WAITING_TYPES = ['permission_prompt', 'idle_prompt', 'agent_needs_input']
+export const NOTIFY_MATCHER = [...WAITING_TYPES, 'quota_auto_resume_fired'].join('|')
+// Claude Code waiting at the limit by itself. Leg sets autoContinueAtUsageLimit
+// false, but the human's own settings can re-enable it; two waiters on one
+// terminal is the failure to avoid, so Leg stands down and the row says so.
+export const QUOTA_STAND_DOWN = 'Claude Code is waiting at the limit itself; Leg is not handing this one off.'
+
 export function settingsFor(sessionId, { statusLine = null } = {}) {
   const cmd = (kind) => ({ type: 'command', command: `node ${q(HOOK)} ${kind} --session ${sessionId}`, timeout: 20 })
   const settings = {
@@ -37,6 +51,7 @@ export function settingsFor(sessionId, { statusLine = null } = {}) {
       SessionStart: [{ hooks: [cmd('claude-hook')] }],
       UserPromptSubmit: [{ hooks: [cmd('claude-hook')] }],
       PostToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [cmd('claude-hook')] }],
+      Notification: [{ matcher: NOTIFY_MATCHER, hooks: [cmd('claude-hook')] }],
       Stop: [{ hooks: [cmd('claude-hook')] }],
       StopFailure: [{ hooks: [cmd('claude-hook')] }],
       SessionEnd: [{ hooks: [cmd('claude-hook')] }],
@@ -85,6 +100,56 @@ export function transcriptTail(path, limit = 8) {
   return messagesFromLines(readFileSync(path, 'utf8').split('\n'), limit)
 }
 
+// A model id from a CLI (`claude-fable-5-1`) said as the name the ladder, the
+// picker and the row use (`fable`). An id that matches no alias is kept raw:
+// printing a model Leg does not recognise is honest, inventing one is not.
+export function modelAlias(agent, id) {
+  const raw = String(id ?? '').trim()
+  if (!raw) return null
+  for (const alias of MODEL_ALIASES[agent] ?? []) {
+    if (new RegExp(`(?:^|[-_])${alias}(?:$|[-_.])`, 'i').test(raw)) return alias
+  }
+  return raw
+}
+
+// The model that actually answered, from the transcript's per-assistant-line
+// `message.model` (VERIFIED: 29 assistant lines of the newest jsonl for this
+// repo carry "claude-fable-5-1"). This is how a silent fallback off Fable
+// becomes visible, so it reads the file itself rather than trusting the argv.
+//
+// Two Windows facts shape the read. The file is appended to while Claude Code
+// runs, so a read can land mid-write: it is retried, and a torn last line is
+// dropped by the per-line JSON.parse rather than failing the whole read. And
+// mtime is not a content clock here, so nothing is skipped on a timestamp — the
+// tail is read every time and the answer is whatever the bytes say.
+export function modelFromTranscript(path, { agent = 'claude', tailBytes = 262144, attempts = 3 } = {}) {
+  if (!path || !existsSync(path)) return null
+  for (let i = 0; i < attempts; i++) {
+    let fd = null
+    try {
+      fd = openSync(path, 'r')
+      const size = fstatSync(fd).size
+      const want = Math.min(size, tailBytes)
+      const buf = Buffer.alloc(want)
+      readSync(fd, buf, 0, want, size - want)
+      const lines = buf.toString('utf8').split('\n')
+      // a partial first line when the tail starts mid-file, a partial last line
+      // when the writer is mid-append: both are dropped by the parse below
+      for (let k = lines.length - 1; k >= 0; k--) {
+        let j
+        try { j = JSON.parse(lines[k]) } catch { continue }
+        if (j?.type !== 'assistant') continue
+        const id = j.message?.model
+        if (id) return modelAlias(agent, id)
+      }
+      return null
+    } catch {
+      // EBUSY / EPERM / a share violation while Claude Code writes: try again
+    } finally { if (fd !== null) try { closeSync(fd) } catch {} }
+  }
+  return null
+}
+
 export function firstPrompt(path) {
   const t = transcriptTail(path, 1000).find((m) => m.role === 'user')
   return t ? t.text.slice(0, 500) : null
@@ -94,6 +159,33 @@ function limitsFrom(rl) {
   if (!rl) return null
   const w = (x) => (x && Number.isFinite(x.used_percentage) ? { pct: x.used_percentage, resets_at: x.resets_at ?? null } : null)
   return { five_hour: w(rl.five_hour), seven_day: w(rl.seven_day) }
+}
+
+// The all-out countdown the runner owns (src/attach.mjs) also lives on
+// `waiting`. A Notification never overwrites it: while that is set the child is
+// already dead and nobody is being waited on in the terminal.
+const humanWait = (w) => Boolean(w) && w.type !== 'reset'
+const clearHumanWait = (cur) => (humanWait(cur.waiting) ? { waiting: null } : {})
+
+// What the hook prints back to Claude Code. `terminalSequence` is emitted by
+// Claude Code itself on events that discard systemMessage and continue, which
+// Notification is (hooks doc lines 608, 622, 1490); OSC 9 is the desktop
+// notification Windows Terminal renders (line 617). Restricted to the OSC
+// 0/1/2/9/99/777 allowlist, so anything in the message that could close or open
+// a sequence is dropped rather than risking the whole field being ignored (608).
+// Every control byte out, ESC and BEL included: one of them inside the message
+// would close the sequence Leg is building and open whatever followed it.
+// Written as a scan rather than a regex because a control-character class is
+// exactly what the linter stops, and for good reason.
+export const printable = (s) => [...String(s ?? '')].map((c) => (c.codePointAt(0) < 0x20 || c.codePointAt(0) === 0x7f ? ' ' : c)).join('')
+
+export function terminalSequenceFor(p, { preferences = null } = {}) {
+  if (p?.hook_event_name !== 'Notification') return null
+  if (!WAITING_TYPES.includes(String(p.notification_type ?? ''))) return null
+  const prefs = preferences ?? readPreferences()
+  if (!prefs.notify_terminal) return null
+  const text = printable(p.message).trim().slice(0, 160)
+  return `\x1b]9;${text || 'leg: this terminal is waiting on you'}\x07`
 }
 
 // Hook payload → session record. Returns a short line for the hook log.
@@ -107,7 +199,8 @@ export function handleHook(sessionId, p) {
       updateSession(sessionId, (cur) => ({ ...base, status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'agent_ready', summary: `claude session ${p.session_id ?? '?'} (${p.source ?? 'startup'})` } })
       return 'session start'
     case 'UserPromptSubmit': {
-      updateSession(sessionId, (cur) => ({ ...base, task: cur.task ?? (p.prompt ? String(p.prompt).slice(0, 500) : null), turns: (cur.turns ?? 0) + 1 }), { event: { type: 'turn', summary: `prompt: ${String(p.prompt ?? '').slice(0, 120)}` } })
+      // the human typed, so whatever was being waited on has been answered
+      updateSession(sessionId, (cur) => ({ ...base, ...clearHumanWait(cur), task: cur.task ?? (p.prompt ? String(p.prompt).slice(0, 500) : null), turns: (cur.turns ?? 0) + 1 }), { event: { type: 'turn', summary: `prompt: ${String(p.prompt ?? '').slice(0, 120)}` } })
       return 'prompt'
     }
     case 'PostToolUse': {
@@ -119,9 +212,29 @@ export function handleHook(sessionId, p) {
       updateSession(sessionId, (cur) => ({ ...base, files_touched: cur.files_touched.includes(rel) ? cur.files_touched : [...cur.files_touched, rel].slice(-200) }))
       return `touched ${rel}`
     }
+    case 'Notification': {
+      const type = String(p.notification_type ?? '')
+      const since = new Date().toISOString()
+      // reducer, and the hazard the status-line handler documents: this hook is
+      // its own process and a StopFailure can be writing `status: 'limit'` in
+      // the same moment. Only `waiting` is touched from `cur` inside the lock —
+      // never status, never limit — so a Notification can never erase a wall.
+      if (type === 'quota_auto_resume_fired') {
+        updateSession(sessionId, (cur) => ({ ...base, waiting: cur.waiting?.type === 'reset' ? cur.waiting : { type: 'quota_auto_resume', message: QUOTA_STAND_DOWN, since } }),
+          { event: { type: 'status', summary: QUOTA_STAND_DOWN } })
+        return 'notify quota_auto_resume'
+      }
+      if (!WAITING_TYPES.includes(type)) { updateSession(sessionId, base); return `notify ${type || 'unknown'}` }
+      // the question verbatim: a paraphrase of what an agent is asking for is
+      // the one thing a human cannot check against the terminal in front of them
+      const message = String(p.message ?? '').slice(0, 160)
+      updateSession(sessionId, (cur) => ({ ...base, waiting: cur.waiting?.type === 'reset' ? cur.waiting : { type, message, since } }),
+        { event: { type: 'waiting', summary: `waiting on you (${type}): ${message}` } })
+      return `notify ${type}`
+    }
     case 'Stop':
       // reducer: never turn a 'limit'/'handing_off' back to 'running' by racing
-      updateSession(sessionId, (cur) => ({ ...base, status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'turn_done', summary: String(p.last_assistant_message ?? '').slice(0, 160) || 'turn done' } })
+      updateSession(sessionId, (cur) => ({ ...base, ...clearHumanWait(cur), status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'turn_done', summary: String(p.last_assistant_message ?? '').slice(0, 160) || 'turn done' } })
       return 'stop'
     case 'StopFailure': {
       if (p.error === 'rate_limit') {

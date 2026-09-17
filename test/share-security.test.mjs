@@ -63,6 +63,7 @@ const C = {
   repo: wesRepo,
   file: 'CANARY-FILE-7a1c.md',
   limit: 'CANARY-LIMIT-4d8e what the assistant said when it hit the cap',
+  waiting: 'CANARY-WAITING-9e4d permission to run Bash(git push origin HEAD)',
   bundle: join(wesRepo, '.context-handoffs', 'CANARY-BUNDLE-11ff.md'),
   event: 'CANARY-EVENT-5c3a something this terminal did',
   landDetail: 'CANARY-LANDDETAIL-2e6b the rebase left a conflict',
@@ -158,6 +159,7 @@ function carries(text, needle) {
 
 const SECRETS = () => [
   ['task', C.task], ['cwd', C.cwd], ['repo path', C.repo], ['file name', C.file], ['limit text', C.limit],
+  ['waiting question', C.waiting],
   ['bundle path', C.bundle], ['event summary', C.event], ['land detail', C.landDetail],
   ['run log secret', C.runlog], ['run log path', C.runlogPath], ['card task', C.cardTask],
   ['card title', C.cardTitle], ['landed body', C.landedBody], ['worktree path', C.worktree], ['BATON_HOME', C.home],
@@ -215,6 +217,10 @@ before(async () => {
     bundle: C.bundle, transcript_path: join(C.cwd, 'transcript.jsonl'), argv: ['claude', '--dangerously-skip-permissions'],
     limits: { five_hour: { pct: 62 }, seven_day: { pct: 30 } },
     limit: { reason: 'rate_limit', detail: C.limit, resets_at: 1900000000, at: new Date().toISOString() },
+    // the Notification hook's question is the owner's prompt text by another
+    // route, and the model says which of this machine's buckets is being spent
+    model: 'fable',
+    waiting: { type: 'permission_prompt', message: C.waiting, since: new Date().toISOString() },
     // a worktree whose path is gone: landBlocker stops before any git runs
     worktree: { path: C.worktree, branch: 'baton/s-sec-wes', base: 'main' },
   })
@@ -264,7 +270,7 @@ test('the canary detector actually fires: the owner\'s own board carries every o
   assert.equal(mine.status, 200)
   assert.equal(mine.json.you.name, 'wes')
   const found = SECRETS().filter(([, needle]) => carries(mine.text, needle)).map(([what]) => what)
-  for (const what of ['task', 'cwd', 'repo path', 'file name', 'limit text', 'bundle path']) {
+  for (const what of ['task', 'cwd', 'repo path', 'file name', 'limit text', 'bundle path', 'waiting question']) {
     assert.ok(found.includes(what), `the owner's own /api/sessions should carry the ${what}; detector found [${found}]`)
   }
   const log = await request(openBase, `/api/cards/${CARD}/log`)
@@ -452,9 +458,25 @@ test('a guest\'s board carries no usage percentage, no reset time and no reading
     for (const field of ['capacity', 'buckets', 'walls', 'extra_usage', 'facts']) {
       assert.equal(field in theirOwnRow, false, `a guest's own session row carries ${field}`)
     }
+    // `waiting` and `model` are the guest's to see on their OWN terminal: they
+    // are sitting at it, and a terminal that has stopped for a permission
+    // prompt is useless to its own human when the board will not say so.
+    assert.equal('waiting' in theirOwnRow, true, 'a guest owns their own terminal, so its own wait reaches them')
+    assert.equal('model' in theirOwnRow, true, 'and the model it is running')
     const rows = JSON.stringify(guest.json.sessions)
     for (const field of ['capacity', 'buckets', 'walls', 'extra_usage']) {
       assert.equal(rows.includes(`"${field}"`), false, `a guest board carries sessions[].${field}`)
+    }
+    // someone else's row: neither. `waiting` is either the verbatim question an
+    // agent asked (the owner's prompt text by another route) or a reset time,
+    // and `model` is which of this machine's buckets that work is spending.
+    const notTheirs = guest.json.sessions.find((s) => s.session_id === OWNED)
+    assert.equal(notTheirs.hidden, true, 'wes\'s terminal is redacted for sam')
+    const ownerRow = owner.json.sessions.find((s) => s.session_id === OWNED)
+    assert.equal(ownerRow.waiting.message, C.waiting, 'the owner reads the question their own terminal asked')
+    assert.equal(ownerRow.model, 'fable')
+    for (const field of ['waiting', 'model']) {
+      assert.equal(notTheirs[field] ?? null, null, `a guest board carries sessions[].${field} on someone else's row`)
     }
     for (const [what, needle] of [['the reading source', usageSource], ['the wall reason', usageReason], ['the wall evidence', wallEvidence], ['the measured plan', factPlan], ['the 5h reset time', String(fiveHourResets)], ['the 7d reset time', String(sevenDayResets)]]) {
       assert.equal(carries(guest.text, needle), false, `a guest board carries ${what} (${needle})`)

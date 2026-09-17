@@ -15,7 +15,7 @@ const claudeTap = await import('../src/taps/claude.mjs')
 const codexTap = await import('../src/taps/codex.mjs')
 const agyTap = await import('../src/taps/agy.mjs')
 const accounts = await import('../src/accounts.mjs')
-const { isCurrentLeg, TERMINAL_RESET } = await import('../src/attach.mjs')
+const { isCurrentLeg, TERMINAL_RESET, spawnSpec, modelFromArgs, terminalTitle, osc2 } = await import('../src/attach.mjs')
 
 const cwd = mkdtempSync(join(tmpdir(), 'baton-cwd-'))
 // codex names its day directory from local time, so the fixtures do too
@@ -373,6 +373,47 @@ test('claude usage endpoint: 404, a body that is not JSON, and a shape with no w
   assert.equal(after.limits, null, 'no percentages were ever recorded')
   assert.equal(after.limit.reason, 'rate_limit')
   sessions.updateSession(s.session_id, { status: 'ended' })
+})
+
+// Which terminal is this, and where is it working: `-n` for claude (the flag is
+// in fixtures/help/claude.txt line 132, general Options, and two of its three
+// surfaces are interactive-only), OSC 2 for the three CLIs with no title flag.
+test('the claude argv carries -n leg#<id> <repo>/<branch>, and a name the human passed is kept', async () => {
+  const s = sessions.createSession({ id: 's-title-claude', agent: 'claude', cwd, repo: join(cwd, 'leg'), branch: 'main' })
+  assert.equal(terminalTitle(s), 'leg#claude leg/main')
+  const spec = await spawnSpec('claude', { account: 'default', args: [], sessionId: 's-title-claude', autoApprove: false })
+  const at = spec.args.indexOf('-n')
+  assert.ok(at !== -1, `the claude argv carries -n: ${spec.args.join(' ')}`)
+  assert.equal(spec.args[at + 1], 'leg#claude leg/main')
+
+  const mine = await spawnSpec('claude', { account: 'default', args: ['--name', 'my own window'], sessionId: 's-title-claude', autoApprove: false })
+  assert.equal(mine.args.filter((a) => a === '-n' || a === '--name').length, 1, 'a name the human passed is never doubled')
+  assert.equal(mine.args.includes('leg#claude leg/main'), false)
+
+  // the other three have no such flag, so Leg writes the title itself
+  assert.equal(osc2('leg#7f3a leg/main'), '\x1b]2;leg#7f3a leg/main\x07')
+  assert.equal(osc2('a\x1b]0;evil\x07b'), '\x1b]2;a ]0;evil b\x07', 'nothing in the title can open a second sequence')
+  const codex = await spawnSpec('codex', { account: 'default', args: [], sessionId: 's-title-claude', autoApprove: false })
+  assert.equal(codex.args.includes('-n'), false, 'codex has no name flag and must not be handed one')
+  sessions.updateSession('s-title-claude', { status: 'ended' })
+})
+
+test('session.model is the model the human asked for, or null; the transcript corrects it', () => {
+  assert.equal(modelFromArgs('claude', ['--model', 'opus']), 'opus')
+  assert.equal(modelFromArgs('claude', ['--model=claude-fable-5-1']), 'fable', 'a full id is said as its alias')
+  assert.equal(modelFromArgs('codex', ['-m', 'gpt-5.6-sol']), 'gpt-5.6-sol', 'codex has no alias list, so the id is kept raw')
+  assert.equal(modelFromArgs('claude', []), null, 'no flag means no model, never a guessed default')
+  assert.equal(modelFromArgs('claude', ['--model']), null, 'a dangling flag is not a model')
+  assert.equal(modelFromArgs('claude', ['--model', '--resume']), null)
+
+  const s = sessions.createSession({ id: 's-model-claude', agent: 'claude', cwd, repo: cwd, model: modelFromArgs('claude', ['--model', 'fable']) })
+  assert.equal(s.model, 'fable')
+  assert.equal(sessions.createSession({ id: 's-model-bare', agent: 'codex', cwd, repo: cwd }).model, null, 'old records and bare launches carry null')
+  // the silent fallback: argv said fable, the transcript says haiku
+  const jsonl = join(cwd, 'model-refresh.jsonl')
+  writeFileSync(jsonl, JSON.stringify({ type: 'assistant', message: { model: 'claude-fable-5-1' } }) + '\n' + JSON.stringify({ type: 'assistant', message: { model: 'claude-haiku-4-5' } }) + '\n')
+  assert.equal(claudeTap.modelFromTranscript(jsonl), 'haiku', 'the newest assistant line wins')
+  for (const id of ['s-model-claude', 's-model-bare']) sessions.updateSession(id, { status: 'ended' })
 })
 
 test('the terminal reset undoes what a killed agent left behind: mouse reporting, paste, keys, margins', () => {

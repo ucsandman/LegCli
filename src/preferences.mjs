@@ -71,18 +71,28 @@ export function resolveAutoApprove({ env = process.env, preferences = null, cliF
   return true
 }
 
+// Where a terminal that is waiting on a human says so. `notify_terminal` is on
+// by default: the OSC 9 toast reaches the window the human is already in, with
+// no browser and no permission prompt (docs/redesign-2026-09-17.md E, the
+// notifications table). `notify_board` is off by default because the browser's
+// own Notification permission has to be granted first, and a toggle that asks
+// for a permission nobody wanted is worse than no toggle.
+const defaults = () => ({ handoff_order: [...HANDOFF_AGENTS], auto_approve: true, notify_terminal: true, notify_board: false, harness: { ...HARNESS_DEFAULTS } })
+
 export function readPreferences() {
   const file = preferencesFile()
-  if (!existsSync(file)) return { handoff_order: [...HANDOFF_AGENTS], auto_approve: true, harness: { ...HARNESS_DEFAULTS } }
+  if (!existsSync(file)) return defaults()
   try {
     const value = JSON.parse(readFileSync(file, 'utf8'))
     return {
       handoff_order: normalizeHandoffOrder(value?.handoff_order),
       auto_approve: value?.auto_approve !== false,
+      notify_terminal: value?.notify_terminal !== false,
+      notify_board: value?.notify_board === true,
       harness: normalizeHarness(value?.harness),
     }
   } catch {
-    return { handoff_order: [...HANDOFF_AGENTS], auto_approve: true, harness: { ...HARNESS_DEFAULTS } }
+    return defaults()
   }
 }
 
@@ -94,6 +104,8 @@ export function writePreferences(patch) {
     const next = { ...current }
     if (order !== undefined) next.handoff_order = order
     if (patch?.auto_approve !== undefined) next.auto_approve = Boolean(patch.auto_approve)
+    if (patch?.notify_terminal !== undefined) next.notify_terminal = Boolean(patch.notify_terminal)
+    if (patch?.notify_board !== undefined) next.notify_board = Boolean(patch.notify_board)
     if (patch?.harness !== undefined) next.harness = requireHarness(patch.harness, current.harness)
     writeJsonAtomic(preferencesFile(), next)
     return next

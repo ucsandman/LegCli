@@ -23,7 +23,8 @@ import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
 import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable } from './usage.mjs'
 import { entitlement, allows, describe as describeLicense } from './license.mjs'
-import { writeSettings, userStatusLine, transcriptTail as claudeTail } from './taps/claude.mjs'
+import { writeSettings, userStatusLine, transcriptTail as claudeTail, modelAlias, modelFromTranscript, printable } from './taps/claude.mjs'
+import { modelFlagFor } from './buckets.mjs'
 import { ensureTrust, trustLine } from './trust.mjs'
 import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as codexTail } from './taps/codex.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
@@ -226,6 +227,49 @@ function restoreTerminal() {
   try { process.stdout.write(TERMINAL_RESET) } catch {}
 }
 
+// ---- model and terminal title ----
+// The model this leg resolved to, from the argv the human actually passed:
+// `--model x`, `-m x`, or the `--model=x` form. No default is invented — a
+// model token on a row that nobody chose is a wrong number in disguise, so the
+// answer for a bare `leg claude` is null until the transcript says otherwise.
+export function modelFromArgs(agent, args = []) {
+  const flag = modelFlagFor(agent)
+  const names = flag === '-m' ? ['-m', '--model'] : [flag, '-m'].filter(Boolean)
+  for (let i = 0; i < args.length; i++) {
+    const a = String(args[i] ?? '')
+    for (const n of names) {
+      if (a === n && args[i + 1] && !String(args[i + 1]).startsWith('-')) return modelAlias(agent, args[i + 1])
+      if (a.startsWith(n + '=')) return modelAlias(agent, a.slice(n.length + 1))
+    }
+  }
+  return null
+}
+
+export const shortId = (sessionId) => String(sessionId ?? '').split('-').pop()
+
+// `leg#7f3a leg/main`: which terminal this window is, and where it is working.
+// Degrades to the id alone rather than printing a place that is not a repo.
+export function terminalTitle(session) {
+  const where = session?.repo_name ? `${session.repo_name}${session.branch ? '/' + session.branch : ''}` : null
+  return `leg#${shortId(session?.session_id)}${where ? ' ' + where : ''}`
+}
+
+// OSC 2 (set window title) for the CLIs with no title flag of their own.
+// ASSUMED: a VT terminal keeps the title once the child starts drawing. codex,
+// agy or grok may overwrite it with their own; nothing observed either way yet,
+// and the probe is to start each one and read the tab (redesign E, row 4).
+export function osc2(title) { return `\x1b]2;${printable(title)}\x07` }
+
+// Claude Code can wait at the usage limit itself when the human's own settings
+// re-enable autoContinueAtUsageLimit. Leg sets it false, but it does not own
+// that file, so when the `quota_auto_resume_fired` Notification arrives the
+// automatic hand-off stands down for that terminal: two waiters on one terminal
+// is the failure to avoid (redesign B.5). A human pressing Hand off > is not
+// affected — standing down is about what Leg does unasked.
+export function handoffStoodDown(session) {
+  return session?.waiting?.type === 'quota_auto_resume' ? (session.waiting.message ?? 'Claude Code is waiting at the limit itself') : null
+}
+
 // ---- spawn spec per agent ----
 export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, autoApprove = resolveAutoApprove() }) {
   const adapter = await loadAdapter(agent)
@@ -239,7 +283,15 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
   if (agent === 'claude') {
     const settings = writeSettings(sessionId, { statusLine: userStatusLine(process.env.CLAUDE_CONFIG_DIR || (account !== 'default' ? envFor('claude', account).CLAUDE_CONFIG_DIR : undefined)) })
     const autoFlags = autoApprove && !args.includes('--dangerously-skip-permissions') ? ['--dangerously-skip-permissions'] : [] // auto-approve: not forbidden for interactive sessions
-    argv.push(...args, ...autoFlags, '--settings', settings)
+    // `-n, --name <name>`: "Set a display name for this session (shown in the
+    // prompt box, /resume picker, and terminal title)" — fixtures/help/claude.txt
+    // line 132, in the general Options section, not one of the flags marked
+    // "only works with --print", and two of its three surfaces (prompt box,
+    // /resume picker) exist only in interactive mode. A name the human passed
+    // themselves is never overwritten.
+    const named = args.some((a) => a === '-n' || a === '--name' || String(a).startsWith('--name='))
+    const nameFlags = named ? [] : ['-n', terminalTitle(readSession(sessionId) ?? { session_id: sessionId })]
+    argv.push(...args, ...autoFlags, ...nameFlags, '--settings', settings)
     if (prompt) argv.push(prompt)
   } else if (agent === 'codex') {
     const hasApproval = args.includes('--ask-for-approval') || args.includes('-a') || args.some((x) => typeof x === 'string' && x.startsWith('--ask-for-approval='))
@@ -287,6 +339,12 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   const agyTail = agyLog ? createTail(agyLog, { from: logSize(agyLog) }) : null
   const grokLog = agent === 'grok' ? join(sessionDir(sid), 'grok.log') : null
   const grokTail = grokLog ? createTail(grokLog, { from: logSize(grokLog) }) : null
+  // claude takes `-n` (spawnSpec). The other three have no title flag, so Leg
+  // writes the title itself, once, before the child owns the terminal. Only on
+  // a TTY: into a pipe or a log this would be four stray control bytes.
+  if (agent !== 'claude' && process.stdout.isTTY) {
+    try { process.stdout.write(osc2(terminalTitle(session))) } catch {}
+  }
   let child
   try {
     child = spawn(spec.bin, spec.args, { cwd: spec.cwd, env: spec.env, stdio: 'inherit', windowsHide: false })
@@ -296,7 +354,9 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   }
   // every leg starts on its own card: the agent that just left takes its
   // percentages, its warning and its usage source with it
-  updateSession(sid, { pid: child.pid, agent, account, status: agent === 'claude' ? 'starting' : 'running', limit: null, warning: null, limits: null, usage_source: null, usage_error: null })
+  // the model goes with it: the next leg's argv is the only thing Leg knows
+  // about the model until that agent's own transcript says otherwise
+  updateSession(sid, { pid: child.pid, agent, account, model: modelFromArgs(agent, args), status: agent === 'claude' ? 'starting' : 'running', limit: null, warning: null, limits: null, usage_source: null, usage_error: null })
 
   // taps
   let rollout = null; let tail = null
@@ -307,7 +367,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
     rollout = { path: session.transcript_path, meta: { id: session.agent_session_id } }
     tail = createTail(rollout.path, { from: logSize(rollout.path) })
   }
-  let polls = 0; let warned = false
+  let polls = 0; let warned = false; let stoodDown = false
   let stop = null
   const done = new Promise((res) => { stop = res })
   child.on('error', (err) => { appendEvent(sid, { type: 'error', summary: `${agent} spawn error: ${err.message}` }); stop({ reason: 'exit', code: 127 }) })
@@ -325,6 +385,14 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
       if (!isCurrentLeg(s, { pid: child.pid, agent, account })) return
       // a 404, a body that is not JSON, or a shape with no window at all: the
       // card says usage unknown and the StopFailure hook still owns the limit
+      // which model actually answered. The transcript path arrives on the
+      // SessionStart hook payload (src/taps/claude.mjs `handleHook`, `base`),
+      // so this only reads once Claude Code has told Leg where its jsonl is.
+      // A fallback off fable shows up here and nowhere else.
+      const seen = modelFromTranscript(s.transcript_path, { agent: 'claude' })
+      if (seen && seen !== s.model) {
+        updateSession(sid, { model: seen }, { event: { type: 'status', summary: `claude is answering on ${seen}${s.model ? ` (was ${s.model})` : ''}` } })
+      }
       const usable = r.ok && r.limits && (r.limits.five_hour || r.limits.seven_day)
       if (usable) {
         recordUsage('claude', account, r.limits, 'claude usage endpoint')
@@ -489,6 +557,14 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
       // a stale warning patch can overwrite status:'limit' from the hook, but the
       // limit OBJECT survives the clobber — hand off on either signal
       if ((next.status === 'limit' || next.limit) && (process.env.LEG_NO_HANDOFF || process.env.BATON_NO_HANDOFF) !== '1') {
+        // Claude Code is waiting at the limit itself: stand down rather than
+        // kill a child that is about to resume on its own. Said once, with the
+        // reason, so the terminal that did not hand off is never a mystery.
+        const standDown = handoffStoodDown(next)
+        if (standDown) {
+          if (!stoodDown) { stoodDown = true; say(standDown); appendEvent(sid, { type: 'status', summary: `hand-off stood down: ${standDown}` }) }
+          return
+        }
         clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'limit', code: null })
       }
     } catch (err) {
@@ -638,7 +714,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   // record the session BEFORE cutting a worktree, so a crash or Ctrl-C during
   // `git worktree add` still leaves a card (with a Remove button), never a
   // silent orphan under .baton-worktrees with no record and no button
-  createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain, worktree: null, owner: whoami(), handoffOrder, installed, runtimeCapabilities: [HANDOFF_ORDER_CAPABILITY] })
+  createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain, worktree: null, owner: whoami(), handoffOrder, installed, runtimeCapabilities: [HANDOFF_ORDER_CAPABILITY], model: modelFromArgs(agent, args) })
   if (continued) {
     // the agent's own id and transcript are known before the first turn, so
     // history dedups this leg against the conversation it continues at once
@@ -702,7 +778,10 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       say(`every option is out. First back: ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}`)
       for (const o of all) say(`  ${o.agent}${o.account !== 'default' ? '/' + o.account : ''}: resets ${fmtReset(o.resets_at)}`)
       say(`waiting for ${label}; Ctrl-C to quit`)
-      updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
+      // `type: 'reset'` tells this apart from the Notification hook's
+      // `waiting` (a human being waited on). Same key, two shapes, one
+      // discriminator; see the field comment in src/sessions.mjs.
+      updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { type: 'reset', agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
       const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
       if (r2 === 'cancelled') { cancelled = true; break }
       claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded, prefer })
