@@ -312,6 +312,31 @@
     return (Array.isArray(a && a.buckets) ? a.buckets : []).find((b) => b && b.model === model && Number.isFinite(b.percent)) || null
   }
 
+  // ---- the forecast (spec A.5 row 4, E rule 6) -----------------------------
+  // `forecast` rides the binding bucket, computed by `burn()` in src/usage.mjs:
+  // a rate measured inside ONE window, never across a reset, and only past a
+  // gate of three samples spanning ten minutes. Under the gate there is no time
+  // at all, and every time that is printed carries the volume it came from: a
+  // figure with no sample count beside it is a guess wearing an instrument's
+  // clothes, and this one is printed in the largest type on the page.
+  function forecastOf(c) {
+    const f = c && c.forecast
+    return f && Number.isFinite(f.seconds_left) && Number.isFinite(f.samples) && Number.isFinite(f.span_s) ? f : null
+  }
+  // `2h 40m` under a day, `3d 5h` beyond, and spelled-out minutes under ten:
+  // `0h 8m` reads as an instrument, and eight minutes is a sentence.
+  function burnPhrase(secondsLeft) {
+    const m = Math.max(0, Math.round(secondsLeft / 60))
+    if (m < 10) return `${m} minute${m === 1 ? '' : 's'}`
+    if (m < 60) return `${m}m`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h${m % 60 ? ` ${m % 60}m` : ''}`
+    const d = Math.floor(h / 24)
+    return `${d}d${h % 24 ? ` ${h % 24}h` : ''}`
+  }
+  function burnVolume(f, lead = 'from') { return `${lead} ${f.samples} sample${f.samples === 1 ? '' : 's'} over ${ago(f.span_s * 1000)}` }
+  function andList(xs) { return xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` }
+
   // ---- what one terminal is waiting for ------------------------------------
   // `waiting` carries TWO shapes under one key and they mean opposite things.
   // `{ type: 'reset', agent, account, resets_at, since }` is the all-out
@@ -367,10 +392,16 @@
   function capacityPhrase(s) {
     const c = s && s.capacity
     if (!c || !Number.isFinite(c.percent)) return null
+    const label = s.account && s.account !== 'default' ? `${s.agent}/${s.account}` : s.agent
+    // With a rate the row says the same fact in the unit the reader is actually
+    // deciding in, and carries the volume it was drawn from. Under the gate it
+    // is the percentage again (E rule 6): no time is printed from two readings.
+    const f = forecastOf(c)
+    if (f) return `about ${burnPhrase(f.seconds_left)} of ${c.scope === 'model' && c.model ? c.model : label} left, ${burnVolume(f)}`
     const pct = Math.round(c.percent)
     if (c.scope === 'model' && c.model) return `${pct}% of the ${c.model} week`
     const win = c.kind === 'session' || c.kind === 'five_hour' ? '5-hour window' : 'week'
-    return `${pct}% of the ${s.account && s.account !== 'default' ? `${s.agent}/${s.account}` : s.agent} ${win}`
+    return `${pct}% of the ${label} ${win}`
   }
   function registerTokens(s) {
     const out = []
@@ -763,6 +794,37 @@
         return {
           line: headline(`${Model(back)} is back; ${rowName(down)} is still on ${down.model}.`, `${Model(back)} is back.`),
           sub: subLine(`Leg climbs back at the next hand-off.`, `Back to ${back} on the row does it now.`),
+        }
+      }
+
+      // 5.5. the burn rate (A.5 row 4): a time beats a percentage, because the
+      // decision is about the afternoon and not about the number. The rate
+      // rides each session's own `capacity` (binding(usage, model) in
+      // src/server.mjs carries burn()); the accounts payload is buckets, not
+      // rates, so a live row bound to the SAME bucket as the strip's figure is
+      // where the board reads it. A guest payload has no capacity at all, so a
+      // guest board never prints a time, which is the rule the strip follows
+      // already. Placed under the model-came-back branch and above the two
+      // standing-percentage branches: a state CHANGE still outranks a figure.
+      const rate = b
+        ? live.map((s) => ((acctOf(s) === subject && s.capacity && s.capacity.kind === b.kind && (s.capacity.model || null) === (b.model || null)) ? forecastOf(s.capacity) : null)).find(Boolean) || null
+        : null
+      if (rate) {
+        const who = b.model ? Model(b.model) : accountLabel(subject)
+        // which other models this login has published a bucket or a wall for:
+        // said because a Fable figure is NOT the login's figure, and the reader
+        // who takes it for one plans the wrong afternoon. A model nobody has
+        // seen is never named, so a login with one bucket says nothing here.
+        const others = b.model ? knownModels(subject).filter((m) => m !== b.model).map(Model) : []
+        return {
+          line: headline(`About ${burnPhrase(rate.seconds_left)} of ${who} left.`, `About ${burnPhrase(rate.seconds_left)} left.`),
+          sub: subLine(
+            `${burnVolume(rate, 'From')}.`,
+            b.model
+              ? (others.length ? `${andList(others)} ${others.length === 1 ? 'has its own bucket' : 'have their own buckets'}.` : null)
+              : 'Shared by every model.',
+            staleClause(subject, b),
+          ),
         }
       }
 

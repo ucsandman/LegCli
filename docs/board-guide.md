@@ -85,9 +85,26 @@ figure, because attention is the scarcer thing. Then a login whose whole
 account is nearly spent (`claude has 3% left, shared by every model.`), because
 no model switch can help there. Then a single model at its wall with the login
 still open (`Fable is out until 9:14 PM; opus is open.`), which is the one case
-where a same-login switch is the answer. Then one login carrying every
-terminal, several logins carrying work, and the quiet states: nothing running,
-everything walled, and no figure anywhere. There is always a sentence.
+where a same-login switch is the answer. Then the burn rate, when it is known
+(`About 2h 40m of Fable left.`), because the decision is about the afternoon
+and not about the number. Then one login carrying every terminal, several
+logins carrying work, and the quiet states: nothing running, everything walled,
+and no figure anywhere. There is always a sentence.
+
+**Every time figure carries the volume it was drawn from**, always:
+`From 9 samples over 4h. Opus and Sonnet have their own buckets.` The rate is
+measured from the readings Leg has kept for that one bucket, and three rules
+hold it honest. Under **three samples spanning ten minutes** there is no time
+at all: the row prints the percentage and the reset clock instead, because a
+slope drawn through two readings a minute apart is a guess printed in the
+largest type on the page. A rate **never crosses a reset**: the samples are
+cleared when the window rolls over, and the time is capped at the reset even
+when the slope says there is more. A figure that has held flat for an hour is a
+measured zero, not a forecast, and a percentage that fell inside one window is
+a data error rather than a refund; neither prints a time. The second sentence
+names the other models on that login, because a Fable figure is not the login's
+figure and the reader who takes it for one plans the wrong afternoon; on a
+login where every model shares the window it says `Shared by every model.`
 
 The headline is capped at **56 characters**, and that number is a measurement,
 not a preference: at 1280 the verdict column is 26ch and 300 sampled sentences
@@ -254,6 +271,15 @@ been at it, and what you can do about it.
   together is stopped by the share clause at the region head, once. Nothing is
   printed when no bucket is known: a percentage nobody measured is worse than
   no percentage at all.
+  - Once that bucket has **three readings spanning ten minutes**, the phrase
+    becomes the time instead: `about 2h 40m of fable left, from 9 samples over
+    4h`. The sample count is part of the phrase and is never dropped. Under the
+    gate it stays the percentage and the reset clock, and the time never runs
+    past the reset: a rate measured in this window says nothing about the next
+    one.
+  - The strip token above keeps the percentage even while the row says the
+    time. The strip is the measurement and the time is the inference, and the
+    inference lives where its sample count can sit beside it.
 - **`Back to fable`**, a link on the capacity line beside that figure, on a row
   that Leg dropped to a lower model and can climb again. It appears only when
   both facts are known: the row's model is below the top rung of its own

@@ -331,7 +331,10 @@ code { font-family: var(--mono); font-size: 0.94em; }
    the region head carries the share clause for the login. */
 .term-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 24px; flex-wrap: wrap; }
 .term-meta .files { flex: 1 1 24ch; min-width: 0; }
-.term-capacity { margin-top: 10px; flex: none; display: inline-flex; align-items: baseline; gap: 10px; font-size: var(--t--1); color: var(--text-3); white-space: nowrap; }
+/* the phrase wraps rather than pushing the row sideways: with a forecast it is
+   `about 2h 40m of fable left, from 9 samples over 4h`, two and a half times
+   the percentage form, and a nowrap run that long overflows the 400px board. */
+.term-capacity { margin-top: 10px; flex: none; display: inline-flex; align-items: baseline; gap: 10px; font-size: var(--t--1); color: var(--text-3); }
 /* the climb is a link beside the figure that explains it, never a fifth button
    in the 2x2 grid, which is the shipped shape */
 .term-climb { font-size: var(--t--1); }

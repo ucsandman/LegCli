@@ -92,7 +92,9 @@ test('binding(): is_active first, then the row\'s model, then weekly_all, then s
   const buckets = claudeUsage.bucketsFrom(LIVE)
   const u = { buckets, five_hour: { pct: 29, resets_at: 1789677000 }, seven_day: { pct: 47, resets_at: 1790190000 } }
   const active = usage.binding(u, null)
-  assert.deepEqual(active, { kind: 'weekly_scoped', model: 'fable', percent: 63, resets_at: 1790190000, scope: 'model' })
+  // `forecast` rides the binding bucket (spec E rule 6); with no ring behind
+  // this record the gate fails and it is null, never a missing key
+  assert.deepEqual(active, { kind: 'weekly_scoped', model: 'fable', percent: 63, resets_at: 1790190000, scope: 'model', forecast: null })
 
   const quiet = buckets.map((b) => ({ ...b, is_active: false }))
   assert.equal(usage.binding({ ...u, buckets: quiet }, 'fable').kind, 'weekly_scoped', 'no active row: the row scoped to this terminal\'s model binds')
@@ -105,7 +107,7 @@ test('binding(): is_active first, then the row\'s model, then weekly_all, then s
 
 test('binding(): no buckets at all falls back to the hottest legacy window, so the old verdict stays right', () => {
   const u = { buckets: [], five_hour: { pct: 29, resets_at: 1789677000 }, seven_day: { pct: 47, resets_at: 1790190000 } }
-  assert.deepEqual(usage.binding(u, 'fable'), { kind: 'seven_day', model: null, percent: 47, resets_at: 1790190000, scope: 'account' })
+  assert.deepEqual(usage.binding(u, 'fable'), { kind: 'seven_day', model: null, percent: 47, resets_at: 1790190000, scope: 'account', forecast: null })
   assert.equal(usage.binding({ buckets: [], five_hour: null, seven_day: null }, null), null, 'no figure anywhere is null, never a zero')
 })
 

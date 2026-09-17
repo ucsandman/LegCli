@@ -126,9 +126,17 @@ export function recordUsage(agent, account, windows, source, { observed_at = new
   return { ...value, usage_applied: applied }
 }
 
-// One ring per bucket, max HISTORY_MAX, a new entry only when the percentage
-// moved. A window that has reset starts its ring again: a rate computed across
-// a reset is a wrong number, and a wrong number is worse than none.
+// One ring per bucket, max HISTORY_MAX, a new entry when the percentage moved
+// OR when HISTORY_FLAT_S has passed since the last sample. A window that has
+// reset starts its ring again: a rate computed across a reset is a wrong
+// number, and a wrong number is worse than none.
+//
+// The "only when it changed" rule is about NOISE (a status line writing the
+// same 63 every second fills a 24-entry ring in half a minute), not about
+// starving the forecast: a percentage that holds for an hour is a measured
+// zero rate, and a ring that refuses to record it can never say so. One sample
+// per ten minutes while the figure holds keeps both facts.
+export const HISTORY_FLAT_S = 10 * 60
 function recordHistory(history, oldBuckets, newBuckets, atS) {
   const out = { ...history }
   const before = new Map((oldBuckets ?? []).map((b) => [bucketKey(b), b]))
@@ -137,10 +145,57 @@ function recordHistory(history, oldBuckets, newBuckets, atS) {
     const key = bucketKey(b)
     const prev = before.get(key)
     if (prev && prev.resets_at !== b.resets_at) out[key] = []
-    else if (prev && prev.percent === b.percent) continue
+    else if (prev && prev.percent === b.percent) {
+      const last = (out[key] ?? []).at(-1)
+      if (last && Number.isFinite(last.at) && atS - last.at < HISTORY_FLAT_S) continue
+    }
     out[key] = [...(out[key] ?? []), { percent: b.percent, at: atS }].slice(-HISTORY_MAX)
   }
   return out
+}
+
+// The forecast (spec A.5 row 4, E rule 6): how long the bucket behind `key`
+// lasts at the rate its own ring has been measured moving.
+//
+// The gate is 3 samples spanning 10 minutes, and it is the point of the whole
+// function: a slope drawn through two readings a minute apart is a guess, and
+// this number is printed in the largest type on the page. Every sample is
+// inside the window that is running now, because the ring is emptied whenever
+// `resets_at` moves.
+//
+// Endpoint slope, not least squares: the series is a counter that only rises,
+// the two ends are what a human would draw through it, and the sentence that
+// explains it ("from 9 samples over 4h") is the truth about it rather than a
+// description of a fit nobody can check.
+// → { seconds_left, samples, span_s, rate_pct_per_h } | null
+export const BURN_MIN_SAMPLES = 3
+export const BURN_MIN_SPAN_S = 10 * 60
+export function burn(u, key, nowS = Math.floor(Date.now() / 1000)) {
+  const ring = (Array.isArray(u?.history?.[key]) ? u.history[key] : []).filter((e) => e && Number.isFinite(e.percent) && Number.isFinite(e.at))
+  if (ring.length < BURN_MIN_SAMPLES) return null
+  const first = ring[0]
+  const last = ring[ring.length - 1]
+  const span = last.at - first.at
+  if (span < BURN_MIN_SPAN_S) return null
+  const rate = (last.percent - first.percent) / span
+  // A flat line is a measured zero: real, and not a time. A falling percentage
+  // inside one window is a data error, not a refund, and a negative rate would
+  // print a time running backwards.
+  if (!(rate > 0)) return null
+  const b = (Array.isArray(u?.buckets) ? u.buckets : []).find((x) => x && bucketKey(x) === key)
+  const resets = Number.isFinite(b?.resets_at) ? b.resets_at : null
+  // Never extrapolate across a reset. Past `resets_at` the percentage belongs
+  // to a window this rate says nothing about, so the time is capped there; a
+  // reset already behind us means the ring is waiting to be cleared by the next
+  // reading, and until it arrives there is no forecast at all.
+  if (resets !== null && resets <= nowS) return null
+  const toWall = (100 - last.percent) / rate
+  return {
+    seconds_left: Math.max(0, resets === null ? toWall : Math.min(toWall, resets - nowS)),
+    samples: ring.length,
+    span_s: span,
+    rate_pct_per_h: rate * 3600,
+  }
 }
 
 // Is this model's own wall still standing? A wall with no clock, or one whose
@@ -153,9 +208,13 @@ export function wallActive(wall, nowS = Math.floor(Date.now() / 1000)) {
 // is active, else the one scoped to the model being asked about, else the
 // account's weekly, else its session, else the legacy hottest window (which is
 // all an older record, or a login with no `limits[]`, has).
-// → { kind, model, percent, resets_at, scope: 'model'|'account' } | null
+// → { kind, model, percent, resets_at, scope: 'model'|'account', forecast } | null
 // `scope` is what decides whether another model on the same login can help.
-export function binding(u, model = null) {
+// `forecast` is burn() for that same bucket, null whenever the sample gate
+// fails, and it rides this object everywhere the binding bucket already goes
+// (src/server.mjs puts it on each session as `capacity`), so the time figure on
+// the board costs no second endpoint.
+export function binding(u, model = null, nowS = Math.floor(Date.now() / 1000)) {
   const buckets = Array.isArray(u?.buckets) ? u.buckets.filter((b) => b && Number.isFinite(b.percent)) : []
   const pick = (list) => (list.length ? [...list].sort((a, b) => b.percent - a.percent)[0] : null)
   const want = model ? String(model).toLowerCase() : null
@@ -163,10 +222,12 @@ export function binding(u, model = null) {
     ?? (want ? pick(buckets.filter((x) => x.model === want)) : null)
     ?? pick(buckets.filter((x) => x.kind === 'weekly_all'))
     ?? pick(buckets.filter((x) => x.kind === 'session'))
-  if (b) return { kind: b.kind, model: b.model ?? null, percent: b.percent, resets_at: b.resets_at ?? null, scope: b.model ? 'model' : 'account' }
+  if (b) return { kind: b.kind, model: b.model ?? null, percent: b.percent, resets_at: b.resets_at ?? null, scope: b.model ? 'model' : 'account', forecast: burn(u, bucketKey(b), nowS) }
   const h = hottest(u ?? {})
   if (!h) return null
-  return { kind: h.window === '5h' ? 'five_hour' : 'seven_day', model: null, percent: h.pct, resets_at: h.resets_at ?? null, scope: 'account' }
+  // the legacy path: a record with no `buckets` has no ring under either window
+  // key either, so burn() answers null and the percentage stands alone.
+  return { kind: h.window === '5h' ? 'five_hour' : 'seven_day', model: null, percent: h.pct, resets_at: h.resets_at ?? null, scope: 'account', forecast: null }
 }
 
 // `scope: 'model'` walls one model family and leaves the login open, so a

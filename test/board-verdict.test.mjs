@@ -85,6 +85,10 @@ const CLAUDE_LIVE = () => acct({
   five_hour: { pct: 38, resets_at: nowS() + 3 * HOUR }, seven_day: { pct: 95, resets_at: nowS() + 40 * HOUR },
   buckets: [bucket('session', 38), bucket('weekly_all', 95), bucket('weekly_scoped', 63, { model: 'fable', is_active: true })],
 })
+// A.4 row 12: the binding bucket as src/server.mjs puts it on a session, with
+// the forecast burn() computed for that same bucket riding on it
+const CAP = (extra = {}) => ({ kind: 'weekly_scoped', model: 'fable', percent: 63, resets_at: nowS() + 40 * HOUR, scope: 'model', forecast: null, ...extra })
+const RATE = (secondsLeft, samples, spanS) => ({ seconds_left: secondsLeft, samples, span_s: spanS, rate_pct_per_h: 8 })
 const CODEX_WALLED = () => acct({ agent: 'codex', limited_until: nowS() + 29 * HOUR, limited_reason: 'usage_limit_exceeded', seven_day: { pct: 100, resets_at: nowS() + 29 * HOUR } })
 const AGY = () => acct({ agent: 'agy', stale: true, observed_at: null, updated_at: null, source: null })
 
@@ -165,6 +169,52 @@ const CASES = [
     subMatches: /^claude still has 53% of its week\. Hand off > claude\/opus keeps this terminal\.$/,
   },
   {
+    // A.5 row 4 and E rule 6: the time is an INFERENCE and never appears
+    // without the volume it was drawn from
+    name: 'the burn rate is known, and the bucket belongs to one model',
+    accounts: [acct({
+      live: 1,
+      buckets: [
+        bucket('weekly_all', 47), bucket('weekly_scoped', 63, { model: 'fable', is_active: true }),
+        bucket('weekly_scoped', 12, { model: 'opus' }), bucket('weekly_scoped', 30, { model: 'sonnet' }),
+      ],
+    })],
+    sessions: [session({ model: 'fable', capacity: CAP({ forecast: RATE(2 * HOUR + 40 * 60, 9, 4 * HOUR) }) })],
+    line: 'About 2h 40m of Fable left.',
+    sub: 'From 9 samples over 4h. Opus and Sonnet have their own buckets.',
+  },
+  {
+    name: 'the burn rate is known and the bucket belongs to the whole login',
+    accounts: [acct({ live: 1, buckets: [bucket('weekly_all', 88, { is_active: true })] })],
+    sessions: [session({ capacity: CAP({ kind: 'weekly_all', model: null, percent: 88, scope: 'account', forecast: RATE(2 * HOUR + 40 * 60, 9, 4 * HOUR) }) })],
+    line: 'About 2h 40m of claude left.',
+    sub: 'From 9 samples over 4h. Shared by every model.',
+  },
+  {
+    // an hour-and-minute form for eight minutes reads as an instrument; eight
+    // minutes is a sentence
+    name: 'under ten minutes the forecast is spelled out in minutes',
+    accounts: [acct({ live: 1, buckets: [bucket('weekly_scoped', 96, { model: 'fable', is_active: true }), bucket('weekly_scoped', 12, { model: 'opus' })] })],
+    sessions: [session({ model: 'fable', capacity: CAP({ percent: 96, forecast: RATE(8 * 60, 3, 11 * 60) }) })],
+    line: 'About 8 minutes of Fable left.',
+    sub: 'From 3 samples over 11m. Opus has its own bucket.',
+  },
+  {
+    name: 'past a day the forecast counts days and hours, not hours',
+    accounts: [acct({ live: 1, buckets: [bucket('weekly_scoped', 20, { model: 'fable', is_active: true })] })],
+    sessions: [session({ model: 'fable', capacity: CAP({ percent: 20, forecast: RATE(3 * 86400 + 5 * HOUR, 22, 9 * HOUR) }) })],
+    line: 'About 3d 5h of Fable left.',
+    sub: 'From 22 samples over 9h.',
+  },
+  {
+    // the gate is the whole point: a capacity with no forecast leaves the
+    // standing-percentage branches to do the talking
+    name: 'no forecast, so the branch under it still prints the percentage',
+    accounts: [CLAUDE_LIVE(), CODEX_WALLED()],
+    sessions: [session({ model: 'fable', capacity: CAP({ forecast: null }) })],
+    line: 'Fable is at 63% of its week, the only login open.',
+  },
+  {
     name: 'one login carries every live terminal',
     accounts: [CLAUDE_LIVE(), CODEX_WALLED()],
     sessions: [session(), session({ session_id: 's-1-claude-aa11' }), session({ session_id: 's-2-claude-bb22' })],
@@ -224,6 +274,8 @@ for (const c of CASES) {
   })
 }
 
+const LONG_MODEL = 'an-unreasonably-long-model-name-for-this-test'
+
 test('every branch stays under VERDICT_CH with hostile names, not just the fixture ones', () => {
   const long = 'claude/a-very-long-second-account-name-for-this-test'
   const repo = 'a-repository-with-an-unreasonably-long-checkout-name'
@@ -235,6 +287,10 @@ test('every branch stays under VERDICT_CH with hostile names, not just the fixtu
     [[CLAUDE_LIVE()], [session({ repo_name: repo, waiting: { type: 'idle_prompt', message: null, since: iso(9 * 3600_000) } })]],
     [[CLAUDE_LIVE(), acct({ agent: 'codex', label: long, live: 1, buckets: [bucket('weekly_all', 88, { is_active: true })] })],
       [session(), session({ agent: 'codex', session_id: 's-3-codex-cc33' })]],
+    // the forecast branch with a model name nobody would choose: the time is
+    // the fact, so the name is what gets dropped
+    [[acct({ label: long, live: 1, buckets: [bucket('weekly_scoped', 63, { model: LONG_MODEL, is_active: true })] })],
+      [session({ model: LONG_MODEL, capacity: CAP({ model: LONG_MODEL, forecast: RATE(2 * HOUR + 40 * 60, 9, 4 * HOUR) }) })]],
   ]
   for (const [accounts, sessions] of hostile) {
     const { line, sub } = B.verdictLines(accounts, sessions)
@@ -360,6 +416,30 @@ test('the capacity phrase on a row is the bucket that will stop THAT terminal', 
   assert.equal(B.capacityPhrase(session({ capacity: { kind: 'weekly_all', model: null, percent: 97, resets_at: nowS() + 40 * HOUR, scope: 'account' } })), '97% of the claude week')
   assert.equal(B.capacityPhrase(session({ capacity: { kind: 'session', model: null, percent: 29, resets_at: nowS() + HOUR, scope: 'account' } })), '29% of the claude 5-hour window')
   assert.equal(B.capacityPhrase(session({ capacity: null })), null, 'no bucket, no phrase: never a zero')
+})
+
+test('with a forecast the row prints the time and its volume, never the time alone', () => {
+  const withRate = session({ model: 'fable', capacity: CAP({ forecast: RATE(2 * HOUR + 40 * 60, 9, 4 * HOUR) }) })
+  assert.equal(B.capacityPhrase(withRate), 'about 2h 40m of fable left, from 9 samples over 4h')
+  const shared = session({ capacity: CAP({ kind: 'weekly_all', model: null, percent: 88, scope: 'account', forecast: RATE(2 * HOUR + 40 * 60, 9, 4 * HOUR) }) })
+  assert.equal(B.capacityPhrase(shared), 'about 2h 40m of claude left, from 9 samples over 4h')
+  const thin = session({ model: 'fable', capacity: CAP({ forecast: RATE(11 * 60, 3, 11 * 60) }) })
+  assert.equal(B.capacityPhrase(thin), 'about 11m of fable left, from 3 samples over 11m')
+  // E rule 6: under the gate the row is the percentage and the clock again
+  assert.equal(B.capacityPhrase(session({ model: 'fable', capacity: CAP({ forecast: null }) })), '63% of the fable week')
+})
+
+test('the strip token stays the measurement while the verdict carries the inference', () => {
+  const a = acct({ live: 1, buckets: [bucket('weekly_scoped', 63, { model: 'fable', is_active: true }), bucket('weekly_scoped', 12, { model: 'opus' })] })
+  const s = session({ model: 'fable', capacity: CAP({ forecast: RATE(2 * HOUR + 40 * 60, 9, 4 * HOUR) }) })
+  assert.equal(B.capFigure(a, B.bindingOf(a)), '63% fable week', 'the strip prints what was measured')
+  assert.equal(B.verdictLines([a], [s]).line, 'About 2h 40m of Fable left.', 'the time lives where the sample count can sit beside it')
+})
+
+test('a long model name costs the name, never a third line of 52px type', () => {
+  const a = acct({ live: 1, buckets: [bucket('weekly_scoped', 63, { model: LONG_MODEL, is_active: true })] })
+  const s = session({ model: LONG_MODEL, capacity: CAP({ model: LONG_MODEL, forecast: RATE(2 * HOUR + 40 * 60, 9, 4 * HOUR) }) })
+  assert.equal(B.verdictLines([a], [s]).line, 'About 2h 40m left.')
 })
 
 test('rank 3: a Notification wait is a human being waited on, and it raises the row', () => {
