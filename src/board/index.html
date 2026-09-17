@@ -39,8 +39,20 @@
     <p id="verdict-sub"></p>
   </section>
 
-  <section class="logins" id="accounts" aria-label="Logins"></section>
-  <p class="head-caption" id="head-caption">Times are local.</p>
+  <!-- Usage is a property of the work, not a region of its own. The strip is
+       one band: a token per login carrying the bucket that will actually stop
+       it. The panels are not rewritten, they move intact behind the disclosure
+       at the end of the strip, with every gauge, notch and spoken sentence. -->
+  <section class="capacity" aria-label="Capacity by login">
+    <div class="capacity-strip">
+      <div class="cap-tokens" id="capacity-tokens"></div>
+      <button type="button" class="btn btn-secondary disclosure cap-open" id="capacity-toggle" aria-expanded="false" aria-controls="capacity-drawer">Capacity and models &gt;</button>
+    </div>
+    <div class="drawer capacity-drawer" id="capacity-drawer" hidden>
+      <section class="logins" id="accounts" aria-label="Logins"></section>
+      <p class="head-caption" id="head-caption">Times are local.</p>
+    </div>
+  </section>
 
   <section class="region-terminals" aria-labelledby="terminals-head">
     <div class="section-head">

@@ -80,9 +80,22 @@ for (const r of rows) {
   })
 }
 
+// The two windows are what an older Leg record carries; `buckets` is what the
+// live `limits[]` array carries, and the shape here is the one verified off
+// the endpoint on 2026-09-17: a session bucket, an account-wide weekly, and a
+// model-scoped weekly the endpoint itself marks active. The board prints the
+// active one, which is the whole point: 95% is the login, 63% is what will
+// actually stop the work.
+const fiveHourReset = Math.floor((Date.now() + 3 * hour) / 1000)
+const weekReset = Math.floor((Date.now() + 40 * hour) / 1000)
 recordUsage('claude', 'default',
-  { five_hour: { pct: 38, resets_at: Math.floor((Date.now() + 3 * hour) / 1000) },
-    seven_day: { pct: 95, resets_at: Math.floor((Date.now() + 40 * hour) / 1000) } },
+  { five_hour: { pct: 38, resets_at: fiveHourReset },
+    seven_day: { pct: 95, resets_at: weekReset },
+    buckets: [
+      { kind: 'session', group: 'session', model: null, percent: 38, resets_at: fiveHourReset, is_active: false, severity: 'normal' },
+      { kind: 'weekly_all', group: 'weekly', model: null, percent: 95, resets_at: weekReset, is_active: false, severity: 'normal' },
+      { kind: 'weekly_scoped', group: 'weekly', model: 'fable', percent: 63, resets_at: weekReset, is_active: true, severity: 'normal' },
+    ] },
   'statusline', { observed_at: ago(2 * hour + 13 * min) })
 markLimited('codex', 'default', { resets_at: Math.floor((Date.now() + 29 * hour) / 1000), reason: 'limit', source: 'hook' })
 // agy publishes no usage figure, ever. Left unwritten on purpose.

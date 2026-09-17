@@ -205,10 +205,47 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .sched-status { color: var(--text-3); }
 
 /* ---- the verdict: the largest thing on the board is a sentence ---------- */
-.verdict { padding-block: 56px 56px; }
+/* 40/24 rather than 56/56, and a 17px sub rather than 21px: the verdict stays
+   the largest thing on the page and costs about 180px instead of 335, which is
+   what put the first terminal row a thousand pixels down. The 26ch measure is
+   the character budget's other half: 300 sampled sentences per length still
+   fit two 56.16px lines at 60 characters there, and sessions.js holds every
+   branch at 56. */
+.verdict { padding-block: 40px 24px; }
 .verdict h1 { font-size: var(--t-4); font-weight: var(--w-head); line-height: 1.08; letter-spacing: -.028em; max-width: 26ch; text-wrap: balance; }
-.verdict p { margin-top: 16px; font-size: var(--t-2); line-height: 1.5; color: var(--text-2); max-width: 54ch; text-wrap: pretty; }
+.verdict p { margin-top: 8px; font-size: var(--t-1); line-height: 1.5; color: var(--text-2); max-width: 54ch; text-wrap: pretty; }
 .verdict p:empty { display: none; }
+
+/* ---- the capacity strip: one band, one token per login ------------------ */
+/* The binding bucket and nothing else. The instrument is 120x6: enough to see
+   a login crossing its reserve at a glance, too small to compete with the
+   sentence above it. */
+.capacity { margin-bottom: 4px; }
+.capacity-strip { display: flex; align-items: center; gap: 12px 32px; flex-wrap: wrap; min-height: 44px; font-size: var(--t-0); }
+.cap-tokens { display: flex; align-items: center; gap: 12px 32px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
+.cap-token { display: inline-flex; align-items: center; gap: 10px; min-height: 24px; }
+.cap-name { font-weight: var(--w-head); color: var(--text-2); }
+.cap-name.id-claude { color: var(--id-claude); }
+.cap-name.id-codex { color: var(--id-codex); }
+.cap-name.id-agy { color: var(--id-agy); }
+.cap-name.id-grok { color: var(--id-grok); }
+.cap-name.id-copilot { color: var(--id-copilot); }
+.cap-name.id-fake { color: var(--id-fake); }
+.cap-track { position: relative; flex: none; width: 120px; height: 6px; background: var(--track); border-radius: 999px; box-shadow: var(--sink); overflow: hidden; }
+.cap-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--calm); }
+.cap-figure { color: var(--text-2); white-space: nowrap; }
+/* a login at its wall is the one place a word IS the failure, so it may carry
+   the colour; a percentage never does, the track carries that */
+.cap-figure.is-out { color: var(--danger-text); }
+.cap-figure--none { color: var(--text-3); }
+.cap-open { margin-left: auto; flex: none; }
+.capacity-drawer { margin-top: 16px; }
+
+/* the model rail on a panel head inside the drawer: a measured percentage, or
+   a wall in words, never one printed as the other */
+.model-rail { display: inline-flex; align-items: baseline; gap: 14px; flex-wrap: wrap; font-size: var(--t--1); color: var(--text-3); }
+.model-chip { white-space: nowrap; }
+.model-chip.is-out { color: var(--danger-text); }
 
 /* ---- panel: a raised object, not a drawn rectangle ---------------------- */
 .panel { position: relative; background: var(--e2); border: 1px solid var(--edge); border-radius: var(--r-panel); padding: 32px; box-shadow: var(--lift); }
@@ -252,7 +289,7 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .reading-sub--lead { margin-top: 22px; }
 
 /* ---- section heads ------------------------------------------------------ */
-.section-head { padding-block: 56px 20px; }
+.section-head { padding-block: 32px 16px; }
 .section-head h2 { font-size: var(--t-2); font-weight: var(--w-head); letter-spacing: -.012em; }
 .section-head .region-meta { margin-top: 8px; font-size: var(--t-0); color: var(--text-3); }
 .section-head--quiet { padding-block: 56px 16px; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
@@ -565,9 +602,18 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
    =========================================================================== */
 @media (max-width: 760px) {
   .wrap { --t-4: 2rem; --t-3: 1.75rem; --t-2: 1.1875rem; --t--1: 0.9375rem; }
-  .verdict { padding-block: 36px 32px; }
+  .verdict { padding-block: 32px 20px; }
   .verdict h1 { max-width: none; letter-spacing: -.02em; }
-  .verdict p { margin-top: 16px; }
+  .verdict p { margin-top: 12px; }
+  /* the tracks go and the tokens stack, one login per 24px line: at this width
+     120px of instrument costs the percentage its own line, and the percentage
+     with its state word carries the whole fact on its own */
+  .capacity-strip { display: block; }
+  .cap-tokens { display: block; }
+  .cap-token { display: flex; min-height: 24px; gap: 8px; }
+  .cap-track { display: none; }
+  .cap-figure { margin-left: auto; }
+  .cap-open { margin-left: 0; margin-top: 12px; }
   .panel { padding: 22px; border-radius: 14px; }
   .logins-pair { grid-template-columns: 1fr; }
   .gauge { gap: 14px; flex-wrap: wrap; }
@@ -579,8 +625,8 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   .gauge--noread::after { width: 68px; }
   .gauge-block + .gauge-block { margin-top: 22px; }
   code { font-size: 1em; }
-  .section-head { padding-block: 40px 16px; }
-  .section-head--quiet { padding-block: 40px 16px; }
+  .section-head { padding-block: 24px 16px; }
+  .section-head--quiet { padding-block: 24px 16px; }
   .term { padding: 22px; }
   .term-row { flex-direction: column; align-items: stretch; gap: 14px; }
   .term-clock { order: -1; width: auto; justify-content: flex-end; gap: 14px; }

@@ -139,6 +139,10 @@
   function optionLabel(a) { return a ? (a.account && a.account !== 'default' ? `${a.agent}/${a.account}` : a.agent) : 'none' }
   function idOf(agent) { return IDS.includes(agent) ? agent : 'fake' }
   const tail = (id) => String(id).split('-').slice(-2).join('-')
+  // `leg#7f3a`: the repo this terminal is in and the short id the row prints,
+  // which is how a human refers to it out loud and in the verdict.
+  const shortId = (s) => tail(s.session_id).replace(new RegExp(`^${s.agent || ''}-`), '')
+  const rowName = (s) => `${s.repo_name || s.agent || 'terminal'}#${shortId(s)}`
   const shared = () => Boolean(view && view.share && view.share.on)
   const isMine = (s) => Boolean(view && view.you && s.owner && view.you.name === s.owner)
 
@@ -252,6 +256,150 @@
     ])
   }
 
+  // ---- the binding bucket -------------------------------------------------
+  // The bucket that will actually stop the work: the one the endpoint marked
+  // active, else the highest percentage it reported, else the legacy hottest of
+  // the two windows, which is all an older record or a guest payload carries.
+  // Mirrors binding() in src/usage.mjs; the board cannot import from it.
+  const BUCKET_WORD = { weekly_scoped: 'week', weekly_all: 'week', session: 'session', spend: 'spend', seven_day: '7d', five_hour: '5h' }
+  function bindingOf(a) {
+    const buckets = Array.isArray(a && a.buckets) ? a.buckets.filter((b) => b && Number.isFinite(b.percent)) : []
+    const top = (l) => (l.length ? [...l].sort((x, y) => y.percent - x.percent)[0] : null)
+    const b = top(buckets.filter((x) => x.is_active)) || top(buckets)
+    if (b) return { kind: b.kind, model: b.model || null, percent: b.percent, resets_at: Number.isFinite(b.resets_at) ? b.resets_at : null, scope: b.model ? 'model' : 'account' }
+    const w = worstWindow(a)
+    if (!w || !Number.isFinite(w.pct)) return null
+    return { kind: a && a.seven_day === w ? 'seven_day' : 'five_hour', model: null, percent: w.pct, resets_at: Number.isFinite(w.resets_at) ? w.resets_at : null, scope: 'account' }
+  }
+  // the token's two words: `fable week`, `week`, `session`, `5h`
+  function bucketWord(b) { const word = BUCKET_WORD[b.kind] || b.kind; return b.model ? `${b.model} ${word}` : word }
+  // the same bucket inside a sentence: "63% of its week"
+  function windowPhrase(b) { return b.kind === 'session' ? 'its session' : b.kind === 'five_hour' ? 'its 5 hours' : 'its week' }
+  // the account's own window, ignoring any model bucket: what a same-login
+  // model rung still has to spend, and what an account wall would take away
+  function accountBucket(a) {
+    const flat = (Array.isArray(a && a.buckets) ? a.buckets : []).filter((b) => b && !b.model && Number.isFinite(b.percent))
+    const b = [...flat].sort((x, y) => y.percent - x.percent)[0]
+    if (b) return { kind: b.kind, model: null, percent: b.percent, resets_at: Number.isFinite(b.resets_at) ? b.resets_at : null, scope: 'account' }
+    const legacy = bindingOf(a)
+    return legacy && !legacy.model ? legacy : null
+  }
+  const Model = (m) => (m ? String(m).charAt(0).toUpperCase() + String(m).slice(1) : '')
+  // every model this login has published anything about. A model named by
+  // neither a bucket nor a wall is one Leg has never seen, and it is never
+  // guessed at.
+  function knownModels(a) {
+    const out = []
+    for (const b of (a && a.buckets) || []) if (b && b.model && !out.includes(b.model)) out.push(b.model)
+    for (const m of Object.keys((a && a.walls) || {})) if (!out.includes(m)) out.push(m)
+    return out
+  }
+  function wallFor(a, model) {
+    const w = a && a.walls ? a.walls[model] : null
+    return w && Number.isFinite(w.limited_until) && w.limited_until * 1000 > Date.now() ? w : null
+  }
+  function walledModels(a) { return knownModels(a).filter((m) => wallFor(a, m)) }
+  function openModels(a) { return knownModels(a).filter((m) => !wallFor(a, m)) }
+  function modelBucket(a, model) {
+    return (Array.isArray(a && a.buckets) ? a.buckets : []).find((b) => b && b.model === model && Number.isFinite(b.percent)) || null
+  }
+
+  // ---- the capacity strip -------------------------------------------------
+  // One 44px band under the verdict, one token per login, and nothing else:
+  // usage is a property of the work now, not a region of its own. The panels
+  // are not rewritten, they move behind the disclosure at the end of the strip.
+  // The token prints the BINDING bucket, because the board printing 47% for a
+  // login whose active bucket is at 63% is the defect this strip exists for.
+  function capFigure(a, b) {
+    // the same two refusals the gauge prints, in the strip's shorter grammar
+    if (a.shared === false) return 'not shared'
+    if (a.loading) return 'reading'
+    if (acctState(a) === 'walled') return Number.isFinite(a.limited_until) ? `back ${until(a.limited_until)}` : 'back when it resets'
+    // agy publishes no percentage, ever; a login that has one and has not
+    // reported it yet is a different fact and says so.
+    if (!b) return a.agent === 'agy' ? 'no figure' : 'no reading'
+    const observed = Date.parse(a.observed_at || a.updated_at || '')
+    // a reading older than the window it describes prints the clock it was
+    // taken at instead of a bucket word: it is a measurement, not a reading now
+    if (a.stale && a.agent !== 'agy' && Number.isFinite(observed)) return `${Math.round(b.percent)}% ${clockAt(observed)}`
+    return `${Math.round(b.percent)}% ${bucketWord(b)}`
+  }
+  // the spoken sentence carries what the visible token cannot: the reset, the
+  // source, the wall and the age of the reading, exactly as the gauges do.
+  function capValueText(a, b) {
+    const parts = []
+    if (a.shared === false) parts.push(`Usage for ${accountLabel(a)} is not shared with guests.`)
+    else if (!b) {
+      parts.push(a.agent === 'agy'
+        ? 'agy publishes no usage percentage, ever. Leg sees the wall when agy hits it.'
+        : `No reading has come back from ${accountLabel(a)} yet.`)
+    } else {
+      parts.push(`${Math.round(b.percent)} percent of ${b.model ? `the ${b.model} ${BUCKET_WORD[b.kind] || b.kind}` : windowPhrase(b)} used.`)
+      if (Number.isFinite(b.resets_at)) parts.push(`Resets at ${until(b.resets_at)}, in ${spoken(b.resets_at * 1000 - Date.now())}.`)
+    }
+    if (acctState(a) === 'walled') parts.push(`${accountLabel(a)} is at its wall until ${until(a.limited_until)}, in ${spoken(a.limited_until * 1000 - Date.now())}.`)
+    for (const m of walledModels(a)) parts.push(`${m} is out until ${until(wallFor(a, m).limited_until)}.`)
+    if (a.source) parts.push(`Source: ${a.source}.`)
+    const observed = Date.parse(a.observed_at || a.updated_at || '')
+    if (a.stale && a.agent !== 'agy' && Number.isFinite(observed)) parts.push(`Read at ${clockAt(observed)}, ${spoken(Date.now() - observed)} ago, stale.`)
+    return parts.join(' ')
+  }
+  function capToken(a) {
+    const id = idOf(a.agent)
+    const b = bindingOf(a)
+    const walled = acctState(a) === 'walled'
+    const pct = b ? Math.max(0, Math.min(100, Math.round(b.percent))) : null
+    const token = el('span', { class: 'cap-token' }, [
+      el('span', { class: `dot id-${id}`, 'aria-hidden': 'true' }),
+      el('span', { class: `cap-name id-${id}` }, [accountLabel(a)]),
+    ])
+    // no number, no instrument. A track with nothing in it is a reading of zero
+    // to anyone glancing at it, which is exactly what agy does not have.
+    if (pct !== null || walled) {
+      const stop = pct !== null && pct > 85 ? `${((85 / pct) * 100).toFixed(2)}%` : null
+      const fill = el('span', {
+        class: 'cap-fill',
+        style: walled ? 'width:100%;background:var(--danger)'
+          : stop ? `width:${pct}%;background:linear-gradient(to right,var(--id-${id}) 0 ${stop},var(--danger) ${stop} 100%)`
+            : `width:${pct}%;background:var(--id-${id})`,
+      })
+      // a walled login with no percentage is not a meter: 100 would be a number
+      // nobody measured. It keeps the track and carries the sentence instead.
+      const semantics = pct === null
+        ? { role: 'img', 'aria-label': `${accountLabel(a)} capacity. ${capValueText(a, b)}` }
+        : { role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': `${accountLabel(a)} capacity`, 'aria-valuetext': capValueText(a, b) }
+      token.appendChild(el('span', { class: 'cap-track', ...semantics }, [fill]))
+    }
+    // with no track the figure carries the whole sentence itself, the way the
+    // gauge's readout does when a window has never been read
+    const quiet = pct === null && !walled ? { role: 'img', 'aria-label': `${accountLabel(a)} capacity. ${capValueText(a, b)}` } : {}
+    token.appendChild(el('span', { class: `cap-figure${walled ? ' is-out' : ''}${pct === null && !walled ? ' cap-figure--none' : ''}`, ...quiet }, [capFigure(a, b)]))
+    return token
+  }
+  function capacityStrip(list) {
+    const box = document.getElementById('capacity-tokens')
+    if (!box) return
+    box.textContent = ''
+    for (const a of list) box.appendChild(capToken(a))
+  }
+
+  // The model rail, on the panel head inside the drawer: one chip per model
+  // this login has published a bucket or a wall for. A walled model says when
+  // it is back, in words, because a wall is attributed from wording and a
+  // percentage is measured, and one must never be printed as the other.
+  function modelRail(a) {
+    const models = knownModels(a)
+    if (!models.length) return null
+    const rail = el('span', { class: 'model-rail', 'aria-label': `${accountLabel(a)} models` })
+    for (const m of models) {
+      const wall = wallFor(a, m)
+      const b = modelBucket(a, m)
+      const text = wall ? `${m} out until ${until(wall.limited_until)}` : b ? `${m} ${Math.round(b.percent)}%` : m
+      rail.appendChild(el('span', { class: `model-chip${wall ? ' is-out' : ''}`, title: wall && wall.evidence ? wall.evidence : null }, [text]))
+    }
+    return rail
+  }
+
   // A login is a raised object, and how much surface it gets is the design
   // saying how much it matters. The login carrying the terminals gets the wide
   // lit panel with both of its windows drawn; a login with one fact to report
@@ -265,6 +413,8 @@
     panel.appendChild(el('div', { class: 'panel-head' }, [
       el('span', { class: 'who' }, [el('span', { class: `dot id-${id}` }), el('span', { class: `acct-name id-${id}` }, [accountLabel(a)])]),
       el('span', { class: 'who-note' }, [live]),
+      // one chip per model this login has published a bucket or a wall for
+      modelRail(a),
     ]))
 
     if (state === 'notshared' || state === 'loading') {
@@ -310,60 +460,202 @@
   }
 
   // The headline is the one fact that decides what happens next, said as a
-  // sentence. It is never the number that the panel under it already prints:
+  // sentence. It is never the number that the strip under it already prints:
   // the same figure in the two largest slots on the page is one fact taking up
   // two, which is what the rejected head did.
+  //
+  // VERDICT_CH is a MEASUREMENT, not a taste: at 1280 the verdict column is
+  // 26ch (891px) and 300 random sentences per length, drawn from this table's
+  // own vocabulary, still fit two 56.16px lines at 60 characters. 56 is that
+  // ceiling with four characters of slack for a longer login name, and
+  // test/board-verdict.test.mjs holds every branch under it.
+  const VERDICT_CH = 56
+  // the sub is two lines of 17px inside `max-width: 54ch`, which is about 120
+  // characters; clauses are added while they fit and dropped whole after that.
+  const SUB_CH = 120
+  // Each headline is written as a preferred form and shorter fallbacks, so a
+  // login called `claude/very-long-account` costs a clause, never a third line.
+  function headline(...forms) {
+    const real = forms.filter(Boolean)
+    for (const f of real) if (f.length <= VERDICT_CH) return f
+    const last = String(real[real.length - 1] || '')
+    const cut = last.slice(0, VERDICT_CH - 1)
+    const space = cut.lastIndexOf(' ')
+    return `${(space > 20 ? cut.slice(0, space) : cut).replace(/[,.;:]$/, '')}.`
+  }
+  function subLine(...parts) {
+    const out = []
+    for (const p of parts.filter(Boolean)) {
+      const next = out.concat(p).join(' ')
+      if (next.length <= SUB_CH) out.push(p)
+    }
+    return out.join(' ')
+  }
+
+  // A.5, top to bottom. A bucket whose state is unknown is never named, and
+  // "Measured Ns ago" appears only when the reading is actually stale.
   function verdictLines(list, sessions) {
-    const liveSessions = (sessions || []).filter((s) => s.active)
-    const withReading = list.filter((a) => worstWindow(a) && Number.isFinite(worstWindow(a).pct))
-    if (!list.length) return { line: 'Reading the logins.', sub: '' }
-
-    const walled = list.filter((a) => acctState(a) === 'walled')
-    const busiest = [...list].sort((x, y) => (y.live || 0) - (x.live || 0))[0]
-    const onOneLogin = liveSessions.length > 0 && new Set(liveSessions.map((s) => s.agent)).size === 1
-    const subject = onOneLogin ? list.find((a) => a.agent === liveSessions[0].agent) || busiest : closestToWall(list)
-    const w = subject ? worstWindow(subject) : null
-    const known = w && Number.isFinite(w.pct)
-    const left = known ? Math.max(0, 100 - Math.round(w.pct)) : null
-
-    let line
-    if (!liveSessions.length) {
-      line = walled.length
-        ? `Nothing is running, and ${walled.map(accountLabel).join(' and ')} ${walled.length === 1 ? 'is' : 'are'} at the wall.`
-        : 'Nothing is running.'
-    } else if (onOneLogin && known) {
-      // C's framing: one login, one point of failure. The number is what is
-      // LEFT, because that is the quantity the reader is deciding against.
-      // One terminal is not "all the terminal": the plural sentence is about
-      // everything riding on one login, and with a single terminal there is no
-      // "all" to make, so it says the plainer thing.
-      line = liveSessions.length === 1
-        ? `Your terminal is on ${accountLabel(subject)}, and ${accountLabel(subject)} has ${left}% left.`
-        : `All ${liveSessions.length} terminals are on ${accountLabel(subject)}, and ${accountLabel(subject)} has ${left}% left.`
-    } else if (known) {
-      line = `${accountLabel(subject)} has ${left}% left, and ${liveSessions.length} terminal${liveSessions.length === 1 ? ' is' : 's are'} working.`
-    } else {
-      line = `${liveSessions.length} terminal${liveSessions.length === 1 ? ' is' : 's are'} working.`
+    const accounts = (list || []).filter((a) => a && a.agent && !a.loading)
+    if (!accounts.length) return { line: 'Reading the logins.', sub: '' }
+    const live = (sessions || []).filter((s) => s.active)
+    const acctOf = (s) => accounts.find((a) => a.agent === s.agent && (a.account || 'default') === (s.account || 'default'))
+    const liveOn = (a) => live.filter((s) => acctOf(s) === a).length
+    const walled = accounts.filter((a) => acctState(a) === 'walled')
+    const carrying = accounts.filter((a) => liveOn(a) > 0)
+    const subject = (carrying.length ? closestToWall(carrying) : closestToWall(accounts)) || accounts[0]
+    const b = bindingOf(subject)
+    const other = (a) => accounts.filter((x) => x !== a)
+    const openElsewhere = other(subject).filter((a) => acctState(a) !== 'walled')
+    const leftOf = (bb) => Math.max(0, 100 - Math.round(bb.percent))
+    const figure = (a) => { const bb = bindingOf(a); return bb ? (bb.model ? `${accountLabel(a)} is at ${Math.round(bb.percent)}% of the ${Model(bb.model)} week.` : `${accountLabel(a)} is at ${Math.round(bb.percent)}% of ${windowPhrase(bb)}.`) : null }
+    const wallClause = (a) => (Number.isFinite(a.limited_until) ? `${accountLabel(a)} is at its limit until ${until(a.limited_until)}.` : `${accountLabel(a)} is at its limit.`)
+    const otherWalls = () => walled.filter((a) => a !== subject).map(wallClause).join(' ') || null
+    // a reading taken two hours ago with terminals running since is a floor,
+    // not a measurement, and the direction it is wrong in is the whole point
+    const staleClause = (a, bb) => {
+      const observed = Date.parse((a && (a.observed_at || a.updated_at)) || '')
+      if (!a || !a.stale || a.agent === 'agy' || !Number.isFinite(observed) || !bb) return null
+      const n = liveOn(a)
+      if (!n) return `Measured ${ago(Date.now() - observed)} ago.`
+      return `Measured ${ago(Date.now() - observed)} ago. ${n} terminal${n === 1 ? ' runs' : 's run'} on it, so the real figure is higher, never lower.`
     }
 
-    // A's staleness sentence. A reading taken two hours ago with terminals
-    // running since is a floor, not a measurement, and saying which direction
-    // it is wrong in is the whole point of printing the age.
-    const parts = []
-    const observed = subject ? Date.parse(subject.observed_at || subject.updated_at || '') : NaN
-    if (subject && subject.stale && subject.agent !== 'agy' && Number.isFinite(observed) && known) {
-      parts.push(liveSessions.length
-        ? `Measured ${ago(Date.now() - observed)} ago. ${liveSessions.length} terminal${liveSessions.length === 1 ? ' has' : 's have'} been running since, so the real figure is higher than ${Math.round(w.pct)} percent, never lower.`
-        : `Measured ${ago(Date.now() - observed)} ago.`)
+    // 1. a human is blocked. Attention is the scarcer thing, so it outranks
+    // usage. `waiting` carries {type, message, since} from the Notification
+    // hook (step 5); the older reset-waiting field on the same name carries
+    // {agent, account, resets_at} and is not this, so the shape is checked.
+    const blocked = live
+      .filter((s) => s.waiting && s.waiting.type && s.waiting.since && Number.isFinite(Date.parse(s.waiting.since)))
+      .sort((x, y) => Date.parse(x.waiting.since) - Date.parse(y.waiting.since))[0]
+    if (blocked) {
+      const who = rowName(blocked)
+      const waited = spoken(Date.now() - Date.parse(blocked.waiting.since))
+      const others = live.length - 1
+      return {
+        line: headline(`${who} has waited on you for ${waited}.`, `${who} has waited on you for ${ago(Date.now() - Date.parse(blocked.waiting.since))}.`, `${who} is waiting on you.`),
+        sub: subLine(
+          blocked.waiting.message ? `It asked to run ${String(blocked.waiting.message).slice(0, 80)}.` : null,
+          others > 0 ? `The other ${others === 1 ? 'terminal is' : `${others} terminals are`} still running.` : null,
+        ),
+      }
     }
-    for (const a of walled) {
-      if (a === subject) continue
-      parts.push(Number.isFinite(a.limited_until)
-        ? `${accountLabel(a)} is at the wall until ${until(a.limited_until)}.`
-        : `${accountLabel(a)} is at the wall.`)
+
+    // 2. every login at its limit: nothing anywhere can be started, whatever
+    // is running. Said before the per-login branches because it is the whole
+    // board's state, not this login's.
+    if (walled.length === accounts.length && walled.length > 1) {
+      const first = [...walled].sort((x, y) => (x.limited_until || Infinity) - (y.limited_until || Infinity))[0]
+      return {
+        line: headline(`Every login is at its limit; ${accountLabel(first)} is back first.`, `Every login is at its limit.`),
+        sub: subLine(Number.isFinite(first.limited_until) ? `${accountLabel(first)} returns ${until(first.limited_until)}.` : null),
+      }
     }
-    if (!withReading.length && liveSessions.length) parts.push('No login has reported a usage figure yet.')
-    return { line, sub: parts.slice(0, 2).join(' ') }
+
+    if (live.length) {
+      // 3. an account-scoped bucket binds, and this login has model rungs that
+      // therefore buy nothing. Only said where models are KNOWN: on a login
+      // with no model buckets there is no switch to warn anyone off.
+      if (b && b.scope === 'account' && knownModels(subject).length) {
+        const alt = openModels(subject)[0]
+        const next = openElsewhere[0]
+        return {
+          line: headline(`${accountLabel(subject)} has ${leftOf(b)}% left, shared by every model.`, `${accountLabel(subject)} has ${leftOf(b)}% left, for every model.`),
+          sub: subLine(
+            alt ? `Switching to ${alt} buys nothing.` : null,
+            next ? `Next off ${accountLabel(subject)}: ${accountLabel(next)}.` : 'Nothing else is open.',
+            staleClause(subject, b),
+          ),
+        }
+      }
+
+      // 4. a model bucket is walled while the account window is open: the one
+      // case where a same-login switch is the answer.
+      const out = acctState(subject) === 'walled' ? [] : walledModels(subject)
+      if (out.length) {
+        const wall = wallFor(subject, out[0])
+        const open = openModels(subject)[0]
+        const acct = accountBucket(subject)
+        return {
+          line: headline(
+            `${Model(out[0])} is out until ${until(wall.limited_until)}; ${open || 'no other model'} is open.`,
+            `${Model(out[0])} is out until ${until(wall.limited_until)}.`,
+          ),
+          sub: subLine(
+            acct ? `${accountLabel(subject)} still has ${leftOf(acct)}% of ${windowPhrase(acct)}.` : null,
+            open ? `Hand off > ${subject.agent}/${open} keeps this terminal.` : null,
+          ),
+        }
+      }
+
+      // 5. one login carries every live terminal: one login, one point of
+      // failure, and that is what the sentence says.
+      if (carrying.length === 1 && b) {
+        const who = b.model ? Model(b.model) : accountLabel(subject)
+        return {
+          line: headline(
+            `${who} is at ${Math.round(b.percent)}% of ${windowPhrase(b)}, the only login open.`,
+            `${who} is at ${Math.round(b.percent)}% of ${windowPhrase(b)}.`,
+          ),
+          sub: subLine(staleClause(subject, b), otherWalls()),
+        }
+      }
+
+      // 6. several logins carry work: name the one closest to a wall, and the
+      // volume, then put the next login's figure in the sub.
+      if (b) {
+        const second = other(subject).map(figure).filter(Boolean)[0]
+        return {
+          line: headline(
+            `${accountLabel(subject)} has ${leftOf(b)}% left, and ${live.length} terminal${live.length === 1 ? ' is' : 's are'} working.`,
+            `${accountLabel(subject)} has ${leftOf(b)}% left.`,
+          ),
+          sub: subLine(second, staleClause(subject, b), otherWalls()),
+        }
+      }
+
+      // live, and not one login has published a figure. Never a guess.
+      return {
+        line: headline(`${live.length} terminal${live.length === 1 ? ' is' : 's are'} working, and no login has a figure.`, `${live.length} terminal${live.length === 1 ? ' is' : 's are'} working.`),
+        sub: subLine(otherWalls(), 'No login has reported a usage figure yet.'),
+      }
+    }
+
+    // 7 to 9. nothing is running.
+    const bestOpen = openElsewhere.concat(acctState(subject) === 'walled' ? [] : [subject]).map((a) => ({ a, b: bindingOf(a) })).filter((x) => x.b).sort((x, y) => y.b.percent - x.b.percent)[0]
+    const openLine = bestOpen ? `${bestOpen.b.model ? Model(bestOpen.b.model) : accountLabel(bestOpen.a)} is at ${Math.round(bestOpen.b.percent)}% of ${windowPhrase(bestOpen.b)}.` : null
+    if (walled.length) {
+      const first = [...walled].sort((x, y) => (x.limited_until || Infinity) - (y.limited_until || Infinity))[0]
+      return {
+        line: headline(
+          `Nothing is running. ${accountLabel(first)} is back ${until(first.limited_until)}.`,
+          `Nothing is running. ${accountLabel(first)} is at its limit.`,
+        ),
+        sub: subLine(openLine),
+      }
+    }
+    if (bestOpen) return { line: headline(`Nothing is running. ${openLine}`, 'Nothing is running.'), sub: '' }
+    return { line: 'Nothing is running, and no login has a figure.', sub: '' }
+  }
+
+  // The login panels are behind one disclosure now, and whether it is open is
+  // the reader's decision, kept across reloads. localStorage throws in a
+  // private window and on a board opened from a file, so it is never load
+  // bearing: the strip and the panels both render either way.
+  const CAP_KEY = 'legCapacityOpen'
+  let capacityOpen = (() => { try { return localStorage.getItem(CAP_KEY) === '1' } catch { return false } })()
+  function renderCapacityToggle() {
+    const btn = document.getElementById('capacity-toggle')
+    const drawer = document.getElementById('capacity-drawer')
+    if (btn) {
+      btn.setAttribute('aria-expanded', capacityOpen ? 'true' : 'false')
+      btn.textContent = capacityOpen ? 'Hide capacity and models' : 'Capacity and models >'
+    }
+    if (drawer) drawer.hidden = !capacityOpen
+  }
+  function toggleCapacity() {
+    capacityOpen = !capacityOpen
+    try { localStorage.setItem(CAP_KEY, capacityOpen ? '1' : '0') } catch { /* private window: the drawer still opens, it just does not remember */ }
+    renderCapacityToggle()
   }
 
   // 6.1.5, all eight states. The walled state is an ADDITIONAL state of the
@@ -380,6 +672,9 @@
     const p = document.getElementById('verdict-sub')
     if (h1) h1.textContent = line
     if (p) p.textContent = sub
+    // the strip is the only usage on screen until the reader opens the drawer
+    capacityStrip(list)
+    renderCapacityToggle()
 
     if (!list.length) return
     // Size encodes importance. The login the terminals are on gets the wide lit
@@ -1384,7 +1679,22 @@
     const verdict = !list.length ? 'nothing is running'
       : waiting ? `${running} running, ${waiting} waiting on you`
         : `${running} running, nothing is waiting on you`
-    meta.textContent = `${verdict}${landed ? `, last landed ${clockAt(landed)}` : ''}`
+    meta.textContent = `${verdict}${shareClause(list)}${landed ? `, last landed ${clockAt(landed)}` : ''}`
+  }
+
+  // A.7: a fact true of every row is a property of the region and is said once,
+  // here. Per-row usage is per MODEL, which is real; the reader who adds three
+  // rows' figures together is stopped by this clause and by nothing else.
+  function shareClause(list) {
+    const groups = new Map()
+    for (const s of list.filter((x) => x.active)) {
+      const key = `${s.agent}/${s.account || 'default'}`
+      groups.set(key, (groups.get(key) || 0) + 1)
+    }
+    const [key, n] = [...groups.entries()].sort((x, y) => y[1] - x[1])[0] || []
+    if (!n || n < 2) return ''
+    const label = key.endsWith('/default') ? key.slice(0, -'/default'.length) : key
+    return `, ${n} share the ${label} login`
   }
 
   // A fact that is true of every terminal on the board is a property of the
@@ -1618,6 +1928,12 @@
   // `baton:sessions` alias for every push; this file had been registered on
   // `leg:sessions` twice and on the alias once, so one push rebuilt the entire
   // terminals grid three times over.
+  // The verdict is a pure function of the payload, and its character budget is
+  // a measurement, so test/board-verdict.test.mjs drives the branches directly
+  // through this seam. In a browser there is no `module`, and nothing here
+  // depends on it. board-updates.test.mjs uses the same pattern in board.js.
+  if (typeof module !== 'undefined') module.exports = { verdictLines, VERDICT_CH, SUB_CH, bindingOf, capFigure, capToken, shareClause, headline }
+
   window.addEventListener('leg:sessions', (e) => render(e.detail))
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return
@@ -1626,6 +1942,8 @@
   })
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('default-order-save')?.addEventListener('click', saveDefaultOrder)
+    document.getElementById('capacity-toggle')?.addEventListener('click', toggleCapacity)
+    renderCapacityToggle()
     renderLoadingHead()
     refresh()
     setInterval(tickElapsed, 1000)

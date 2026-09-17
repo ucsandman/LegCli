@@ -2,7 +2,8 @@
 
 For anyone using the Leg board day to day: what every element means and when
 it shows up. The board is one page, read top to bottom: **the verdict** (one
-sentence saying what to do next), **the logins** (one panel each), **Terminals**
+sentence saying what to do next), **the capacity strip** (one token per login,
+with the login panels behind its disclosure), **Terminals**
 (one row each), **the ledger** (finished terminals, what landed, background
 tasks, as three counts that open), then **Settings**. Start a session
 (`leg claude`) or the background-task board (`npm start`), see
@@ -41,6 +42,14 @@ demo-5-done.png            done, both legs on the chain
 The five `demo-*.png` are one run of the sequence in [DEMO.md](DEMO.md), all at
 1280 px.
 
+**Stale, as of 2026-09-17:** every shot above the first terminal row shows the
+old top of the board (a 56px verdict over a column of login panels) rather than
+the capacity strip and its drawer. `terminals-1280.png`, `board-400px.png`,
+`board-details-open.png`, `share-owner-1280.png` and `share-guest-1280.png` are
+the ones to retake; the terminal rows, the floor and the card shots are
+unchanged. Retake them with the commands below rather than trusting the top
+band of any picture in this directory.
+
 To retake one, seed a board with the shape a real one has and drive it to the
 state the shot needs:
 
@@ -60,35 +69,85 @@ rows while the real screen showed 400px.
 
 ## The verdict and the logins
 
-`src/board/sessions.js` draws both, from the `accounts` array of
+`src/board/sessions.js` draws all of it, from the `accounts` array of
 `GET /api/sessions` and the sessions beside it.
 
 **The verdict** is the largest thing on the page and it is a sentence, not a
 number. It names the one fact that decides what happens next:
 
 ```
-All 4 terminals are on claude, and claude has 5% left.
+Fable is at 63% of its week, the only login open.
 ```
 
-One login carrying every terminal is one point of failure, so that is what the
-sentence says. With the terminals spread across logins it names the one closest
-to a wall instead; with nothing running it says so, and names any login that is
-walled. The number it prints is what is **left**, because that is the quantity
-you are deciding against.
+The sentence comes from a branch table with a fixed precedence, and the order
+is what the table is for. A human waiting on a terminal outranks every usage
+figure, because attention is the scarcer thing. Then a login whose whole
+account is nearly spent (`claude has 3% left, shared by every model.`), because
+no model switch can help there. Then a single model at its wall with the login
+still open (`Fable is out until 9:14 PM; opus is open.`), which is the one case
+where a same-login switch is the answer. Then one login carrying every
+terminal, several logins carrying work, and the quiet states: nothing running,
+everything walled, and no figure anywhere. There is always a sentence.
+
+The headline is capped at **56 characters**, and that number is a measurement,
+not a preference: at 1280 the verdict column is 26ch and 300 sampled sentences
+per length still fit two 52px lines at 60 characters, so 56 is that ceiling
+with slack for a long login name. `test/board-verdict.test.mjs` holds every
+branch under it, including branches fed deliberately long repository and
+account names. A headline that wrapped to three lines is what put a thousand
+pixels between the top of the page and the first terminal row.
 
 Under it, one line carrying the age of the reading and which direction it is
 wrong in:
 
 ```
-Measured 2h 13m ago. 4 terminals have been running since, so the real figure is
-higher than 95 percent, never lower.
+Measured 2h 13m ago. 4 terminals run on it, so the real figure is higher, never
+lower.
 ```
 
 A reading taken two hours ago is a floor, not a measurement, and saying so is
 the entire reason to print its age. Any login at a wall other than the one in
 the headline is named on the same line.
 
-**The logins** sit under the verdict, one panel each, and how much surface a
+**The capacity strip** is the band under the verdict: one token per login, a
+dot in its identity colour, its name, a 120 by 6 track and one figure. The
+figure is the **binding** bucket, the one that will actually stop the work:
+the bucket the endpoint itself marks active, else the highest percentage it
+reported, else the hottest of the two legacy windows. That distinction is the
+reason the strip exists. A login whose weekly account window reads 95% and
+whose active Fable bucket reads 63% is stopped by the 63, and the board used to
+print the 95.
+
+```
+claude |=======---| 63% fable week      codex |==========| back Sat 10:11 PM
+agy    no figure                        grok  no reading
+```
+
+- `63% fable week` is a fresh reading with its bucket word.
+- `100% Tue 9:55 AM` is a reading older than five minutes: the percentage with
+  the clock it was taken at, because it describes a moment, not now.
+- `back Sat 10:11 PM` is a login at its wall. The track fills in the wall
+  colour and the words carry the state, which is the one place on the board a
+  word may wear a severity colour: the word is itself the failure.
+- `no figure` is agy, which publishes no percentage, ever. **No track is
+  drawn.** An empty track reads as a measurement of zero.
+- `no reading` is a login that has a window and has never reported it.
+- `not shared` is what a guest sees: usage figures are the owner's.
+
+Each track is a `meter` with an `aria-valuetext` carrying the percentage, the
+reset, the source, any wall and the age of the reading, the same sentence the
+gauges carry. A login with no percentage is not a `meter` at all, because
+`aria-valuenow` would have to be a number nobody measured.
+
+**`Capacity and models >`**, at the end of the strip, opens a drawer holding
+the login panels unchanged, plus a rail of model chips on each panel head:
+`fable 63%` for a measured bucket, `fable out until 9:14 PM` for a model at its
+wall, and a bare model name where Leg has a name but no figure. A percentage is
+measured and a wall is attributed from wording, so the two are never printed as
+each other. The drawer remembers whether you left it open. The
+`Times are local.` caption lives inside it.
+
+**The login panels**, in that drawer, are one per login, and how much surface a
 panel gets is the design saying how much it matters:
 
 - The login carrying the terminals gets a wide panel, lit one step brighter than
@@ -113,7 +172,7 @@ one it does not have.
 Nothing here is on hover. A screen reader gets the whole answer from each
 track's `aria-valuetext`, including the reset, the source and the staleness; a
 window with no value is not a `meter` at all and carries the same sentence as
-its label. The caption under the logins reads `Times are local.`
+its label. The caption at the foot of the drawer reads `Times are local.`
 
 For Codex, the board reads the app-server's read-only
 `account/rateLimits/read` response every 60 seconds and maps its 300- and
@@ -131,7 +190,11 @@ within a second of the agent's first turn.`
 
 The region head carries one verdict with its volume: `3 running, 2 waiting on
 you`, or `3 running, nothing is waiting on you`, or `nothing is running`, with
-`, last landed 11:02 PM` appended when a terminal on the page has landed.
+`, 3 share the claude login` when two or more live rows are on one login, and
+`, last landed 11:02 PM` appended when a terminal on the page has landed. The
+share clause is the only place per-login burn is addressed: a figure on a row
+is per model, which is real, and the reader who would add three rows' figures
+together is stopped here, once, at the region.
 
 ### Terminal row
 

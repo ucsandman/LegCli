@@ -201,39 +201,30 @@
   <div class="wrap">
     <div class="cols rev" style="margin-bottom: 40px">
       <h2 id="board-h">One page that says what to do next, in a sentence.</h2>
-      <p>The biggest thing on the board is not a number, it is the finding: which login your terminals are all on, and how much of it is left. Under it, each login is a panel sized by how much it matters, the one carrying the work gets the instrument, the ones with a single fact get a line. Each terminal is one row: what it is doing, where, how long, and the buttons that apply to it. Finished terminals and what landed sit at the bottom as counts you can open, because they are history.</p>
+      <p>The biggest thing on the board is not a number, it is the finding: which login your terminals are all on, and how much of it is left. Under it, one band with a token per login, carrying the bucket that will actually stop the work, and a button that opens the full panels and the per-model figures when you want them. Each terminal is one row: what it is doing, where, how long, and the buttons that apply to it. Finished terminals and what landed sit at the bottom as counts you can open, because they are history.</p>
     </div>
 
     <figure class="recreated">
-      <div class="board" role="img" aria-label="The Leg board: a headline reading that all four terminals are on claude and claude has five percent left, a claude panel showing 95 percent of the 7 day window used, codex at the wall, agy publishing no figure, four terminal rows, and counts for finished and landed work">
-        <p class="rc-verdict">All 4 terminals are on claude, and claude has 5% left.</p>
-        <p class="rc-sub">Measured 2h 13m ago. Four terminals have been running since, so the real figure is higher than 95 percent, never lower.</p>
+      <div class="board" role="img" aria-label="The Leg board: a headline reading that Fable is at 63 percent of its week and is the only login open, a capacity strip with one token per login (claude at 63 percent of the Fable week, codex back Saturday 10:11 PM, agy with no figure), a button reading Capacity and models, four terminal rows, and counts for finished and landed work">
+        <p class="rc-verdict">Fable is at 63% of its week, the only login open.</p>
+        <p class="rc-sub">Measured 41s ago. 3 terminals run on it, so the real figure is higher, never lower. codex is at its limit until Saturday 10:11 PM.</p>
 
-        <div class="rc-logins">
-          <div class="rc-panel rc-lit">
-            <div class="rc-head"><span class="rc-who"><i class="rc-dot claude"></i>claude</span><span class="rc-note">4 terminals working</span></div>
-            <div class="rc-gauge">
-              <span class="rc-label">7 day</span>
-              <span class="rc-track"><i class="claude" style="--p:95%;--stop:89.5%"></i><u style="left:85%"></u></span>
-              <span class="rc-read">95%</span>
-            </div>
-            <div class="rc-gauge rc-minor">
-              <span class="rc-label">5 hour</span>
-              <span class="rc-track"><i class="claude" style="--p:38%;--stop:100%"></i><u style="left:85%"></u></span>
-              <span class="rc-read">38%</span>
-            </div>
-          </div>
-          <div class="rc-pair">
-            <div class="rc-panel">
-              <div class="rc-head"><span class="rc-who"><i class="rc-dot codex"></i>codex</span><span class="rc-note">no terminals</span></div>
-              <p class="rc-reading">At the wall</p>
-              <p class="rc-readsub">Back Saturday 10:11 PM. Nothing runs on codex until then.</p>
-            </div>
-            <div class="rc-panel">
-              <div class="rc-head"><span class="rc-who"><i class="rc-dot agy"></i>agy</span><span class="rc-note">no terminals</span></div>
-              <p class="rc-readsub rc-lead">agy publishes no usage figure, ever. Leg shows its terminals and their elapsed time instead.</p>
-            </div>
-          </div>
+        <div class="rc-strip">
+          <span class="rc-cap">
+            <i class="rc-dot claude"></i><b class="rc-capname claude">claude</b>
+            <span class="rc-captrack"><i class="claude" style="--p:63%;--stop:100%"></i></span>
+            <span class="rc-capfig">63% fable week</span>
+          </span>
+          <span class="rc-cap">
+            <i class="rc-dot codex"></i><b class="rc-capname codex">codex</b>
+            <span class="rc-captrack"><i class="out" style="--p:100%;--stop:0%"></i></span>
+            <span class="rc-capfig rc-out">back Sat 10:11 PM</span>
+          </span>
+          <span class="rc-cap">
+            <i class="rc-dot agy"></i><b class="rc-capname agy">agy</b>
+            <span class="rc-capfig rc-quiet">no figure</span>
+          </span>
+          <span class="rc-open">Capacity and models &gt;</span>
         </div>
 
         <div class="rc-terms">

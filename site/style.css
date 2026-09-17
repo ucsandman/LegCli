@@ -356,6 +356,22 @@ table.reads .sw { display: inline-block; width: 9px; height: 9px; border-radius:
 .rc-verdict { font-size: clamp(1.4rem, 2.6vw, 2.125rem); font-weight: 700; line-height: 1.12; letter-spacing: -0.022em; max-width: 24ch; }
 .rc-sub { margin-top: 12px; font-size: 15px; line-height: 1.5; color: var(--on-blue-muted); max-width: 56ch; }
 
+/* the capacity strip: one band under the verdict, one token per login, the
+   bucket that will actually stop the work and nothing else. The login panels
+   are behind the disclosure at its end, which is where the board keeps them. */
+.rc-strip { margin-top: 22px; display: flex; align-items: center; gap: 10px 26px; flex-wrap: wrap; font-size: 15px; }
+.rc-cap { display: inline-flex; align-items: center; gap: 9px; }
+.rc-capname { font-weight: 700; }
+.rc-capname.claude { color: var(--claude); }
+.rc-capname.codex { color: var(--codex); }
+.rc-capname.agy { color: var(--agy); }
+.rc-captrack { position: relative; flex: none; width: 120px; height: 6px; background: var(--track); border-radius: 999px; box-shadow: inset 0 1px 2px rgba(0,0,0,.45); overflow: hidden; }
+.rc-captrack i { position: absolute; inset: 0 auto 0 0; width: var(--p); border-radius: 999px; background: linear-gradient(to right, var(--claude) 0 var(--stop), var(--bad) var(--stop) 100%); }
+.rc-capfig { color: var(--on-blue-muted); white-space: nowrap; }
+.rc-out { color: var(--bad-text); }
+.rc-quiet { color: var(--on-blue-faint); }
+.rc-open { margin-left: auto; padding: 8px 14px; border: 1px solid var(--control-edge); border-radius: var(--r-control); background: var(--e3); font-weight: 700; font-size: 14px; white-space: nowrap; }
+
 .rc-logins { margin-top: 28px; display: grid; gap: 14px; }
 .rc-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
 .rc-panel {
