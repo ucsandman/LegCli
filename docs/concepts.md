@@ -298,8 +298,54 @@ working; `leg share rotate <name>` replaces one.
 
 ## Cards, stations and pipelines
 
-Everything from here down is the v0.1 pipeline: headless agents in a git
-worktree, one per card. It has not changed since 0.2.0 and is not the way in.
+A **card is a terminal you are not sitting at.** It has the same register
+(state, where, model), the same one sentence, the same buttons, the same
+fallback ladder and the same hand-off bundle as a terminal. Two differences
+are real, and the board prints both: a card runs `-p --output-format json`,
+which says nothing until the leg exits, so its sentence reads `no message
+until this leg ends, started 11:04 PM`; and it never waits on a permission
+prompt, because its permissions are decided before it starts.
+
+Liveness decides where a card is drawn. A card in `backlog`, `queued`,
+`running`, `handing_off`, `needs_approval`, `waiting_human` or `paused` is a
+row in the Background panel under Terminals. A card in `done`, `failed` or
+`killed` is one line in the ledger: `3 finished cards, 2 done, 1 failed, last
+11:02 PM`. Ten finished cards are one row, not eleven.
+
+A live card's row carries a **work stat**, and only the parts of it that were
+measured: `4 files, +212 -18, tests green 6m ago`. The diff comes from `git
+diff --shortstat <trunk>..HEAD` run in the card's own worktree; the test and
+land verdicts come from that card's ledger. A part that was not measured is
+left off, never estimated.
+
+### A terminal becomes a card, and a card becomes a terminal
+
+`End, and keep going as a card` (the second verb on a terminal's End confirm
+row, `POST /api/sessions/<id>/end-as-card`) is for "I have to leave, keep
+going". It writes the terminal's hand-off bundle at the path every hand-off
+uses, creates a card whose task is the terminal's prompt plus `Continue from
+the bundle at <path>.`, and then ends the terminal exactly the way End does.
+The card **continues in the terminal's own worktree** rather than a fresh one:
+two worktrees on one branch is a conflict machine, and the card carries
+`worktree_adopted: true` so no later run cuts a second one over the top. Its
+chain starts at the rung the terminal was standing on, not at the top of the
+ladder, and `lineage.from` names the terminal it came from.
+
+`Take over` in a card's expansion (`POST /api/cards/<id>/take-over`) is the way
+back. It pauses the card, which kills its child and writes its bundle, then
+hands back one command:
+
+```
+leg claude --resume-card card-20260917-2234-add-the-audit-csv-export
+```
+
+That opens an ordinary interactive terminal in the card's worktree, primed
+from the card's bundle, with `lineage.from` naming the card. This is the one
+place Leg hands a human a command to paste, because a terminal cannot be
+opened from a browser tab, and the board says so on the line above it.
+
+Everything from here down is the v0.1 pipeline mechanism: headless agents in a
+git worktree, one per card.
 
 A **card** is one task moving through a **pipeline**: an ordered list of
 **stations**. A station has a `kind`:
@@ -425,7 +471,9 @@ Alongside raw state, Leg supports an agent-maintained judgment record in `.leg/S
 ## Worktrees
 
 Every card runs in its own git worktree: `<repo>/.leg-worktrees/<card-id>`
-on branch `leg/<card-id>` (`src/worktree.mjs`). The repo root is never
+on branch `leg/<card-id>` (`src/worktree.mjs`), with one exception: a card born
+from `End, and keep going as a card` adopts the terminal's worktree and works
+there, exactly where the terminal stopped. The repo root is never
 touched by an agent directly. Every git call sets `MSYS_NO_PATHCONV=1` so
 Git Bash on Windows does not rewrite absolute path arguments. Leg never
 pushes, opens a remote, or removes a path outside

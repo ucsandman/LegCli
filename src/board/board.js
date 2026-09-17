@@ -33,6 +33,11 @@
     needs_approval: 0, waiting_human: 0, failed: 1, killed: 1, running: 2,
     handing_off: 2, paused: 3, queued: 4, backlog: 5, done: 6,
   }
+  // C.1: liveness decides the surface. A live card is a row in the Background
+  // panel; a finished one collapses into the one ledger line.
+  const LIVE_STATUSES = ['backlog', 'queued', 'running', 'handing_off', 'needs_approval', 'waiting_human', 'paused']
+  const FINISHED_STATUSES = ['done', 'failed', 'killed']
+  const isLive = (card) => LIVE_STATUSES.includes(card.status)
   // 6.5 G10: the button order is fixed and never reflows by availability
   const ACTION_ORDER = ['approve', 'enqueue', 'resume', 'pause', 'handoff_now', 'rerun', 'reassign', 'kill']
   const ACTION_LABELS = {
@@ -101,6 +106,10 @@
     healthKnown: false,
     bindKnown: false,
     lastHello: null,
+    // C.2: the one-line entry infers its repo from the most recently focused
+    // terminal, published by sessions.js on the leg:sessions window event.
+    sessions: [],
+    preferences: null,
   }
   // a card push while an agent writes its log only moves these two
   const VOLATILE_CARD_FIELDS = ['last_event', 'elapsed_ms']
@@ -301,6 +310,18 @@
     window.dispatchEvent(new CustomEvent('baton:sessions', { detail }))
   }
 
+  // the entry line's repo inference reads the latest sessions payload without
+  // owning the terminals region: sessions.js still renders it, this file only
+  // keeps a copy for "the most recently focused terminal's repo". Guarded the
+  // same way window.legMessage is above: the pure-logic test harness passes a
+  // window stub with no addEventListener at all.
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('leg:sessions', (e) => {
+      state.sessions = (e.detail && e.detail.sessions) || []
+      renderEntryLine()
+    })
+  }
+
   function connectSse() {
     if (state.es) { try { state.es.close() } catch { /* ignore */ } }
     const request = ++state.sseRequest
@@ -416,60 +437,15 @@
     }
   }
 
-  // ---- 6.12 step 8: one row per card, no columns ----
-  // Background tasks are the third ledger cell: a count, a line of detail and a
-  // disclosure, the same shape as finished terminals and what landed. Nothing
-  // headless is what the board is for, so the rows live behind the button.
+  // ---- 6.12 step 6: liveness split, cards reborn ----
+  // C.1: a live card is a row in the Background panel, right under Terminals.
+  // A finished one falls into one ledger cell. `cardsOpen` now gates the
+  // finished-cards drawer, not a background-tasks drawer: there is no drawer
+  // for live cards, they are always on the page.
   let cardsOpen = false
   function toggleEmptyState() {
     const empty = document.getElementById('empty-state')
-    const list = document.getElementById('columns')
-    const panel = document.getElementById('cards-drawer')
-    const hasCards = state.cards.size > 0
-    empty.hidden = hasCards
-    list.hidden = !hasCards
-    if (panel) panel.hidden = !(hasCards && cardsOpen)
-  }
-
-  function countCards(...statuses) {
-    let n = 0
-    for (const c of state.cards.values()) if (statuses.includes(c.status)) n += 1
-    return n
-  }
-
-  // G14: a verdict carries its volume
-  function cardsMeta() {
-    const total = state.cards.size
-    if (!total) return ''
-    const running = countCards('running', 'handing_off')
-    const queued = countCards('queued')
-    const backlog = countCards('backlog')
-    const waiting = countCards('waiting_human', 'needs_approval')
-    const finished = countCards('done', 'failed', 'killed')
-    const parts = []
-    if (running) parts.push(`${running} running`)
-    if (queued) parts.push(`${queued} queued`)
-    if (backlog) parts.push(`${backlog} in backlog`)
-    if (waiting) parts.push(`${waiting} waiting on you`)
-    if (finished) parts.push(`${finished} finished`)
-    return parts.length ? parts.join(', ') : `${total} cards, nothing is running`
-  }
-
-  function renderCardsMeta() {
-    const meta = document.querySelector('#board .region-meta')
-    const head = document.getElementById('cards-head')
-    const slot = document.querySelector('#board .ledger-actions')
-    const total = state.cards.size
-    if (meta) meta.textContent = total ? cardsMeta() : 'Nothing is queued. Leg starts the next login only when a terminal hands off.'
-    if (head) head.textContent = total ? `${total} background task${total === 1 ? '' : 's'}` : 'No background tasks'
-    if (!slot) return
-    const existing = document.getElementById('cards-toggle')
-    if (!total) { if (existing) existing.remove(); return }
-    const label = cardsOpen ? `Hide the ${total}` : `View ${total} card${total === 1 ? '' : 's'}`
-    if (existing) { existing.textContent = label; existing.setAttribute('aria-expanded', cardsOpen ? 'true' : 'false'); return }
-    const btn = el('button', { type: 'button', class: 'btn btn-secondary', id: 'cards-toggle', 'aria-expanded': cardsOpen ? 'true' : 'false', 'aria-controls': 'cards-drawer' }, [label])
-    btn.addEventListener('click', () => { cardsOpen = !cardsOpen; toggleEmptyState(); renderCardsMeta() })
-    slot.appendChild(btn)
+    if (empty) empty.hidden = state.cards.size > 0
   }
 
   function rowRank(card) {
@@ -487,11 +463,102 @@
     return [...state.cards.values()].sort((a, b) => rowRank(a) - rowRank(b) || startedAt(a) - startedAt(b))
   }
 
+  function liveCards() { return orderedCards().filter((c) => isLive(c)) }
+
+  // C.5: finished cards, newest first, for the ledger's [View] drawer.
+  function finishedCards() {
+    return [...state.cards.values()]
+      .filter((c) => FINISHED_STATUSES.includes(c.status))
+      .sort((a, b) => (Date.parse(b.updated_at) || 0) - (Date.parse(a.updated_at) || 0))
+  }
+
+  // C.5: "1 running, 1 waiting on you", the same predicate as needsYou on the
+  // terminals region. A zero clause is omitted rather than printed as 0.
+  function backgroundMeta(live) {
+    const running = live.filter((c) => ['running', 'handing_off'].includes(c.status)).length
+    const waiting = live.filter((c) => ['needs_approval', 'waiting_human'].includes(c.status)).length
+    const parts = []
+    if (running) parts.push(`${running} running`)
+    if (waiting) parts.push(`${waiting} waiting on you`)
+    return parts.join(', ')
+  }
+
+  function renderBackgroundRegion(live) {
+    const section = document.getElementById('background')
+    if (section) section.hidden = live.length === 0
+    const meta = document.querySelector('#background .region-meta')
+    if (meta) meta.textContent = backgroundMeta(live)
+  }
+
+  // C.1, C.5: "3 finished cards, 2 done, 1 failed, last 11:02 PM", one line,
+  // never a count of the live cards (they are their own region now).
+  function renderFinishedLedger() {
+    const finished = finishedCards()
+    const head = document.getElementById('cards-head')
+    const meta = document.querySelector('#board .region-meta')
+    if (head) {
+      if (!finished.length) head.textContent = 'No finished cards'
+      else {
+        const done = finished.filter((c) => c.status === 'done').length
+        const failed = finished.filter((c) => c.status === 'failed').length
+        const killed = finished.filter((c) => c.status === 'killed').length
+        const parts = []
+        if (done) parts.push(`${done} done`)
+        if (failed) parts.push(`${failed} failed`)
+        if (killed) parts.push(`${killed} killed`)
+        head.textContent = `${plural(finished.length, 'finished card')}, ${parts.join(', ')}, last ${clock(finished[0].updated_at)}`
+      }
+    }
+    if (meta) meta.textContent = ''
+    const slot = document.querySelector('#board .ledger-actions')
+    if (slot) {
+      let view = document.getElementById('cards-view-toggle')
+      if (!finished.length) { if (view) view.remove() } else {
+        if (!view) {
+          view = el('button', { type: 'button', class: 'btn btn-secondary', id: 'cards-view-toggle', 'aria-controls': 'cards-drawer' }, ['View'])
+          view.addEventListener('click', () => { cardsOpen = !cardsOpen; renderFinishedLedger() })
+          slot.appendChild(view)
+        }
+        view.textContent = cardsOpen ? 'Hide' : 'View'
+        view.setAttribute('aria-expanded', cardsOpen ? 'true' : 'false')
+      }
+    }
+    const panel = document.getElementById('cards-drawer')
+    if (panel) panel.hidden = !(cardsOpen && finished.length)
+    renderFinishedList(finished)
+  }
+
+  // C.5: each drawer row is one line, never the full interactive row a live
+  // card gets: "done after 3 runs, landed 7f3a2c1" or "failed at station
+  // build after 2 runs: <last event summary>".
+  function finishedLine(card) {
+    const runs = plural(card.runs_count || 0, 'run')
+    const last = card.last_event ? card.last_event.summary : 'no events yet'
+    if (card.status === 'done') {
+      const landed = card.land && card.land.state === 'landed' && card.land.sha ? `landed ${String(card.land.sha).slice(0, 7)}` : last
+      return `done after ${runs}, ${landed}`
+    }
+    if (card.status === 'failed') return `failed at station ${card.station} after ${runs}: ${last}`
+    return `killed after ${runs}`
+  }
+
+  function renderFinishedList(finished) {
+    const list = document.getElementById('columns')
+    if (!list) return
+    list.textContent = ''
+    for (const card of finished) {
+      list.appendChild(el('div', { class: 'finished-line' }, [
+        el('span', { class: 'row-meta mono' }, [card.title || card.card_id]),
+        el('span', { class: 'finished-names' }, [finishedLine(card)]),
+      ]))
+    }
+  }
+
   // Re-appending every row costs one DOM move each and can move a node out from
   // under the cursor, so it happens only when the order string actually changed.
   function orderRows() {
-    const list = document.getElementById('columns')
-    const order = orderedCards().map((c) => c.card_id)
+    const list = document.getElementById('background-grid')
+    const order = liveCards().map((c) => c.card_id)
     const key = order.join(',')
     if (key === state.rowOrder) return
     state.rowOrder = key
@@ -502,19 +569,29 @@
     if (state.drawerId) placeDetail(state.drawerId)
   }
 
+  // called after anything that can change which cards are live, finished, or
+  // how many of each: cheap text/count work, safe to run in full every time.
+  function refreshCardMeta() {
+    const live = liveCards()
+    renderBackgroundRegion(live)
+    renderFinishedLedger()
+    placeEntryLine(live.length > 0)
+    renderEntryLine()
+    toggleEmptyState()
+  }
+
   function renderBoard() {
-    const list = document.getElementById('columns')
+    const grid = document.getElementById('background-grid')
     // the detail region is a child of this list while a row is expanded: park it
     // back on the body so the wipe below does not take it out of the document
     document.body.appendChild(document.getElementById('drawer'))
-    list.textContent = ''
+    if (grid) grid.textContent = ''
     state.cardNodes = new Map()
-    const order = orderedCards()
-    for (const card of order) renderRow(card)
-    state.rowOrder = order.map((c) => c.card_id).join(',')
+    const live = liveCards()
+    for (const card of live) renderRow(card)
+    state.rowOrder = live.map((c) => c.card_id).join(',')
     if (state.drawerId) placeDetail(state.drawerId)
-    renderCardsMeta()
-    toggleEmptyState()
+    refreshCardMeta()
   }
 
   // the board is pushed a card for every write under its directory, log bytes
@@ -541,14 +618,22 @@
     return cache.expanded ? 200 : 8
   }
 
+  // a card that fell off liveness (running -> done, say) loses its row; the
+  // finished ledger picks it up on the next refreshCardMeta() instead
+  function removeLiveRow(id) {
+    const root = state.cardNodes.get(id)
+    if (root) { root.remove(); state.cardNodes.delete(id) }
+    state.rowOrder = ''
+    if (state.drawerId === id) closeDrawer()
+  }
+
   function upsertCard(card) {
     state.boardRevision += 1
     const prev = state.cards.get(card.card_id)
     const tail = staleLogTail(state.logState.get(card.card_id), card, Date.now())
-    renderRow(card)
-    orderRows()
-    renderCardsMeta()
-    toggleEmptyState()
+    state.cards.set(card.card_id, card)
+    if (isLive(card)) { renderRow(card); orderRows() } else { removeLiveRow(card.card_id) }
+    refreshCardMeta()
     if (tail) ensureLogLoaded(card.card_id, tail)
     if (state.drawerId === card.card_id && drawerRefreshNeeded(prev, card)) scheduleDrawerRefresh()
   }
@@ -557,12 +642,8 @@
     state.boardRevision += 1
     state.cards.delete(id)
     state.logState.delete(id)
-    const root = state.cardNodes.get(id)
-    if (root) { root.remove(); state.cardNodes.delete(id) }
-    state.rowOrder = ''
-    renderCardsMeta()
-    toggleEmptyState()
-    if (state.drawerId === id) closeDrawer()
+    removeLiveRow(id)
+    refreshCardMeta()
   }
 
   function onLedgerEvent(ev) {
@@ -618,14 +699,12 @@
       return { tone: 'warn', text: `waiting on you at station ${card.station} since ${clock(card.updated_at)}` }
     }
     if (card.status === 'done') return { tone: 'ok', text: `done after ${plural(card.runs_count || 0, 'run')}, ${last ? last.summary : 'no events yet'}` }
+    // C.3: a card runs -p --output-format json, mute until the leg exits. Once
+    // it has said anything real the generic branch below still carries it.
+    if (card.status === 'running' && last && (last.type === 'leg_started' || last.summary === 'leg started')) {
+      return { tone: 'muted', text: `no message until this leg ends, started ${clock(last.ts)}` }
+    }
     return { tone: 'muted', text: `${formatLastEvent(last)}${last ? `, ${clock(last.ts)}` : ''}` }
-  }
-
-  function shortWorktree(card) {
-    if (!card.worktree) return ''
-    const parts = String(card.worktree).split(/[\\/]/).filter(Boolean)
-    let i = parts.lastIndexOf('.leg-worktrees'); if (i === -1) i = parts.lastIndexOf('.baton-worktrees');
-    return i > 0 ? parts.slice(i - 1).join('/') : parts.slice(-2).join('/')
   }
 
   // 6.11: flat inline tokens, middot-separated by CSS, each agent name printed
@@ -690,11 +769,17 @@
     row.cancelBtn.focus()
   }
 
-  function buildActions(card) {
-    const wrap = el('div', { class: 'row-actions' })
+  // C.3: at most four buttons in the row's 2x2 grid, fixed order; anything
+  // left over moves into the expansion instead of a fifth slot.
+  function splitActions(card) {
     const available = card.actions || []
-    for (const action of ACTION_ORDER) {
-      if (!available.includes(action) || !ACTION_LABELS[action]) continue
+    const ordered = ACTION_ORDER.filter((a) => available.includes(a) && ACTION_LABELS[a])
+    return { shown: ordered.slice(0, 4), overflow: ordered.slice(4) }
+  }
+
+  function buildActions(card, actions) {
+    const wrap = el('div', { class: 'row-actions' })
+    for (const action of actions) {
       const label = ACTION_LABELS[action]
       const cls = `btn ${ACTION_CLASS[action] || 'btn-secondary'}`
       const run = action === 'reassign' ? () => openReassign(card, wrap) : () => runAction(card, action)
@@ -704,6 +789,75 @@
       wrap.appendChild(el('button', { type: 'button', class: 'btn btn-danger', 'aria-label': `Remove ${card.title || card.card_id}`, onclick: () => askRemove(card, wrap) }, ['Remove']))
     }
     return wrap
+  }
+
+  // C.3: a short relative age ("6m ago"), for the work stat line only. The
+  // pinned time grammar in sessions.js (elapsedClock/clockAt) is unrelated:
+  // this is a duration since a timestamp, not an elapsed-run clock.
+  function agoShort(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000))
+    if (s < 60) return `${s}s`
+    const m = Math.floor(s / 60)
+    if (m < 60) return `${m}m`
+    const h = Math.floor(m / 60)
+    if (h < 48) return `${h}h`
+    return `${Math.floor(h / 24)}d`
+  }
+
+  function agoSince(ts) {
+    const at = ts ? Date.parse(ts) : NaN
+    return Number.isFinite(at) ? agoShort(Date.now() - at) : 'an unknown time'
+  }
+
+  // C.3: the branch a live card works on is leg/<card_id> once it has a
+  // worktree (src/worktree.mjs branchName), else it has not started and the
+  // register falls back to the trunk it will branch from.
+  // A terminal's short id is the random tail of its session id. A card id has
+  // no hash on the end, only a slug, and `card-20260917-2300-seeded-live-card-3`
+  // ends in `3`: a bare digit identifies nothing on a board with four cards. So
+  // the short id is the last segment, grown leftwards until it is a token a
+  // reader can match back to the row (4 characters or more).
+  function cardShortId(id) {
+    const parts = String(id || '').split('-').filter(Boolean)
+    if (!parts.length) return ''
+    let out = parts[parts.length - 1]
+    for (let i = parts.length - 2; i >= 0 && out.length < 4; i--) out = `${parts[i]}-${out}`
+    return out
+  }
+
+  // A card's own branch is `leg/<card-id>`, which is the whole id again on a row
+  // that already prints it: print `leg/<short id>` instead, the form the design
+  // uses (`leg on leg/card-3e1c`).
+  function cardBranch(card) { return card.worktree ? `leg/${cardShortId(card.card_id)}` : (card.trunk || 'main') }
+
+  function cardAgent(card) { return (card.agent_model && card.agent_model.agent) || card.active_adapter || null }
+
+  function cardAgentModelText(card) {
+    const agent = cardAgent(card)
+    if (!agent) return null
+    const model = card.agent_model && card.agent_model.model
+    return model ? `${agent}/${model}` : agent
+  }
+
+  // C.3: "4 files, +212 -18, tests green 6m ago", built only from the parts
+  // the server actually measured. Nothing measured prints nothing.
+  function workStatLine(card) {
+    const parts = []
+    const w = card.work
+    if (w) {
+      if (Number.isFinite(w.files)) parts.push(plural(w.files, 'file'))
+      const ins = Number.isFinite(w.insertions) ? `+${w.insertions}` : ''
+      const del = Number.isFinite(w.deletions) ? `-${w.deletions}` : ''
+      const diff = [ins, del].filter(Boolean).join(' ')
+      if (diff) parts.push(diff)
+    }
+    if (card.tests) parts.push(`tests ${card.tests.state} ${agoSince(card.tests.at)} ago`)
+    if (card.land) {
+      if (card.land.state === 'bounced') parts.push(`land bounced: ${card.land.reason || 'unknown reason'}`)
+      else if (card.land.state === 'landed' && card.land.sha) parts.push(`landed ${String(card.land.sha).slice(0, 7)}`)
+      else if (card.land.state === 'failed') parts.push(`land failed${card.land.reason ? `: ${card.land.reason}` : ''}`)
+    }
+    return parts.join(', ')
   }
 
   // the reassign picker replaces the buttons in place, like the confirm row
@@ -734,33 +888,37 @@
     wrap.appendChild(el('div', { class: 'reassign-picker' }, [adapterSelect, modeSelect, apply, cancel]))
   }
 
-  // 5.1: R1 who, R2 what, R3 where, R4 when-act-verdict. No object type moves a
-  // field to a different x, which is why a card row reads down the same four
-  // columns as an account and a terminal.
+  // C.3: R1 register (state, station, repo/branch, agent/model), R2 title +
+  // sentence, R3 the work stat line (only what is measured), R4 elapsed, the
+  // short id, and at most four action buttons. A card row reads down the same
+  // four columns as a terminal (.row already carries that shape, see
+  // board.css's own comment on it: "the same shape as .term-row").
   function buildRow(card) {
     const said = cardSentence(card)
-    const chain = (card.chain_view && card.chain_view.length ? card.chain_view : card.chain) || []
-    const agent = card.active_adapter || (chain[0] ? chain[0].adapter : null)
+    const agentText = cardAgentModelText(card)
+    const agentBase = cardAgent(card)
     const title = el('button', {
       type: 'button', class: 'row-title', 'aria-expanded': state.drawerId === card.card_id ? 'true' : 'false',
       onclick: () => expandRow(card.card_id),
     }, [card.title || truncate(card.task, 60) || card.card_id])
     const sentence = el('p', { class: `sentence tone-${said.tone}` }, [said.text])
     const elapsed = el('span', { class: 'elapsed' }, [runElapsed(card)])
+    const statLine = workStatLine(card)
+    const { shown } = splitActions(card)
     const cells = [
       el('div', { class: 'r1' }, [
-        el('span', { class: agent ? `chip chip-id-${agentClass(agent)}` : 'chip' }, [agent || 'no agent']),
-        card.station && card.station !== '-' ? el('span', { class: 'chip' }, [card.station]) : null,
         statusWord(card),
+        card.station && card.station !== '-' ? el('span', { class: 'chip' }, [card.station]) : null,
+        el('span', { class: 'row-meta mono' }, [`${card.repo_name || 'no repo'} on ${cardBranch(card)}`]),
+        agentText ? el('span', { class: `chip chip-id-${agentClass(agentBase)}` }, [agentText]) : null,
       ]),
       el('div', { class: 'r2' }, [title, sentence]),
-      el('div', { class: 'r3' }, [
-        el('p', { class: 'row-meta mono' }, [`${card.repo_name || 'no repo'}@${card.trunk || 'main'}`]),
-        card.worktree ? el('p', { class: 'row-meta mono', title: card.worktree }, [shortWorktree(card)]) : null,
-        buildChainRail(card),
-        buildLeases(card),
+      el('div', { class: 'r3' }, statLine ? [el('p', { class: 'row-meta' }, [statLine])] : []),
+      el('div', { class: 'r4' }, [
+        elapsed,
+        el('span', { class: 'row-meta mono', title: card.card_id }, [cardShortId(card.card_id)]),
+        buildActions(card, shown),
       ]),
-      el('div', { class: 'r4' }, [elapsed, buildActions(card)]),
     ]
     return { cells, slots: { title, sentence, elapsed } }
   }
@@ -771,7 +929,7 @@
     if (!root) {
       root = el('article', { class: 'row', 'data-card-id': card.card_id })
       state.cardNodes.set(card.card_id, root)
-      document.getElementById('columns').appendChild(root)
+      document.getElementById('background-grid').appendChild(root)
       state.rowOrder = ''
     } else {
       while (root.firstChild) root.removeChild(root.firstChild)
@@ -854,6 +1012,27 @@
     return [el('div', { class: 'kv' }, rows), copy]
   }
 
+  // C.4: card -> terminal. Take over pauses the card and hands back one
+  // copyable command; a terminal cannot be opened from a browser tab, so the
+  // board says that plainly rather than pretending it can.
+  function buildTakeOver(card) {
+    const box = el('div', { class: 'kv' })
+    const btn = el('button', { type: 'button', class: 'btn btn-secondary', onclick: async () => {
+      try {
+        const data = await api(`/api/cards/${encodeURIComponent(card.card_id)}/take-over`, { method: 'POST', body: {} })
+        box.textContent = ''
+        box.appendChild(el('p', { class: 'sentence tone-muted' }, ['A terminal cannot be opened from a browser tab, so this is the one command Leg hands you.']))
+        const row = el('div', { class: 'reassign-picker' }, [
+          el('span', { class: 'row-meta mono' }, [data.command]),
+          el('button', { type: 'button', class: 'btn btn-secondary', onclick: () => copyToClipboard(data.command) }, ['Copy']),
+        ])
+        box.appendChild(row)
+      } catch (err) { toast(err.message) }
+    } }, ['Take over'])
+    box.appendChild(btn)
+    return detailSection('Take over', 'pauses the card and starts an interactive terminal from its bundle', box)
+  }
+
   function eventRow(e) {
     return el('div', { class: 'turn' }, [
       el('span', { class: 'turn-when' }, [clock(e.ts)]),
@@ -900,6 +1079,17 @@
     const pipeline = []
     for (const st of stations) pipeline.push(...kvRow(st.name, `${st.kind}${st.name === card.station ? ', this station' : ''}`))
     content.appendChild(detailSection('Pipeline', at ? `station ${at} of ${stations.length}` : `${plural(stations.length, 'station')}, none started`, el('div', { class: 'kv' }, pipeline)))
+
+    // C.3: the chain rail, the leases and the pipeline above all moved out of
+    // the row and into this expansion; the row itself carries only the model
+    // token and the station name now.
+    content.appendChild(detailSection('Chain', null, buildChainRail(card)))
+    content.appendChild(detailSection('Leases', null, buildLeases(card)))
+
+    const { overflow } = splitActions(card)
+    if (overflow.length) content.appendChild(detailSection('More actions', 'past the four on the row', buildActions(card, overflow)))
+
+    content.appendChild(buildTakeOver(card))
 
     const runs = detail.runs || []
     const runRows = []
@@ -1010,6 +1200,133 @@
   function collapseRow() {
     const root = closeDrawer()
     if (root && root.slots) root.slots.title.focus()
+  }
+
+  // ---- 6.15 step 6: the one-line background entry (C.2) ----
+  // Always visible to the owner, one row above or below the Background panel.
+  // Its three nouns (repo, ladder, workflow) are inferred and are buttons that
+  // swap for a select in place; nothing here persists past a page reload.
+  let entryState = { task: '', repo: null, ladderStart: 0, pipeline: 'build', editing: null }
+  const PIPELINE_WORDS = { build: 'build only', 'build-land': 'build and land', factory: 'plan, build, review and land' }
+
+  // Only a terminal that carries a `repo` is offered: /api/cards refuses a path
+  // that is not a git repository root, so a terminal whose cwd is a plain
+  // folder would put a value in this field that Start can only ever reject.
+  function knownRepos() {
+    const seen = new Map()
+    for (const s of state.sessions || []) if (s.repo && !seen.has(s.repo)) seen.set(s.repo, s.repo_name || s.repo)
+    for (const c of state.cards.values()) if (c.repo && !seen.has(c.repo)) seen.set(c.repo, c.repo_name || c.repo)
+    return [...seen].map(([path, name]) => ({ path, name }))
+  }
+
+  // C.2: the most recently focused terminal's repo, else the last card's, else
+  // the first terminal's.
+  function inferRepo() {
+    const sessions = (state.sessions || []).filter((s) => s.repo)
+    const byFocus = sessions.length ? [...sessions].sort((a, b) => (Date.parse(b.last_activity) || 0) - (Date.parse(a.last_activity) || 0))[0] : null
+    if (byFocus) return { path: byFocus.repo, name: byFocus.repo_name || byFocus.repo }
+    const cards = [...state.cards.values()].sort((a, b) => (Date.parse(b.updated_at) || 0) - (Date.parse(a.updated_at) || 0))
+    if (cards[0] && cards[0].repo) return { path: cards[0].repo, name: cards[0].repo_name || cards[0].repo }
+    if (sessions[0]) return { path: sessions[0].repo, name: sessions[0].repo_name || sessions[0].repo }
+    return null
+  }
+
+  function entryRepo() { return entryState.repo || inferRepo() }
+
+  // the saved ladder, skipping a credits/metered rung while may_spend is off:
+  // a card never starts on a rung that bills without asking (-p mode does)
+  function ladderRungs() {
+    const prefs = state.preferences
+    if (!prefs || !Array.isArray(prefs.handoff_ladder)) return []
+    const maySpend = !!prefs.may_spend
+    return prefs.handoff_ladder.filter((r) => maySpend || !['credits', 'metered'].includes(r.cost))
+  }
+
+  function ladderLabel(r) { return r.model ? `${r.agent}/${r.model}` : r.agent }
+  function ladderSentence(rungs) { return rungs.length ? rungs.map(ladderLabel).join(' then ') : 'no agent is configured' }
+
+  async function submitEntry() {
+    const repo = entryRepo()
+    const task = (entryState.task || '').trim()
+    if (!task || !repo) return
+    const rungs = ladderRungs().slice(entryState.ladderStart || 0)
+    const body = { repo: repo.path, task, chain: rungs.map((r) => r.agent).join(','), pipeline: entryState.pipeline, queue: true }
+    try {
+      const data = await api('/api/cards', { method: 'POST', body })
+      entryState.task = ''
+      entryState.editing = null
+      upsertCard(data.card)
+    } catch (err) { toast(err.message) }
+  }
+
+  function nounSelect(options, current, onPick) {
+    const select = el('select', { 'aria-label': 'Change' })
+    for (const o of options) select.appendChild(el('option', { value: o.value }, [o.label]))
+    select.value = current
+    select.addEventListener('change', () => { onPick(select.value); entryState.editing = null; renderEntryLine() })
+    return select
+  }
+
+  function nounButton(text, key) {
+    return el('button', { type: 'button', class: 'btn btn-text', onclick: () => { entryState.editing = key; renderEntryLine() } }, [text])
+  }
+
+  function renderEntryLine() {
+    const box = document.getElementById('card-entry')
+    if (!box) return
+    if (isGuest()) { box.hidden = true; return }
+    box.hidden = false
+    box.textContent = ''
+    const repo = entryRepo()
+    const task = el('input', { type: 'text', placeholder: 'Describe the task', 'aria-label': 'Task to run in the background', value: entryState.task })
+    const reason = el('span', { class: 'field-help' }, ['Describe the task to start it.'])
+    reason.hidden = Boolean(entryState.task.trim())
+    const start = el('button', { type: 'button', class: 'btn btn-primary', disabled: entryState.task.trim() ? null : '' }, ['Start'])
+    task.addEventListener('input', () => { entryState.task = task.value; start.disabled = !task.value.trim(); reason.hidden = Boolean(task.value.trim()) })
+    start.addEventListener('click', () => submitEntry())
+    // `.confirm-row` is the board's existing sentence-plus-controls strip: a
+    // flex row with a gap on the raised surface, which is exactly this line.
+    box.appendChild(el('div', { class: 'confirm-row' }, [el('span', {}, ['Run in the background:']), task, start, reason]))
+
+    const line = el('p', { class: 'field-help' })
+    line.appendChild(document.createTextNode('in '))
+    if (entryState.editing === 'repo') {
+      line.appendChild(nounSelect(knownRepos().map((r) => ({ value: r.path, label: r.name })), repo ? repo.path : '', (v) => { entryState.repo = knownRepos().find((r) => r.path === v) || null }))
+    } else {
+      line.appendChild(nounButton(repo ? repo.name : 'no repo', 'repo'))
+    }
+    line.appendChild(document.createTextNode(' on main, with '))
+    const rungs = ladderRungs()
+    if (entryState.editing === 'ladder') {
+      line.appendChild(nounSelect(rungs.map((r, i) => ({ value: String(i), label: ladderLabel(r) })), String(entryState.ladderStart || 0), (v) => { entryState.ladderStart = Number(v) }))
+    } else {
+      line.appendChild(nounButton(ladderSentence(rungs.slice(entryState.ladderStart || 0)), 'ladder'))
+    }
+    line.appendChild(document.createTextNode(', '))
+    if (entryState.editing === 'pipeline') {
+      line.appendChild(nounSelect(Object.keys(PIPELINE_WORDS).map((v) => ({ value: v, label: PIPELINE_WORDS[v] })), entryState.pipeline, (v) => { entryState.pipeline = v }))
+    } else {
+      line.appendChild(nounButton(PIPELINE_WORDS[entryState.pipeline] || 'build only', 'pipeline'))
+    }
+    line.appendChild(document.createTextNode('.  '))
+    line.appendChild(el('button', { type: 'button', class: 'btn btn-text', onclick: () => openNewCardDialog() }, ['More settings']))
+    box.appendChild(line)
+  }
+
+  // C.2: always visible under the Background panel; when there are no live
+  // cards the panel is hidden, so the entry moves to sit under Terminals
+  // instead. The fake DOM in the tests has no after(), so this is a no-op
+  // there and a real move in the browser.
+  function placeEntryLine(hasLive) {
+    const entry = document.getElementById('card-entry')
+    if (!entry) return
+    if (hasLive) {
+      const bg = document.getElementById('background')
+      if (bg && typeof bg.appendChild === 'function') bg.appendChild(entry)
+    } else {
+      const terms = document.querySelector('.region-terminals')
+      if (terms && typeof terms.after === 'function') terms.after(entry)
+    }
   }
 
   // ---- new card dialog ----
@@ -1305,10 +1622,16 @@
       if (state.drawerId) collapseRow()
     })
     // health first: it says whether this human owns the pipeline side at all
-    await loadHealth()
+    const owner = await loadHealth()
     fetchCards()
     connectSse()
     setInterval(tickElapsed, 1000)
+    // C.2: the ladder sentence on the entry line reads this; a guest never
+    // sees the entry line, so there is nothing to fetch it for
+    if (owner) {
+      try { state.preferences = (await api('/api/settings')).preferences || null } catch { /* entry line falls back to "no agent is configured" */ }
+      renderEntryLine()
+    }
   }
 
   document.addEventListener('DOMContentLoaded', init)

@@ -14,7 +14,9 @@ import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join, dirname, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sanitizeEnv } from './env.mjs'
-import { home } from './store.mjs'
+import { home, readCard, listCards } from './store.mjs'
+import { loadResume } from './handoff.mjs'
+import { worktreePath } from './worktree.mjs'
 import { get as getAdapter } from './adapters/index.mjs'
 import { SUPERVISED_AGENTS, HANDOFF_ORDER_CAPABILITY, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
 import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.mjs'
@@ -157,6 +159,20 @@ export function gitInfo(cwd) {
   }
 }
 
+// How many commits this checkout is ahead of where the work started: the
+// upstream branch when the checkout tracks one, else the commit HEAD was at
+// when the session began. null when this is not a repo, when there is neither
+// an upstream nor a recorded start, or when git cannot answer. A count that
+// could not be taken is never printed as a zero (redesign A.4 row 8).
+export function aheadCount(cwd, fallbackBase = null) {
+  const upstream = git(cwd, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])
+  const base = (upstream && upstream.trim()) || fallbackBase
+  if (!base) return null
+  const n = git(cwd, ['rev-list', '--count', `${base}..HEAD`])
+  const parsed = parseInt(String(n ?? '').trim(), 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 // ---- collisions ----
 // Two agents in one working tree write over each other's files. When another
 // live session already works in this checkout, this one gets its own:
@@ -246,6 +262,61 @@ export function modelFromArgs(agent, args = []) {
 }
 
 export const shortId = (sessionId) => String(sessionId ?? '').split('-').pop()
+
+// ---- taking over a background card (redesign C.4) ----
+// Leg's own flags never reach the agent's argv, so they are lifted out of the
+// pass-through list before anything else looks at it. Both spellings, because
+// a human copying `--resume-card=<id>` out of a shell history is not wrong.
+export function takeFlagValue(args, flag) {
+  const out = []
+  let value = null
+  for (let i = 0; i < args.length; i++) {
+    const a = String(args[i] ?? '')
+    if (a === flag) {
+      const next = args[i + 1]
+      if (next !== undefined && !String(next).startsWith('-')) { value = String(next); i++ }
+      continue
+    }
+    if (a.startsWith(flag + '=')) { value = a.slice(flag.length + 1); continue }
+    out.push(args[i])
+  }
+  return { args: out, value }
+}
+
+// A card id in full, or the short tail the board prints. Ambiguity is an error
+// rather than a pick: opening a terminal in the wrong worktree is the one
+// outcome this whole feature exists to avoid.
+export function resolveCardId(want, cards = null) {
+  const wanted = String(want ?? '').trim()
+  if (!wanted) return { id: null, matches: [] }
+  if (readCard(wanted)) return { id: wanted, matches: [wanted] }
+  const ids = (cards ?? listCards()).map((c) => c.card_id)
+  const matches = ids.filter((id) => id === wanted || id.endsWith(`-${wanted}`) || id.includes(wanted))
+  return { id: matches.length === 1 ? matches[0] : null, matches }
+}
+
+// Where that card's work is: the worktree it recorded, else the one its id
+// names, else the repository itself. Never a path that is not there.
+export function cardWorkRoot(card) {
+  if (card?.worktree && existsSync(card.worktree)) return card.worktree
+  if (card?.repo) {
+    try { const p = worktreePath(card.repo, card.card_id); if (existsSync(p)) return p } catch { /* not a repo any more */ }
+    if (existsSync(card.repo)) return card.repo
+  }
+  return null
+}
+
+// The first prompt of a terminal that took a card over: the card's own bundle,
+// loaded through the same CLI every hand-off uses, with the card's task above
+// it. A bundle that will not load is said out loud and the terminal still opens.
+export function takeOverPrompt(card, cwd) {
+  let loaded = ''
+  try { loaded = loadResume(cwd, card.last_bundle ?? 'latest') } catch { loaded = '' }
+  const head = `# Taking over a background card\n\nCard ${card.card_id}, station ${card.station}, status ${card.status}. It is paused, so nothing else is running in this worktree.\n\nThe task: ${card.task ?? '(none recorded)'}\n\n`
+  return loaded
+    ? `${head}${loaded}`
+    : `${head}No bundle could be loaded. Read .leg/CONTRACT.md and .leg/PROGRESS.md in this directory, then check git status and git diff before continuing.`
+}
 
 // `leg#7f3a leg/main`: which terminal this window is, and where it is working.
 // Degrades to the id alone rather than printing a place that is not a repo.
@@ -473,7 +544,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
       // git: which files this session is touching, where trunk is
       if (polls % GIT_EVERY === 1) {
         const g = gitInfo(s.cwd)
-        if (g.repo) { patch.files_dirty = g.dirty; patch.head = g.head; patch.branch = g.branch }
+        if (g.repo) { patch.files_dirty = g.dirty; patch.head = g.head; patch.branch = g.branch; patch.ahead = aheadCount(s.cwd, s.head_at_start) }
       }
       // codex: find + tail the rollout
       if (agent === 'codex') {
@@ -699,8 +770,27 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   // affected; only what Leg adds is licensed.
   const ent = entitlement()
   if (!allows(ent, 'run')) { say(describeLicense(ent)); return 4 }
-  // --no-worktree is Leg's flag, not the agent's: it never passes through
-  const shareCheckout = args.includes('--no-worktree') || Boolean(continued)
+  // `--resume-card <id>`: Take over on the board paused a card and handed the
+  // human this command. The terminal opens in that card's own worktree, primed
+  // from its bundle (redesign C.4). Leg's flag, never the agent's.
+  const lifted = takeFlagValue(args, '--resume-card')
+  args = lifted.args
+  let card = null
+  if (lifted.value !== null) {
+    const hit = resolveCardId(lifted.value)
+    if (!hit.id) {
+      say(hit.matches.length
+        ? `"${lifted.value}" matches ${hit.matches.length} cards (${hit.matches.slice(0, 5).join(', ')}); use the full id`
+        : `no card matches "${lifted.value}" (leg card ls lists them)`)
+      return 3
+    }
+    card = readCard(hit.id)
+    if (!cardWorkRoot(card)) { say(`card ${hit.id} has no checkout on this machine yet; run it once, or open ${card.repo} yourself`); return 3 }
+  }
+  // --no-worktree is Leg's flag, not the agent's: it never passes through.
+  // A card take-over shares the card's checkout for the same reason: cutting a
+  // second worktree on its branch is what Take over exists to avoid.
+  const shareCheckout = args.includes('--no-worktree') || Boolean(continued) || Boolean(card)
   args = args.filter((a) => a !== '--no-worktree')
   let autoApproveCli = null
   if (args.includes('--no-auto-approve')) {
@@ -711,7 +801,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     args = args.filter((a) => a !== '--auto-approve')
   }
   const autoApprove = resolveAutoApprove({ cliFlag: autoApproveCli })
-  const cwd = cwdOpt ? realPath(cwdOpt) : process.cwd()
+  const cwd = card ? realPath(cardWorkRoot(card)) : (cwdOpt ? realPath(cwdOpt) : process.cwd())
   const board = await ensureBoard({ open })
   let accounts = readAccounts()
   const installed = await installedAgents()
@@ -774,6 +864,14 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   }
 
   let prompt = null
+  if (card) {
+    // the card's bundle is this terminal's first prompt, and the record says
+    // where this terminal came from, so the board can draw the line back
+    updateSession(sid, { lineage: { from: card.card_id, to: null }, task: card.task ?? null },
+      { event: { type: 'continued', summary: `taking over card ${card.card_id} (${card.status} at ${card.station}) in ${cwd}` } })
+    prompt = takeOverPrompt(card, cwd)
+    say(`taking over card ${card.card_id} in ${cwd}${card.last_bundle ? ` from bundle ${card.last_bundle}` : ''}`)
+  }
   let legArgs = args
   let legModel = startModel
   let legResume = null

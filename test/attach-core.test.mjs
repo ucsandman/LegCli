@@ -6,6 +6,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, existsSync, unlink
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { initRepo, git as gitIn } from './helpers.mjs'
 
 process.env.BATON_HOME = mkdtempSync(join(tmpdir(), 'baton-attach-'))
 
@@ -15,7 +16,7 @@ const claudeTap = await import('../src/taps/claude.mjs')
 const codexTap = await import('../src/taps/codex.mjs')
 const agyTap = await import('../src/taps/agy.mjs')
 const accounts = await import('../src/accounts.mjs')
-const { isCurrentLeg, TERMINAL_RESET, spawnSpec, modelFromArgs, terminalTitle, osc2 } = await import('../src/attach.mjs')
+const { isCurrentLeg, TERMINAL_RESET, spawnSpec, modelFromArgs, terminalTitle, osc2, aheadCount, takeFlagValue, resolveCardId } = await import('../src/attach.mjs')
 
 const cwd = mkdtempSync(join(tmpdir(), 'baton-cwd-'))
 // codex names its day directory from local time, so the fixtures do too
@@ -429,4 +430,50 @@ test('the terminal reset undoes what a killed agent left behind: mouse reporting
   assert.ok(TERMINAL_RESET.includes('\x1b[?1l\x1b>'), 'cursor keys and keypad are back to normal')
   assert.ok(TERMINAL_RESET.includes('\x1b[?7h'), 'autowrap is back on')
   assert.ok(TERMINAL_RESET.endsWith('\x1b[?25h\x1b[0m\r\x1b[J\n'), 'ends visible, unstyled, on a clean line')
+})
+
+// ---- the register's commit count (redesign A.4 row 8) ----------------------
+test('ahead counts commits past the recorded start, and says nothing rather than zero when it cannot', () => {
+  const repo = initRepo('leg-ahead-')
+  const startedAt = gitIn(repo, ['rev-parse', 'HEAD']).trim()
+
+  // nothing since the session began
+  assert.equal(aheadCount(repo, startedAt), 0)
+  writeFileSync(join(repo, 'b.txt'), 'two\n')
+  gitIn(repo, ['add', 'b.txt'])
+  gitIn(repo, ['commit', '-q', '-m', 'second'])
+  writeFileSync(join(repo, 'c.txt'), 'three\n')
+  gitIn(repo, ['add', 'c.txt'])
+  gitIn(repo, ['commit', '-q', '-m', 'third'])
+  assert.equal(aheadCount(repo, startedAt), 2)
+
+  // no upstream and no recorded start: there is no base to count from, so the
+  // answer is "unknown", never a zero standing in for it
+  assert.equal(aheadCount(repo, null), null)
+  // not a repository at all
+  assert.equal(aheadCount(mkdtempSync(join(tmpdir(), 'leg-norepo-')), startedAt), null)
+  // a base that is not a commit: git refuses, and so does this
+  assert.equal(aheadCount(repo, 'no-such-ref'), null)
+  // the session record starts with no count rather than a zero
+  assert.equal(sessions.createSession({ id: 's-ahead-new', agent: 'claude', cwd: repo, repo }).ahead, null)
+})
+
+// ---- taking over a card (redesign C.4) -------------------------------------
+test('--resume-card is lifted out of the argv before the agent ever sees it, in both spellings', () => {
+  assert.deepEqual(takeFlagValue(['--resume-card', 'card-1', '--model', 'opus'], '--resume-card'), { args: ['--model', 'opus'], value: 'card-1' })
+  assert.deepEqual(takeFlagValue(['--resume-card=card-2'], '--resume-card'), { args: [], value: 'card-2' })
+  assert.deepEqual(takeFlagValue(['--model', 'opus'], '--resume-card'), { args: ['--model', 'opus'], value: null })
+  // a flag with nothing after it keeps the next flag: it is not swallowed
+  assert.deepEqual(takeFlagValue(['--resume-card', '--model'], '--resume-card'), { args: ['--model'], value: null })
+})
+
+test('a card id resolves in full or by its tail, and an ambiguous one is an error rather than a pick', () => {
+  const cards = [{ card_id: 'card-20260917-1100-add-the-export' }, { card_id: 'card-20260917-1200-add-the-import' }]
+  assert.equal(resolveCardId('card-20260917-1100-add-the-export', cards).id, 'card-20260917-1100-add-the-export')
+  assert.equal(resolveCardId('add-the-export', cards).id, 'card-20260917-1100-add-the-export')
+  const both = resolveCardId('add-the', cards)
+  assert.equal(both.id, null)
+  assert.equal(both.matches.length, 2)
+  assert.deepEqual(resolveCardId('nothing-like-this', cards), { id: null, matches: [] })
+  assert.deepEqual(resolveCardId('', cards), { id: null, matches: [] })
 })

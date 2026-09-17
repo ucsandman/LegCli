@@ -15,10 +15,12 @@ import { readShare, isOn as shareIsOn, sharePath, identify, personNamed, mayUseC
 import { auditTrail, ACTOR_KINDS } from './audit.mjs'
 import { createLimiter } from './ratelimit.mjs'
 import { realPath, canonPath } from './fsx.mjs'
-import { listCards, readCard, readRuns, readEvents, cardDir, home } from './store.mjs'
+import { listCards, readCard, readRuns, readEvents, cardDir, home, ledgerAppend, ledgerUpdate } from './store.mjs'
+import { saveSessionBundle } from './bundle.mjs'
+import { transcriptTail as claudeTranscriptTail } from './taps/claude.mjs'
 import { humanAction } from './orchestrator.mjs'
 import { createCard, CardInputError } from './cards.mjs'
-import { IllegalTransition, availableActions } from './chain.mjs'
+import { IllegalTransition, availableActions, NON_TERMINAL, TERMINAL } from './chain.mjs'
 import { held } from './leases.mjs'
 import { PRESETS } from './presets.mjs'
 import { names as adapterNames, get as getAdapter, isFake } from './adapters/index.mjs'
@@ -26,14 +28,14 @@ import { createScheduler, schedulerStatus, MAX_CONCURRENT } from './scheduler.mj
 import { remove as removeWorktree, worktreeDirty } from './worktree.mjs'
 import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
-import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY } from './sessions.mjs'
+import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY, SUPERVISED_AGENTS } from './sessions.mjs'
 import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs'
 import { hasRecentSynthesis } from './synthesis.mjs'
 import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
 import { readUsage, recordUsage, usageIsStale, candidates, isAvailable, fmtReset, binding, evaluateLadder, rungLabel, wallActive } from './usage.mjs'
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
-import { readCodexUsage } from './taps/codex.mjs'
+import { readCodexUsage, transcriptTail as codexTranscriptTail } from './taps/codex.mjs'
 import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder, ladderFor, requireHandoffLadder, requireClimbBack, requireReserve, orderFromLadder } from './preferences.mjs'
 import { isDownshift } from './buckets.mjs'
 import { listHistory, findRecord, recordDetail, refreshIndex, readIndex, providerSupport, HistoryInputError, PROVIDER_NAMES } from './history/index.mjs'
@@ -76,6 +78,105 @@ export function columnOf(card) {
   return card.station
 }
 
+// ---- the work stat on a live card's row (redesign C.3) --------------------
+// `4 files, +212 -18`. Parsed from git's own one-line summary, never counted
+// here: a part the line does not carry is left off the object, so the row can
+// print only what was measured and never estimate the rest.
+export function parseShortstat(line) {
+  const text = String(line ?? '')
+  const files = /(\d+)\s+files?\s+changed/.exec(text)
+  const ins = /(\d+)\s+insertions?\(\+\)/.exec(text)
+  const del = /(\d+)\s+deletions?\(-\)/.exec(text)
+  if (!files && !ins && !del) return null
+  const out = {}
+  if (files) out.files = parseInt(files[1], 10)
+  if (ins) out.insertions = parseInt(ins[1], 10)
+  if (del) out.deletions = parseInt(del[1], 10)
+  return out
+}
+
+function measureWork(card) {
+  if (!card.worktree || !existsSync(card.worktree)) return null
+  const base = card.trunk || 'main'
+  const r = spawnSync('git', ['diff', '--shortstat', `${base}..HEAD`], { cwd: card.worktree, windowsHide: true, encoding: 'utf8', timeout: 8000, env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+  if (r.status !== 0) return null
+  return parseShortstat(r.stdout)
+}
+
+// One `git diff` per live card per push would put a subprocess per card inside
+// the board's one event loop, which is the stall canLandFor already exists to
+// avoid. Keyed on the card's own revision, with the expiries spread across the
+// window so twenty cards never re-read together.
+const WORK_TTL = 15000
+const workCache = new Map()
+function workFor(card) {
+  const key = `${card.card_id}|${card.updated_at ?? ''}`
+  const hit = workCache.get(key)
+  if (hit && Date.now() < hit.until) return hit.data
+  let data = null
+  try { data = measureWork(card) } catch { data = null }
+  if (workCache.size > 300) workCache.clear()
+  workCache.set(key, { until: Date.now() + WORK_TTL / 2 + Math.random() * WORK_TTL, data })
+  return data
+}
+
+// The test and land verdicts a live card has already earned. Both are read from
+// the card's own ledger, because that is where each station records its result:
+// a test station writes no run.json (src/stations/test.mjs), and a landing is a
+// `landed` / `bounced` / `failed` event (src/chain.mjs). Last one wins; a card
+// that has run neither carries neither key.
+export function cardOutcomes(events) {
+  const out = {}
+  for (const ev of events ?? []) {
+    const summary = String(ev.summary ?? '')
+    const m = /^test (green|red)\b/.exec(summary)
+    if (m) out.tests = { state: m[1], at: ev.ts }
+    if (ev.type === 'landed') {
+      const sha = /\b([0-9a-f]{7,40})\b/.exec(summary)
+      out.land = { state: 'landed', reason: null, sha: sha ? sha[1] : null }
+    } else if (ev.type === 'bounced' && /^land bounced/.test(summary)) {
+      out.land = { state: 'bounced', reason: ev.body ? String(ev.body).slice(0, 200) : summary, sha: null }
+    } else if (ev.type === 'failed' && /\bland\b/.test(summary)) {
+      out.land = { state: 'failed', reason: ev.body ? String(ev.body).slice(0, 200) : summary, sha: null }
+    }
+  }
+  return out
+}
+
+// The last messages a hand-off bundle quotes, from the agent's own transcript.
+// An agent Leg cannot read a transcript for contributes none, and the bundle is
+// written from the record alone rather than with invented text.
+function sessionMessages(s) {
+  try {
+    if (s.agent === 'claude') return claudeTranscriptTail(s.transcript_path)
+    if (s.agent === 'codex') return codexTranscriptTail(s.transcript_path)
+  } catch { /* an unreadable transcript is not a reason to refuse the bundle */ }
+  return []
+}
+
+// This terminal's ladder from the rung it is standing on, downward. A card made
+// from a terminal starts where the terminal is, not at the top: the rungs above
+// it are the ones this work has already used up (redesign C.4).
+export function ladderFromCurrentRung(session) {
+  const ladder = ladderFor(session).filter((r) => r && r.agent)
+  const exact = ladder.findIndex((r) => r.agent === session.agent && (r.account ?? 'default') === (session.account ?? 'default') && (r.model ?? null) === (session.model ?? null))
+  const byAgent = exact >= 0 ? exact : ladder.findIndex((r) => r.agent === session.agent)
+  return byAgent >= 0 ? ladder.slice(byAgent) : ladder
+}
+
+// How many cards are waiting on a human, for the terminals verdict to read
+// (redesign C.5). Cached for a beat: listCards() reads one file per card, and
+// this is computed on every sessions push.
+const CARDS_WAITING_TTL = 5000
+let cardsWaitingCache = { at: 0, n: 0 }
+function cardsWaiting() {
+  if (Date.now() - cardsWaitingCache.at < CARDS_WAITING_TTL) return cardsWaitingCache.n
+  let n = 0
+  try { for (const c of listCards()) if (['needs_approval', 'waiting_human'].includes(c.status)) n += 1 } catch { n = 0 }
+  cardsWaitingCache = { at: Date.now(), n }
+  return n
+}
+
 export function summarize(card) {
   const st = (card.pipeline ?? []).find((s) => s.name === card.station) ?? null
   const last = lastEventOf(card.card_id)
@@ -102,12 +203,23 @@ export function summarize(card) {
     if (i > card.leg) return 'pending'
     return ['running', 'handing_off'].includes(card.status) ? 'active' : 'pending'
   }
+  // What a live card is carrying right now: the diff it has built, the last
+  // test verdict, the last land verdict, and the rung it is on. Measured only
+  // for a card that is still going: a finished one is a single line in the
+  // ledger, and a git subprocess for each of ten of those buys nothing (C.1).
+  const live = NON_TERMINAL.includes(card.status)
+  const work = live ? workFor(card) : null
+  const outcomes = live ? cardOutcomes(readEvents(card.card_id)) : {}
   return {
     ...card,
     column: columnOf(card),
     station_kind: st?.kind ?? null,
     active_adapter: entry?.adapter ?? null,
     active_mode: entry?.mode ?? null,
+    ...(work ? { work } : {}),
+    ...(outcomes.tests ? { tests: outcomes.tests } : {}),
+    ...(outcomes.land ? { land: outcomes.land } : {}),
+    ...(live && entry ? { agent_model: { agent: entry.adapter ?? null, model: entry.model ?? null } } : {}),
     chain_view: st?.kind === 'agent' ? st.chain.map((e, i) => ({
       adapter: e.adapter, mode: e.mode ?? null, approve: Boolean(e.approve),
       // a leg before the last one ended in a handoff (only the last leg can complete a station)
@@ -327,6 +439,9 @@ function redactSession(s) {
     owner: s.owner ?? null, limits: s.limits ?? null, lineage: s.lineage ?? null,
     warning: s.warning ? { window: s.warning.window, pct: s.warning.pct, resets_at: s.warning.resets_at } : null,
     limit: s.limit ? { reason: s.limit.reason, resets_at: s.limit.resets_at ?? null } : null,
+    // `ahead` is owner-only for the same reason `files` is: how far someone
+    // else's branch has moved is a fact about their work, and the register
+    // prints it beside the dirty count that is already withheld here.
     // `waiting` and `model` are owner-only, and a guest keeps both on their own
     // terminal (that row is not redacted at all). On someone else's row they are
     // dropped: `waiting` carries either the verbatim question an agent asked —
@@ -463,6 +578,10 @@ export function sessionsView({ viewer = null, share = null } = {}) {
     // a guest sees what landed, not where the repo lives on this machine
     trunk: guest ? trunk.map((t) => ({ repo_name: t.repo_name, branch: t.branch, commits: t.commits ?? [] })) : trunk,
     you: viewer,
+    // the terminals verdict has to be able to say "card 3e1c has waited on you
+    // for 12 minutes" without reading the whole pipeline board (redesign C.5).
+    // A guest has no cards at all, so they are not told how many are waiting.
+    ...(guest ? {} : { cards_waiting: cardsWaiting() }),
     share: { on: shared, bind: shared ? share.bind : null, people: shared ? share.people.length : 0 },
     preferences: guest ? null : readPreferences(),
     ts: new Date().toISOString(),
@@ -947,6 +1066,61 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           log(`land requested for ${id} by ${actor.id}`)
           return send(res, 202, { ok: true, requested: 'land' })
         }
+        // "I have to leave, keep going." The terminal's context becomes a card
+        // that continues in the SAME worktree, from the SAME rung, and the
+        // terminal then ends exactly the way End ends it. Reusing the worktree
+        // is the decision in redesign G4: two worktrees on one branch is the
+        // conflict machine the roadmap rejects, and Take over is the way back.
+        if (req.method === 'POST' && parts[3] === 'end-as-card') {
+          // a card is the pipeline board, which belongs to the owner and the
+          // operators of this machine even when the terminal is the caller's
+          if (!canCards) return send(res, 403, { error: 'the pipeline board belongs to the owner and the operators of this machine' })
+          if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
+          if (!sess.repo) return send(res, 409, { error: 'this terminal is not in a git repository, so there is no branch for a card to continue on' })
+          let bundle
+          try {
+            bundle = saveSessionBundle(sess, { messages: sessionMessages(sess), why: 'ended as a card' })
+          } catch (err) {
+            // nothing has been ended yet: refuse rather than end a terminal
+            // whose context was never written down
+            return send(res, 409, { error: `the hand-off bundle could not be written, so this terminal was left alone: ${scrub(err.message).slice(0, 200)}` })
+          }
+          const rungs = ladderFromCurrentRung(sess)
+          // one model per adapter is all a card's chain can carry, so a ladder
+          // with claude/fable and claude/opus in it keeps the FIRST, which is
+          // the rung this terminal is on
+          const models = {}
+          for (const r of rungs) if (r.model && !models[r.agent]) models[r.agent] = r.model
+          const task = `${sess.task ?? 'Continue the work already under way in this checkout.'}\n\nContinue from the bundle at ${bundle.path}.`
+          let card
+          try {
+            card = await createCard({
+              repo: sess.repo, task,
+              chain: rungs.map((r) => r.agent).join(',') || sess.agent,
+              model: models,
+              trunk: sess.worktree?.base || sess.branch || 'main',
+              title: sess.task ? String(sess.task).slice(0, 60) : `continued from ${id}`,
+              queue: true,
+            }, actor)
+          } catch (err) {
+            if (err instanceof CardInputError) return send(res, 400, { error: `the card could not be created, so this terminal was left alone: ${err.message}` })
+            throw err
+          }
+          const adopted = sess.worktree?.path && existsSync(sess.worktree.path) ? sess.worktree.path : null
+          ledgerUpdate(card.card_id, { patch: { lineage: { from: id }, ...(adopted ? { worktree: adopted, worktree_adopted: true } : {}) } })
+          // `handoff_written` is the ledger's word for "a bundle was written and
+          // the work moved on", which is exactly what happened here. The audited
+          // line with the actor is on the terminal's side, below.
+          ledgerAppend(card.card_id, { actor, type: 'handoff_written', summary: `continued from terminal ${id}${adopted ? ', in its own worktree' : ', in a worktree of its own cut from the same branch'}` })
+          requestControl(id, { end: true, by: actor.id })
+          appendSessionEvent(id, { type: 'handed_off', by: actor.id, summary: `${actor.id} ended this terminal and kept it going as card ${card.card_id}` })
+          updateSession(id, (cur) => ({ lineage: { ...(cur.lineage ?? {}), to: card.card_id } }))
+          log(`end-as-card for ${id} by ${actor.id}: ${card.card_id}${adopted ? ` in ${adopted}` : ''}`)
+          const next = summarize(readCard(card.card_id))
+          sse.broadcast('card', forOwner(next))
+          sse.broadcast('sessions', (v) => viewFor(v))
+          return send(res, 201, { card: next, bundle: { id: bundle.id, path: bundle.path } })
+        }
         if (req.method === 'POST' && (parts[3] === 'handoff' || parts[3] === 'end')) {
           if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
           if (parts[3] === 'end') {
@@ -1098,6 +1272,29 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           rmSync(cardDir(id), { recursive: true, force: true })
           sse.broadcast('removed', forOwner({ card_id: id }))
           return send(res, 200, { removed: id })
+        }
+        // Take over: sit down in the card's worktree yourself. The card is
+        // paused first (its child is killed and its bundle written by the
+        // existing transition), then Leg hands back the one command that opens
+        // a terminal there. This is the only command the board ever hands a
+        // human, because a browser tab cannot open one (redesign C.4).
+        if (req.method === 'POST' && parts[3] === 'take-over') {
+          if (TERMINAL.includes(card.status)) return send(res, 409, { error: `card ${id} is ${card.status}: there is nothing running to take over. Rerun it, or open its worktree yourself.` })
+          const raw = String(summarize(card).active_adapter ?? '')
+          const agent = [raw, raw.replace(/^fake-/, '')].find((n) => SUPERVISED_AGENTS.includes(n)) ?? null
+          if (!agent) return send(res, 409, { error: `this card's current leg runs ${raw || 'no agent'}, which is not one of the agents leg can open a terminal for (${SUPERVISED_AGENTS.join(', ')})` })
+          let next = card
+          if (card.status === 'running') {
+            try { next = humanAction(id, 'pause', {}, actor) } catch (err) {
+              if (err instanceof IllegalTransition) return send(res, 409, { error: err.message })
+              throw err
+            }
+          }
+          const command = `leg ${agent} --resume-card ${id}`
+          log(`take-over for ${id} by ${actor.id}: ${command}`)
+          const view = summarize(readCard(id) ?? next)
+          sse.broadcast('card', forOwner(view))
+          return send(res, 200, { card: view, command })
         }
         if (req.method === 'POST' && parts[3]) {
           const map = { run: 'enqueue', queue: 'enqueue', approve: 'approve', reassign: 'reassign', pause: 'pause', resume: 'resume', kill: 'kill', handoff: 'handoff_now', 'handoff-now': 'handoff_now', rerun: 'rerun' }

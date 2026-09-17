@@ -23,7 +23,12 @@ export const STATUSES = ['backlog', 'queued', 'running', 'handing_off', 'waiting
 const CLOSED = ['done', 'failed', 'killed']
 // card.json keys `update --patch` may set (everything else goes through a named flag)
 export const PATCHABLE = ['pipeline', 'leases', 'land_attempts', 'land_mode', 'test_command', 'title', 'trunk',
-  'bounce_reason', 'kill_requested', 'worktree', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'last_bundle', 'pr_url', 'harness']
+  'bounce_reason', 'kill_requested', 'worktree', 'next_leg', 'handoff_outcome', 'resume_from_bundle', 'failure', 'last_bundle', 'pr_url', 'harness',
+  // where this card came from ({ from: <terminal id> } after "End, and keep
+  // going as a card"), and whether its worktree was adopted from that terminal
+  // rather than cut for the card: the orchestrator must not cut a second one
+  // over the top of it (redesign G4)
+  'lineage', 'worktree_adopted']
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,39}$/i
 
 export const ROOT = process.env.LEG_HOME || process.env.BATON_HOME || (existsSync(join(homedir(), '.leg')) ? join(homedir(), '.leg') : existsSync(join(homedir(), '.baton')) ? join(homedir(), '.baton') : join(homedir(), '.leg'))

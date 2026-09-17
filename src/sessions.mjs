@@ -69,6 +69,10 @@ export function createSession({ id, agent, account = 'default', cwd, repo = null
     agent_session_id: null, transcript_path: null,
     task: null, turns: 0,
     files_touched: [], files_dirty: [], head: null, head_at_start: null,
+    // commits this checkout is ahead of its upstream (else of head_at_start),
+    // refreshed by the runner's git poll. null until it has been counted, and
+    // null again whenever it cannot be: never a zero standing in for unknown.
+    ahead: null,
     limits: null, limit: null, warning: null,
     bundle: null, handoff: null, chain, checkpoints: [],
     handoff_order: normalizeHandoffOrder(handoffOrder), installed,

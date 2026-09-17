@@ -16,6 +16,10 @@ process.env.BATON_HOME = HOME
 const { markLimited, readUsage } = await import('../src/usage.mjs')
 const { listSessions, readEvents, requestControl } = await import('../src/sessions.mjs')
 const { resumeVerdict } = await import('../src/resume.mjs')
+const { createCard } = await import('../src/cards.mjs')
+const { ensure: ensureWorktree } = await import('../src/worktree.mjs')
+const { writeHandoff } = await import('../src/handoff.mjs')
+const { ledgerUpdate } = await import('../src/store.mjs')
 
 const STUBS = mkdtempSync(join(tmpdir(), 'baton-stubs-'))
 const HOOK = join(ROOT, 'src', 'hook.mjs').replace(/\\/g, '/')
@@ -186,4 +190,57 @@ test('a second live session in one checkout gets its own worktree and branch; --
   for (const s of [sa, sb, sc]) requestControl(s.session_id, { end: true })
   t.diagnostic(b.err.split('\n').filter((l) => /worktree|live in this checkout/.test(l)).join('\n'))
   assert.deepEqual(await Promise.all([a.exited, b.exited, c.exited]), [0, 0, 0])
+})
+
+// Take over on the board pauses a card and hands the human one command. This is
+// that command doing what the board says it does (redesign C.4).
+test('leg <agent> --resume-card opens the terminal in the card\'s own worktree, primed from its bundle', async (t) => {
+  const repo = initRepo('resume-card-')
+  const stubDir = mkdtempSync(join(tmpdir(), 'stub-rec-')); mkdirSync(join(stubDir, 'live'))
+  const elsewhere = initRepo('resume-card-elsewhere-')
+
+  const card = await createCard({ repo, task: 'Add the audit CSV export', chain: 'codex' }, { type: 'human', id: 'wes' })
+  const wt = ensureWorktree(repo, card.card_id, { trunk: 'main' })
+  writeFileSync(join(wt.path, 'export.mjs'), 'export const csv = () => ""\n')
+  const bundle = writeHandoff({
+    card, station: { name: 'build' }, leg: 0, entry: { adapter: 'codex' },
+    run: { outcome: 'incomplete', reason: 'paused by the human' }, worktree: wt.path, runDir: null,
+    changedFiles: ['export.mjs'], diffStat: ' 1 file changed, 1 insertion(+)',
+  })
+  ledgerUpdate(card.card_id, { patch: { worktree: wt.path, last_bundle: bundle.bundle_id } })
+
+  // started from somewhere else entirely: the card decides where the terminal
+  // opens, not the directory the human happened to be standing in
+  const child = batonSpawn(['codex', '--resume-card', card.card_id], envFor(stubDir), { cwd: elsewhere })
+  let err = ''
+  child.stderr.on('data', (d) => { err += d }); child.stdout.resume()
+  const code = await new Promise((r) => child.on('exit', r))
+  t.diagnostic(err.split('\n').filter((l) => /\[leg\]/.test(l)).slice(0, 8).join('\n'))
+  assert.equal(code, 0, err)
+  assert.match(err, new RegExp(`taking over card ${card.card_id}`))
+
+  const [rec] = records(stubDir, 'codex-')
+  assert.ok(rec, 'the agent started')
+  assert.equal(canonPath(rec.cwd), canonPath(wt.path), `started in ${rec.cwd}, not the card's worktree ${wt.path}`)
+  const prompt = rec.argv[rec.argv.length - 1]
+  assert.match(prompt, /Taking over a background card/)
+  assert.match(prompt, new RegExp(`Card ${card.card_id}`))
+  assert.match(prompt, /Add the audit CSV export/)
+  // the bundle itself, loaded through the same CLI a hand-off uses
+  assert.match(prompt, new RegExp(`# Resume: leg ${card.card_id}`), `the card's own bundle is in the prompt:\n${String(prompt).slice(0, 400)}`)
+
+  const s = listSessions().find((x) => x.session_id === rec.session)
+  assert.equal(s.lineage.from, card.card_id, 'the terminal records which card it came from')
+  assert.equal(canonPath(s.cwd), canonPath(wt.path))
+  assert.equal(s.task, 'Add the audit CSV export')
+  assert.equal(readEvents(s.session_id).some((e) => e.type === 'continued' && e.summary.includes(card.card_id)), true)
+  // a second worktree on that branch is exactly what Take over exists to avoid
+  assert.equal(s.worktree, null, 'the card\'s checkout is shared, not cut again')
+
+  // an id nobody has is an error with the way out, not a terminal in the wrong place
+  const miss = batonSpawn(['codex', '--resume-card', 'card-nope'], envFor(stubDir), { cwd: elsewhere })
+  let missErr = ''
+  miss.stderr.on('data', (d) => { missErr += d }); miss.stdout.resume()
+  assert.equal(await new Promise((r) => miss.on('exit', r)), 3, missErr)
+  assert.match(missErr, /no card matches "card-nope"/)
 })

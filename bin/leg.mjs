@@ -620,6 +620,8 @@ async function main() {
                                 the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                 a second live session in one checkout gets its own worktree (--no-worktree to share)
                                 auto-approve mode (--no-auto-approve to opt out)
+                                --resume-card <id> takes over a background card: this terminal opens in that card's
+                                worktree, primed from its bundle (Take over on the board pauses it and prints this)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>
                                 handoff --to <agent>[/<account>[/<model>]] names the rung; simulate-limit --message "<text>"
   ladder [ls]                   the fallback ladder: every rung, what it costs, and what it is doing right now

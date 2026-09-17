@@ -459,6 +459,51 @@ in [VOCABULARY.md](VOCABULARY.md). Board routes: `GET /api/sessions`,
 `POST /api/sessions/:id/end`, `DELETE /api/sessions/:id`, with the list pushed
 as the SSE `sessions` event (source: src/server.mjs, src/board/sessions.js).
 
+`session.ahead` is the number of commits the checkout is past its upstream, or
+past `head_at_start` when it tracks nothing. It is counted with `git rev-list
+--count <base>..HEAD` on the runner's git poll and is `null`, never `0`, when
+this is not a repository or the count could not be taken (source:
+src/attach.mjs `aheadCount`). Like the dirty file list, it is owner-only:
+`redactSession` drops it from another human's row.
+
+`GET /api/sessions` also carries `cards_waiting`, the number of cards in
+`needs_approval` or `waiting_human`, so the terminals verdict can name one
+without reading the pipeline board. A guest is not sent it (source:
+src/server.mjs `cardsWaiting`).
+
+### A terminal becomes a card, and a card becomes a terminal
+
+`POST /api/sessions/:id/end-as-card` (owner or operator; a guest is refused)
+writes the terminal's hand-off bundle with `saveSessionBundle`, creates a card
+whose task is the terminal's prompt plus `Continue from the bundle at <path>.`,
+adopts the terminal's worktree when it has one (`worktree_adopted: true`, so no
+later run cuts a second worktree on that branch), starts the card's chain at
+the rung the terminal is standing on, records `lineage.from`, and then requests
+`end` on the terminal exactly as `POST /api/sessions/:id/end` does. `201` with
+`{card, bundle}`. The bundle is written first: if it cannot be written, nothing
+is created and the terminal is left running (source: src/server.mjs).
+
+`POST /api/cards/:id/take-over` pauses a running card through the existing
+`pause` transition (child killed, bundle written) and answers `200` with
+`{card, command}`, where `command` is `leg <agent> --resume-card <card-id>` for
+the agent on the card's current leg. A card in `done`, `failed` or `killed` is
+refused with `409` (source: src/server.mjs).
+
+`leg <agent> --resume-card <id>` is Leg's own flag and never reaches the
+agent's argv. It opens an ordinary interactive terminal in that card's
+worktree, whatever directory it was run from, primed with the card's bundle as
+the first prompt and with `lineage.from` naming the card. The id may be the
+full card id or a unique tail of it; an ambiguous one is refused by name with
+the matches listed, and an unknown one exits `3` (source: src/attach.mjs
+`takeFlagValue`, `resolveCardId`, `takeOverPrompt`).
+
+A live card's board payload carries what was measured and nothing else: `work`
+`{files, insertions, deletions}` parsed from `git diff --shortstat
+<trunk>..HEAD` in its worktree, `tests` `{state, at}` and `land` `{state,
+reason, sha}` read from the card's own ledger. A key that could not be measured
+is absent; a finished card carries none of them (source: src/server.mjs
+`parseShortstat`, `cardOutcomes`, `summarize`).
+
 ### The hand-off ladder
 
 `leg sessions handoff <id> --to <agent>[/<account>[/<model>]]` names the rung

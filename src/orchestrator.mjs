@@ -288,7 +288,13 @@ export async function runCard(id, { actor = BATON_ACTOR } = {}) {
 
 async function driveCard(id, card, actor) {
   if (card.status === 'backlog') card = step(id, 'enqueue', {}, actor)
-  const wt = ensureWorktree(card.repo, card.card_id, { trunk: card.trunk || 'main' })
+  // A card born from "End, and keep going as a card" continues in the
+  // terminal's own worktree, exactly where the terminal stopped (redesign G4).
+  // Cutting a second worktree on that branch is the conflict machine the
+  // roadmap already rejects, so an adopted checkout is used as it is.
+  const wt = card.worktree_adopted && card.worktree && existsSync(card.worktree)
+    ? { path: card.worktree, branch: null, created: false }
+    : ensureWorktree(card.repo, card.card_id, { trunk: card.trunk || 'main' })
   if (card.worktree !== wt.path) {
     ledgerUpdate(id, { patch: { worktree: wt.path } })
     card = readCard(id)

@@ -183,11 +183,14 @@ const apiRoutes = () => [
   ['POST', `/api/sessions/${OWNED}/request-handoff`],
   ['POST', `/api/sessions/${OWNED}/requests/sam/approve`], ['POST', `/api/sessions/${OWNED}/requests/sam/dismiss`],
   ['POST', `/api/sessions/${OWNED}/land`], ['POST', `/api/sessions/${OWNED}/handoff`], ['POST', `/api/sessions/${OWNED}/end`],
+  // step 6: a terminal becomes a card, a card hands back a command. Both move
+  // real work, so both are in the sweep from the day they exist.
+  ['POST', `/api/sessions/${OWNED}/end-as-card`],
   ['DELETE', `/api/sessions/${OWNED}`],
   ['GET', `/api/sessions/${OTHER}`], ['POST', `/api/sessions/${OTHER}/handoff`], ['DELETE', `/api/sessions/${OTHER}`],
   ['GET', '/api/floor'], ['GET', '/api/trunk'], ['GET', '/api/leases'],
   ['GET', `/api/cards/${CARD}`], ['GET', `/api/cards/${CARD}/events`], ['GET', `/api/cards/${CARD}/log`],
-  ['POST', `/api/cards/${CARD}/run`], ['DELETE', `/api/cards/${CARD}`],
+  ['POST', `/api/cards/${CARD}/run`], ['POST', `/api/cards/${CARD}/take-over`], ['DELETE', `/api/cards/${CARD}`],
   ['GET', '/api/history'], ['GET', `/api/history/claude:${OWNED}`], ['GET', '/api/history/providers'], ['POST', '/api/history/refresh'],
   ['GET', '/api/worktrees'],
   ['GET', '/api/nope'],
@@ -220,6 +223,8 @@ before(async () => {
     // the Notification hook's question is the owner's prompt text by another
     // route, and the model says which of this machine's buckets is being spent
     model: 'fable',
+    // the commit count the register prints beside the dirty count
+    ahead: 2,
     waiting: { type: 'permission_prompt', message: C.waiting, since: new Date().toISOString() },
     // a worktree whose path is gone: landBlocker stops before any git runs
     worktree: { path: C.worktree, branch: 'baton/s-sec-wes', base: 'main' },
@@ -273,12 +278,15 @@ test('the canary detector actually fires: the owner\'s own board carries every o
   for (const what of ['task', 'cwd', 'repo path', 'file name', 'limit text', 'bundle path', 'waiting question']) {
     assert.ok(found.includes(what), `the owner's own /api/sessions should carry the ${what}; detector found [${found}]`)
   }
+  // the owner's own row carries the commit count, so the guest assertion that
+  // it is absent is measuring a field that is really there to lose
+  assert.equal(mine.json.sessions.find((s) => s.session_id === OWNED).ahead, 2)
   const log = await request(openBase, `/api/cards/${CARD}/log`)
   assert.equal(log.status, 200)
   assert.ok(carries(log.text, C.runlog), 'the owner can read the run log')
   assert.equal(carries(log.text, SCRUBBED_KEY), false, 'an API key in a run log is scrubbed even for the owner')
   assert.ok(log.text.includes('[REDACTED]'), 'scrub() replaced the key')
-  assert.equal(apiRoutes().length, 31, 'every route handle() answers is in the sweep')
+  assert.equal(apiRoutes().length, 33, 'every route handle() answers is in the sweep')
 })
 
 // ---- 1. no token from a non-loopback address -------------------------------
@@ -296,7 +304,7 @@ test('no token, from a non-owner address: every route refuses and says nothing',
     swept++
   }
   assert.equal((await sseCollect(strictBase, null, { ms: 50 })).status, 401, 'SSE with no token')
-  assert.equal(swept, 31, `swept ${swept} routes`)
+  assert.equal(swept, 33, `swept ${swept} routes`)
 })
 
 test('no token on loopback when share asks for one: every route refuses', async () => {
@@ -360,6 +368,9 @@ test('a guest\'s own board: their terminal, and of the owner\'s only that it exi
   assert.equal(theirs.task, null)
   assert.equal(theirs.cwd, null)
   assert.deepEqual(theirs.files, [])
+  // how far someone else's branch has moved is a fact about their work, beside
+  // the dirty count that is already withheld (redesign A.4 row 8)
+  assert.equal(theirs.ahead, undefined, 'no commit count from the owner\'s branch')
   assert.equal(theirs.bundle, undefined)
   assert.equal(theirs.transcript_path, undefined)
   assert.equal(theirs.argv, undefined)
