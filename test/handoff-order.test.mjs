@@ -73,6 +73,48 @@ test('persisted order is validated and preserves same-agent account fallback bef
   assert.deepEqual(choice.out.map((x) => `${x.agent}/${x.account}`), ['codex/work'])
 })
 
+// Step 4 of docs/redesign-2026-09-17.md turns the order of agents into a
+// ladder of rungs. The one thing that may not change on the way: a machine
+// that already has an order must walk it exactly as it did, and every older
+// reader of preferences.json must still find a valid `handoff_order`.
+test('a bare handoff_order migrates to a ladder that walks it identically, and the order round-trips', () => {
+  const accounts = { claude: ['default', 'work'], codex: ['default'], agy: ['default'], grok: ['default'] }
+  for (const order of [['codex', 'claude', 'agy'], ['grok', 'claude', 'codex', 'agy']]) {
+    const saved = preferences.writePreferences({ handoff_order: order })
+    assert.deepEqual(saved.handoff_order, order)
+    assert.deepEqual(saved.handoff_ladder.map((r) => r.agent), order, 'one rung per agent, in the order that was saved')
+    assert.deepEqual(saved.handoff_ladder.map((r) => r.model), order.map(() => null), 'a migrated rung names no model')
+    assert.deepEqual(preferences.orderFromLadder(saved.handoff_ladder), order, 'and the order derives back out of it')
+    assert.deepEqual(preferences.readPreferences().handoff_order, order, 'which is what an older reader finds on disk')
+    assert.equal(preferences.validHandoffOrder(preferences.readPreferences().handoff_order), true)
+    for (const from of order) {
+      const bare = usage.candidates({ agent: from, account: 'default', accounts, order })
+      const rungs = usage.candidates({ agent: from, account: 'default', accounts, order, ladder: saved.handoff_ladder })
+      assert.deepEqual(rungs.map((r) => `${r.agent}/${r.account}`), bare.map((c) => `${c.agent}/${c.account}`), `${from} on ${order.join(',')} walks the same list`)
+      assert.equal(rungs.every((r) => r.model === undefined), true, 'and no rung invents a model')
+    }
+  }
+  // a ladder with model rungs still leaves a valid order behind it
+  const ladder = preferences.writePreferences({
+    handoff_ladder: [
+      { agent: 'claude', account: 'default', model: 'fable' },
+      { agent: 'claude', account: 'default', model: 'opus' },
+      { agent: 'codex', account: 'default', model: null },
+      { agent: 'agy', account: 'default', model: null },
+    ],
+  })
+  assert.deepEqual(ladder.handoff_order, ['claude', 'codex', 'agy'])
+  assert.equal(preferences.validHandoffOrder(ladder.handoff_order), true)
+  assert.equal(preferences.readPreferences().handoff_ladder.length, 4)
+  assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'claude', model: 'fable' }, { agent: 'claude', model: 'fable' }] }), /twice/)
+  assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'codex', model: 'gpt-9' }] }), /no model/)
+  assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'claude', model: 'opus', when: 'soon' }] }), /always, below:N or walled-only/)
+  assert.throws(() => preferences.writePreferences({ climb_back: 'when-quiet' }), /climb_back must be/)
+  assert.throws(() => preferences.writePreferences({ reserve: { claude: 140 } }), /between 1 and 100/)
+  // and the machine goes back to what the rest of this file expects
+  preferences.writePreferences({ handoff_order: ['claude', 'codex', 'agy'] })
+})
+
 test('server validates order, enforces ownership and lifecycle, and rejects legacy wrappers', async () => {
   const ownerToken = share.newToken()
   const guestToken = share.newToken()

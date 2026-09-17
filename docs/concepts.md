@@ -123,6 +123,17 @@ Where each number comes from is per agent, and is in
 
 ## Handoff (interactive)
 
+A hand-off destination is a **rung**, not just an agent: `{agent, account,
+model, when, cost}`. A rung can name a model, so a hand-off can move from
+`claude/fable` to `claude/opus` without leaving the login, or it can leave the
+model out and behave exactly like the plain agent destinations Leg has always
+had. `preferences.json` keeps an ordered list of rungs, the **ladder**, tried
+top first (`src/preferences.mjs`; the keys are documented in
+[configuration.md](configuration.md)). `handoff_order`, the older list of
+agents, is never removed: it is derived from the ladder's distinct agent order
+every time the ladder is saved, so a reader that has never heard of rungs sees
+the same order it always did.
+
 When a session hits its limit, or you press **Hand off now**, Leg does four
 things in order (`src/attach.mjs`, `src/bundle.mjs`):
 
@@ -136,17 +147,42 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    in place. A checkpoint runs about every two minutes while the session has
    turns, and at every warning, limit and hand-off.
 2. **Choose.** `candidates()` lists the other accounts of the same agent first,
-   then every other agent in the terminal's saved order. That order is an
-   absolute priority list, not a rotation anchored on the agent running now:
-   an agent placed last is tried last whichever agent the terminal started on,
-   and every option is still tried once. The default order is claude, codex,
-   agy. `chooseNext()` skips a missing CLI or an option whose wall has not
-   reset. The board can save a new order for an active terminal; the wrapper reads
-   it again at the transition and during all-out waiting. Machine Settings is
-   copied only when a new terminal starts.
-3. **Switch.** The agent process is stopped and the terminal restored. The
-   bundle's `context-handoff-bundle load <id>` output (with the `## Synthesis`
-   section prepended if `.leg/SYNTHESIS-<session-id>.md` is present) is written to
+   then walks the ladder, and after each rung, the other accounts of that
+   rung's agent. `evaluateLadder()` walks that list top to bottom and takes the
+   first rung that clears every gate, checked in this order: the agent is
+   installed on this machine; the rung was not excluded for this hand-off; its
+   live cost (`rungCost()`, computed from usage, never trusted from disk) is
+   `free` or `plan`, or `may_spend` is on, else the rung is skipped with the
+   reason `it spends usage credits and you have not allowed that`; the rung
+   sits on the same login the terminal just fell off of and what stopped that
+   login is its own account-wide window, in which case another model there
+   cannot help and the rung is skipped as `shares the window that is out, buys
+   nothing`, whatever model it names; the account itself is not walled; the
+   model, if the rung names one, is not walled; on an automatic hand-off with
+   `climb_back` set to `never`, the rung is not a stronger model of the login
+   the terminal just left (a human's own pick still reaches it; only an
+   automatic climb is held back); the rung's login is not past its `reserve`
+   floor; and its `when` is satisfied (`always`; `below:N`, which needs the
+   rung's own bucket to read under N percent and is skipped with a reason when
+   there is no reading, because a threshold on a login with no figure is a
+   wrong number in disguise; `walled-only`, which only opens once every rung
+   above it is walled). Every rung the walk passes before the one it picks is
+   named in the session's ledger with its reason, one line each, for example
+   `skipped claude/fable: it spends usage credits and you have not allowed
+   that`; a rung is never passed over silently. The board can save a new
+   ladder for an active terminal; the wrapper reads it again at the transition
+   and during all-out waiting. Machine Settings is copied only when a new
+   terminal starts.
+3. **Switch.** The agent process is stopped and the terminal restored. A
+   same-login move to a weaker claude model (a downshift, by the
+   `fable, opus, sonnet, haiku` order) with the agent's own session id on the
+   record keeps the conversation instead: Leg runs
+   `claude --resume <agent_session_id> --model <alias>`, no bundle is written
+   into a prompt, and the ledger says so. Every other rung, including an
+   upshift back to a stronger model, a different account, or a different
+   agent, takes the bundle: the `context-handoff-bundle load <id>` output
+   (with the `## Synthesis` section prepended if
+   `.leg/SYNTHESIS-<session-id>.md` is present) is written to
    `.leg/RESUME-<session-id>.md` and copied to `.leg/RESUME.md`, and the next
    agent starts in the same terminal with a short pointer prompt as its first
    positional argument: `claude "<prompt>"`, `codex "<prompt>"`,
@@ -161,6 +197,13 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    waits again. The card records `session.all_out` and `session.waiting`
    (`{ agent, account, resets_at, since }`) and shows status `waiting`. Ctrl-C
    in the terminal, or End on the card, quits with exit 3.
+
+`climb_back` decides what happens once a lower rung's own login recovers.
+`next-handoff`, the default, needs no extra step: `chooseNext()` always walks
+from rung 1, so the next time this terminal hands off it is offered the
+higher rung again. `never` holds a terminal on the rung it downshifted to
+until a human hands it off there by name; an automatic hand-off will not walk
+back up on its own.
 
 ## The portable harness
 

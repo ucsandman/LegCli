@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { AGENTS } from './sessions.mjs'
+import { rungCost } from './preferences.mjs'
 
 export const WARN_PCT = Number((process.env.LEG_WARN_PCT || process.env.BATON_WARN_PCT) || 85)
 // A limit hit with no reset time from the agent: assume the 5-hour window.
@@ -264,11 +265,124 @@ export function hottest(u) {
 // stays last whichever agent the terminal started on (codex → claude → agy
 // hands claude to codex, never to agy first).
 // accounts: { claude: ['default', 'work'], codex: ['default'], agy: ['default'] }
-export function candidates({ agent, account = 'default', accounts, order = AGENTS }) {
+// A ladder walks the same way, one RUNG at a time. A rung is a destination
+// ({agent, account, model}), so `claude/opus` after `claude/fable` is a real
+// move, which an order of agent names could not express. The account fallback
+// the order always had is kept around each rung: a login with two accounts
+// still tries its other account, and the source agent's other accounts still
+// come first. `model` is only ever on a rung that names one, so a ladder
+// expanded from a bare order produces exactly the objects the order did.
+export function candidates({ agent, account = 'default', accounts, order = AGENTS, ladder = null, model = null }) {
   const out = []
-  for (const a of accounts[agent] ?? ['default']) if (a !== account) out.push({ agent, account: a })
-  for (const ag of order) if (ag !== agent) for (const a of accounts[ag] ?? ['default']) out.push({ agent: ag, account: a })
+  if (!ladder) {
+    for (const a of accounts[agent] ?? ['default']) if (a !== account) out.push({ agent, account: a })
+    for (const ag of order) if (ag !== agent) for (const a of accounts[ag] ?? ['default']) out.push({ agent: ag, account: a })
+    return out
+  }
+  const seen = new Set()
+  const from = { agent, account, model: model ?? null }
+  const push = (r) => {
+    const key = `${r.agent}--${r.account}--${r.model ?? ''}`
+    if (seen.has(key)) return
+    // The same login is a destination only when the rung names a DIFFERENT
+    // model. Itself is not a hand-off, and neither is a rung with no model at
+    // all: "claude, whatever model it defaults to" on the login that just
+    // stopped is the walled model again as often as not, and Leg cannot know
+    // which. This is also what the agent order did before rungs existed.
+    if (r.agent === from.agent && r.account === from.account && (!r.model || r.model === from.model)) return
+    seen.add(key)
+    out.push({ agent: r.agent, account: r.account, ...(r.model ? { model: r.model } : {}), when: r.when ?? 'always', cost: r.cost ?? 'plan' })
+  }
+  for (const a of accounts[agent] ?? ['default']) if (a !== account) push({ agent, account: a, model: null })
+  for (const r of ladder) {
+    push(r)
+    for (const a of accounts[r.agent] ?? ['default']) if (a !== r.account) push({ agent: r.agent, account: a, model: r.model ?? null, when: r.when, cost: r.cost })
+  }
   return out
+}
+
+// The label a human reads for a rung: `claude/fable`, `codex`, `claude/work/opus`.
+export function rungLabel(r) {
+  if (!r) return 'nothing'
+  return `${r.agent}${r.account && r.account !== 'default' ? '/' + r.account : ''}${r.model ? '/' + r.model : ''}`
+}
+
+// One ledger line for a rung that was passed over. Exact wording matters: this
+// is what the terminal and the card say instead of going somewhere unexplained.
+export function skipLine(r) {
+  return `skipped ${rungLabel(r)}: ${r.reason}`
+}
+
+const COST_REASON = {
+  credits: 'it spends usage credits and you have not allowed that',
+  metered: 'it spends metered credits and you have not allowed that',
+}
+
+// Is this rung a destination right now, and if not, why not (B.3). One pass
+// over the list, so the chooser, the board's picker and `leg ladder` all read
+// the same answers and the same words.
+// → [{ agent, account, model, cost, ok, reason, resets_at }]
+export function evaluateLadder({
+  from, list, installed = null, nowS = Math.floor(Date.now() / 1000), exclude = [],
+  maySpend = false, reserve = {}, automatic = true, climbBack = 'next-handoff', ladder = null, read = readUsage,
+} = {}) {
+  const usageOf = new Map()
+  const usage = (r) => {
+    const key = `${r.agent}--${r.account}`
+    if (!usageOf.has(key)) usageOf.set(key, read(r.agent, r.account))
+    return usageOf.get(key)
+  }
+  const walled = list.map((r) => {
+    const u = usage(r)
+    return !isAvailable(u, nowS) || Boolean(r.model && wallActive(u.walls?.[r.model], nowS))
+  })
+  const rank = (r) => (ladder ?? []).findIndex((x) => x.agent === r.agent && x.account === r.account && (x.model ?? null) === (r.model ?? null))
+  const fromRank = from ? rank(from) : -1
+  return list.map((r, i) => {
+    const u = usage(r)
+    const cost = rungCost(r, u)
+    const row = { agent: r.agent, account: r.account, model: r.model ?? null, cost, ok: true, reason: null, resets_at: null }
+    if (installed && installed[r.agent] === false) return { ...row, ok: false, reason: 'not installed on this machine' }
+    if (exclude.some((x) => x.agent === r.agent && x.account === r.account)) return { ...row, ok: false, reason: 'refused for this hand-off' }
+    // The cost gate. `-p` mode bills a credits request without asking and an
+    // interactive one stalls five minutes at a consent prompt nobody is there
+    // to answer (B.5), so an unattended hand-off never takes one unless the
+    // human turned spending on.
+    if (!['free', 'plan'].includes(cost) && !maySpend) return { ...row, ok: false, reason: COST_REASON[cost] ?? `it spends ${cost} and you have not allowed that` }
+    const b = binding(u, r.model ?? null)
+    const sameLogin = Boolean(from && r.agent === from.agent && r.account === from.account)
+    // The wasted switch: the same login as the terminal that stopped, and what
+    // is out is the account's own window, which every model shares
+    // (docs/en/costs). Another model here cannot help, and offering it would be
+    // a lie with a button on it. Said with the account wall's own words,
+    // because on this login that IS what the wall means.
+    if (sameLogin && (!isAvailable(u, nowS) || (b && b.scope === 'account' && b.percent >= 100))) {
+      return { ...row, ok: false, reason: 'shares the window that is out, buys nothing', resets_at: u.limited_until ?? null }
+    }
+    if (!isAvailable(u, nowS)) return { ...row, ok: false, reason: 'at its usage limit', resets_at: u.limited_until ?? null }
+    if (r.model && wallActive(u.walls?.[r.model], nowS)) return { ...row, ok: false, reason: `the ${r.model} window is out`, resets_at: u.walls[r.model].limited_until ?? null }
+    if (automatic && climbBack === 'never' && from && r.agent === from.agent && r.account === from.account && fromRank >= 0 && rank(r) >= 0 && rank(r) < fromRank) {
+      return { ...row, ok: false, reason: 'climb-back is off; Back to the top rung does it by hand' }
+    }
+    const floor = Number(reserve?.[r.agent])
+    if (Number.isFinite(floor) && b && Number.isFinite(b.percent) && b.percent > 100 - floor) {
+      // A human pressing Hand off > ignores the reserve; the row still says so
+      // rather than hiding, because a floor you cannot see is a floor you swear at.
+      if (automatic) return { ...row, ok: false, reason: `past your ${floor}% reserve` }
+      return { ...row, reason: `past your ${floor}% reserve` }
+    }
+    const when = r.when ?? 'always'
+    if (when.startsWith('below:')) {
+      const n = Number(when.slice('below:'.length))
+      if (!b || !Number.isFinite(b.percent)) return { ...row, ok: false, reason: `no reading, so "below ${n}%" cannot be checked` }
+      if (!(b.percent < n)) return { ...row, ok: false, reason: `at ${Math.round(b.percent)}%, not below ${n}%` }
+    }
+    if (when === 'walled-only') {
+      const aboveOpen = list.slice(0, i).some((_, j) => !walled[j])
+      if (aboveOpen) return { ...row, ok: false, reason: 'only when every rung above it is walled' }
+    }
+    return row
+  })
 }
 
 // → { next: {agent, account} | null, out: [{agent, account, resets_at}] sorted
@@ -281,8 +395,34 @@ export function candidates({ agent, account = 'default', accounts, order = AGENT
 // it is none of those the order decides instead and `preferred_taken` is false,
 // which is what the session event says: a pick made a minute ago must not leave
 // a terminal stopped because that account walled in the meantime.
-export function chooseNext({ agent, account, accounts, installed, order = AGENTS, nowS = Math.floor(Date.now() / 1000), exclude = [], prefer = null }) {
+export function chooseNext({
+  agent, account, accounts, installed, order = AGENTS, nowS = Math.floor(Date.now() / 1000), exclude = [], prefer = null,
+  ladder = null, model = null, maySpend = false, reserve = {}, automatic = null, climbBack = 'next-handoff',
+}) {
   const out = []
+  if (ladder) {
+    // The ladder walk. `reasons` carries one line per rung that was passed
+    // over, so the ledger and the picker can say what was skipped and why
+    // instead of a terminal turning up somewhere unexplained.
+    const reasons = []
+    const list = candidates({ agent, account, accounts, order, ladder, model })
+    const auto = automatic === null ? !prefer : automatic
+    const rows = evaluateLadder({ from: { agent, account, model: model ?? null }, list, installed, nowS, exclude, maySpend, reserve, automatic: auto, climbBack, ladder })
+    const trim = (r) => ({ agent: r.agent, account: r.account, ...(r.model ? { model: r.model } : {}) })
+    const noteOut = (r) => { if (Number.isFinite(r.resets_at) && !out.some((x) => x.agent === r.agent && x.account === r.account)) out.push({ agent: r.agent, account: r.account, resets_at: r.resets_at, reason: r.reason }) }
+    if (prefer) {
+      const want = { agent: prefer.agent, account: prefer.account ?? 'default', model: prefer.model ?? null }
+      const hit = rows.find((r) => r.agent === want.agent && r.account === want.account && (want.model ? r.model === want.model : true))
+      if (hit && hit.ok) return { next: trim(hit), out, reasons, preferred_taken: true }
+    }
+    for (const r of rows) {
+      if (r.ok) return { next: trim(r), out, reasons, preferred_taken: false }
+      reasons.push({ agent: r.agent, account: r.account, model: r.model, reason: r.reason })
+      noteOut(r)
+    }
+    out.sort((a, b) => (a.resets_at ?? Infinity) - (b.resets_at ?? Infinity))
+    return { next: null, out, reasons, preferred_taken: false }
+  }
   const list = candidates({ agent, account, accounts, order })
   const eligible = (c) => {
     if (installed && installed[c.agent] === false) return false
@@ -291,17 +431,17 @@ export function chooseNext({ agent, account, accounts, installed, order = AGENTS
   }
   if (prefer) {
     const hit = list.find((c) => c.agent === prefer.agent && c.account === (prefer.account ?? 'default'))
-    if (hit && eligible(hit)) return { next: hit, out, preferred_taken: true }
+    if (hit && eligible(hit)) return { next: hit, out, reasons: [], preferred_taken: true }
   }
   for (const c of list) {
     if (installed && installed[c.agent] === false) continue
     if (exclude.some((x) => x.agent === c.agent && x.account === c.account)) continue
     const u = readUsage(c.agent, c.account)
-    if (isAvailable(u, nowS)) return { next: c, out, preferred_taken: false }
+    if (isAvailable(u, nowS)) return { next: c, out, reasons: [], preferred_taken: false }
     out.push({ ...c, resets_at: u.limited_until, reason: u.limited_reason })
   }
   out.sort((a, b) => (a.resets_at ?? Infinity) - (b.resets_at ?? Infinity))
-  return { next: null, out, preferred_taken: false }
+  return { next: null, out, reasons: [], preferred_taken: false }
 }
 
 export function fmtReset(epochS) {

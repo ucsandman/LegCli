@@ -20,10 +20,11 @@ import { availableActions } from '../src/chain.mjs'
 import { up, down, stopBoard, status, openBoard } from '../src/launcher.mjs'
 import { attach, ensureBoard } from '../src/attach.mjs'
 import { readShare, addPerson, removePerson, rotate as rotateToken, turnOn, turnOff, linkFor, personNamed, scheme, tlsConfigured, ROLES } from '../src/share.mjs'
-import { normalizeHandoffOrder } from '../src/preferences.mjs'
+import { normalizeHandoffOrder, ladderFor, readPreferences, writePreferences } from '../src/preferences.mjs'
+import { MODEL_ALIASES } from '../src/buckets.mjs'
 import { SUPERVISED_AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, readLand, sessionDir, appendEvent } from '../src/sessions.mjs'
 import { addAccount, removeAccount, listAccountRows, readAccounts, LAYOUT } from '../src/accounts.mjs'
-import { listUsage, fmtReset, readUsage, isAvailable, candidates } from '../src/usage.mjs'
+import { listUsage, fmtReset, readUsage, isAvailable, candidates, binding, wallActive, evaluateLadder, rungLabel } from '../src/usage.mjs'
 import { home } from '../src/store.mjs'
 import { entitlement, allows, describe as describeLicense, activate as activateLicense, deactivate as deactivateLicense, refresh as refreshLicense, licensePath, BUY_URL } from '../src/license.mjs'
 import { resumeVerdict, bodyOf, ago } from '../src/resume.mjs'
@@ -73,13 +74,13 @@ async function cardAdd(args) {
 // start the next option in the same terminal. The payload is marked
 // simulated: it is never kept as live evidence, and the wall it records
 // clears after two minutes. codex has no Leg-owned input, so it is refused.
-function simulateLimit(s) {
+function simulateLimit(s, { message = null } = {}) {
   if (!isActive(s)) die(3, `session ${s.session_id} is not active`)
   if (['limit', 'handing_off'].includes(s.status)) die(3, `session ${s.session_id} is already ${s.status}`)
   if (s.agent === 'claude') {
     const payload = {
       hook_event_name: 'StopFailure', error: 'rate_limit', session_id: s.agent_session_id ?? undefined, transcript_path: s.transcript_path ?? undefined,
-      last_assistant_message: 'API Error: Rate limit reached (simulated by leg sessions simulate-limit)', leg_simulated: true, baton_simulated: true,
+      last_assistant_message: message ?? 'API Error: Rate limit reached (simulated by leg sessions simulate-limit)', leg_simulated: true, baton_simulated: true,
     }
     const r = spawnSync(process.execPath, [join(SRC, 'hook.mjs'), 'claude-hook', '--session', s.session_id], { input: JSON.stringify(payload), windowsHide: true, encoding: 'utf8', timeout: 15000 })
     if (r.status !== 0) die(1, `hook exited ${r.status}: ${(r.stderr || '').slice(0, 300)}`)
@@ -98,6 +99,96 @@ function simulateLimit(s) {
     return out(`simulated: rate limit appended to ${join(sessionDir(s.session_id), 'grok.log')}; the runner reads it within ${(process.env.LEG_ATTACH_POLL_MS || process.env.BATON_ATTACH_POLL_MS) || 2000} ms and hands off to ${s.chain?.[0]?.agent ?? 'nothing'}`)
   }
   die(2, `simulate-limit drives the claude hook path (and the agy/grok log); codex's wall comes from its own rollout file, which Leg never writes. Use "leg sessions handoff ${s.session_id}" to force the switch.`)
+}
+
+// `claude`, `claude/work`, `claude/opus`, `claude/work/opus`. Three parts are
+// unambiguous. Two are not, so the second is read as an account when that
+// account exists and as a model when the agent has one by that name; a word
+// that is neither is refused by name rather than guessed at.
+export function parseTarget(value, { die: fail = (code, msg) => { throw new Error(msg) } } = {}) {
+  const parts = String(value).split('/').filter(Boolean)
+  const agent = parts[0]
+  if (!agent) fail(2, 'usage: --to <agent>[/<account>[/<model>]]')
+  const models = MODEL_ALIASES[agent] ?? []
+  if (parts.length >= 3) return { agent, account: parts[1], model: parts[2].toLowerCase() }
+  if (parts.length === 2) {
+    const second = parts[1]
+    const accounts = readAccounts()[agent] ?? ['default']
+    if (accounts.includes(second)) return { agent, account: second, model: null }
+    if (models.includes(second.toLowerCase())) return { agent, account: 'default', model: second.toLowerCase() }
+    fail(2, `"${second}" is neither a ${agent} account (${accounts.join(', ')}) nor a ${agent} model (${models.join(', ') || 'none known'})`)
+  }
+  return { agent, account: 'default', model: null }
+}
+
+// What a rung is doing right now, in the words the board uses: the wall and its
+// clock, else the percentage of the bucket that binds it, else "no figure".
+// Never a guess: an agent that publishes no number says so.
+function rungState(rung) {
+  const u = readUsage(rung.agent, rung.account)
+  const wall = rung.model ? u.walls?.[rung.model] : null
+  if (wall && wallActive(wall)) return `${rung.model} out until ${fmtReset(wall.limited_until)}`
+  if (!isAvailable(u)) return `at its limit until ${fmtReset(u.limited_until)}`
+  const b = binding(u, rung.model ?? null)
+  if (b && Number.isFinite(b.percent)) return `${Math.round(b.percent)}% of the ${b.model ? b.model + ' ' : ''}${b.kind === 'session' || b.kind === 'five_hour' ? '5h' : 'week'} window`
+  return 'no figure'
+}
+
+function printLadder() {
+  const prefs = readPreferences()
+  const ladder = prefs.handoff_ladder
+  const rows = evaluateLadder({ from: null, list: ladder, maySpend: prefs.may_spend, reserve: prefs.reserve, automatic: true, climbBack: prefs.climb_back, ladder })
+  out('The ladder a terminal falls down when its login stops. Rung 1 first, every time.')
+  ladder.forEach((rung, i) => {
+    const r = rows[i]
+    const when = rung.when === 'always' ? '' : `  when ${rung.when}`
+    out(`  ${String(i + 1).padEnd(2)} ${rungLabel(rung).padEnd(20)} ${rungState(rung).padEnd(34)} ${r.ok ? 'ready' : r.reason}${when}`)
+  })
+  out('')
+  out(`spending: ${prefs.may_spend ? 'on (a credits or metered rung may be taken unattended)' : 'off (a credits or metered rung is skipped unattended)'} · leg ladder spend on|off`)
+  out(`climb back: ${prefs.climb_back === 'never' ? 'never (stay on the lower rung until you press Back)' : 'at the next hand-off'}`)
+  const reserve = Object.entries(prefs.reserve ?? {})
+  out(`reserve: ${reserve.length ? reserve.map(([a, p]) => `${a} ${p}%`).join(', ') : 'none'}`)
+  out(`order (what older readers see): ${prefs.handoff_order.join(' → ')}`)
+}
+
+function ladderCommand(cmd, args) {
+  if (!cmd || cmd === 'ls' || cmd === 'show') return printLadder()
+  const prefs = readPreferences()
+  const ladder = prefs.handoff_ladder.map((r) => ({ ...r }))
+  if (cmd === 'set') {
+    const [nRaw, target] = args._
+    const n = parseInt(nRaw, 10)
+    if (!Number.isFinite(n) || n < 1) die(2, 'usage: leg ladder set <n> <agent>[/<account>[/<model>]] [--when always|below:N|walled-only]')
+    if (!target) die(2, 'usage: leg ladder set <n> <agent>[/<account>[/<model>]] [--when always|below:N|walled-only]')
+    const want = parseTarget(target, { die })
+    const rung = { ...want, when: typeof args.when === 'string' ? args.when : 'always' }
+    const at = Math.min(n, ladder.length + 1) - 1
+    ladder[at] = rung
+    try {
+      const saved = writePreferences({ handoff_ladder: ladder })
+      out(`rung ${at + 1} is ${rungLabel(saved.handoff_ladder[at])}${rung.when !== 'always' ? `, when ${rung.when}` : ''}`)
+    } catch (err) { die(2, err.message) }
+    return printLadder()
+  }
+  if (cmd === 'rm') {
+    const n = parseInt(args._[0], 10)
+    if (!Number.isFinite(n) || n < 1 || n > ladder.length) die(2, `usage: leg ladder rm <n> (1..${ladder.length})`)
+    if (ladder.length === 1) die(2, 'that is the only rung left: a ladder with no rungs has nowhere to hand off to')
+    const [gone] = ladder.splice(n - 1, 1)
+    try { writePreferences({ handoff_ladder: ladder }) } catch (err) { die(2, err.message) }
+    out(`removed rung ${n}: ${rungLabel(gone)}`)
+    return printLadder()
+  }
+  if (cmd === 'spend') {
+    const v = args._[0]
+    if (!['on', 'off'].includes(v)) die(2, 'usage: leg ladder spend on|off')
+    const saved = writePreferences({ may_spend: v === 'on' })
+    return out(saved.may_spend
+      ? 'spending is ON: an unattended hand-off may take a rung that bills credits.'
+      : 'spending is OFF: an unattended hand-off skips any rung that bills credits, and says so in the ledger.')
+  }
+  die(2, `unknown ladder command "${cmd}" (ls|set <n> <agent>[/<account>[/<model>]]|rm <n>|spend on|off)`)
 }
 
 function fmtCard(c) {
@@ -172,16 +263,19 @@ async function main() {
       // is not a destination, is not installed, or is at its wall must be
       // refused now, not silently turn into "whatever is next".
       if (typeof args.to === 'string') {
-        const [wantAgent, wantAccount = 'default'] = args.to.split('/')
+        const want = parseTarget(args.to, { die })
         const order = normalizeHandoffOrder(s.handoff_order)
-        const chain = candidates({ agent: s.agent, account: s.account, accounts: readAccounts(), order })
-        const hit = chain.find((c) => c.agent === wantAgent && c.account === wantAccount)
-        const label = `${wantAgent}${wantAccount !== 'default' ? '/' + wantAccount : ''}`
-        if (!hit) die(2, `${label} is not a destination for this terminal (${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(', ') || 'none'})`)
-        if (s.installed && s.installed[wantAgent] === false) die(3, `${label} is not installed on this machine`)
-        const u = readUsage(wantAgent, wantAccount)
+        const ladder = ladderFor(s)
+        const chain = candidates({ agent: s.agent, account: s.account, model: s.model ?? null, accounts: readAccounts(), order, ladder })
+        const hit = chain.find((c) => c.agent === want.agent && c.account === want.account && (want.model ? (c.model ?? null) === want.model : true))
+        const label = rungLabel(want)
+        if (!hit) die(2, `${label} is not a destination for this terminal (${chain.map((c) => rungLabel(c)).join(', ') || 'none'})`)
+        if (s.installed && s.installed[want.agent] === false) die(3, `${label} is not installed on this machine`)
+        const u = readUsage(want.agent, want.account)
         if (!isAvailable(u)) die(3, `${label} is at its usage limit until ${fmtReset(u.limited_until)}; pick another, or drop --to to take the next option in the order`)
-        requestControl(id, { handoff: true, target: hit })
+        if (hit.model && wallActive(u.walls?.[hit.model])) die(3, `${label} is out until ${fmtReset(u.walls[hit.model].limited_until)}; pick another rung, or drop --to to take the next open one`)
+        const target = { agent: hit.agent, account: hit.account, ...(hit.model ? { model: hit.model } : {}) }
+        requestControl(id, { handoff: true, target })
         return out(`handoff to ${label} requested for ${id}`)
       }
       requestControl(id, { handoff: true })
@@ -205,8 +299,17 @@ async function main() {
       }
       removeSession(id); return out(`removed ${id}`)
     }
-    if (cmd === 'simulate-limit') return simulateLimit(s)
+    // --message drives a particular wording through the real classifier, which
+    // is the only way to reach a per-model wall without waiting for one:
+    // --message "You've reached your Fable limit." walls fable and leaves the
+    // rest of the login open (src/buckets.mjs).
+    if (cmd === 'simulate-limit') return simulateLimit(s, { message: typeof args.message === 'string' ? args.message : null })
     die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm|simulate-limit)`)
+  }
+  if (group === 'ladder') {
+    // The fallback ladder, in the terminal: the same rungs, the same live
+    // state and the same skip reasons the board's picker shows.
+    return ladderCommand(cmd, args)
   }
   if (group === 'resume') {
     // The read side of the pointer. Freshness is never read out of the file:
@@ -511,13 +614,17 @@ async function main() {
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|history|worktrees|resume|accounts|harness|license|share|up|down|status|open|card|scheduler|uninstall)`)
+  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|ladder|history|worktrees|resume|accounts|harness|license|share|up|down|status|open|card|scheduler|uninstall)`)
   out(`leg ${VERSION}, your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy|grok [args...]   the normal interactive agent in this terminal; args pass straight through
                                 the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                 a second live session in one checkout gets its own worktree (--no-worktree to share)
                                 auto-approve mode (--no-auto-approve to opt out)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>
+                                handoff --to <agent>[/<account>[/<model>]] names the rung; simulate-limit --message "<text>"
+  ladder [ls]                   the fallback ladder: every rung, what it costs, and what it is doing right now
+  ladder set <n> <agent>[/<account>[/<model>]] [--when always|below:N|walled-only]
+  ladder rm <n> | ladder spend on|off
   history [ls] [--provider p] [--repo r] [--search q] [--json]
                                 every conversation on this machine: Leg's own, and the ones Claude Code, Codex,
                                 Grok, Antigravity and Copilot keep in their own stores (read only, nothing moved)

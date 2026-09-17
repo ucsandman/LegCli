@@ -21,10 +21,10 @@ import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.m
 import { canonPath, realPath } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
-import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable } from './usage.mjs'
+import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable, rungLabel, skipLine } from './usage.mjs'
 import { entitlement, allows, describe as describeLicense } from './license.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail, modelAlias, modelFromTranscript, printable } from './taps/claude.mjs'
-import { modelFlagFor } from './buckets.mjs'
+import { modelFlagFor, isDownshift } from './buckets.mjs'
 import { ensureTrust, trustLine } from './trust.mjs'
 import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as codexTail } from './taps/codex.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
@@ -36,7 +36,7 @@ import { openBoard, pidfile } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
 import { captureLive } from './live-capture.mjs'
 import { waitForReset, fmtCountdown } from './wait.mjs'
-import { readPreferences, normalizeHandoffOrder, resolveAutoApprove } from './preferences.mjs'
+import { readPreferences, normalizeHandoffOrder, ladderFor, resolveAutoApprove } from './preferences.mjs'
 import { prepareHarnessForHandoff, harnessLine } from './harness/index.mjs'
 import { insideKnownStore } from './history/index.mjs'
 
@@ -270,8 +270,25 @@ export function handoffStoodDown(session) {
   return session?.waiting?.type === 'quota_auto_resume' ? (session.waiting.message ?? 'Claude Code is waiting at the limit itself') : null
 }
 
+// The model flag for a rung, or nothing. Nothing when the rung names no model,
+// when Leg does not know how that CLI spells one, or when the human already
+// passed a model themselves: an argv the human wrote is never overwritten.
+export function modelFlags(agent, args = [], model = null) {
+  if (!model) return []
+  const flag = modelFlagFor(agent)
+  if (!flag) return []
+  if (modelFromArgs(agent, args)) return []
+  return [flag, model]
+}
+
 // ---- spawn spec per agent ----
-export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, autoApprove = resolveAutoApprove() }) {
+// `model` is the rung's model (B.3); `resume` is the agent's own session id for
+// the one case where a hand-off keeps the conversation instead of the bundle:
+// a claude downshift (`--resume <id> --model <alias>`, settled by
+// fixtures/live/claude/resume-model-probe.json). codex has a `resume`
+// subcommand too, but composing it with `-m` is ASSUMED, not observed (codex
+// is walled on this machine until Saturday), so codex ships bundle-primed.
+export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, autoApprove = resolveAutoApprove(), model = null, resume = null }) {
   const adapter = await loadAdapter(agent)
   const { bin, viaNode, entry } = adapter.resolve()
   const argv = []
@@ -291,23 +308,24 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
     // themselves is never overwritten.
     const named = args.some((a) => a === '-n' || a === '--name' || String(a).startsWith('--name='))
     const nameFlags = named ? [] : ['-n', terminalTitle(readSession(sessionId) ?? { session_id: sessionId })]
-    argv.push(...args, ...autoFlags, ...nameFlags, '--settings', settings)
+    const resumeFlags = resume ? ['--resume', String(resume)] : []
+    argv.push(...resumeFlags, ...args, ...modelFlags(agent, args, model), ...autoFlags, ...nameFlags, '--settings', settings)
     if (prompt) argv.push(prompt)
   } else if (agent === 'codex') {
     const hasApproval = args.includes('--ask-for-approval') || args.includes('-a') || args.some((x) => typeof x === 'string' && x.startsWith('--ask-for-approval='))
     const autoFlags = autoApprove && !hasApproval ? ['--ask-for-approval', 'never'] : []
-    argv.push(...args, ...autoFlags)
+    argv.push(...args, ...modelFlags(agent, args, model), ...autoFlags)
     if (prompt) argv.push(prompt)
   } else if (agent === 'agy') {
     const log = join(sessionDir(sessionId), 'agy.log')
     const autoFlags = autoApprove && !args.includes('--dangerously-skip-permissions') ? ['--dangerously-skip-permissions'] : [] // auto-approve: not forbidden for interactive sessions
-    argv.push(...args, ...autoFlags, '--log-file', log)
+    argv.push(...args, ...modelFlags(agent, args, model), ...autoFlags, '--log-file', log)
     if (prompt) argv.push('-i', prompt)
   } else if (agent === 'grok') {
     const log = join(sessionDir(sessionId), 'grok.log')
     const hasApprove = args.includes('--always-approve') || args.includes('--yolo') || args.includes('--approval-mode=yolo') // auto-approve check: not forbidden for interactive sessions
     const autoFlags = autoApprove && !hasApprove ? ['--always-approve'] : [] // auto-approve: not forbidden for interactive sessions
-    argv.push(...args, ...autoFlags, '--debug-file', log)
+    argv.push(...args, ...modelFlags(agent, args, model), ...autoFlags, '--debug-file', log)
     if (prompt) argv.push(prompt)
   }
   const env = { ...sanitizeEnv(process.env, { interactive: true }), ...envFor(agent, account), LEG_SESSION: sessionId, BATON_SESSION: sessionId }
@@ -319,7 +337,7 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
 // destination a human picked on the board ("Hand off now to codex"), carried
 // out to the loop below, which is what chooses the next leg.
 
-async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApprove = resolveAutoApprove() }) {
+async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApprove = resolveAutoApprove(), model = null, resume = null }) {
   const sid = session.session_id
   refreshAccount(agent, account)
   // A handoff happens when the limit hits, which is usually when nobody is
@@ -329,8 +347,8 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   const trust = ensureTrust(agent, session.cwd, { cwd: session.cwd })
   const trusted = trustLine(trust)
   if (trusted) { say(trusted); appendEvent(sid, { type: 'trust', summary: trusted }) }
-  const spec = await spawnSpec(agent, { account, args, sessionId: sid, prompt, cwd: session.cwd, autoApprove })
-  appendEvent(sid, { type: 'leg', summary: `${agent} (${account}) starting${prompt ? ' from the handoff bundle' : ''}` })
+  const spec = await spawnSpec(agent, { account, args, sessionId: sid, prompt, cwd: session.cwd, autoApprove, model, resume })
+  appendEvent(sid, { type: 'leg', summary: `${agent}${model ? '/' + model : ''} (${account}) starting${resume ? ' with the conversation it already had' : prompt ? ' from the handoff bundle' : ''}` })
   const startedMs = Date.now()
   const turnsAtLegStart = session.turns ?? 0
   // agy appends to one log for the whole session: a second agy leg reads from
@@ -356,7 +374,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   // percentages, its warning and its usage source with it
   // the model goes with it: the next leg's argv is the only thing Leg knows
   // about the model until that agent's own transcript says otherwise
-  updateSession(sid, { pid: child.pid, agent, account, model: modelFromArgs(agent, args), status: agent === 'claude' ? 'starting' : 'running', limit: null, warning: null, limits: null, usage_source: null, usage_error: null })
+  updateSession(sid, { pid: child.pid, agent, account, model: modelFromArgs(agent, args) ?? model ?? null, status: agent === 'claude' ? 'starting' : 'running', limit: null, warning: null, limits: null, usage_source: null, usage_error: null })
 
   // taps
   let rollout = null; let tail = null
@@ -548,9 +566,9 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
       if (ctl?.end) { if (ctl.by) appendEvent(sid, { type: 'status', by: ctl.by, summary: `end requested from the board by ${ctl.by}` }); clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'exit', code: null, ended: true }); return }
       if (ctl?.handoff) {
         const picked = ctl.target && typeof ctl.target === 'object' && ctl.target.agent
-          ? { agent: String(ctl.target.agent), account: String(ctl.target.account ?? 'default') }
+          ? { agent: String(ctl.target.agent), account: String(ctl.target.account ?? 'default'), ...(ctl.target.model ? { model: String(ctl.target.model) } : {}) }
           : null
-        const toWhom = picked ? ` to ${picked.agent}${picked.account !== 'default' ? '/' + picked.account : ''}` : ''
+        const toWhom = picked ? ` to ${rungLabel(picked)}` : ''
         updateSession(sid, { status: 'handing_off', handoff: { reason: `requested from the board${ctl.by ? ` by ${ctl.by}` : ''}`, at: new Date().toISOString(), by: ctl.by ?? null, requested_to: picked } }, { event: { type: 'handoff_requested', by: ctl.by ?? null, summary: `hand off${toWhom} requested from the board${ctl.by ? ` by ${ctl.by}` : ''}` } })
         clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'handoff', code: null, target: picked }); return
       }
@@ -614,14 +632,25 @@ function messagesFor(agent, s) {
 // an order save is consumed here, or the editor sees handing_off and refuses.
 // No eligible choice leaves the session unclaimed so all-out waiting can keep
 // accepting order edits.
-export function claimHandoffChoice({ sid, agent, account, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000), exclude = [], prefer = null }) {
-  let choice = { next: null, out: [] }
+export function claimHandoffChoice({ sid, agent, account, model = null, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000), exclude = [], prefer = null, preferences = null }) {
+  let choice = { next: null, out: [], reasons: [] }
   let claimed = false
+  // The machine's spending rules are read once, here: a rung that costs credits
+  // is skipped unless the human allowed it, the reserve applies to automatic
+  // hand-offs only, and climb-back decides whether an automatic hand-off may
+  // walk back UP the ladder (B.3, B.7).
+  const prefs = preferences ?? readPreferences()
   const session = updateSession(sid, (current) => {
     const accounts = readAccounts()
     const order = normalizeHandoffOrder(current.handoff_order)
-    choice = chooseNext({ agent, account, accounts, installed, order, nowS, exclude, prefer })
-    if (!choice.next && isAvailable(readUsage(agent, account), nowS) && !exclude.some((x) => x.agent === agent && x.account === account)) choice = { next: { agent, account }, out: [], preferred_taken: false }
+    // the terminal's own ladder, else the long-hand form of its order: a
+    // terminal started before ladders existed behaves exactly as it did.
+    const ladder = ladderFor(current)
+    choice = chooseNext({
+      agent, account, model: model ?? current.model ?? null, accounts, installed, order, ladder, nowS, exclude, prefer,
+      maySpend: prefs.may_spend, reserve: prefs.reserve, climbBack: prefs.climb_back,
+    })
+    if (!choice.next && isAvailable(readUsage(agent, account), nowS) && !exclude.some((x) => x.agent === agent && x.account === account)) choice = { next: { agent, account }, out: [], reasons: choice.reasons ?? [], preferred_taken: false }
     if (!choice.next) return {}
     claimed = true
     return {
@@ -686,7 +715,12 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   const board = await ensureBoard({ open })
   let accounts = readAccounts()
   const installed = await installedAgents()
-  const handoffOrder = readPreferences().handoff_order
+  // The machine's preferences are copied into this terminal at start: the
+  // ladder it walks, and the spending rules it walks it under. Later edits
+  // reach a running terminal only through the board's per-terminal ladder.
+  const prefs = readPreferences()
+  const handoffOrder = prefs.handoff_order
+  const handoffLadder = prefs.handoff_ladder
   let account = process.env.LEG_ACCOUNT || process.env.BATON_ACCOUNT || 'default'
   if (!(accounts[agent] ?? ['default']).includes(account)) { say(`no ${agent} account "${account}"; using default`); account = 'default' }
   // A persisted wall is only a cache. Ask Codex's read-only account endpoint
@@ -701,20 +735,24 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     await fetchGrokUsage({ configDir: grokHome }).catch(() => {})
   }
   // Start on an account that is not at its wall, if we already know one is.
+  let startModel = null
   const nowS = Math.floor(Date.now() / 1000)
   const u0 = readUsage(agent, account)
   if (u0.limited_until && u0.limited_until > nowS) {
-    const alt = chooseNext({ agent, account, accounts, installed, order: handoffOrder, nowS })
-    if (alt.next) { say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting ${alt.next.agent} (${alt.next.account}) instead`); agent = alt.next.agent; account = alt.next.account }
+    const alt = chooseNext({ agent, account, accounts, installed, order: handoffOrder, ladder: handoffLadder, nowS, maySpend: prefs.may_spend, reserve: prefs.reserve, climbBack: prefs.climb_back })
+    if (alt.next) { say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting ${rungLabel(alt.next)} instead`); agent = alt.next.agent; account = alt.next.account; startModel = alt.next.model ?? null }
     else say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting anyway (every option is out)`)
   }
   const g = gitInfo(cwd)
   const sid = newSessionId(agent)
-  const chain = candidates({ agent, account, accounts, order: handoffOrder })
+  const chain = candidates({ agent, account, accounts, order: handoffOrder, ladder: handoffLadder, model: startModel ?? modelFromArgs(agent, args) })
   // record the session BEFORE cutting a worktree, so a crash or Ctrl-C during
   // `git worktree add` still leaves a card (with a Remove button), never a
   // silent orphan under .baton-worktrees with no record and no button
-  createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain, worktree: null, owner: whoami(), handoffOrder, installed, runtimeCapabilities: [HANDOFF_ORDER_CAPABILITY], model: modelFromArgs(agent, args) })
+  createSession({ id: sid, agent, account, cwd, repo: g.repo, branch: g.branch, argv: args, chain, worktree: null, owner: whoami(), handoffOrder, installed, runtimeCapabilities: [HANDOFF_ORDER_CAPABILITY], model: modelFromArgs(agent, args) ?? startModel })
+  // the ladder is a copy too, so the board can edit this terminal's rungs
+  // without changing the machine default under every other terminal
+  updateSession(sid, { handoff_ladder: handoffLadder })
   if (continued) {
     // the agent's own id and transcript are known before the first turn, so
     // history dedups this leg against the conversation it continues at once
@@ -737,6 +775,8 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
 
   let prompt = null
   let legArgs = args
+  let legModel = startModel
+  let legResume = null
   let exit = 0
   // the first leg is the agent the human chose: its harness is prepared per
   // policy and recorded, never refused (strict applies to hand-offs)
@@ -745,7 +785,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   // bounds a wait; a normal session runs one leg and exits
   for (let leg = 0; ; leg++) {
     const s = readSession(sid)
-    const r = await runLeg({ agent, account, args: legArgs, session: s, prompt, boardUrl: board.url, autoApprove })
+    const r = await runLeg({ agent, account, args: legArgs, session: s, prompt, boardUrl: board.url, autoApprove, model: legModel, resume: legResume })
     if (r.reason === 'exit') { exit = r.code ?? 0; break }
     // limit or handoff: bundle, choose next, go again in this terminal
     const cur = readSession(sid)
@@ -760,7 +800,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     const excluded = []
     // the destination a human picked on the board, if they picked one
     const prefer = r.target ?? null
-    let claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded, prefer })
+    let claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer })
     let choice = claim.choice
     let cancelled = false
     let blocked = false
@@ -784,7 +824,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { type: 'reset', agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
       const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
       if (r2 === 'cancelled') { cancelled = true; break }
-      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded, prefer })
+      claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer })
       choice = claim.choice
     }
     if (cancelled) {
@@ -800,7 +840,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       if (prepared.proceed) break
       excluded.push(choice.next)
       say(`${choice.next.agent} refused by the strict harness policy: ${prepared.reason ?? prepared.state}`)
-      claim = claimHandoffChoice({ sid, agent, account, installed, bundle, reason: r.reason, exclude: excluded, prefer })
+      claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer })
       choice = claim.choice
       if (!choice.next) blocked = true
     }
@@ -832,8 +872,29 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       exit = 3
       break
     }
-    appendEvent(sid, { type: 'handoff', summary: `${agent}${account !== 'default' ? '/' + account : ''} → ${next.agent}${next.account !== 'default' ? '/' + next.account : ''}${bundle ? ` (bundle ${bundle.id})` : ''}` })
-    if (bundle) {
+    // Every rung the ladder walked past, in the ledger, with the reason: a
+    // terminal that skipped claude/fable because credits are off must say so
+    // (B.3). "not installed" is left out: that one is about this machine, not
+    // about this hand-off, and it would repeat on every leg.
+    for (const why of choice.reasons ?? []) {
+      if (why.reason === 'not installed on this machine') continue
+      const line = skipLine(why)
+      say(line)
+      appendEvent(sid, { type: 'status', summary: line })
+    }
+    // The one hand-off that keeps the conversation: a claude downshift with the
+    // agent's own session id on the record. `--resume <id> --model <alias>`
+    // starts the next leg inside the same conversation, so the bundle is not
+    // written into a prompt and nothing is re-explained. Every other rung takes
+    // the bundle: an upshift back to fable (which would re-read the whole
+    // context at fable's rate), a second account, and codex, whose `resume`
+    // subcommand exists but has never been seen composing with `-m` here.
+    const fromRung = { agent, account, model: cur.model ?? null }
+    const keepsConversation = Boolean(next.agent === 'claude' && isDownshift(fromRung, next) && cur.agent_session_id)
+    appendEvent(sid, { type: 'handoff', summary: `${rungLabel(fromRung)} → ${rungLabel(next)}${keepsConversation ? ' (kept the conversation)' : bundle ? ` (bundle ${bundle.id})` : ''}` })
+    if (keepsConversation) {
+      prompt = null
+    } else if (bundle) {
       prompt = resumePrompt(cur, bundle, next)
     } else {
       const delta = sessionCommitDelta(workRoot(cur) ?? cur.cwd, cur)
@@ -842,13 +903,16 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
         : 'Check git status and git diff, then continue the work.'
       prompt = `You are taking over an interactive coding session from ${agent}.${existsSync(notesFile) ? ` Read ${notesFile} in this directory first (the previous agent's notes: task, last messages, dirty files).` : ''} ${fallbackAction} The task: ${cur.task ?? 'see the recent changes'}`
     }
-    say(`starting ${next.agent}${next.account !== 'default' ? '/' + next.account : ''} in this terminal from the bundle`)
+    say(`starting ${rungLabel(next)} in this terminal ${keepsConversation ? 'with --resume: kept the conversation' : 'from the bundle'}`)
+    legResume = keepsConversation ? cur.agent_session_id : null
+    legModel = next.model ?? null
     agent = next.agent; account = next.account; legArgs = []
     // the chain is what comes after the agent now taking over, not after the
     // one that started the session: the card's "next" names a live option
     updateSession(sid, (fresh) => {
       const freshOrder = normalizeHandoffOrder(fresh.handoff_order)
-      return { lineage: { from: cur.agent, to: next.agent }, chain: candidates({ agent: next.agent, account: next.account, accounts: readAccounts(), order: freshOrder }) }
+      const freshLadder = ladderFor(fresh)
+      return { lineage: { from: cur.agent, to: next.agent }, chain: candidates({ agent: next.agent, account: next.account, model: next.model ?? null, accounts: readAccounts(), order: freshOrder, ladder: freshLadder }) }
     })
   }
   const fin = readSession(sid)

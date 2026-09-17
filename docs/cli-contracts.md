@@ -459,6 +459,35 @@ in [VOCABULARY.md](VOCABULARY.md). Board routes: `GET /api/sessions`,
 `POST /api/sessions/:id/end`, `DELETE /api/sessions/:id`, with the list pushed
 as the SSE `sessions` event (source: src/server.mjs, src/board/sessions.js).
 
+### The hand-off ladder
+
+`leg sessions handoff <id> --to <agent>[/<account>[/<model>]]` names the rung
+directly. Three parts are unambiguous; with two, the second is read as an
+account when the agent has one by that name, else as a model when the agent
+has one by that name, else the command is refused by name rather than guessed
+at (source: bin/leg.mjs `parseTarget`). `leg sessions simulate-limit <id>
+--message "<text>"` drives that exact wording through the real classifier
+(`src/hook.mjs` for claude, the session's own log for agy and grok), which is
+how a per-model wall is reached without waiting for a real one; codex has no
+Leg-owned input to simulate through and is refused by name (source:
+bin/leg.mjs `simulateLimit`).
+
+`leg ladder` (also `leg ladder ls`) prints the ladder, rung 1 first, each with
+its live state (a wall and its clock, a percentage, or "no figure") and the
+reason it would be skipped right now, then the spending, climb-back, reserve
+and derived-order lines. `leg ladder set <n> <agent>[/<account>[/<model>]]
+[--when always|below:N|walled-only]` writes rung `n` (past the end of the
+ladder, it appends); `leg ladder rm <n>` removes rung `n` and refuses to
+remove the last rung left; `leg ladder spend on|off` flips `may_spend`
+(source: bin/leg.mjs `ladderCommand`).
+
+Board routes: `PATCH /api/settings` (owner only) also accepts
+`handoff_ladder`, `climb_back`, `may_spend`, `reserve`, `notify_terminal` and
+`notify_board`. `POST /api/sessions/:id/handoff-order` accepts either
+`{handoff_order}` or `{handoff_ladder}` and rewrites both on the session.
+`POST /api/sessions/:id/handoff` accepts `target.model` alongside
+`target.agent` and `target.account` (source: src/server.mjs).
+
 ### History index
 
 `<LEG_HOME>/history/index.json` is the one file `leg history` writes: per

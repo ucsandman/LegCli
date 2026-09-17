@@ -65,6 +65,50 @@ To opt out and keep standard approval prompts:
 2. Environment variable: set `LEG_AUTO_APPROVE=0` or `LEG_NO_AUTO_APPROVE=1` (or legacy `BATON_AUTO_APPROVE=0` / `BATON_NO_AUTO_APPROVE=1`).
 3. Persistent preference: set `"auto_approve": false` in `~/.leg/preferences.json`.
 
+### The hand-off ladder
+
+`~/.leg/preferences.json` also holds the ladder a terminal falls down when its
+login stops (`src/preferences.mjs`), alongside the older `handoff_order`:
+
+```json
+{
+  "handoff_order": ["claude", "codex", "agy"],
+  "handoff_ladder": [
+    { "agent": "claude", "account": "default", "model": "fable",  "when": "always", "cost": "plan" },
+    { "agent": "claude", "account": "default", "model": "opus",   "when": "always", "cost": "plan" },
+    { "agent": "claude", "account": "default", "model": "sonnet", "when": "always", "cost": "plan" },
+    { "agent": "codex",  "account": "default", "model": null,     "when": "always", "cost": "plan" },
+    { "agent": "agy",    "account": "default", "model": null,     "when": "always", "cost": "free" }
+  ],
+  "climb_back": "next-handoff",
+  "may_spend": false,
+  "reserve": {}
+}
+```
+
+| key | default | meaning |
+|-----|---------|---------|
+| `handoff_ladder` | one rung per agent in `handoff_order`, model `null` | the fallback list, rung 1 first; each rung is `{agent, account, model, when, cost}`. `model` is `null` or one of that agent's names in `src/buckets.mjs` `MODEL_ALIASES` (only claude has any: `fable`, `opus`, `sonnet`, `haiku`). `when` is `always`, `below:N`, or `walled-only`. `cost` is `free`, `plan`, `credits`, or `metered`, and is a static label; the live cost a rung would spend right now is computed, never read off this key |
+| `climb_back` | `next-handoff` | `next-handoff` picks a recovered higher rung up again at the very next hand-off, with no extra step; `never` keeps a terminal on the rung it downshifted to until a human hands it off there by name |
+| `may_spend` | `false` | while `false`, an automatic hand-off skips any rung whose live cost is `credits` or `metered`, and records why; a human's own pick is not gated by this |
+| `reserve` | `{}` | `{ "<agent>": percent }`; an automatic hand-off will not take a rung on that login once its binding bucket is above `100 - percent`. A human's own pick still reaches it, and the picker names the reserve on that row instead of hiding it |
+
+A fresh install with no `preferences.json` starts with `claude/fable`,
+`claude/opus`, `claude/sonnet`, then every other installed agent from
+`handoff_order` with `model: null`.
+
+Leg writes `handoff_ladder` and `handoff_order` together and keeps them in
+step: saving a ladder rewrites `handoff_order` from its distinct agent order,
+and saving a bare `handoff_order` rewrites the ladder as one `model: null`
+rung per agent, so an older install behaves exactly as it did until a rung is
+edited. If the file is hand-edited so the two disagree, `handoff_order` wins
+and the ladder is rebuilt from it, because the order is the shape a hand
+edit is more likely to have meant.
+
+`leg ladder` (`leg ladder ls`) prints the ladder with each rung's live state;
+`leg ladder set <n> <agent>[/<account>[/<model>]]`, `leg ladder rm <n>` and
+`leg ladder spend on|off` change it. See [cli-contracts.md](cli-contracts.md).
+
 ## Core
 
 | variable | default | meaning | read in |

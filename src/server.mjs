@@ -31,10 +31,11 @@ import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs
 import { hasRecentSynthesis } from './synthesis.mjs'
 import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
-import { readUsage, recordUsage, usageIsStale, candidates, isAvailable, fmtReset, binding } from './usage.mjs'
+import { readUsage, recordUsage, usageIsStale, candidates, isAvailable, fmtReset, binding, evaluateLadder, rungLabel, wallActive } from './usage.mjs'
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
 import { readCodexUsage } from './taps/codex.mjs'
-import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder } from './preferences.mjs'
+import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder, ladderFor, requireHandoffLadder, requireClimbBack, requireReserve, orderFromLadder } from './preferences.mjs'
+import { isDownshift } from './buckets.mjs'
 import { listHistory, findRecord, recordDetail, refreshIndex, readIndex, providerSupport, HistoryInputError, PROVIDER_NAMES } from './history/index.mjs'
 import { listWorktrees } from './history/worktrees.mjs'
 
@@ -343,6 +344,17 @@ function redactSession(s) {
   }
 }
 
+// A guest owns their own terminal, so its picker rows are theirs to read, but
+// a rung's reason can quote this machine's usage ("at 63%, not below 80%",
+// "past your 10% reserve"), and a percentage of this machine's login belongs to
+// nobody else (.design/BOARD-DESIGN.md 6.13). Only the reasons that say nothing
+// about how much is left survive the crossing.
+const GUEST_REASONS = new Set(['not installed on this machine', 'at its usage limit', 'shares the window that is out, buys nothing', 'refused for this hand-off'])
+function guestReason(reason) {
+  if (!reason) return null
+  return GUEST_REASONS.has(reason) ? reason : 'not available right now'
+}
+
 function visibleSessionFile(file) {
   const value = String(file ?? '')
   return !value.includes('*** Begin Patch') && !value.includes('*** End Patch')
@@ -358,13 +370,24 @@ export function sessionsView({ viewer = null, share = null } = {}) {
   const list = reapLost(listSessions())
   const ov = overlaps(list)
   const configuredAccounts = readAccounts()
+  // the spending rules the picker has to print, read once for the whole view
+  const prefs = readPreferences()
   const sessions = list.map((s) => {
     const land = readLand(s.session_id)
     const handoffOrder = normalizeHandoffOrder(s.handoff_order)
-    const chain = candidates({ agent: s.agent, account: s.account, accounts: configuredAccounts, order: handoffOrder })
+    // this terminal's own ladder, else the long-hand form of its order
+    const handoffLadder = ladderFor(s)
+    const from = { agent: s.agent, account: s.account, model: s.model ?? null }
+    const chain = candidates({ agent: s.agent, account: s.account, model: s.model ?? null, accounts: configuredAccounts, order: handoffOrder, ladder: handoffLadder })
     const preferredNext = chain[0] ?? null
     const availabilityKnown = Boolean(s.installed)
-    const eligibleNext = availabilityKnown ? (chain.find((next) => s.installed[next.agent] !== false && isAvailable(readUsage(next.agent, next.account))) ?? null) : null
+    // one pass, the same one the chooser makes, so a greyed row in the picker
+    // and the rung an automatic hand-off would take can never disagree. The
+    // picker is a human pressing a button, so the reserve is a note here, not
+    // a refusal (B.3).
+    const rungs = evaluateLadder({ from, list: chain, installed: availabilityKnown ? s.installed : null, maySpend: prefs.may_spend, reserve: prefs.reserve, automatic: false, climbBack: prefs.climb_back, ladder: handoffLadder })
+    const open = availabilityKnown ? rungs.find((r) => r.ok) : null
+    const eligibleNext = open ? { agent: open.agent, account: open.account, ...(open.model ? { model: open.model } : {}) } : null
     const can = s.worktree ? canLandFor(s) : { ok: false, blockers: [{ code: 'no_worktree', message: 'this terminal works in the checkout itself: there is no branch of its own to land', fix: null }] }
     return {
       ...s,
@@ -375,19 +398,24 @@ export function sessionsView({ viewer = null, share = null } = {}) {
       // every destination this terminal could be handed to, each with the
       // reason it cannot be picked right now. The board's picker renders this
       // list directly, so a greyed option always carries its own explanation.
-      handoff_targets: chain.map((c) => {
-        const u = readUsage(c.agent, c.account)
-        const missing = availabilityKnown && s.installed[c.agent] === false
-        const walled = !isAvailable(u)
-        return {
-          agent: c.agent,
-          account: c.account,
-          available: !missing && !walled,
-          reason: missing ? 'not installed on this machine' : walled ? 'at its usage limit' : null,
-          resets_at: walled && !guest ? (u.limited_until ?? null) : null,
-        }
-      }),
+      // one row per RUNG now: `claude/opus` and `claude/sonnet` are separate
+      // destinations, each with what it costs, whether it keeps the
+      // conversation, and the reason it cannot (or should not) be picked.
+      handoff_targets: rungs.map((r) => ({
+        agent: r.agent,
+        account: r.account,
+        model: r.model ?? null,
+        available: r.ok,
+        reason: guest ? guestReason(r.reason) : r.reason,
+        resets_at: !guest ? (r.resets_at ?? null) : null,
+        // the probe in fixtures/live/claude/resume-model-probe.json: a claude
+        // downshift resumes the same conversation; everything else is primed
+        // from the bundle, codex included until its own resume is observed
+        keeps_conversation: Boolean(isDownshift(from, r) && r.agent === 'claude' && s.agent_session_id),
+        cost: r.cost,
+      })),
       handoff_availability_known: availabilityKnown,
+      handoff_ladder: handoffLadder,
       // the bucket that will actually stop this terminal, computed per request
       // and never persisted: it depends on the model the row is running, and
       // the record only knows the login. A guest never gets it: it is a
@@ -775,6 +803,15 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           try {
             const patch = {}
             if (body.handoff_order !== undefined) patch.handoff_order = requireHandoffOrder(body.handoff_order)
+            // the ladder and the rules around it (B.3). `handoff_order` is
+            // rewritten from the ladder inside writePreferences, so the two
+            // keys on disk can never disagree.
+            if (body.handoff_ladder !== undefined) patch.handoff_ladder = requireHandoffLadder(body.handoff_ladder)
+            if (body.climb_back !== undefined) patch.climb_back = requireClimbBack(body.climb_back)
+            if (body.may_spend !== undefined) patch.may_spend = Boolean(body.may_spend)
+            if (body.reserve !== undefined) patch.reserve = requireReserve(body.reserve)
+            if (body.notify_terminal !== undefined) patch.notify_terminal = Boolean(body.notify_terminal)
+            if (body.notify_board !== undefined) patch.notify_board = Boolean(body.notify_board)
             if (body.harness !== undefined) {
               // the board may narrow the policy or turn the feature off; turning
               // it on is the first-run consent flow, which shows what will be
@@ -785,7 +822,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
               if (body.harness?.policy !== undefined && rank.indexOf(body.harness.policy) > rank.indexOf(current.policy)) return send(res, 400, { error: `the board may only narrow the harness policy (now ${current.policy}); widen it from a terminal: leg harness policy ${body.harness.policy}` })
               patch.harness = { policy: body.harness?.policy, enabled: body.harness?.enabled === false ? false : undefined }
             }
-            if (!Object.keys(patch).length) return send(res, 400, { error: 'nothing to change: send handoff_order or harness' })
+            if (!Object.keys(patch).length) return send(res, 400, { error: 'nothing to change: send handoff_ladder, handoff_order, climb_back, may_spend, reserve, notify_terminal, notify_board or harness' })
             const preferences = writePreferences(patch)
             sse.broadcast('sessions', (v) => viewFor(v))
             return send(res, 200, { preferences })
@@ -856,7 +893,13 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           }
           const body = await readBody(req)
           try {
-            const order = requireHandoffOrder(body.handoff_order)
+            // one route, two shapes: the old list of agents, and the ladder of
+            // rungs that replaced it. Sending either rewrites the other, the
+            // same way preferences.json keeps them in step.
+            const ladder = body.handoff_ladder !== undefined ? requireHandoffLadder(body.handoff_ladder) : null
+            const order = ladder ? orderFromLadder(ladder) : requireHandoffOrder(body.handoff_order)
+            const rungs = ladder ?? ladderFor({ handoff_order: order })
+            const summary = ladder ? `handoff ladder changed to ${rungs.map((r) => rungLabel(r)).join(' → ')}` : `handoff order changed to ${order.join(' → ')}`
             const next = updateSession(id, (current) => {
               if (!['starting', 'running', 'warning', 'limit', 'waiting'].includes(current.status)) {
                 const conflict = new Error(`handoff order cannot change while this terminal is ${current.status}`)
@@ -865,9 +908,10 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
               }
               return {
                 handoff_order: order,
-                chain: candidates({ agent: current.agent, account: current.account, accounts: readAccounts(), order }),
+                handoff_ladder: rungs,
+                chain: candidates({ agent: current.agent, account: current.account, model: current.model ?? null, accounts: readAccounts(), order, ladder: rungs }),
               }
-            }, { event: { type: 'status', by: actor.id, summary: `handoff order changed to ${order.join(' → ')}` } })
+            }, { event: { type: 'status', by: actor.id, summary } })
             sse.broadcast('sessions', (v) => viewFor(v))
             return send(res, 200, { session: next })
           } catch (err) {
@@ -915,19 +959,21 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           const body = await readBody(req)
           let target = null
           if (body && body.agent !== undefined && body.agent !== null && body.agent !== '') {
-            const want = { agent: String(body.agent), account: String(body.account ?? 'default') }
+            const want = { agent: String(body.agent), account: String(body.account ?? 'default'), model: body.model ? String(body.model).toLowerCase() : null }
             const order = normalizeHandoffOrder(sess.handoff_order)
-            const chain = candidates({ agent: sess.agent, account: sess.account, accounts: readAccounts(), order })
-            const hit = chain.find((c) => c.agent === want.agent && c.account === want.account)
-            const label = `${want.agent}${want.account !== 'default' ? '/' + want.account : ''}`
-            if (!hit) return send(res, 400, { error: `${label} is not a destination for this terminal (${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(', ') || 'none'})` })
+            const ladder = ladderFor(sess)
+            const chain = candidates({ agent: sess.agent, account: sess.account, model: sess.model ?? null, accounts: readAccounts(), order, ladder })
+            const hit = chain.find((c) => c.agent === want.agent && c.account === want.account && (want.model ? (c.model ?? null) === want.model : true))
+            const label = rungLabel(want)
+            if (!hit) return send(res, 400, { error: `${label} is not a destination for this terminal (${chain.map((c) => rungLabel(c)).join(', ') || 'none'})` })
             if (sess.installed && sess.installed[want.agent] === false) return send(res, 409, { error: `${label} is not installed on this machine` })
             const u = readUsage(want.agent, want.account)
             if (!isAvailable(u)) return send(res, 409, { error: `${label} is at its usage limit until ${fmtReset(u.limited_until)}; pick another or use Hand off now without a destination` })
-            target = hit
+            if (hit.model && wallActive(u.walls?.[hit.model])) return send(res, 409, { error: `${label} is out until ${fmtReset(u.walls[hit.model].limited_until)}; pick another rung or use Hand off now without a destination` })
+            target = { agent: hit.agent, account: hit.account, ...(hit.model ? { model: hit.model } : {}) }
           }
           requestControl(id, target ? { handoff: true, target, by: actor.id } : { handoff: true, by: actor.id })
-          log(`handoff requested for ${id} by ${actor.id}${target ? ` to ${target.agent}/${target.account}` : ''}`)
+          log(`handoff requested for ${id} by ${actor.id}${target ? ` to ${rungLabel(target)}` : ''}`)
           return send(res, 200, { ok: true, requested: 'handoff', target })
         }
         if (req.method === 'DELETE' && parts.length === 3) {

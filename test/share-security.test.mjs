@@ -458,6 +458,15 @@ test('a guest\'s board carries no usage percentage, no reset time and no reading
     for (const field of ['capacity', 'buckets', 'walls', 'extra_usage', 'facts']) {
       assert.equal(field in theirOwnRow, false, `a guest's own session row carries ${field}`)
     }
+    // The hand-off picker on a guest's own terminal names rungs and what they
+    // cost, which is theirs to act on. A rung's reason can quote this machine's
+    // usage ("at 63%, not below 80%", "past your 10% reserve") and a reset time
+    // is the same secret as the percentage: neither crosses.
+    for (const row of theirOwnRow.handoff_targets ?? []) {
+      assert.equal(row.resets_at, null, `a guest's picker row carries a reset time (${row.agent}/${row.model ?? '-'})`)
+      assert.equal(/\d/.test(String(row.reason ?? '')), false, `a guest's picker row carries a number in its reason: ${row.reason}`)
+      assert.deepEqual(Object.keys(row).sort(), ['account', 'agent', 'available', 'cost', 'keeps_conversation', 'model', 'reason', 'resets_at'])
+    }
     // `waiting` and `model` are the guest's to see on their OWN terminal: they
     // are sitting at it, and a terminal that has stopped for a permission
     // prompt is useless to its own human when the board will not say so.

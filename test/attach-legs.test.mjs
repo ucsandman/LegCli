@@ -153,7 +153,12 @@ test('the second agent starts with the first one’s usage gone from the card', 
 test('the chain is recomputed at the hand-off, so it never names the agent already running', async () => {
   const h = await handoff()
   assert.ok(h.dump, `codex started and dumped its leg record; stderr: ${h.err.slice(-800)}`)
-  assert.deepEqual(h.dump.chain.map((c) => c.agent), ['claude', 'agy'], 'the chain after codex keeps the saved priority, so agy stays last')
+  // The chain is a list of RUNGS now (docs/redesign-2026-09-17.md B.3), and a
+  // fresh install's ladder puts the claude models first, so "claude" appears
+  // once per model. What this test guards is unchanged: codex, the agent
+  // already running, is not in its own chain, and agy stays last.
+  assert.deepEqual(h.dump.chain.map((c) => `${c.agent}${c.model ? '/' + c.model : ''}`), ['claude/fable', 'claude/opus', 'claude/sonnet', 'agy'], 'the chain after codex keeps the saved priority, so agy stays last')
+  assert.equal(h.dump.chain.some((c) => c.agent === 'codex'), false, 'and never names the agent already running')
 })
 
 test('the near-limit warning fires again on the second leg', async () => {
