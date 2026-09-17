@@ -582,3 +582,22 @@ it), and check whether a board was listening on 4747 at the time.
   in the hand-off as in flight, or the next agent ships without it. And a
   cache keyed on a directory's mtime sees files added and removed, never a
   file rewritten in place.
+
+## A seeded board's End-as-card button wrote into a real repo (2026-09-17)
+
+- **What happened.** Driving the new "End, and keep going as a card" verb in
+  a browser against `scripts/seed-wes-board.mjs`'s board, the click on the
+  recruiting-tool row hit `POST /api/sessions/:id/end-as-card`, which did
+  exactly its job: it wrote a hand-off bundle under
+  `C:\Projects\recruiting-tool\.context-handoffs\` and cut a worktree and a
+  `leg/card-...` branch there. The seed's rows named real repositories on this
+  machine because long real paths were what the layout had to be measured
+  against. Nothing ran in the worktree (the server was stopped within a
+  minute); the worktree was deregistered and the branch deleted, and the
+  directory and bundle were left for a hand delete.
+- **Fix.** The seed's repo paths now live under `C:\Projects-seed\...`, which
+  does not exist, so every git-backed action on a seeded row answers 409
+  instead of touching a checkout. The row still prints the same length.
+- **The lesson that generalises.** A seeded board is safe to look at and not
+  safe to click: any row that names a path that exists is a live control on
+  that path. Seed paths must be realistic in shape and impossible in fact.

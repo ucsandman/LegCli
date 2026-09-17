@@ -153,6 +153,9 @@
   const rowName = (s) => `${s.repo_name || s.agent || 'terminal'}#${shortId(s)}`
   const shared = () => Boolean(view && view.share && view.share.on)
   const isMine = (s) => Boolean(view && view.you && s.owner && view.you.name === s.owner)
+  // the pipeline board belongs to the owner and the operators of the machine;
+  // a guest's End row offers no card (the route answers 403)
+  const canCards = () => !(view && view.you && view.you.role && view.you.role !== 'owner' && view.you.role !== 'operator')
 
   // ---- 6.1 the window rail ----------------------------------------------
   // One state value per account drives the .acct modifier, every rail cell, the
@@ -1438,6 +1441,7 @@
         await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body })
         if (action === 'handoff') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: body && body.agent ? `hand-off to ${rungLabel(body)} requested; this terminal switches agents in a few seconds` : 'hand-off requested; this terminal switches agents in a few seconds' })
         else if (action === 'end') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: 'end requested; the agent stops after its current turn' })
+        else if (action === 'end-as-card') actionNotes.set(id, { at: Date.now(), tone: 'ok', text: 'ended; a background card continues the task in this checkout. It is under Background, and Take over on it brings the work back to a terminal.' })
         else if (action === 'land/fix') actionNotes.set(id, { at: Date.now(), tone: 'ok', text: 'applied fix' })
       }
       refresh()
@@ -1699,11 +1703,20 @@
       // TypeError going only to the console.
       const pending = pendingConfirm
       term.appendChild(row)
-      term.appendChild(confirmRow(pending.question, pending.verb, (btn) => act(s.session_id, pending.action, btn, pending.body ?? null)))
+      const confirm = confirmRow(pending.question, pending.verb, (btn) => act(s.session_id, pending.action, btn, pending.body ?? null))
+      // a second verb on the same row, never a fifth grid button: End grows
+      // 'End, and keep going as a card' (spec C.4), the moment being 'I have
+      // to leave, keep going'. It sits before Cancel and takes the snapshot too.
+      if (pending.alt) {
+        const more = el('button', { type: 'button', class: 'btn btn-secondary', title: pending.alt.title || null }, [pending.alt.verb])
+        more.addEventListener('click', () => { pendingConfirm = null; act(s.session_id, pending.alt.action, more, null) })
+        confirm.insertBefore(more, confirm.lastChild)
+      }
+      term.appendChild(confirm)
       return term
     }
     const actions = el('div', { class: 'term-actions' })
-    const ask = (question, verb, action) => () => { pendingConfirm = { id: s.session_id, question, verb, action }; renderSessions(view) }
+    const ask = (question, verb, action, alt = null) => () => { pendingConfirm = { id: s.session_id, question, verb, action, alt }; renderSessions(view) }
     if (s.hidden) {
       if (s.active) {
         const q = el('button', { type: 'button', class: 'btn btn-secondary', title: `ask ${s.owner || 'the owner'} to hand this terminal off; they approve it on their own board` }, ['Request handoff'])
@@ -1784,7 +1797,11 @@
     actions.appendChild(details)
     if (s.active) {
       const e = el('button', { type: 'button', class: 'btn btn-danger', 'data-focus-key': `end:${s.session_id}` }, ['End'])
-      e.addEventListener('click', ask('End this terminal? The agent stops and the bundle is kept.', 'End', 'end'))
+      // the second verb only where a card can continue: a terminal outside a
+      // git repository has no branch for a card to work on (the route says so
+      // with a 409, and a control that can only fail is not offered)
+      e.addEventListener('click', ask('End this terminal? The agent stops and the bundle is kept.', 'End', 'end',
+        s.repo && canCards() ? { verb: 'End, and keep going as a card', action: 'end-as-card', title: 'write the bundle, hand this checkout to a background card that continues the task, and end this terminal' } : null))
       actions.appendChild(e)
     } else {
       const r = el('button', { type: 'button', class: 'btn btn-danger', 'data-focus-key': `remove:${s.session_id}` }, ['Remove'])
