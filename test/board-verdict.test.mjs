@@ -110,10 +110,31 @@ const CASES = [
     sub: 'It asked to run Bash(git push origin HEAD). The other 2 terminals are still running.',
   },
   {
-    name: 'the older reset-waiting field on the same name is not a blocked human',
+    name: 'an idle prompt asks a different question, and the sub says which',
     accounts: [CLAUDE_LIVE()],
-    sessions: [session({ status: 'waiting', waiting: { agent: 'codex', account: 'default', resets_at: nowS() + HOUR } })],
+    sessions: [session({ waiting: { type: 'idle_prompt', message: 'Claude is waiting for your input', since: iso(11 * 60_000) } })],
+    line: 'leg#7f3a has waited on you for 11 minutes.',
+    subMatches: /^It has had no input since .+\.$/,
+  },
+  {
+    // the shape src/attach.mjs actually writes: it carries `type` and `since`
+    // too, so a filter that tested for those fields read an all-out countdown
+    // as a human being waited on
+    name: 'the all-out countdown on the same key is not a blocked human',
+    accounts: [CLAUDE_LIVE()],
+    sessions: [session({ status: 'waiting', waiting: { type: 'reset', agent: 'codex', account: 'default', resets_at: nowS() + HOUR, since: iso(4 * 60_000) } })],
     line: 'Fable is at 63% of its week, the only login open.',
+  },
+  {
+    name: 'a model bucket came back and a terminal is still on the lower rung',
+    accounts: [acct({
+      live: 1,
+      buckets: [bucket('weekly_all', 47), bucket('weekly_scoped', 63, { model: 'fable', is_active: true }), bucket('weekly_scoped', 12, { model: 'opus' })],
+      walls: { fable: { limited_until: nowS() - 2 * HOUR, limited_reason: 'model_limit', source: 'claude StopFailure', evidence: "You've reached your Fable limit." } },
+    })],
+    sessions: [session({ model: 'opus' })],
+    line: 'Fable is back; leg#7f3a is still on opus.',
+    sub: 'Leg climbs back at the next hand-off. Back to fable on the row does it now.',
   },
   {
     name: 'every login is at its limit',
@@ -304,4 +325,87 @@ test('the share clause is said once at the region, and only when two rows are on
   assert.equal(B.shareClause(three), ', 3 share the claude login')
   assert.equal(B.shareClause([...three, session({ agent: 'codex', session_id: 's-3-codex-cc33' })]), ', 3 share the claude login')
   assert.equal(B.shareClause(three.map((s) => ({ ...s, active: false }))), '', 'a finished row shares nothing')
+})
+
+// ---------------------------------------------------------------------------
+// the row: its register (A.4 rows 7 to 9), its capacity phrase (row 12) and
+// the two ranks step 3 adds to `rankedNotes` (A.6). Driven through the same
+// `module` seam as the verdict above, because the row's words are data before
+// they are DOM and that is where they are worth pinning.
+// ---------------------------------------------------------------------------
+const tokens = (s) => B.registerTokens(s).map((t) => t.text)
+
+test('the register prints what changed, which model answered, and how long it has been quiet', () => {
+  const s = session({ model: 'fable', files_dirty: ['a.js', 'b.js', 'c.js'], ahead: 2, last_activity: iso(4 * 60_000) })
+  assert.deepEqual(tokens(s), ['dirty 3', 'ahead 2', 'claude/fable', 'quiet 4m'])
+})
+
+test('the register never prints a model nobody chose, and never a count nobody measured', () => {
+  assert.deepEqual(tokens(session({ last_activity: iso(0) })), ['claude'], 'no model, no dirty file, no ahead: the agent alone')
+  assert.deepEqual(tokens(session({ model: 'sonnet', files_dirty: [], last_activity: iso(0) })), ['claude/sonnet'])
+  // `ahead` is written by a newer runner; an older record has no such key
+  assert.deepEqual(tokens(session({ model: 'sonnet', ahead: 0, last_activity: iso(0) })), ['claude/sonnet'])
+})
+
+test('quiet is an observation about a live row, and a row already waiting on you says that instead', () => {
+  const quiet = (extra) => tokens(session({ last_activity: iso(9 * 60_000), ...extra })).filter((t) => t.startsWith('quiet'))
+  assert.deepEqual(quiet({}), ['quiet 9m'])
+  assert.deepEqual(quiet({ active: false }), [], 'a finished terminal has not gone quiet, it has stopped')
+  assert.deepEqual(quiet({ last_activity: iso(90_000) }), [], 'under two minutes is not quiet')
+  assert.deepEqual(quiet({ waiting: { type: 'permission_prompt', message: 'Bash(ls)', since: iso(40_000) } }), [])
+})
+
+test('the capacity phrase on a row is the bucket that will stop THAT terminal', () => {
+  assert.equal(B.capacityPhrase(session({ capacity: { kind: 'weekly_scoped', model: 'fable', percent: 63, resets_at: nowS() + 40 * HOUR, scope: 'model' } })), '63% of the fable week')
+  assert.equal(B.capacityPhrase(session({ capacity: { kind: 'weekly_all', model: null, percent: 97, resets_at: nowS() + 40 * HOUR, scope: 'account' } })), '97% of the claude week')
+  assert.equal(B.capacityPhrase(session({ capacity: { kind: 'session', model: null, percent: 29, resets_at: nowS() + HOUR, scope: 'account' } })), '29% of the claude 5-hour window')
+  assert.equal(B.capacityPhrase(session({ capacity: null })), null, 'no bucket, no phrase: never a zero')
+})
+
+test('rank 3: a Notification wait is a human being waited on, and it raises the row', () => {
+  const asked = (extra) => B.rankedNotes(session(extra))[0]
+  const perm = asked({ waiting: { type: 'permission_prompt', message: 'Bash(git push origin HEAD)', since: iso(40_000) } })
+  assert.equal(perm.rank, 3)
+  assert.equal(perm.text, 'waiting on you: permission to run Bash(git push origin HEAD), asked 40s ago')
+  assert.match(asked({ waiting: { type: 'idle_prompt', message: null, since: iso(60_000) } }).text, /^waiting on you: idle since /)
+  assert.equal(asked({ waiting: { type: 'agent_needs_input', message: 'Which branch should I cut from?', since: iso(60_000) } }).text, 'waiting on you: Which branch should I cut from?')
+  assert.equal(asked({ waiting: { type: 'quota_auto_resume', message: 'Claude Code is waiting at the limit itself; Leg is not handing this one off.', since: iso(60_000) } }).rank, 3)
+  for (const type of ['permission_prompt', 'idle_prompt', 'agent_needs_input', 'quota_auto_resume']) {
+    const s = session({ waiting: { type, message: 'x', since: iso(60_000) } })
+    assert.equal(B.needsYou(s, B.rankedNotes(s)), true, `${type} needs a human`)
+  }
+})
+
+test('rank 3 never fires on the all-out countdown, which keeps its own rank 5 sentence', () => {
+  const s = session({ status: 'waiting', waiting: { type: 'reset', agent: 'codex', account: 'default', resets_at: nowS() + HOUR, since: iso(4 * 60_000) } })
+  assert.equal(B.notifyWait(s), null)
+  assert.ok(B.resetWait(s))
+  const note = B.rankedNotes(s).find((n) => n.cat === 'waiting')
+  assert.equal(note.rank, 5)
+  assert.match(note.text, /^waiting for codex at /)
+  assert.equal(B.rankedNotes(s).some((n) => n.rank === 3), false, 'nobody is being waited on in that terminal')
+})
+
+test('the question is printed verbatim, capped where the hook itself caps it', () => {
+  const long = 'Bash('.concat('x'.repeat(400), ')')
+  const note = B.waitingNote({ type: 'permission_prompt', message: long, since: iso(1000) })
+  assert.equal(note.text.includes(long.slice(0, 160)), true)
+  assert.equal(note.text.includes(long.slice(0, 161)), false, '160 characters, the same cap src/taps/claude.mjs stores')
+})
+
+test('rank 8.5: the bucket that binds this terminal is near its wall', () => {
+  const account = acct({ buckets: [bucket('weekly_scoped', 92, { model: 'fable', is_active: true }), bucket('weekly_scoped', 12, { model: 'opus' })] })
+  const model = B.capacityNote(session({ capacity: { kind: 'weekly_scoped', model: 'fable', percent: 92, scope: 'model' } }), account)
+  assert.equal(model.rank, 8.5)
+  assert.equal(model.text, 'fable at 92% of its week; Hand off > claude/opus keeps this terminal')
+  const shared = B.capacityNote(session({ capacity: { kind: 'weekly_all', model: null, percent: 97, scope: 'account' }, chain: [{ agent: 'codex', account: 'default' }] }), account)
+  assert.equal(shared.text, 'claude at 97%, shared by every model; next off claude: codex')
+  assert.equal(B.capacityNote(session({ capacity: { kind: 'weekly_scoped', model: 'fable', percent: B.WARN_PCT - 1, scope: 'model' } }), account), null, 'under the warning line the row says nothing')
+  assert.equal(B.capacityNote(session({ capacity: { kind: 'weekly_scoped', model: 'fable', percent: B.WARN_PCT, scope: 'model' } }), account).rank, 8.5, 'at the line, not past it')
+})
+
+test('rank 8.5 sorts under the login warning and over the activity fallback', () => {
+  const s = session({ capacity: { kind: 'weekly_all', model: null, percent: 97, scope: 'account' }, warning: { window: '7d', pct: 97 }, chain: [{ agent: 'codex', account: 'default' }] })
+  const ranks = B.rankedNotes(s).map((n) => n.rank)
+  assert.deepEqual(ranks, [8, 8.5, 10])
 })

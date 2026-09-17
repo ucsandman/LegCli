@@ -221,7 +221,10 @@ code { font-family: var(--mono); font-size: 0.94em; }
    a login crossing its reserve at a glance, too small to compete with the
    sentence above it. */
 .capacity { margin-bottom: 4px; }
-.capacity-strip { display: flex; align-items: center; gap: 12px 32px; flex-wrap: wrap; min-height: 44px; font-size: var(--t-0); }
+/* the strip itself never wraps: the disclosure keeps the strip's own line at
+   the right (A.2) and the tokens wrap inside their own box, so four logins
+   that need two rows of tokens cost no third line for one button. */
+.capacity-strip { display: flex; align-items: center; gap: 12px 32px; flex-wrap: nowrap; min-height: 44px; font-size: var(--t-0); }
 .cap-tokens { display: flex; align-items: center; gap: 12px 32px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
 .cap-token { display: inline-flex; align-items: center; gap: 10px; min-height: 24px; }
 .cap-name { font-weight: var(--w-head); color: var(--text-2); }
@@ -311,6 +314,22 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .term-clock { flex: none; display: flex; align-items: baseline; justify-content: flex-end; gap: 14px; font-size: var(--t--1); color: var(--text-3); white-space: nowrap; }
 .term-register { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; font-size: var(--t--1); color: var(--text-3); }
 .term-where { color: var(--text-2); }
+/* the register's data tokens (A.4 rows 7 to 9). They are one line with the
+   status word, in the register's own muted tone: what changed and how long it
+   has been quiet are observations, not demands. The model token is the one
+   fact here a reader looks for by name, so it takes the identity colour and
+   the mono face the other machine strings on this page use. */
+.term-dirty, .term-ahead, .term-quiet { color: var(--text-3); }
+.term-model { font-family: var(--mono); }
+/* the files line and the row's capacity phrase share one line, the phrase at
+   the right (A.2). The phrase is per MODEL, which is a fact about this row;
+   the region head carries the share clause for the login. */
+.term-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 24px; flex-wrap: wrap; }
+.term-meta .files { flex: 1 1 24ch; min-width: 0; }
+.term-capacity { margin-top: 10px; flex: none; font-size: var(--t--1); color: var(--text-3); white-space: nowrap; }
+/* the keyboard ring: a row the keys act on, marked on the edge the eye scans
+   down rather than by a fill that would compete with is-urgent */
+.term.is-focused { box-shadow: inset 3px 0 0 var(--focus); }
 .term-when { color: var(--text-3); min-width: 6ch; text-align: right; }
 .term-id { color: var(--text-3); min-width: 4ch; text-align: right; font-family: var(--mono); }
 .term-actions { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 272px; }
@@ -574,6 +593,22 @@ input[type="text"], input[type="password"], textarea, select { font: inherit; fo
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 fieldset { border: 1px solid var(--edge); border-radius: var(--r-well); padding: 18px; display: grid; gap: 12px; }
 legend { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); padding-inline: 6px; }
+
+/* the two notification toggles (spec E). A checkbox and its sentence on one
+   line, with the help text under it in the field colour the rest of Settings
+   uses; a disabled toggle carries its reason in that help text, never in a
+   tooltip, because the reason is the whole point of the disabled state. */
+.notify .field-help { margin-top: -4px; }
+.notify-toggle { display: flex; align-items: baseline; gap: 10px; font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
+.notify-toggle input[disabled] { cursor: not-allowed; }
+.notify-toggle:has(input[disabled]) { color: var(--text-3); }
+
+/* the keyboard map: a small panel over the page, opened by ? and closed by ?
+   or Escape. Every row names a key and the button that key presses. */
+.keymap { position: fixed; right: 24px; bottom: 24px; z-index: 20; max-width: 380px; background: var(--e2); border: 1px solid var(--edge); border-radius: var(--r-panel); box-shadow: var(--lift-hi); padding: 22px; }
+.keymap-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin-bottom: 18px; font-size: var(--t-0); }
+.keymap-key { font-family: var(--mono); color: var(--text); white-space: nowrap; }
+.keymap-what { color: var(--text-2); }
 .form-row { display: grid; gap: 8px; margin-top: 18px; }
 .form-error { background: var(--e1); border-left: 3px solid var(--danger); border-radius: var(--r-control); padding: 12px 14px; font-size: var(--t-0); color: var(--danger-text); }
 .advanced-options { margin-top: 22px; }

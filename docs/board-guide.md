@@ -206,11 +206,25 @@ the state is never carried by colour or position alone.
 Reading across the row: what it is doing, what it is working on, how long it has
 been at it, and what you can do about it.
 
-- **The register**, one line of the smallest type on the board: the status word
-  with its dot, then where the work is (`leg on main`, or the folder when it
-  is not a repo), then anything unusual about this terminal as plain words, the
-  account when it is not `default`, the owner on a shared board, `from <agent>`
-  when it was handed off, `own worktree, from main` when it cut its own.
+- **The register**, one line of the smallest type on the board, read left to
+  right: the status word with its dot, then where the work is (`leg on main`,
+  or the folder when it is not a repo), then `dirty 3` and `ahead 2` when the
+  git poll has counted them, then the model token `claude/fable`, then
+  `quiet 4m` when the terminal has said nothing for two minutes or more. After
+  those come the words that are unusual about this terminal: the account when
+  it is not `default`, the owner on a shared board, `from <agent>` when it was
+  handed off, `own worktree, from main` when it cut its own.
+  - `dirty 3` is `files_dirty`, `ahead 2` is the commit count against the base.
+    Neither is printed as a zero, and `ahead` is absent on a record written by
+    an older Leg rather than shown as `ahead 0`.
+  - The model token is the agent and the model this leg resolved to
+    (`claude/fable`, `codex/gpt-5.6-sol`). With no model on the record it is the
+    agent alone, `claude`: a printed model nobody chose is a wrong number in
+    disguise, so there is never a default. For Claude it is refreshed from the
+    transcript, so a silent fallback off Fable shows up here.
+  - `quiet 4m` is `last_activity`, in the muted tone, for every agent. It is an
+    observation, not a demand. A terminal that is waiting on you says that
+    instead, and a finished one says nothing: it has stopped, not gone quiet.
 - **The prompt**, as a button: the first prompt of the session, carried in full
   in its tooltip and in the expansion. A pasted screenshot arrives as an
   `<image name=... path=...>` tag with an absolute temp path in it; the tag is
@@ -224,6 +238,14 @@ been at it, and what you can do about it.
   file another live session is also touching is printed in the warning colour.
   A terminal that is merely running prints no sentence at all: its own row
   already says so, and four rows each saying `activity` is four lines of noise.
+- **The capacity phrase**, at the right of the files line: `63% of the fable
+  week`, the bucket that will actually stop THIS terminal. It is
+  `binding(usage, session.model)`, computed per request, so a row on Fable and a
+  row on Sonnet in the same login can print different figures and both are
+  true. The figure is per model; the reader who would add three rows' figures
+  together is stopped by the share clause at the region head, once. Nothing is
+  printed when no bucket is known: a percentage nobody measured is worse than
+  no percentage at all.
 - **The clock**: elapsed since the session started (`4h 24m`), and the session's
   short id. The id used to print as `claude-7f3a` immediately after the word
   `claude`; the prefix is the agent name twice and it is gone.
@@ -232,6 +254,16 @@ been at it, and what you can do about it.
   it can actually run, when it is blocked the accent moves to Hand off now,
   because a disabled control should not wear the one accent colour in the
   design. When Land is disabled its reason is printed, never left in a tooltip.
+
+**A terminal waiting on a human says so, and the tab says it too.** Claude
+Code's Notification hook writes `waiting` on the record when it puts up a
+permission prompt, when it has been idle at the prompt, or when a subagent asks
+for input; the row's status word becomes `waiting on you`, its sentence is the
+question itself (rank 3 below), and it sorts to the top of the region and into
+the region head's count. While any row is waiting the tab title reads
+`(1) Leg` and the favicon carries a dot, always, with no permission and no
+setting. codex, agy and grok publish no such signal, so their rows never say
+`waiting on you`; they say `quiet 4m`.
 
 **A fact true of every row is said once, at the region.** Three rows all reading
 `this terminal works in the checkout itself: there is no branch of its own to
@@ -262,12 +294,13 @@ rest behind `also:`. Rank 1 is worst.
 |------|--------------|
 | 1 | `every option is out, first back: codex 10:11 PM`, or `limit: <reason>, back <time>` |
 | 2 | a bounced Land, or `the landing was cut off (the board restarted); press Land again` |
-| 3 | an overlap with another live session |
+| 3 | `waiting on you: permission to run Bash(git push origin HEAD), asked 40s ago`, `waiting on you: idle since 11:04 PM`, or an overlap with another live session |
 | 4 | `sam asked to take this terminal at 11:04 PM` |
 | 5 | `waiting for codex at 10:11 PM` |
 | 6 | `handing off to codex, <reason>, 2m` |
 | 7 | `landing <branch> onto main: commit, rebase, test, fast-forward` |
 | 8 | `near the 5h wall, next: codex` |
+| 8.5 | `fable at 92% of its week; Hand off > claude/opus keeps this terminal`, or `claude at 97%, shared by every model; next off claude: codex` |
 | 9 | a finished Land, `nothing to land`, or the button you last pressed |
 | 10 | `turn 14, last activity 11:04 PM`, the fallback that is always true |
 
@@ -308,6 +341,15 @@ only repeats the tone. `waiting` means every option is walled and the terminal
 is counting down to the first reset; its sentence reads `waiting for <agent> at
 <time>`, and End quits that terminal with exit 3. `lost` means the runner
 process that owned that terminal is gone. It is never counted as live.
+
+A tenth word, `waiting on you`, replaces the status word on any row that needs a
+human. Two different things live on the record's `waiting` key and the board
+tells them apart by `type`, never by which fields are set: `type: reset` is the
+all-out countdown above, where the child is already dead and nobody is being
+waited on, and `permission_prompt`, `idle_prompt`, `agent_needs_input` and
+`quota_auto_resume` are a human being waited on. `quota_auto_resume` is the one
+that prints `Claude Code is waiting at the limit itself; Leg is not handing this
+one off.`, because two waiters on one terminal is the failure to avoid.
 
 ### Terminal buttons
 
@@ -459,8 +501,19 @@ region head prints the counts instead: `2 running, 1 queued, 3 finished`.
 **Settings** holds the **API token** field (only needed when the server is bound
 off loopback; see [configuration.md](configuration.md#network-exposure)), the
 **New terminal handoff order** editor used by terminals started after you save,
-and the board's own facts: version and bind address, who you are signed in as,
-whether share is on, the scheduler, and the board home. Its region head says
+**Notifications**, and the board's own facts: version and bind address, who you are signed in as,
+whether share is on, the scheduler, and the board home. **Notifications** holds
+two toggles, both about a terminal that is waiting on you: *Terminal toast when
+a terminal waits on you* (on by default, Claude Code only: an OSC 9 sequence
+returned by the Notification hook, which is the toast Windows Terminal renders
+in the window the agent is already running in) and *Browser notification when a
+terminal waits on you* (off by default; the browser asks for permission the
+first time you turn it on, and it fires on the transition into waiting, never on
+every refresh). The board toggle reads `window.isSecureContext` when it renders;
+where that is false it is disabled and says `This page is not a secure context.
+Open the board at http://localhost:<port> to turn toasts on.` The tab title
+badge has no toggle: it needs no permission, so it is always on. Its region head
+says
 `No API token set, requests reach 127.0.0.1:4747 unauthenticated`, or `API token
 set, sent to 127.0.0.1:4747 as a bearer token` once a token is stored.
 
@@ -648,9 +701,30 @@ running or handing-off card.
   summaries) gets a visible focus ring: `outline: 2px solid var(--focus);
   outline-offset: 2px` on `:focus-visible` only (`src/board/board.css`). There
   is no bare `:focus` rule, so a mouse click leaves no ring behind it.
-- Escape closes the open expansion, the terminal's and the card's. If a confirm
-  row is open, Escape cancels that first. The floor has neither, so Escape does
-  nothing there.
+- Escape closes the open expansion, the terminal's and the card's. If the
+  keyboard map is open, Escape closes that first, then a confirm row if one is
+  open. The floor has neither, so Escape does nothing there.
+- **The keyboard map.** `?` opens and closes a small panel listing every
+  binding. Every key CLICKS a button that is already on the row, so no key is a
+  second way to do anything:
+
+  | key | what it does |
+  |-----|--------------|
+  | `j` | move the ring to the next terminal |
+  | `k` | move the ring to the previous terminal |
+  | `1` to `9` | move the ring to that terminal |
+  | `h` | press Hand off now on the terminal the ring is on |
+  | `l` | press Land on the terminal the ring is on |
+  | `d` | press Details on the terminal the ring is on |
+  | `e` | press End on the terminal the ring is on |
+  | `?` | open and close the map |
+  | `Escape` | close the map, cancel a confirm row, or close an expansion |
+
+  The ring is a bar down the left edge of the row, and moving it also moves
+  keyboard focus to that row's first button, which is its prompt, so a screen
+  reader announces which terminal the ring landed on rather than a bare `Land`.
+  A disabled button is never clicked. While an input, a select or a textarea has
+  focus, every one of these keys is text and nothing else.
 - Buttons carry descriptive `aria-label`s (for example "Pause `<card title>`",
   "Reassign adapter for `<card title>`") so a screen reader announces which card
   an action applies to, not just the button label.

@@ -304,6 +304,99 @@
     return (Array.isArray(a && a.buckets) ? a.buckets : []).find((b) => b && b.model === model && Number.isFinite(b.percent)) || null
   }
 
+  // ---- what one terminal is waiting for ------------------------------------
+  // `waiting` carries TWO shapes under one key and they mean opposite things.
+  // `{ type: 'reset', agent, account, resets_at, since }` is the all-out
+  // countdown the runner writes: nobody is being waited on, the child is
+  // already dead. The Notification shapes below are a HUMAN being waited on.
+  // Both carry `type` and `since`, so the shape is told apart by the type and
+  // never by the presence of a field (src/sessions.mjs createSession).
+  const NOTIFY_TYPES = ['permission_prompt', 'idle_prompt', 'agent_needs_input', 'quota_auto_resume']
+  // src/taps/claude.mjs QUOTA_STAND_DOWN, character for character: two waiters
+  // on one terminal is the failure to avoid, so the row says who is waiting.
+  const QUOTA_STAND_DOWN = 'Claude Code is waiting at the limit itself; Leg is not handing this one off.'
+  function notifyWait(s) {
+    const w = s && s.waiting
+    return w && NOTIFY_TYPES.includes(w.type) ? w : null
+  }
+  function resetWait(s) {
+    const w = s && s.waiting
+    return w && !NOTIFY_TYPES.includes(w.type) ? w : null
+  }
+  // A.6 rank 3. The question is printed verbatim, capped at the 160 characters
+  // the hook itself stores: a paraphrase of what an agent asked for is the one
+  // thing a human cannot check against the terminal in front of them.
+  function waitingNote(w) {
+    if (!w) return null
+    const since = Date.parse(w.since || '')
+    const msg = String(w.message || '').slice(0, 160)
+    const asked = Number.isFinite(since) ? `, asked ${ago(Date.now() - since)} ago` : ''
+    if (w.type === 'quota_auto_resume') return { rank: 3, cat: 'standing down', tone: 'warn', text: msg || QUOTA_STAND_DOWN }
+    if (w.type === 'permission_prompt') return { rank: 3, cat: 'waiting on you', tone: 'warn', text: `waiting on you: permission to run ${msg || 'a tool'}${asked}` }
+    if (w.type === 'idle_prompt') return { rank: 3, cat: 'waiting on you', tone: 'warn', text: `waiting on you: idle${Number.isFinite(since) ? ` since ${clockAt(since)}` : ''}` }
+    return { rank: 3, cat: 'waiting on you', tone: 'warn', text: `waiting on you: ${msg || 'it asked for something'}` }
+  }
+
+  // ---- A.4 rows 7 to 9 and 12: the register's data tokens ------------------
+  // Pure data in reading order, so the words can be asserted without a DOM and
+  // the row builder below stays a list of appends.
+  const QUIET_MS = 2 * 60 * 1000
+  // `claude/fable`. The agent alone when the model is unknown: a printed model
+  // nobody chose is a wrong number in disguise, so there is never a default.
+  function modelToken(s) { return s && s.agent ? (s.model ? `${s.agent}/${s.model}` : s.agent) : null }
+  // an observation, not a demand, and printed in the muted tone for every
+  // agent. A row already waiting on a human says that instead.
+  function quietPhrase(s) {
+    if (!s || !s.active || notifyWait(s)) return null
+    const t = Date.parse(s.last_activity || '')
+    if (!Number.isFinite(t)) return null
+    const idle = Date.now() - t
+    return idle >= QUIET_MS ? `quiet ${ago(idle)}` : null
+  }
+  // A.4 row 12: the bucket that will actually stop THIS terminal, which depends
+  // on the model it is running. `capacity` is binding(usage, session.model),
+  // computed per request in src/server.mjs and never persisted.
+  function capacityPhrase(s) {
+    const c = s && s.capacity
+    if (!c || !Number.isFinite(c.percent)) return null
+    const pct = Math.round(c.percent)
+    if (c.scope === 'model' && c.model) return `${pct}% of the ${c.model} week`
+    const win = c.kind === 'session' || c.kind === 'five_hour' ? '5-hour window' : 'week'
+    return `${pct}% of the ${s.account && s.account !== 'default' ? `${s.agent}/${s.account}` : s.agent} ${win}`
+  }
+  function registerTokens(s) {
+    const out = []
+    const dirty = Array.isArray(s && s.files_dirty) ? s.files_dirty.length : 0
+    if (dirty) out.push({ kind: 'dirty', text: `dirty ${dirty}` })
+    // `ahead` is a git count the runner polls; an older record does not carry
+    // it, and a count nobody measured is never printed as zero
+    if (Number.isFinite(s && s.ahead) && s.ahead > 0) out.push({ kind: 'ahead', text: `ahead ${s.ahead}` })
+    const model = modelToken(s)
+    if (model) out.push({ kind: 'model', text: model })
+    const quiet = quietPhrase(s)
+    if (quiet) out.push({ kind: 'quiet', text: quiet })
+    return out
+  }
+  // A.6 rank 8.5: said only when the bucket that binds this terminal is at or
+  // past the warning line. Model-scoped, a same-login rung is the answer;
+  // account-scoped, it buys nothing and the sentence says which login is next.
+  function capacityNote(s, account) {
+    const c = s && s.capacity
+    if (!c || !Number.isFinite(c.percent) || c.percent < WARN_PCT) return null
+    const pct = Math.round(c.percent)
+    const label = s.account && s.account !== 'default' ? `${s.agent}/${s.account}` : s.agent
+    if (c.scope === 'model' && c.model) {
+      const alt = account ? openModels(account).filter((m) => m !== c.model)[0] : null
+      return { rank: 8.5, cat: 'near the model wall', tone: 'warn', text: `${c.model} at ${pct}% of its week${alt ? `; Hand off > ${s.agent}/${alt} keeps this terminal` : ''}` }
+    }
+    const next = (s.chain || []).find((x) => x && x.agent !== s.agent)
+    return { rank: 8.5, cat: 'near the login wall', tone: 'warn', text: `${label} at ${pct}%, shared by every model${next ? `; next off ${label}: ${optionLabel(next)}` : ''}` }
+  }
+  function accountOf(s) {
+    const list = (view && view.accounts) || []
+    return list.find((a) => a.agent === s.agent && (a.account || 'default') === (s.account || 'default')) || null
+  }
+
   // ---- the capacity strip -------------------------------------------------
   // One 44px band under the verdict, one token per login, and nothing else:
   // usage is a property of the work now, not a region of its own. The panels
@@ -473,6 +566,9 @@
   // the sub is two lines of 17px inside `max-width: 54ch`, which is about 120
   // characters; clauses are added while they fit and dropped whole after that.
   const SUB_CH = 120
+  // mirrors WARN_PCT in src/usage.mjs, which the board cannot import from. A
+  // bucket at or past it is close enough to the wall that the row says so.
+  const WARN_PCT = 85
   // Each headline is written as a preferred form and shorter fallbacks, so a
   // login called `claude/very-long-account` costs a clause, never a third line.
   function headline(...forms) {
@@ -522,10 +618,13 @@
 
     // 1. a human is blocked. Attention is the scarcer thing, so it outranks
     // usage. `waiting` carries {type, message, since} from the Notification
-    // hook (step 5); the older reset-waiting field on the same name carries
-    // {agent, account, resets_at} and is not this, so the shape is checked.
+    // hook; the all-out countdown on the same key carries {type: 'reset',
+    // agent, account, resets_at, since} and is not a human being waited on, so
+    // the TYPE is checked and never the presence of `since`. `quota_auto_resume`
+    // is left out here too: nobody asked the human anything, Claude Code is
+    // holding its own turn, and the row says so in its own sentence.
     const blocked = live
-      .filter((s) => s.waiting && s.waiting.type && s.waiting.since && Number.isFinite(Date.parse(s.waiting.since)))
+      .filter((s) => notifyWait(s) && s.waiting.type !== 'quota_auto_resume' && Number.isFinite(Date.parse(s.waiting.since)))
       .sort((x, y) => Date.parse(x.waiting.since) - Date.parse(y.waiting.since))[0]
     if (blocked) {
       const who = rowName(blocked)
@@ -534,7 +633,12 @@
       return {
         line: headline(`${who} has waited on you for ${waited}.`, `${who} has waited on you for ${ago(Date.now() - Date.parse(blocked.waiting.since))}.`, `${who} is waiting on you.`),
         sub: subLine(
-          blocked.waiting.message ? `It asked to run ${String(blocked.waiting.message).slice(0, 80)}.` : null,
+          // the question in the words of the thing that asked it, and each
+          // type asks a different question: a permission prompt names a tool,
+          // an idle prompt names a clock, and the third carries its own text
+          blocked.waiting.type === 'permission_prompt' && blocked.waiting.message ? `It asked to run ${String(blocked.waiting.message).slice(0, 80)}.`
+            : blocked.waiting.type === 'idle_prompt' ? `It has had no input since ${clockAt(Date.parse(blocked.waiting.since))}.`
+              : blocked.waiting.message ? `It asked: ${String(blocked.waiting.message).slice(0, 80)}` : null,
           others > 0 ? `The other ${others === 1 ? 'terminal is' : `${others} terminals are`} still running.` : null,
         ),
       }
@@ -587,7 +691,28 @@
         }
       }
 
-      // 5. one login carries every live terminal: one login, one point of
+      // 5. a model bucket came back and a terminal is still on the rung Leg
+      // dropped it to. A wall Leg recorded whose clock has run out is the only
+      // evidence that a model returned, and a live row on this login running a
+      // DIFFERENT model is the only evidence anyone is still downshifted; with
+      // neither the sentence is never guessed at.
+      //
+      // Spec A.5 lists this row under "several logins carry work", where it can
+      // never fire: the two branches below return for any login that has a
+      // figure at all. It is a state CHANGE, and it outranks the two branches
+      // that restate a standing percentage (DEVIATIONS.md, step 3).
+      const back = knownModels(subject)
+        .filter((m) => { const w = subject.walls && subject.walls[m]; return w && Number.isFinite(w.limited_until) && w.limited_until * 1000 <= Date.now() && !wallFor(subject, m) })
+        .find((m) => live.some((s) => acctOf(s) === subject && s.model && s.model !== m))
+      if (back) {
+        const down = live.find((s) => acctOf(s) === subject && s.model && s.model !== back)
+        return {
+          line: headline(`${Model(back)} is back; ${rowName(down)} is still on ${down.model}.`, `${Model(back)} is back.`),
+          sub: subLine(`Leg climbs back at the next hand-off.`, `Back to ${back} on the row does it now.`),
+        }
+      }
+
+      // 6. one login carries every live terminal: one login, one point of
       // failure, and that is what the sentence says.
       if (carrying.length === 1 && b) {
         const who = b.model ? Model(b.model) : accountLabel(subject)
@@ -600,7 +725,7 @@
         }
       }
 
-      // 6. several logins carry work: name the one closest to a wall, and the
+      // 7. several logins carry work: name the one closest to a wall, and the
       // volume, then put the next login's figure in the sub.
       if (b) {
         const second = other(subject).map(figure).filter(Boolean)[0]
@@ -620,7 +745,7 @@
       }
     }
 
-    // 7 to 9. nothing is running.
+    // 8 to 11. nothing is running.
     const bestOpen = openElsewhere.concat(acctState(subject) === 'walled' ? [] : [subject]).map((a) => ({ a, b: bindingOf(a) })).filter((x) => x.b).sort((x, y) => y.b.percent - x.b.percent)[0]
     const openLine = bestOpen ? `${bestOpen.b.model ? Model(bestOpen.b.model) : accountLabel(bestOpen.a)} is at ${Math.round(bestOpen.b.percent)}% of ${windowPhrase(bestOpen.b)}.` : null
     if (walled.length) {
@@ -749,12 +874,24 @@
         ? `${o.agent} (${tail(o.session_id)}) is changing ${files} in another checkout; whoever lands second rebases`
         : `${o.agent} (${tail(o.session_id)}) is editing ${files} too` })
     }
+    // A.6: a terminal parked at a permission prompt is waiting on a human, and
+    // at rank 3 it raises the row, sorts it and counts it in the region head
+    // through `needsYou` without a second predicate.
+    const waits = waitingNote(notifyWait(s))
+    if (waits) out.push(waits)
     for (const r of s.requests || []) out.push({ rank: 4, cat: 'handoff request', tone: 'warn', text: `${r.by} asked to take this terminal at ${clockAt(Date.parse(r.at))}` })
-    if (s.status === 'waiting' && s.waiting) out.push({ rank: 5, cat: 'waiting', tone: 'warn', text: `waiting for ${optionLabel(s.waiting)} at ${until(s.waiting.resets_at)}` })
+    // the OTHER shape on `waiting`: the all-out countdown, where the child is
+    // already dead and nobody is waiting on a human
+    if (s.status === 'waiting' && resetWait(s)) out.push({ rank: 5, cat: 'waiting', tone: 'warn', text: `waiting for ${optionLabel(s.waiting)} at ${until(s.waiting.resets_at)}` })
     if (s.status === 'handing_off' && s.handoff && s.handoff.to) out.push({ rank: 6, cat: 'handing off', tone: 'warn', text: `handing off to ${optionLabel(s.handoff.to)}, ${s.handoff.reason}${s.handoff.at ? `, ${ago(Date.now() - Date.parse(s.handoff.at))}` : ''}` })
     // rank 8 does not restate the percentage: the head prints it in 30px type a
     // few inches above. It names what the head does not carry, the fallback.
     if (s.warning) out.push({ rank: 8, cat: 'near limit', tone: 'warn', text: `near the ${s.warning.window} wall, next: ${s.chain && s.chain[0] ? optionLabel(s.chain[0]) : 'no eligible fallback'}` })
+    // rank 8.5: the bucket that binds THIS terminal is near its wall. It sorts
+    // under the account's own warning and above the activity fallback, because
+    // it is the more specific of the two: per model, not per login.
+    const cap = capacityNote(s, accountOf(s))
+    if (cap) out.push(cap)
     // rank 10 is a genuine fallback, so a state nobody wrote a fixture for still
     // gets a correct sentence rather than an empty slot.
     out.push({ rank: 10, cat: 'activity', tone: 'muted', text: `turn ${s.turns || 0}${s.last_activity ? `, last activity ${clockAt(Date.parse(s.last_activity))}` : ''}` })
@@ -1094,6 +1231,13 @@
       statusMark(s.status, s.session_id, urgent ? 'waiting on you' : null),
       el('span', { class: 'term-where', title: s.cwd || null }, [`${s.repo_name || s.cwd || 'unknown repo'}${branch ? ` on ${branch}` : ''}`]),
     ])
+    // A.4 rows 7 to 9, in reading order and on the SAME line: what changed,
+    // which model actually answered, and whether it has gone quiet. The model
+    // token is the agent and the model it resolved to, never a default.
+    for (const t of registerTokens(s)) {
+      if (t.kind === 'model') register.appendChild(el('span', { class: `term-model chip-id-${idOf(s.agent)}` }, [t.text]))
+      else register.appendChild(el('span', { class: `term-${t.kind}` }, [t.text]))
+    }
     if (s.account !== 'default') register.appendChild(el('span', { class: 'chip' }, [s.account]))
     if (shared() && s.owner) register.appendChild(el('span', { class: 'chip' }, [isMine(s) ? `${s.owner}, you` : s.owner]))
     if (s.lineage && s.lineage.from) register.appendChild(el('span', { class: 'chip' }, [`from ${s.lineage.from}`]))
@@ -1134,6 +1278,7 @@
       if (open) for (const n of rest) body.appendChild(el('p', { class: `sentence tone-${n.tone}` }, [n.text]))
     }
     const touched = s.files || []
+    let files = null
     if (!s.hidden && touched.length) {
       // comma-separated text, not chips: six file names are a sentence, and a
       // file that is also in an overlap is named in that sentence anyway
@@ -1144,7 +1289,18 @@
         line.appendChild(el('span', { class: `file${overlapFiles.has(f) ? ' is-overlap' : ''}`, title: f }, [fileLabel(f)]))
       })
       if (touched.length > 6) line.appendChild(document.createTextNode(`, and ${touched.length - 6} more`))
-      body.appendChild(line)
+      files = line
+    }
+    // A.4 row 12, at the right of the files line: the bucket that will stop
+    // THIS terminal, which is per model and so is a fact about the row. The
+    // region head carries the share clause that stops anyone adding three
+    // rows' figures together (A.7).
+    const phrase = s.hidden ? null : capacityPhrase(s)
+    if (files || phrase) {
+      body.appendChild(el('div', { class: 'term-meta' }, [
+        files,
+        phrase ? el('span', { class: 'term-capacity' }, [phrase]) : null,
+      ]))
     }
     row.appendChild(body)
 
@@ -1743,6 +1899,163 @@
     for (const p of document.querySelectorAll('#session-grid .blocker')) p.classList.toggle('is-hoisted', Boolean(shared))
   }
 
+  // ---- A.4 row 18 and E: where a waiting terminal says so off-screen ------
+  // The tab badge is always on and needs no permission: the title and the
+  // favicon are the only surface a browser gives a tab nobody is looking at.
+  // favicon.svg itself is never touched; the dot is a variant drawn inline.
+  const FAVICON = '/favicon.svg'
+  const FAVICON_DOT = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">\u{1F9BF}</text><circle cx="78" cy="22" r="20" fill="#E64343"/></svg>')}`
+  function titleBadge(n) {
+    const title = n > 0 ? `(${n}) Leg` : 'Leg'
+    if (document.title !== title) document.title = title
+    const link = document.querySelector('link[rel~="icon"]')
+    if (!link) return
+    const href = n > 0 ? FAVICON_DOT : FAVICON
+    if (link.getAttribute('href') !== href) link.setAttribute('href', href)
+  }
+
+  // A browser toast fires on the TRANSITION into needing a human, never on
+  // every render and never on first paint: the same rule the status mark's
+  // annunciation keeps, for the same reason. A reload is not a new event.
+  let announced = null
+  function announceWaiting(rows) {
+    const ids = new Set(rows.map((s) => s.session_id))
+    const prefs = (view && view.preferences) || {}
+    if (announced && prefs.notify_board && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      for (const s of rows) {
+        if (announced.has(s.session_id)) continue
+        const note = rankedNotes(s)[0]
+        try { new Notification(`${rowName(s)} is waiting on you`, { body: note ? note.text : '', tag: s.session_id }) } catch { /* a browser that refuses the constructor is not a reason to stop rendering */ }
+      }
+    }
+    announced = ids
+  }
+
+  const NOT_SECURE = 'This page is not a secure context. Open the board at http://localhost:<port> to turn toasts on.'
+  function secureSentence() {
+    const port = (window.location && window.location.port) || ''
+    return NOT_SECURE.replace('<port>', port || '4747')
+  }
+  // E, the notifications table. Two toggles and no third: the tab badge above
+  // is always on, so there is nothing to decide about it. The board toggle
+  // reads `window.isSecureContext` at RUNTIME, because whether 127.0.0.1
+  // counts is the browser's answer and not one this file may assume.
+  function renderNotifySettings(v) {
+    const box = document.getElementById('notify-settings')
+    if (!box) return
+    const prefs = v && v.preferences
+    box.hidden = !prefs
+    if (!prefs) return
+    const term = document.getElementById('notify-terminal')
+    const brd = document.getElementById('notify-board')
+    const help = document.getElementById('notify-board-help')
+    if (term) term.checked = prefs.notify_terminal !== false
+    const secure = Boolean(window.isSecureContext)
+    if (brd) {
+      brd.disabled = !secure
+      brd.checked = secure && prefs.notify_board === true
+    }
+    if (help) {
+      const state = typeof Notification === 'undefined' ? 'this browser has no notifications' : `permission: ${Notification.permission}`
+      help.textContent = secure ? `The browser asks the first time you turn this on (${state}).` : secureSentence()
+    }
+  }
+  async function saveNotify(patch) {
+    const status = document.getElementById('notify-status')
+    if (status) status.textContent = 'Saving…'
+    try {
+      const data = await api('/api/settings', { method: 'PATCH', body: patch })
+      if (view && data && data.preferences) view.preferences = data.preferences
+      if (status) status.textContent = 'Saved.'
+      renderNotifySettings(view)
+    } catch (err) {
+      if (status) status.textContent = err.message
+      renderNotifySettings(view)
+    }
+  }
+
+  // ---- D14: the keyboard map ----------------------------------------------
+  // Every binding CLICKS a button that is already on the row, so no key is a
+  // second way to do anything and nothing here can drift from the buttons.
+  // `data-focus-key` is the same handle the focus-restore pass uses.
+  const KEY_BUTTONS = [
+    { key: 'h', focus: 'handoff', button: 'Hand off now' },
+    { key: 'l', focus: 'land', button: 'Land' },
+    { key: 'd', focus: 'details', button: 'Details' },
+    { key: 'e', focus: 'end', button: 'End' },
+  ]
+  const KEY_MOVES = [
+    { key: 'j', what: 'move the ring to the next terminal' },
+    { key: 'k', what: 'move the ring to the previous terminal' },
+    { key: '1 to 9', what: 'move the ring to that terminal' },
+    { key: '?', what: 'open and close this map' },
+    { key: 'Escape', what: 'close this map, cancel a confirm row, or close an expansion' },
+  ]
+  let ringAt = -1
+  let keymapOpen = false
+  function termRows() { return [...document.querySelectorAll('#session-grid .term')] }
+  function paintRing(list) {
+    const rows = list || termRows()
+    rows.forEach((r, i) => r.classList.toggle('is-focused', i === ringAt))
+  }
+  // the ring moves focus to the row's first button, so a screen reader
+  // announces the row it landed on rather than leaving the reader nowhere
+  function moveRing(to) {
+    const rows = termRows()
+    if (!rows.length) return
+    ringAt = Math.max(0, Math.min(rows.length - 1, to))
+    paintRing(rows)
+    // the prompt button first: it is the row's first control and its label is
+    // the prompt, so a screen reader announces WHICH terminal the ring landed
+    // on rather than a bare `Land`. A row with no prompt (someone else's) falls
+    // through to whatever control it does have.
+    const btn = rows[ringAt].querySelector('.panel-prompt, .term-actions .btn, button')
+    if (btn && btn.focus) btn.focus()
+  }
+  function pressOnRing(focusKey) {
+    const rows = termRows()
+    const row = rows[ringAt] || rows[0]
+    if (!row) return
+    const btn = row.querySelector(`[data-focus-key^="${focusKey}:"]`)
+    if (btn && !btn.disabled) btn.click()
+  }
+  function renderKeymap() {
+    const box = document.getElementById('keymap')
+    const list = document.getElementById('keymap-list')
+    if (!box || !list) return
+    box.hidden = !keymapOpen
+    if (!keymapOpen) return
+    list.textContent = ''
+    for (const k of KEY_MOVES) {
+      list.appendChild(el('dt', { class: 'keymap-key' }, [k.key]))
+      list.appendChild(el('dd', { class: 'keymap-what' }, [k.what]))
+    }
+    for (const k of KEY_BUTTONS) {
+      list.appendChild(el('dt', { class: 'keymap-key' }, [k.key]))
+      list.appendChild(el('dd', { class: 'keymap-what' }, [`press ${k.button} on the terminal the ring is on`]))
+    }
+  }
+  function toggleKeymap(open) {
+    keymapOpen = open === undefined ? !keymapOpen : open
+    renderKeymap()
+    if (keymapOpen) { const c = document.getElementById('keymap-close'); if (c && c.focus) c.focus() }
+  }
+  // a key pressed into a field is text, never a command
+  function isTyping(e) {
+    const t = e.target
+    const tag = t && t.tagName ? String(t.tagName).toLowerCase() : ''
+    return tag === 'input' || tag === 'select' || tag === 'textarea' || Boolean(t && t.isContentEditable)
+  }
+  function boardKey(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return
+    if (e.key === '?') { toggleKeymap(); e.preventDefault(); return }
+    if (e.key === 'j') { moveRing(ringAt + 1); e.preventDefault(); return }
+    if (e.key === 'k') { moveRing(ringAt - 1); e.preventDefault(); return }
+    if (/^[1-9]$/.test(e.key)) { moveRing(Number(e.key) - 1); e.preventDefault(); return }
+    const hit = KEY_BUTTONS.find((k) => k.key === e.key)
+    if (hit) { pressOnRing(hit.focus); e.preventDefault() }
+  }
+
   // Finished terminals are history. After a day of work they are most of the
   // list, and drawn as full rows they bury the one or two that are live, so
   // they leave the panel entirely and become a ledger cell with a drawer.
@@ -1813,6 +2126,12 @@
     const done = (s) => !s.active && !urgent(s) && drawer.id !== s.session_id
     const live = list.filter((s) => !done(s))
     const finished = list.filter(done)
+    // A.4 row 18 and E: the tab badge and the browser toast read the same
+    // predicate the rows sort on and the region head counts, so the three
+    // cannot disagree about who is waiting.
+    const waiting = list.filter(urgent)
+    titleBadge(waiting.length)
+    announceWaiting(waiting)
     terminalsMeta(live, notesOf)
     // computed over the rows that are actually drawn: a sentence shared only by
     // terminals collapsed into the ledger is not on screen to be deduped
@@ -1835,6 +2154,9 @@
     // the control they were on, at the offset they had scrolled to
     if (region && parked) putScroll(region, parked)
     putFocus(document, focus)
+    // the rows are new elements: the ring is a class, so it is repainted from
+    // the index the reader left it on rather than stealing focus again
+    paintRing()
   }
 
   // What landed is history too. The full list was eighteen rows of git log at
@@ -1907,6 +2229,7 @@
     }
     renderAccounts(v.accounts || [])
     renderDefaultOrder(v)
+    renderNotifySettings(v)
     // A rebuild replaces every button in the grid. A confirm row is a question
     // the reader is answering right now, and a push landing between their
     // mousedown and their mouseup dropped the click: the browser fires `click`
@@ -1932,17 +2255,38 @@
   // a measurement, so test/board-verdict.test.mjs drives the branches directly
   // through this seam. In a browser there is no `module`, and nothing here
   // depends on it. board-updates.test.mjs uses the same pattern in board.js.
-  if (typeof module !== 'undefined') module.exports = { verdictLines, VERDICT_CH, SUB_CH, bindingOf, capFigure, capToken, shareClause, headline }
+  if (typeof module !== 'undefined') {
+    module.exports = {
+      verdictLines, VERDICT_CH, SUB_CH, WARN_PCT, bindingOf, capFigure, capToken, shareClause, headline,
+      rankedNotes, needsYou, registerTokens, capacityPhrase, capacityNote, waitingNote, notifyWait, resetWait,
+      KEY_BUTTONS, KEY_MOVES,
+    }
+  }
 
   window.addEventListener('leg:sessions', (e) => render(e.detail))
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return
-    if (pendingConfirm) { pendingConfirm = null; if (view) renderSessions(view); return }
-    if (drawer.id) closeSessionDrawer()
+    if (e.key === 'Escape') {
+      if (keymapOpen) { toggleKeymap(false); return }
+      if (pendingConfirm) { pendingConfirm = null; if (view) renderSessions(view); return }
+      if (drawer.id) closeSessionDrawer()
+      return
+    }
+    boardKey(e)
   })
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('default-order-save')?.addEventListener('click', saveDefaultOrder)
     document.getElementById('capacity-toggle')?.addEventListener('click', toggleCapacity)
+    document.getElementById('keymap-close')?.addEventListener('click', () => toggleKeymap(false))
+    document.getElementById('notify-terminal')?.addEventListener('change', (e) => saveNotify({ notify_terminal: Boolean(e.target.checked) }))
+    // the permission is asked for on the toggle, never on load: a page that
+    // asks for a permission nobody wanted is a page people close
+    document.getElementById('notify-board')?.addEventListener('change', async (e) => {
+      const on = Boolean(e.target.checked)
+      if (on && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        try { await Notification.requestPermission() } catch { /* a refusal is an answer; the toggle still saves */ }
+      }
+      saveNotify({ notify_board: on })
+    })
     renderCapacityToggle()
     renderLoadingHead()
     refresh()

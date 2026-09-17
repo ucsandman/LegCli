@@ -313,3 +313,37 @@ test('the floor does not re-prefix a blocked_by summary that already says it', (
   assert.ok(cell, "expected the floor's Blocked by cell in floor.js")
   assert.doesNotMatch(cell, /blocked by \$\{/, 'the summary already opens with "blocked by"')
 })
+
+// D14: the keyboard map is the list of bindings, and every binding CLICKS a
+// button that is already on the row. Two ways to fail: a map row naming a
+// button that does not exist, and a key the handler acts on that the map never
+// mentions. Both are checked against the source of sessions.js itself, which
+// is where both tables live.
+const SESSIONS_SRC = readFileSync(join(ROOT, 'src/board/sessions.js'), 'utf8')
+
+function tableLiteral(name) {
+  const at = SESSIONS_SRC.indexOf(`const ${name} = [`)
+  assert.ok(at > 0, `expected ${name} in sessions.js`)
+  const open = SESSIONS_SRC.indexOf('[', at)
+  return SESSIONS_SRC.slice(open, matchDelims(SESSIONS_SRC, open, '[', ']') + 1)
+}
+
+test('every key in the map presses a button that exists on the row', () => {
+  const rows = [...tableLiteral('KEY_BUTTONS').matchAll(/\{ key: '(.+?)', focus: '(.+?)', button: '(.+?)' \}/g)]
+  assert.equal(rows.length, 4, 'h, l, d and e')
+  for (const [, key, focus, button] of rows) {
+    assert.ok(SESSIONS_SRC.includes(`'data-focus-key': \`${focus}:`), `${key} presses a button with no data-focus-key "${focus}:" in sessions.js`)
+    assert.ok(SESSIONS_SRC.includes(`'${button}'`), `${key} names a button labelled "${button}" that sessions.js never builds`)
+  }
+})
+
+test('every key the board handles is named in the map it opens', () => {
+  const moves = [...tableLiteral('KEY_MOVES').matchAll(/\{ key: '(.+?)', what: '(.+?)' \}/g)].map((m) => m[1])
+  assert.deepEqual(moves, ['j', 'k', '1 to 9', '?', 'Escape'])
+  const handler = SESSIONS_SRC.slice(SESSIONS_SRC.indexOf('function boardKey'))
+  for (const key of ['j', 'k', '?']) assert.ok(handler.includes(`e.key === '${key}'`), `${key} is in the map and not in the handler`)
+  assert.ok(handler.includes('/^[1-9]$/.test(e.key)'), '1 to 9 is in the map and not in the handler')
+  assert.ok(SESSIONS_SRC.includes("if (e.key === 'Escape')"), 'Escape is in the map and not in the handler')
+  // a key pressed into a field is text, not a command
+  assert.ok(SESSIONS_SRC.includes("tag === 'input' || tag === 'select' || tag === 'textarea'"), 'the handler must stand down while a field has focus')
+})

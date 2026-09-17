@@ -44,21 +44,28 @@ const LONG = w('C:', 'Users', 'operator', 'AppData', 'Local', 'Temp', 'agent',
   'C--Projects-baton--baton-worktrees-s-20260915-000000-claude-0000',
   '00000000-0000-0000-0000-000000000000')
 
+// `model` is the alias the leg resolved to, `waiting` is the Notification shape
+// (a human is being waited on), `dirty` and `ahead` are what the git poll
+// writes. One live row carries a permission prompt and another an idle prompt,
+// because the board's whole attention story is those two rows; one live row
+// carries no model at all, so the register's agent-alone path is on screen too.
 const rows = [
   { id: 's-20260915-0049-claude-2fbf', agent: 'claude', status: 'warning', started: 4 * hour + 24 * min,
-    cwd: P('baton'), repo: P('baton'), branch: 'main',
+    cwd: P('baton'), repo: P('baton'), branch: 'main', model: 'fable', dirty: 3, ahead: 2,
+    waiting: { type: 'permission_prompt', message: 'Bash(git push origin HEAD)', since: ago(40_000) },
     task: 'ultracode run a tournament of ideas to drastically redesign and improve the UI for this project. I do not like the current setup.' },
-  { id: 's-20260915-0213-claude-95d3', agent: 'claude', status: 'running', started: 2 * hour + 46 * min,
-    cwd: w('C:', 'documents'), repo: null, branch: null, task: null },
+  { id: 's-20260915-0213-claude-95d3', agent: 'claude', status: 'running', started: 2 * hour + 46 * min, quiet: 4 * min,
+    cwd: w('C:', 'documents'), repo: null, branch: null, model: 'sonnet', task: null },
   { id: 's-20260915-0257-claude-88e8', agent: 'claude', status: 'warning', started: 2 * hour + 2 * min,
-    cwd: P('recruiting-tool'), repo: P('recruiting-tool'), branch: 'main',
+    cwd: P('recruiting-tool'), repo: P('recruiting-tool'), branch: 'main', model: 'opus', dirty: 1,
+    waiting: { type: 'idle_prompt', message: 'Claude is waiting for your input', since: ago(11 * min) },
     task: `<image name=screenshot.png path=${w('C:', 'Users', 'operator', 'Desktop', 'shot.png')}> [Image #1] sourcing candidates is a huge pain for my friend who recruits on LinkedIn, how can we help` },
   { id: 's-20260915-0455-claude-8e8a', agent: 'claude', status: 'running', started: 5 * min,
     cwd: w('C:', 'Projects'), repo: null, branch: null, task: '/handoff-load verifier-reach-contracts' },
   { id: 's-20260914-2211-claude-4c10', agent: 'claude', status: 'lost', started: 6 * hour, ended: 3 * hour,
-    cwd: w(LONG, 'discovery-loop'), repo: P('discovery-loop'), branch: 'main', task: 'run the nightly discovery loop' },
+    cwd: w(LONG, 'discovery-loop'), repo: P('discovery-loop'), branch: 'main', model: 'fable', task: 'run the nightly discovery loop' },
   { id: 's-20260914-2010-codex-7b31', agent: 'codex', status: 'lost', started: 7 * hour, ended: 4 * hour,
-    cwd: w(LONG, 'costclaw'), repo: P('costclaw'), branch: 'main', task: 'fix the per-model price table for Opus' },
+    cwd: w(LONG, 'costclaw'), repo: P('costclaw'), branch: 'main', model: 'gpt-5.6-sol', task: 'fix the per-model price table for Opus' },
   { id: 's-20260914-1802-agy-d9f2', agent: 'agy', status: 'lost', started: 9 * hour, ended: 6 * hour,
     cwd: w('C:', 'Projects'), repo: null, branch: null, task: 'summarise yesterday' },
   { id: 's-20260914-1533-claude-a04b', agent: 'claude', status: 'ended', started: 11 * hour, ended: 8 * hour,
@@ -67,15 +74,23 @@ const rows = [
     cwd: P('costclaw'), repo: P('costclaw'), branch: 'main', task: 'monthly rollup excludes refunded calls' },
 ]
 
+// distinct from files_touched below: the board prints basenames, and two
+// different paths ending in the same name read as one file listed twice
+const DIRTY = ['server.mjs', 'attach.mjs', 'usage.mjs']
 for (const r of rows) {
-  createSession({ id: r.id, agent: r.agent, cwd: r.cwd, repo: r.repo, branch: r.branch, argv: [r.agent], runner_pid: r.ended ? 1 : livePid() })
+  createSession({ id: r.id, agent: r.agent, cwd: r.cwd, repo: r.repo, branch: r.branch, argv: [r.agent], runner_pid: r.ended ? 1 : livePid(), model: r.model ?? null })
   updateSession(r.id, {
     status: r.status,
     started_at: ago(r.started),
-    last_activity: ago(r.ended ?? 0),
+    last_activity: ago(r.ended ?? r.quiet ?? 0),
     ended_at: r.ended ? ago(r.ended) : null,
     task: r.task,
     turns: r.task ? 12 : 0,
+    waiting: r.waiting ?? null,
+    // `ahead` is written by the git poll in src/attach.mjs; an older record has
+    // no such key, and the row prints the token only when it is there
+    ...(r.ahead ? { ahead: r.ahead } : {}),
+    files_dirty: r.dirty && r.repo ? DIRTY.slice(0, r.dirty).map((f) => w(r.cwd, 'src', f)) : [],
     files_touched: r.repo ? [w(r.cwd, 'src', 'board', 'board.css'), w(r.cwd, 'src', 'board', 'sessions.js')] : [],
   })
 }

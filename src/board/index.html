@@ -170,6 +170,18 @@
         <button type="button" class="btn btn-secondary" id="default-order-save">Save default</button>
         <span class="field-status" id="default-order-status" aria-live="polite"></span>
       </fieldset>
+      <!-- Where a terminal that is waiting on a human says so when the board is
+           not the window you are looking at. The tab badge needs no toggle: it
+           needs no permission and costs nothing, so it is always on. -->
+      <fieldset class="notify" id="notify-settings" hidden>
+        <legend>Notifications</legend>
+        <p class="field-help">The tab title says <code>(1) Leg</code> and the favicon gains a dot whenever a terminal is waiting on you. That one is always on.</p>
+        <label class="notify-toggle" for="notify-terminal"><input type="checkbox" id="notify-terminal"> Terminal toast when a terminal waits on you</label>
+        <p class="field-help">Claude Code only, through its Notification hook: the toast reaches the window the agent is already running in.</p>
+        <label class="notify-toggle" for="notify-board"><input type="checkbox" id="notify-board"> Browser notification when a terminal waits on you</label>
+        <p class="field-help" id="notify-board-help"></p>
+        <span class="field-status" id="notify-status" aria-live="polite"></span>
+      </fieldset>
       <!-- Who did what, across every terminal and every card. The owner's, like
            the rest of this panel: the trail names repositories and people. It
            loads when asked rather than on every board render. -->
@@ -307,6 +319,15 @@
     </div>
   </form>
 </dialog>
+
+<!-- D14: every binding clicks a button that is already on a row, so this map is
+     the list of those buttons and nothing else can drift from it. sessions.js
+     fills it from the same table the key handler reads. -->
+<div class="keymap" id="keymap" role="dialog" aria-label="Keyboard shortcuts" hidden>
+  <h3 class="drawer-head">Keyboard</h3>
+  <dl class="keymap-list" id="keymap-list"></dl>
+  <button type="button" class="btn btn-secondary" id="keymap-close">Close</button>
+</div>
 
 <div class="sysmsg" id="toast" aria-live="polite"></div>
 
