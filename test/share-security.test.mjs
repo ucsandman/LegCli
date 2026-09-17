@@ -379,6 +379,8 @@ test('a guest\'s board carries no usage percentage, no reset time and no reading
   const sevenDayResets = 1900000063
   const usageSource = 'CANARY-USAGE-SOURCE-2f7a claude statusline'
   const usageReason = 'CANARY-USAGE-REASON-6b18 usage limit reached'
+  const wallEvidence = 'CANARY-WALL-EVIDENCE-4a52 you have reached your Fable limit'
+  const factPlan = 'CANARY-PLAN-7e30-prolite'
   const observed = new Date().toISOString()
   const usageFile = join(HOME, 'usage', 'claude--default.json')
   mkdirSync(join(HOME, 'usage'), { recursive: true })
@@ -387,15 +389,33 @@ test('a guest\'s board carries no usage percentage, no reset time and no reading
     five_hour: { pct: 96, resets_at: fiveHourResets }, seven_day: { pct: 63, resets_at: sevenDayResets },
     limited_until: fiveHourResets, limited_reason: usageReason, limited_at: observed,
     source: usageSource, observed_at: observed, updated_at: observed,
+    // the per-model keys are the same secret as the percentages: how much of
+    // this machine's login is gone, and which model is out
+    buckets: [{ kind: 'weekly_scoped', group: 'weekly', model: 'fable', percent: 63, resets_at: sevenDayResets, is_active: true, severity: 'normal' }],
+    walls: { fable: { limited_until: sevenDayResets, limited_reason: 'model_limit', limited_at: observed, source: usageSource, evidence: wallEvidence } },
+    history: { 'weekly_scoped:fable': [{ percent: 61, at: 1789660000 }] },
+    extra_usage: { enabled: false, reason: 'out_of_credits', can_toggle: false, limit_minor: 12500 },
+    facts: { plan_type: factPlan },
   }))
-  const ACCOUNT_FIELDS = ['five_hour', 'seven_day', 'limited_until', 'limited_reason', 'source', 'observed_at', 'updated_at', 'stale', 'pct', 'resets_at']
+  const ACCOUNT_FIELDS = ['five_hour', 'seven_day', 'limited_until', 'limited_reason', 'source', 'observed_at', 'updated_at', 'stale', 'pct', 'resets_at', 'buckets', 'walls', 'extra_usage', 'facts', 'capacity']
   try {
     // the owner's own board still gets every field: this is the guest's redaction alone
     const owner = await request(openBase, '/api/sessions')
     assert.equal(owner.status, 200)
     assert.equal(owner.json.you.name, 'wes')
     const mine = owner.json.accounts.find((a) => a.agent === 'claude' && a.account === 'default')
-    assert.deepEqual(Object.keys(mine).sort(), ['account', 'agent', 'five_hour', 'limited_reason', 'limited_until', 'live', 'observed_at', 'seven_day', 'source', 'stale', 'updated_at'])
+    assert.deepEqual(Object.keys(mine).sort(), ['account', 'agent', 'buckets', 'extra_usage', 'facts', 'five_hour', 'limited_reason', 'limited_until', 'live', 'observed_at', 'seven_day', 'source', 'stale', 'updated_at', 'walls'])
+    // the owner reads the per-model record: the bucket that binds, the model
+    // that is walled, the credits sentence and the measured facts
+    assert.equal(mine.buckets[0].model, 'fable')
+    assert.equal(mine.buckets[0].percent, 63)
+    assert.equal(mine.walls.fable.evidence, wallEvidence)
+    assert.equal(mine.extra_usage.reason, 'out_of_credits')
+    assert.equal(mine.facts.plan_type, factPlan)
+    const ownRow = owner.json.sessions.find((s) => s.session_id === OWNED)
+    assert.equal(ownRow.capacity.kind, 'weekly_scoped', 'the owner\'s row carries the bucket that binds it')
+    assert.equal(ownRow.capacity.scope, 'model')
+    assert.equal(ownRow.capacity.percent, 63)
     assert.equal(mine.five_hour.pct, 96, 'the owner reads their own 5-hour percentage')
     assert.equal(mine.five_hour.resets_at, fiveHourResets)
     assert.equal(mine.seven_day.pct, 63)
@@ -424,7 +444,19 @@ test('a guest\'s board carries no usage percentage, no reset time and no reading
     assert.equal(theirClaude.live, mine.live, 'how many terminals are running is already on the guest\'s session list')
     const slots = JSON.stringify(guest.json.accounts)
     for (const field of ACCOUNT_FIELDS) assert.equal(slots.includes(field), false, `a guest board carries accounts.${field}: ${slots.slice(0, 300)}`)
-    for (const [what, needle] of [['the reading source', usageSource], ['the wall reason', usageReason], ['the 5h reset time', String(fiveHourResets)], ['the 7d reset time', String(sevenDayResets)]]) {
+    // a guest owns their own terminal, so its row is not redacted: the new
+    // per-model keys still must not ride on it. `capacity` is a percentage of
+    // this machine's login, computed per request, and it is owner-only.
+    const theirOwnRow = guest.json.sessions.find((s) => s.session_id === OTHER)
+    assert.ok(theirOwnRow, 'sam still sees sam\'s own terminal')
+    for (const field of ['capacity', 'buckets', 'walls', 'extra_usage', 'facts']) {
+      assert.equal(field in theirOwnRow, false, `a guest's own session row carries ${field}`)
+    }
+    const rows = JSON.stringify(guest.json.sessions)
+    for (const field of ['capacity', 'buckets', 'walls', 'extra_usage']) {
+      assert.equal(rows.includes(`"${field}"`), false, `a guest board carries sessions[].${field}`)
+    }
+    for (const [what, needle] of [['the reading source', usageSource], ['the wall reason', usageReason], ['the wall evidence', wallEvidence], ['the measured plan', factPlan], ['the 5h reset time', String(fiveHourResets)], ['the 7d reset time', String(sevenDayResets)]]) {
       assert.equal(carries(guest.text, needle), false, `a guest board carries ${what} (${needle})`)
     }
 

@@ -31,7 +31,7 @@ import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs
 import { hasRecentSynthesis } from './synthesis.mjs'
 import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
-import { readUsage, recordUsage, usageIsStale, candidates, isAvailable, fmtReset } from './usage.mjs'
+import { readUsage, recordUsage, usageIsStale, candidates, isAvailable, fmtReset, binding } from './usage.mjs'
 import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
 import { readCodexUsage } from './taps/codex.mjs'
 import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder } from './preferences.mjs'
@@ -383,6 +383,11 @@ export function sessionsView({ viewer = null, share = null } = {}) {
         }
       }),
       handoff_availability_known: availabilityKnown,
+      // the bucket that will actually stop this terminal, computed per request
+      // and never persisted: it depends on the model the row is running, and
+      // the record only knows the login. A guest never gets it: it is a
+      // percentage of this machine's usage (.design/BOARD-DESIGN.md 6.13).
+      ...(guest ? {} : { capacity: binding(readUsage(s.agent, s.account), s.model ?? null) }),
       can_edit_handoff_order: s.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY) ?? false,
       active: isActive(s),
       has_synthesis: hasRecentSynthesis(s),
@@ -401,7 +406,11 @@ export function sessionsView({ viewer = null, share = null } = {}) {
   const accounts = []
   for (const agent of Object.keys(configuredAccounts)) for (const account of configuredAccounts[agent]) {
     const u = readUsage(agent, account)
-    accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, observed_at: u.observed_at, updated_at: u.updated_at, stale: usageIsStale(u), live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length })
+    // buckets, walls, extra_usage and facts are owner-only for the same reason
+    // the percentages are: they say how much of this machine's login is gone.
+    // The guest branch at the bottom of this function drops the slot to
+    // {agent, account, live, shared}, so nothing here reaches them.
+    accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, observed_at: u.observed_at, updated_at: u.updated_at, stale: usageIsStale(u), live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length, buckets: u.buckets ?? [], walls: u.walls ?? {}, extra_usage: u.extra_usage ?? null, facts: u.facts ?? null })
   }
   const repos = new Map()
   for (const s of sessions) if (s.repo && (s.active || s.worktree) && !repos.has(canonPath(s.repo))) repos.set(canonPath(s.repo), s.repo)

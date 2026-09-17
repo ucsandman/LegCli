@@ -1,0 +1,20 @@
+{
+  "agent": "claude",
+  "signal": "resume-with-model",
+  "captured_at": "2026-09-17T21:40:00Z",
+  "source": "observed-live",
+  "claude_version": "2.1.274",
+  "probe": [
+    "echo 'reply with exactly: ok' | claude -p --model sonnet --output-format json --max-turns 1",
+    "echo 'what did I ask you to reply with before? answer in 5 words' | claude -p --resume <session_id> --model haiku --output-format json --max-turns 1"
+  ],
+  "observed": {
+    "same_session_id": true,
+    "conversation_kept": true,
+    "second_turn_result": "To reply with exactly ok.",
+    "second_turn_modelUsage_keys": ["claude-haiku-4-5-20251001"],
+    "second_turn_cacheReadInputTokens": 0,
+    "second_turn_is_error": false
+  },
+  "conclusion": "`--resume <id> --model <alias>` composes: the session id is kept, the prior turn is remembered, and only the new model answers. The resumed context is re-read at the new model's rates (cache read 0 on the first resumed turn), so a downshift keeps the conversation and an upshift pays the re-read at the higher price. Settles spec G1 (docs/redesign-2026-09-17.md)."
+}

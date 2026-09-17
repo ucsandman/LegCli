@@ -37,6 +37,75 @@ function window(x) {
   return { pct, resets_at: resets }
 }
 
+function epoch(x) {
+  if (x === null || x === undefined) return null
+  if (typeof x === 'number') return Number.isFinite(x) ? Math.floor(x > 1e12 ? x / 1000 : x) : null
+  const t = Date.parse(x)
+  return Number.isFinite(t) ? Math.floor(t / 1000) : null
+}
+
+// The model a limit row is scoped to, lowercased, or null when the row is an
+// account-wide bucket. The endpoint is undocumented, so the scope is read by
+// shape (a `model` object carrying a display name) rather than by a type word.
+function scopeModel(scope) {
+  const name = scope?.model?.display_name ?? scope?.model?.displayName ?? null
+  return typeof name === 'string' && name.trim() ? name.trim().toLowerCase() : null
+}
+
+function groupOf(kind) {
+  const k = String(kind ?? '')
+  if (k.startsWith('weekly')) return 'weekly'
+  if (k.startsWith('session') || k.startsWith('five_hour')) return 'session'
+  if (k.startsWith('spend') || k.startsWith('extra')) return 'spend'
+  return k || 'unknown'
+}
+
+// One `limits[]` row → a bucket. Percentages only: what a row *means* (whether
+// a model switch helps) is decided in src/buckets.mjs from the wall wording,
+// never from a number.
+export function bucketOf(x) {
+  if (!x || typeof x !== 'object') return null
+  const kind = x.type ?? x.kind ?? x.name ?? null
+  if (!kind) return null
+  const percent = Number(x.utilization ?? x.used_percentage ?? x.used_percent ?? x.percent)
+  if (!Number.isFinite(percent)) return null
+  return {
+    kind: String(kind),
+    group: groupOf(kind),
+    model: scopeModel(x.scope),
+    percent,
+    resets_at: epoch(x.resets_at ?? x.resetsAt ?? null),
+    is_active: Boolean(x.is_active ?? x.isActive ?? false),
+    severity: typeof x.severity === 'string' ? x.severity : 'normal',
+  }
+}
+
+export function bucketsFrom(j) {
+  if (!Array.isArray(j?.limits)) return []
+  return j.limits.map(bucketOf).filter(Boolean)
+}
+
+// `extra_usage` / `spend`, the two sentences the capacity drawer prints. Only
+// the fields that exist are carried; the eighteen codename keys the payload
+// also holds (tangelo, iguana_necktie, ...) are never read.
+export function extraUsageFrom(j) {
+  const e = j?.extra_usage
+  const s = j?.spend
+  if ((!e || typeof e !== 'object') && (!s || typeof s !== 'object')) return null
+  const out = {}
+  const enabled = e?.is_enabled ?? e?.enabled
+  if (typeof enabled === 'boolean') out.enabled = enabled
+  const reason = e?.disabled_reason ?? e?.reason
+  if (typeof reason === 'string') out.reason = reason
+  const canToggle = s?.can_toggle ?? e?.can_toggle
+  if (typeof canToggle === 'boolean') out.can_toggle = canToggle
+  const limitMinor = Number(e?.monthly_limit ?? e?.limit ?? s?.monthly_limit)
+  if (Number.isFinite(limitMinor)) out.limit_minor = limitMinor
+  const usedMinor = Number(e?.monthly_used ?? e?.used ?? s?.monthly_used ?? s?.used)
+  if (Number.isFinite(usedMinor)) out.used_minor = usedMinor
+  return Object.keys(out).length ? out : null
+}
+
 function getJson(url, headers, timeoutMs) {
   return new Promise((resolvePromise) => {
     const u = new URL(url)
@@ -54,7 +123,10 @@ function getJson(url, headers, timeoutMs) {
   })
 }
 
-// → { ok, limits: {five_hour, seven_day}|null, status, error, expired }
+// → { ok, limits: {five_hour, seven_day, buckets, extra_usage}|null, status, error, expired }
+// The two windows keep their shape and their place: every older reader of this
+// function still gets exactly what it got before. `buckets` is [] when the
+// payload has no `limits` array, which is what an older endpoint answers.
 export async function fetchClaudeUsage({ configDir = LAYOUT.claude.home(), timeoutMs = 8000, url = USAGE_URL } = {}) {
   const t = readToken(configDir)
   if (!t) return { ok: false, limits: null, error: 'no claude.ai login found in ' + configDir }
@@ -63,5 +135,5 @@ export async function fetchClaudeUsage({ configDir = LAYOUT.claude.home(), timeo
   if (r.status !== 200) return { ok: false, limits: null, status: r.status, expired: t.expired, error: `usage endpoint ${r.status}: ${r.text.slice(0, 120)}` }
   let j
   try { j = JSON.parse(r.text) } catch { return { ok: false, limits: null, status: r.status, error: 'usage endpoint returned no JSON' } }
-  return { ok: true, limits: { five_hour: window(j.five_hour), seven_day: window(j.seven_day) }, status: r.status, expired: t.expired, raw_keys: Object.keys(j) }
+  return { ok: true, limits: { five_hour: window(j.five_hour), seven_day: window(j.seven_day), buckets: bucketsFrom(j), extra_usage: extraUsageFrom(j) }, status: r.status, expired: t.expired, raw_keys: Object.keys(j) }
 }

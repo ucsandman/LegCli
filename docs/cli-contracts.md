@@ -386,7 +386,11 @@ variable and `LEG_SESSION` (source: src/attach.mjs, src/env.mjs).
 
 - `<LEG_HOME>/usage/<agent>--<account>.json`:
   `{ five_hour: {pct, resets_at}, seven_day: {…}, limited_until,
-  limited_reason, source, updated_at }` (source: src/usage.mjs).
+  limited_reason, source, updated_at, buckets, walls, history, extra_usage,
+  facts }` (source: src/usage.mjs). The last five are the per-model half of the
+  record: measured buckets, walls attributed from wording, a 24-sample ring per
+  bucket, the credits block and agent-measured strings. See
+  [concepts.md](concepts.md).
 - Warning threshold `WARN_PCT`, default 85, from `LEG_WARN_PCT`; the warning
   is an amber card, an event, and one terminal bell (source: src/usage.mjs,
   src/attach.mjs).

@@ -155,6 +155,20 @@ export function normalizeRateLimits(rateLimits) {
   return out
 }
 
+// What the rollout says about the account in words rather than percentages:
+// the plan it is on and the credit balance it prints. Measured, carried
+// through untouched, and never summed with anything: they are strings from
+// codex, not a figure Leg computed. Observed live in the newest rollout
+// (plan_type "prolite", credits.balance "0").
+export function factsFromRateLimits(rateLimits) {
+  const out = {}
+  const plan = rateLimits?.plan_type ?? rateLimits?.planType
+  if (typeof plan === 'string' && plan) out.plan_type = plan
+  const balance = rateLimits?.credits?.balance
+  if (typeof balance === 'string' || typeof balance === 'number') out.credits_balance = String(balance)
+  return out
+}
+
 function parseRetryAt(msg) {
   const m = RETRY_AT_RE.exec(msg ?? '')
   if (!m) return null
@@ -165,16 +179,21 @@ function parseRetryAt(msg) {
 
 // lines → { limits, limit, messages, turnsDone, taskStarted, threadId }
 export function parseLines(lines) {
-  const out = { limits: null, limits_at: null, limit: null, messages: [], turnsDone: 0, taskStarted: 0, threadId: null, files: [] }
+  const out = { limits: null, limits_at: null, limit: null, messages: [], turnsDone: 0, taskStarted: 0, threadId: null, files: [], facts: {} }
   for (const line of lines) {
     let j
     try { j = JSON.parse(line) } catch { continue }
     const p = j.payload ?? {}
-    if (j.type === 'session_meta') { out.threadId = p.id ?? null; continue }
+    if (j.type === 'session_meta') {
+      out.threadId = p.id ?? null
+      if (typeof p.model === 'string' && p.model) out.facts.model = p.model
+      continue
+    }
     if (j.type === 'event_msg') {
       if (p.type === 'token_count' && p.rate_limits) {
         out.limits = normalizeRateLimits(p.rate_limits)
         out.limits_at = j.timestamp ?? null
+        Object.assign(out.facts, factsFromRateLimits(p.rate_limits))
       } else if (p.type === 'task_started') out.taskStarted += 1
       else if (p.type === 'task_complete') {
         out.turnsDone += 1
@@ -265,8 +284,9 @@ export function readCodexUsage({ codexHome = LAYOUT.codex.home(), timeoutMs = 80
           if (message.error || !message.result) return stop('codex rate-limit read failed')
           const snapshot = message.result.rateLimitsByLimitId?.codex ?? message.result.rateLimits
           const limits = normalizeRateLimits(snapshot)
+          const facts = factsFromRateLimits(snapshot)
           const available = typeof message.result.ordinaryUsageAllowed === 'boolean' ? message.result.ordinaryUsageAllowed : null
-          return finish({ ok: available !== null || Boolean(limits.five_hour || limits.seven_day), limits, available, observed_at: new Date().toISOString(), error: null })
+          return finish({ ok: available !== null || Boolean(limits.five_hour || limits.seven_day), limits, facts, available, observed_at: new Date().toISOString(), error: null })
         }
       }
     })

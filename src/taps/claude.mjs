@@ -10,6 +10,7 @@ import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sessionDir, updateSession, appendEvent, readSession, workRoot } from '../sessions.mjs'
 import { recordUsage, markLimited, WARN_PCT } from '../usage.mjs'
+import { bucketFromWall } from '../buckets.mjs'
 import { writeJsonAtomic } from '../fsx.mjs'
 import { LAYOUT } from '../accounts.mjs'
 
@@ -126,8 +127,24 @@ export function handleHook(sessionId, p) {
       if (p.error === 'rate_limit') {
         // a simulated wall (baton sessions simulate-limit) clears after two minutes so a test never walls the real login for hours
         const simulated = Boolean(p.leg_simulated || p.baton_simulated)
-        const u = markLimited('claude', s.account, { reason: 'rate_limit', source: simulated ? 'leg simulate-limit' : 'claude StopFailure', resets_at: simulated ? Math.floor(Date.now() / 1000) + 120 : null })
-        updateSession(sessionId, { ...base, status: 'limit', limit: { reason: 'rate_limit', detail: String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 300), resets_at: u.limited_until, at: new Date().toISOString(), simulated } }, { event: { type: 'limit', summary: `claude usage limit${simulated ? ' (simulated)' : ''}: ${String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 160)}` } })
+        const detail = String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 300)
+        // which bucket the wording walled: one model family, or the whole
+        // login. Unrecognised wording walls the login (src/buckets.mjs rule 5).
+        const hit = bucketFromWall('claude', p.last_assistant_message)
+        // markLimited takes the same cross-process lock recordUsage does, so a
+        // percentage arriving from the poller in this same moment cannot erase
+        // the wall this hook is writing (that race handed the baton straight
+        // back to a walled login).
+        const u = markLimited('claude', s.account, {
+          reason: hit.scope === 'model' ? 'model_limit' : 'rate_limit',
+          source: simulated ? 'leg simulate-limit' : 'claude StopFailure',
+          resets_at: simulated ? Math.floor(Date.now() / 1000) + 120 : null,
+          scope: hit.scope,
+          model: hit.model ?? null,
+          evidence: detail,
+        })
+        const resets = hit.scope === 'model' ? (u.walls?.[hit.model]?.limited_until ?? null) : u.limited_until
+        updateSession(sessionId, { ...base, status: 'limit', limit: { reason: 'rate_limit', detail, resets_at: resets, at: new Date().toISOString(), simulated, scope: hit.scope, model: hit.model ?? null } }, { event: { type: 'limit', summary: `claude usage limit${simulated ? ' (simulated)' : ''}${hit.scope === 'model' ? ` (${hit.model})` : ''}: ${detail.slice(0, 160)}` } })
         return 'LIMIT'
       }
       appendEvent(sessionId, { type: 'error', summary: `claude ${p.error}: ${String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 160)}` })

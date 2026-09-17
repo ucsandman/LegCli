@@ -69,8 +69,23 @@ keeps the latest reading per (agent, account) in
 
 ```
 { five_hour: {pct, resets_at}, seven_day: {pct, resets_at},
-  limited_until, limited_reason, source, updated_at }
+  limited_until, limited_reason, source, updated_at,
+  buckets, walls, history, extra_usage, facts }
 ```
+
+A login can be limited per model as well as per account, so the record carries
+both kinds of fact and keeps them apart. `buckets` is measured: one row per
+bucket the agent publishes (`{kind, group, model, percent, resets_at,
+is_active, severity}`, from Claude's `limits[]`), and `binding(u, model)` picks
+the row that will actually stop a terminal. `walls` is attributed from wording
+rather than measured: `bucketFromWall()` in `src/buckets.mjs` reads the wall
+message, and a model-scoped wall goes to `walls[model]` while the login stays
+open, so a Fable wall never stops `claude/sonnet`. `history` is a ring of at
+most 24 percentage samples per bucket, started again whenever that window
+resets. `extra_usage` is the credits sentence, and `facts` holds strings the
+agent measured itself (codex's `plan_type` and `credits_balance`). An older Leg
+reading this file ignores all five, and an agent that publishes no buckets
+leaves them empty.
 
 Where each number comes from is per agent, and is in
 [adapters.md](adapters.md). The rules on top of them are shared:

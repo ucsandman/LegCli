@@ -1,0 +1,87 @@
+{
+  "agent": "claude",
+  "signal": "usage",
+  "source": "observed-live",
+  "captured_at": "2026-09-17T20:16:00Z",
+  "endpoint": "GET https://api.anthropic.com/api/oauth/usage",
+  "status": 200,
+  "produced_by": "docs/redesign-2026-09-17.md \"What I verified myself before writing\" (2026-09-17 20:16Z, HTTP 200, 23 keys) and the tournament candidate transcript that printed the raw limits[] rows (kind, group, percent, severity, resets_at as ISO, scope{model{id,display_name},surface}, is_active), fetched through src/taps/claude-usage.mjs fetchClaudeUsage",
+  "scrubbed": "no ids, no tokens, no account identifiers: only the limit rows, the two legacy windows and the spend block Leg reads",
+  "verified": [
+    "limits[] holds session 29%, weekly_all 47% and weekly_scoped 63% with scope.model.display_name \"Fable\" and is_active true",
+    "seven_day_opus and seven_day_sonnet are null",
+    "extra_usage.is_enabled false, disabled_reason \"out_of_credits\", monthly_limit 12500 (minor units)",
+    "spend.can_toggle false, can_purchase_credits false",
+    "seven_day_breakdown: Claude Code 100, Chats 0, Cowork 0"
+  ],
+  "payload": {
+    "five_hour": {
+      "utilization": 29,
+      "resets_at": "2026-09-17T20:30:00Z"
+    },
+    "seven_day": {
+      "utilization": 47,
+      "resets_at": "2026-09-23T19:00:00Z"
+    },
+    "seven_day_opus": null,
+    "seven_day_sonnet": null,
+    "limits": [
+      {
+        "kind": "session",
+        "group": "session",
+        "percent": 29,
+        "severity": "normal",
+        "resets_at": "2026-09-17T20:30:00Z",
+        "scope": null,
+        "is_active": false
+      },
+      {
+        "kind": "weekly_all",
+        "group": "weekly",
+        "percent": 47,
+        "severity": "normal",
+        "resets_at": "2026-09-23T19:00:00Z",
+        "scope": null,
+        "is_active": false
+      },
+      {
+        "kind": "weekly_scoped",
+        "group": "weekly",
+        "percent": 63,
+        "severity": "normal",
+        "resets_at": "2026-09-23T19:00:00Z",
+        "scope": {
+          "model": {
+            "id": null,
+            "display_name": "Fable"
+          },
+          "surface": null
+        },
+        "is_active": true
+      }
+    ],
+    "seven_day_breakdown": [
+      {
+        "name": "Claude Code",
+        "percentage": 100
+      },
+      {
+        "name": "Chats",
+        "percentage": 0
+      },
+      {
+        "name": "Cowork",
+        "percentage": 0
+      }
+    ],
+    "extra_usage": {
+      "is_enabled": false,
+      "disabled_reason": "out_of_credits",
+      "monthly_limit": 12500
+    },
+    "spend": {
+      "can_toggle": false,
+      "can_purchase_credits": false
+    }
+  }
+}

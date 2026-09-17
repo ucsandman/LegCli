@@ -58,7 +58,7 @@ const say = (line) => process.stderr.write(`[leg] ${line}\n`)
 async function refreshCodexUsage(account, codexHome, { timeoutMs = 8000, signal = null } = {}) {
   const r = await readCodexUsage({ codexHome, timeoutMs, signal })
   if (!r.ok) return r
-  const u = recordUsage('codex', account, r.limits, 'codex app-server account/rateLimits/read', { observed_at: r.observed_at, available: r.available })
+  const u = recordUsage('codex', account, { ...r.limits, facts: r.facts }, 'codex app-server account/rateLimits/read', { observed_at: r.observed_at, available: r.available })
   return { ...r, usage: u }
 }
 
@@ -328,7 +328,9 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
       const usable = r.ok && r.limits && (r.limits.five_hour || r.limits.seven_day)
       if (usable) {
         recordUsage('claude', account, r.limits, 'claude usage endpoint')
-        updateSession(sid, { limits: r.limits, usage_source: 'claude usage endpoint', usage_error: null })
+        // the session record keeps the two windows it always had: the buckets
+        // live on the usage record, which is per login and not per terminal
+        updateSession(sid, { limits: { five_hour: r.limits.five_hour, seven_day: r.limits.seven_day }, usage_source: 'claude usage endpoint', usage_error: null })
       } else if (!s.usage_error) {
         const why = r.error ?? 'the usage endpoint answered with no window'
         updateSession(sid, { usage_error: why }, { event: { type: 'status', summary: `claude usage unavailable: ${why}` } })
@@ -397,7 +399,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
         if (tail) {
           const r = parseLines(tail.read())
           if (r.limits) {
-            const u = recordUsage('codex', account, r.limits, 'codex rollout token_count', { observed_at: r.limits_at })
+            const u = recordUsage('codex', account, { ...r.limits, facts: r.facts }, 'codex rollout token_count', { observed_at: r.limits_at })
             if (u.usage_applied) { patch.limits = r.limits; patch.last_activity = new Date().toISOString() }
           }
           const firstUser = r.messages.find((m) => m.role === 'user')
