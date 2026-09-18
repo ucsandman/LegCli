@@ -14,11 +14,12 @@ export function makeHome() {
   return realpathSync(mkdtempSync(join(tmpdir(), 'leg-home-')))
 }
 
-// Leg is a licensed product with no trial, so an unlicensed throwaway home
-// refuses every session and most of the suite would be testing the refusal
-// instead of the thing it names. Each test home gets a Team key signed by this
-// pair, and BATON_PUBLIC_KEY_B64 points the spawned CLI at its public half. A
-// test that wants the refusal passes BATON_UNLICENSED=1 and gets an empty home.
+// Leg is a licensed product with a 14-day trial, so an unlicensed throwaway
+// home would run every session on the trial and write a trial.json into the
+// home, and a test that counts the home's files would be counting that. Each
+// test home gets a Team key signed by this pair, and BATON_PUBLIC_KEY_B64
+// points the spawned CLI at its public half. A test that wants the trial or
+// the refusal passes BATON_UNLICENSED=1 and gets an empty home.
 const TEST_PAIR = generateKeyPairSync('ed25519')
 export const TEST_PUBLIC_KEY_B64 = TEST_PAIR.publicKey.export({ type: 'spki', format: 'der' }).toString('base64')
 const TEST_PRIVATE_KEY_B64 = TEST_PAIR.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64')

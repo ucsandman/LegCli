@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.14.0 (2026-09-18)
+
+The 14-day trial is back.
+
+- **Free for 14 days, no key, no card.** The first `leg <agent>` on a machine
+  starts a 14-day trial with every gate open, Team's `leg share` included, and
+  records it in `$LEG_HOME/trial.json`. `leg license status` shows the days
+  left without starting the clock. After the trial, or with a refused key once
+  it is over, a session exits 4 with the price and the 30-day guarantee, which
+  stays as the second net after buying. Deleting the file resets the clock,
+  which is the known limit of an offline trial and is accepted. The license
+  agreement gains the trial clause; the site, README, support page and
+  `llms.txt` say "free for 14 days" where they said "no trial".
+- **The README stops calling the repository private.** It has been public at
+  github.com/ucsandman/legcli; two sentences still said otherwise.
+
 ## 0.13.1 (2026-09-18)
 
 A one-line fix in the terminal and the marketing site brought up to what 0.13.0 does.

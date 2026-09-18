@@ -493,10 +493,11 @@ async function main() {
     // The paid gate. Keys verify offline against the public key in
     // src/license.mjs; nothing here talks to the network except refresh.
     if (!cmd || cmd === 'status') {
-      const ent = entitlement()
+      // looking does not start the trial clock; the first session does
+      const ent = entitlement({ startTrial: false })
       out(describeLicense(ent))
       if (ent.source === 'license') out(`stored at ${licensePath()}`)
-      if (!ent.ok) out(`Buy: ${BUY_URL}   then: leg license activate <key>`)
+      if (!ent.ok || ent.source === 'trial') out(`Buy: ${BUY_URL}   then: leg license activate <key>`)
       return
     }
     if (cmd === 'activate') {
@@ -508,7 +509,7 @@ async function main() {
       } catch (err) { die(2, err.message) }
       return
     }
-    if (cmd === 'deactivate') return out(deactivateLicense() ? `removed ${licensePath()}; Leg needs a key again before it will run` : 'no license was stored')
+    if (cmd === 'deactivate') return out(deactivateLicense() ? `removed ${licensePath()}; Leg is back on the trial if it has days left, otherwise it needs a key` : 'no license was stored')
     if (cmd === 'refresh') {
       try { const p = await refreshLicense(); out(`renewed ${p.plan} license ${p.id}, valid through ${p.expires}`) } catch (err) { die(2, err.message) }
       return

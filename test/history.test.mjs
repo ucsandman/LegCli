@@ -424,8 +424,9 @@ test('leg history continue: a stub claude gets --resume <id> in the conversation
   assert.equal(s2.transcript_path, f.codex[0].file)
   assert.equal(s2.agent_session_id, uuid(7102))
 
-  // unlicensed continue refuses with exit 4 without claiming it continued
+  // a continue past the trial with no key refuses with exit 4 without claiming it continued
   const unlicHome = makeHome()
+  writeFileSync(join(unlicHome, 'trial.json'), JSON.stringify({ started: '2020-01-01' }))
   const unlicEnv = testEnv(unlicHome, { BATON_UNLICENSED: '1', CLAUDE_CONFIG_DIR: f.homes.claude, CODEX_HOME: f.homes.codex, USERPROFILE: join(root, 'os-home'), HOME: join(root, 'os-home') })
   try {
     leg(['history', 'continue', 'claude:00007101'], unlicEnv)

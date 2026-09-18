@@ -1,14 +1,18 @@
 // The license gate: signed keys verify offline, a personal key is a date
-// window over releases, a team key expires, an unlicensed machine is refused, and the
-// CLI refuses a session once nothing is left.
+// window over releases, a team key expires, an unlicensed machine gets a
+// 14-day trial that starts on its first session, and the CLI refuses a
+// session once nothing is left.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
-import { writeFileSync, existsSync, chmodSync, statSync } from 'node:fs'
+import { writeFileSync, readFileSync, existsSync, chmodSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { makeHome, testEnv, BATON } from './helpers.mjs'
-import { signLicense, verifyLicense, parseLicense, activate, deactivate, readLicense, licensePath, entitlement, allows, describe as describeEnt, refresh, emailHash, GUARANTEE_DAYS } from '../src/license.mjs'
+import { signLicense, verifyLicense, parseLicense, activate, deactivate, readLicense, licensePath, trialPath, entitlement, allows, describe as describeEnt, refresh, emailHash, GUARANTEE_DAYS, TRIAL_DAYS } from '../src/license.mjs'
+
+// an unlicensed home whose trial ran out long ago: the shape the refusal tests want
+const expiredTrialHome = (home) => { writeFileSync(join(home, 'trial.json'), JSON.stringify({ started: '2020-01-01' })); return home }
 
 const pair = generateKeyPairSync('ed25519')
 const PUB = pair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64')
@@ -96,21 +100,39 @@ test('refresh posts the installed Team key and preserves it when the site refuse
   assert.equal(readLicense().key, key)
 })
 
-// There is no trial: Leg is bought up front and the risk reversal is a
-// 30-day money-back guarantee, which lives on the site and needs no clock here.
-test('an unlicensed machine is refused, and says so without inventing a grace period', () => {
+// The trial: 14 days from the first session, every gate open, recorded in the
+// home; looking at the status does not start it; after it, the refusal names
+// the guarantee, and a refused key is reported rather than trusted.
+test('an unlicensed machine runs on a 14-day trial that starts on its first session and then is refused', () => {
   process.env.BATON_HOME = makeHome()
+  assert.equal(TRIAL_DAYS, 14)
+  const peek = entitlement({ today: '2026-09-11', startTrial: false })
+  assert.deepEqual([peek.ok, peek.plan, peek.started, peek.daysLeft], [true, 'trial', null, 14])
+  assert.match(describeEnt(peek), /not started/)
+  assert.equal(existsSync(trialPath()), false, 'looking does not start the clock')
   const e0 = entitlement({ today: '2026-09-11' })
-  assert.deepEqual([e0.ok, e0.plan, e0.reason], [false, 'none', 'no-license'])
-  assert.equal(allows(e0, 'run'), false, 'no key opens no gate')
-  assert.equal(allows(e0, 'share'), false)
-  assert.match(describeEnt(e0), /needs a license key/)
-  assert.match(describeEnt(e0), new RegExp(`${GUARANTEE_DAYS}-day money-back`))
-  assert.equal(existsSync(join(process.env.BATON_HOME, 'trial.json')), false, 'nothing writes a trial clock any more')
-  // a key for another public key is refused, not trusted
+  assert.deepEqual([e0.ok, e0.plan, e0.source, e0.started, e0.daysLeft], [true, 'trial', 'trial', '2026-09-11', 14])
+  assert.equal(allows(e0, 'run'), true)
+  assert.equal(allows(e0, 'share'), true, 'the trial opens every gate, so Team can be evaluated too')
+  assert.match(describeEnt(e0), /14-day trial, 14 days left/)
+  assert.equal(JSON.parse(readFileSync(trialPath(), 'utf8')).started, '2026-09-11')
+  assert.equal(entitlement({ today: '2026-09-24' }).daysLeft, 1, 'the clock does not restart on later asks')
+  const e1 = entitlement({ today: '2026-09-25' })
+  assert.deepEqual([e1.ok, e1.plan, e1.reason], [false, 'none', 'trial-expired'])
+  assert.equal(allows(e1, 'run'), false)
+  assert.match(describeEnt(e1), /trial has ended/)
+  assert.match(describeEnt(e1), /needs a license key/)
+  assert.match(describeEnt(e1), new RegExp(`${GUARANTEE_DAYS}-day money-back`))
+  assert.equal(entitlement({ today: '2026-09-01' }).ok, false, 'a clock set back is not a fresh trial')
+  // a key for another public key is refused, not trusted: while the trial is
+  // alive the session runs on the trial and the refusal is noted, after it
+  // the refusal is the reason
   writeFileSync(join(process.env.BATON_HOME, 'license.json'), JSON.stringify({ key: signLicense(personal(), PRIV) }))
-  const e2 = entitlement({ today: '2026-10-01' })
-  assert.deepEqual([e2.ok, e2.reason], [false, 'bad-signature'])
+  const e2 = entitlement({ today: '2026-09-12' })
+  assert.deepEqual([e2.ok, e2.plan, e2.refused], [true, 'trial', 'bad-signature'])
+  assert.match(describeEnt(e2), /stored key refused: bad-signature/)
+  const e3 = entitlement({ today: '2026-10-01' })
+  assert.deepEqual([e3.ok, e3.reason], [false, 'bad-signature'])
 })
 
 test('the CLI: baton license status, activate, deactivate; a refused key exits 2', () => {
@@ -119,8 +141,13 @@ test('the CLI: baton license status, activate, deactivate; a refused key exits 2
   const run = (args) => spawnSync(process.execPath, [BATON, 'license', ...args], { env, encoding: 'utf8' })
   const st = run(['status'])
   assert.equal(st.status, 0, st.stderr)
-  assert.match(st.stdout, /needs a license key/)
-  assert.match(st.stdout, /30-day money-back/)
+  assert.match(st.stdout, /14-day trial, not started/)
+  assert.match(st.stdout, /Buy: .*#pricing/)
+  assert.equal(existsSync(join(home, 'trial.json')), false, 'status does not start the clock')
+  expiredTrialHome(home)
+  const ended = run(['status'])
+  assert.match(ended.stdout, /trial has ended/)
+  assert.match(ended.stdout, /30-day money-back/)
   const bad = run(['activate', 'LEG-x.y'])
   assert.equal(bad.status, 2)
   assert.match(bad.stderr, /not a Leg license key/)
@@ -142,23 +169,25 @@ test('both LEG- and legacy BATON- keys are accepted and verified; activate norma
   assert.match(readLicense().key, /^LEG-/)
 })
 
-test('the CLI refuses baton <agent> with no key at all, and says where to buy', () => {
-  const home = makeHome()
+test('the CLI refuses baton <agent> once the trial is over and there is no key, and says where to buy', () => {
+  const home = expiredTrialHome(makeHome())
   const env = testEnv(home, { BATON_UNLICENSED: '1', PATH: process.env.PATH })
   const r = spawnSync(process.execPath, [BATON, 'claude', '--version'], { env, encoding: 'utf8', timeout: 20000 })
   assert.equal(r.status, 4, r.stderr)
+  assert.match(r.stderr, /trial has ended/)
   assert.match(r.stderr, /needs a license key/)
   assert.match(r.stderr, /#pricing/)
 })
 
-test('share on needs a Team plan: a Personal key is told no, an unlicensed machine sooner', () => {
-  const home = makeHome()
+test('share on needs a Team plan: a Personal key is told no, a machine past its trial sooner', () => {
+  const home = expiredTrialHome(makeHome())
   const env = testEnv(home, { BATON_UNLICENSED: '1' })
   // a personal key for the real public key does not exist in tests; simulate the
   // decision through allows()
   assert.equal(allows({ ok: true, plan: 'personal' }, 'share'), false)
   assert.equal(allows({ ok: true, plan: 'team' }, 'share'), true)
   assert.equal(allows({ ok: false, plan: 'none' }, 'run'), false)
+  assert.equal(allows({ ok: true, plan: 'trial' }, 'share'), true)
   const r = spawnSync(process.execPath, [BATON, 'share', 'status'], { env, encoding: 'utf8' })
   assert.equal(r.status, 0, r.stderr)
   // no key: share on is refused before it touches the board

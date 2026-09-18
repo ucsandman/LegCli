@@ -197,8 +197,8 @@ agent name passes straight through (<code>leg codex -m gpt-5.3-codex-spark</code
 <code>leg claude --resume</code>). The agent&#39;s own prompt and permission flags pass
 through unchanged, and your settings file is never edited: Leg&#39;s hooks ride
 in a separate per-session <code>--settings</code> file.</p>
-<p>The source repository is private. Leg is commercial, source-available
-software: every <code>.mjs</code> file that runs is in the package you just installed, at
+<p>Leg is commercial, source-available software, and the source is on
+<a href="https://github.com/ucsandman/legcli">GitHub</a>: every <code>.mjs</code> file that runs is in the package you just installed, at
 <code>$(npm root -g)/legcli/src</code>, and the license lets you read it and modify
 your own copy. There is nothing compiled, minified or bundled to see through.</p>
 <h2 id="what-leg-reads-from-each-agent"><a class="anchor" href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></h2>
@@ -764,8 +764,8 @@ drift. CI waits for the Ubuntu and Windows test matrix, validates both
 when that version is missing and newer than the stable <code>latest</code>. Existing
 versions skip cleanly; older, prerelease, lockstep, and registry-error cases
 fail the job. The npm trusted publisher is bound to <code>ucsandman/legcli</code> and
-<code>.github/workflows/ci.yml</code> (bind <code>leg-agents</code> the same way). The repository
-stays private, so publication uses <code>--provenance=false</code>.</p>
+<code>.github/workflows/ci.yml</code> (bind <code>leg-agents</code> the same way). Publication
+uses <code>--provenance=false</code>.</p>
 <h2 id="privacy-and-attribution"><a class="anchor" href="#privacy-and-attribution">Privacy and attribution</a></h2>
 <p>Parts of the runner, ledger and git snapshot were ported from a private
 repository that was MIT licensed (see <a href="https://www.npmjs.com/package/@ucsandman/legcli">NOTICE</a> and
@@ -777,16 +777,18 @@ and the fixtures store home paths as <code>~</code>.</p>
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.13.1; see
+and remain available. The version in this source tree is 0.14.0; see
 <a href="https://www.npmjs.com/package/legcli">npm</a> for published versions and
 <a href="/docs/changelog">CHANGELOG.md</a> for release notes.</p>
-<p>Using it needs a license: <strong>Personal, $79 once</strong>, one human on any number of
+<p>The first 14 days are a <strong>free trial</strong>: install it, type <code>leg claude</code>, and
+everything in both plans is on, with no key and no card. The clock starts on
+your first session and <code>leg license status</code> shows what is left. After that
+it needs a license: <strong>Personal, $79 once</strong>, one human on any number of
 machines, every release for 12 months and the version you have keeps working
 after that; <strong>Team, $12 per seat per month</strong>, Personal plus <code>leg share</code> for
 more than one human on the board. Buy at the site, then
-<code>leg license activate &lt;key&gt;</code>. There is no trial; there is a <strong>30-day
-money-back guarantee</strong>, so the way to evaluate Leg is to use it on real work
-and ask for a refund if it does not earn its place. A key is a signed token
+<code>leg license activate &lt;key&gt;</code>. There is also a <strong>30-day money-back
+guarantee</strong> after buying, no reason required. A key is a signed token
 checked offline with the public key in <code>src/license.mjs</code>; only a Team key
 renewal talks to the site. The bare agent CLIs are never affected by any of
 this; only what Leg adds is licensed.</p>

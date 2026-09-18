@@ -138,8 +138,8 @@ agent name passes straight through (`leg codex -m gpt-5.3-codex-spark`,
 through unchanged, and your settings file is never edited: Leg's hooks ride
 in a separate per-session `--settings` file.
 
-The source repository is private. Leg is commercial, source-available
-software: every `.mjs` file that runs is in the package you just installed, at
+Leg is commercial, source-available software, and the source is on
+[GitHub](https://github.com/ucsandman/legcli): every `.mjs` file that runs is in the package you just installed, at
 `$(npm root -g)/legcli/src`, and the license lets you read it and modify
 your own copy. There is nothing compiled, minified or bundled to see through.
 
@@ -697,8 +697,8 @@ drift. CI waits for the Ubuntu and Windows test matrix, validates both
 when that version is missing and newer than the stable `latest`. Existing
 versions skip cleanly; older, prerelease, lockstep, and registry-error cases
 fail the job. The npm trusted publisher is bound to `ucsandman/legcli` and
-`.github/workflows/ci.yml` (bind `leg-agents` the same way). The repository
-stays private, so publication uses `--provenance=false`.
+`.github/workflows/ci.yml` (bind `leg-agents` the same way). Publication
+uses `--provenance=false`.
 
 ## Privacy and attribution
 
@@ -714,17 +714,19 @@ Leg is commercial software under the [Leg License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.13.1; see
+and remain available. The version in this source tree is 0.14.0; see
 [npm](https://www.npmjs.com/package/legcli) for published versions and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
 
-Using it needs a license: **Personal, $79 once**, one human on any number of
+The first 14 days are a **free trial**: install it, type `leg claude`, and
+everything in both plans is on, with no key and no card. The clock starts on
+your first session and `leg license status` shows what is left. After that
+it needs a license: **Personal, $79 once**, one human on any number of
 machines, every release for 12 months and the version you have keeps working
 after that; **Team, $12 per seat per month**, Personal plus `leg share` for
 more than one human on the board. Buy at the site, then
-`leg license activate <key>`. There is no trial; there is a **30-day
-money-back guarantee**, so the way to evaluate Leg is to use it on real work
-and ask for a refund if it does not earn its place. A key is a signed token
+`leg license activate <key>`. There is also a **30-day money-back
+guarantee** after buying, no reason required. A key is a signed token
 checked offline with the public key in `src/license.mjs`; only a Team key
 renewal talks to the site. The bare agent CLIs are never affected by any of
 this; only what Leg adds is licensed.

@@ -1,6 +1,6 @@
 # Leg
 
-> A local wrapper for coding-agent CLIs. Type `leg claude`, `leg codex`, `leg agy` or `leg grok` instead of the bare command and you get the same interactive agent with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits. Zero runtime dependencies, Node 22+, binds 127.0.0.1, never edits your own config files unless you turn on the optional portable harness. Commercial license, source readable in the package. No trial: Personal $79 once or Team $12 per seat per month, with a 30-day money-back guarantee.
+> A local wrapper for coding-agent CLIs. Type `leg claude`, `leg codex`, `leg agy` or `leg grok` instead of the bare command and you get the same interactive agent with a board beside it, usage tracking per agent and account, a context handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits. Zero runtime dependencies, Node 22+, binds 127.0.0.1, never edits your own config files unless you turn on the optional portable harness. Commercial license, source readable in the package. 14-day free trial from the first session, then Personal $79 once or Team $12 per seat per month, with a 30-day money-back guarantee.
 
 Site: https://legcli.com/
 npm: https://www.npmjs.com/package/@ucsandman/legcli
