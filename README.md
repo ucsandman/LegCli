@@ -23,7 +23,7 @@ files and regions). `leg claude --model opus` is
 1. **A board.** Opened once in your browser, reused after that. Every Leg
    session in every terminal is a row on it, and the row's register reads
    status, repo on branch, uncommitted and unpushed counts, agent and model,
-   and how long it has been quiet: `waiting on you  baton on main  dirty 3
+   and how long it has been quiet: `waiting on you  leg on main  dirty 3
    ahead 2  claude/fable`. Under that come the prompt, the one thing worth
    knowing, the files it is touching and the usage bucket that will stop it.
    Capacity is one strip at the top rather than a region, with the login

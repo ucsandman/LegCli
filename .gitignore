@@ -23,3 +23,5 @@ hello-fake.txt
 .playwright-mcp/
 leg-easter-egg-snippet.js
 scripts/shots/
+
+.vercel
