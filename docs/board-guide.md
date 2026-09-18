@@ -14,17 +14,22 @@ The visual system, and why it is what it is, is `DESIGN.md` at the repo root.
 ## Screenshots
 
 `docs/screenshots/` (listed here so you know what exists before you look for
-one). All nineteen were retaken on 2026-09-15 against the current build, after
-the dark-product-surface redesign and the card-row port that followed it:
+one). Nine were retaken on 2026-09-17 against this build, on a board seeded by
+`scripts/seed-wes-board.mjs` plus `scripts/seed-fake-cards.mjs --count 1
+--finished 10 --live 3`; the rest are from the 2026-09-15 sweep and are noted
+below:
 
 ```
-terminals-1280.png        the board at 1280 px, four terminals on one login
-board-400px.png           the same board at 400 px
-board-details-open.png    a terminal with its expansion open
+terminals-1280.png        the whole board at 1280 px (2026-09-17)
+board-400px.png           the same board at 400 px (2026-09-17)
+capacity-drawer-1280.png  the strip with Capacity and models open (2026-09-17)
+board-details-open.png    a terminal row with its expansion open (2026-09-17)
+board-handoff.png         one row waiting on you, with the question (2026-09-17)
+background-1280.png       the Background panel and the one-line entry (2026-09-17)
+settings-ladder-1280.png  the ladder editor in Settings (2026-09-17)
 board-empty.png           no background tasks at all
-board-running.png         one card running its first agent
-board-handoff.png         the limit hit, the card waiting on you
-board-drawer.png          that card expanded: bundle, runs, timeline
+board-running.png         one card running its first agent (2026-09-17)
+board-drawer.png          that card expanded: where, runs, take over, timeline (2026-09-17)
 board-done.png            the card finished, on the agent that finished it
 floor.png                 /floor with nothing queued
 floor-landing.png         /floor with every lane full
@@ -42,13 +47,13 @@ demo-5-done.png            done, both legs on the chain
 The five `demo-*.png` are one run of the sequence in [DEMO.md](DEMO.md), all at
 1280 px.
 
-**Stale, as of 2026-09-17:** every shot above the first terminal row shows the
-old top of the board (a 56px verdict over a column of login panels) rather than
-the capacity strip and its drawer. `terminals-1280.png`, `board-400px.png`,
-`board-details-open.png`, `share-owner-1280.png` and `share-guest-1280.png` are
-the ones to retake; the terminal rows, the floor and the card shots are
-unchanged. Retake them with the commands below rather than trusting the top
-band of any picture in this directory.
+**Still stale, as of 2026-09-17:** `share-owner-1280.png`,
+`share-guest-1280.png`, `board-empty.png`, `board-done.png` and the five
+`demo-*.png` show the old top of the board (a 56px verdict over a column of
+login panels) rather than the capacity strip and its drawer, and the card shots
+among them predate the Background panel. Their terminal rows and their floor
+are still accurate. Retake them with the commands below rather than trusting
+the top band of any of those pictures.
 
 To retake one, seed a board with the shape a real one has and drive it to the
 state the shot needs:
@@ -582,9 +587,14 @@ link: that side belongs to the owner of the machine, and the API answers 403.
 
 ## Background tasks: page layout
 
-Everything from here down is the v0.1 card runtime. Each card runs separately
-from the interactive terminal conversations, in its own git worktree. It is the
-third ledger cell, and its rows open in a drawer under the ledger.
+Everything from here down is the card runtime. Each card runs separately from
+the interactive terminal conversations, in its own git worktree. Liveness, not
+kind, decides where a card appears: a live card (`backlog`, `queued`,
+`running`, `handing_off`, `needs_approval`, `waiting_human`, `paused`) is a row
+in the **Background** panel directly under Terminals, in the terminal row's own
+shape; a finished one (`done`, `failed`, `killed`) collapses into the ledger
+cell, `10 finished cards, 5 done, 5 failed, last 8:15 PM`, whose **View** opens
+them newest first. Ten finished cards are one row, not ten.
 
 The masthead (`src/board/index.html`) has the Leg wordmark on the left and, on
 the right, the connection word (`connecting` / `live` / `reconnecting…`) with its
@@ -593,9 +603,13 @@ dot, the scheduler status (`scheduler running, 2 max`), and the **Floor** link.
 last region of the page, in flow. Nothing on the board is sticky: the verdict is
 what you came for and it is at the top, so there is nothing to pin.
 
-With no cards the region prints `No background task. New card queues one. They
-run headless in their own worktree and report on the floor.` With cards the
-region head prints the counts instead: `2 running, 1 queued, 3 finished`.
+With no live cards the Background panel's rows are gone and only its entry line
+is left; with live cards the region head prints the same counts a terminals
+head does, `1 running, 1 waiting on you`. Under the rows sits the entry: a
+single field, `Run in the background:`, a **Start** button, and an inferred
+sentence whose nouns are buttons, `in leg on main, with claude/fable then
+claude/opus then codex, build only`, plus **More settings** for the full form.
+Start with an empty task is disabled and says why.
 
 **Settings** holds the **API token** field (only needed when the server is bound
 off loopback; see [configuration.md](configuration.md#network-exposure)), the
@@ -765,12 +779,20 @@ is fixed: Approve, Run, Resume, Pause, Hand off now, Rerun, Reassign, Kill.
 | needs approval | 0 | needs approval | Approve, Kill, Reassign* |
 | waiting human | 0 | waiting human (or PR open) | Approve, Kill |
 | paused | 3 | paused | Resume, Kill, Reassign* |
-| done | 6 | done | Rerun, Remove |
-| failed | 1 | failed | Rerun, Remove |
-| killed | 1 | killed | Rerun, Remove |
+| done | not a row | done | none on the board |
+| failed | not a row | failed | none on the board |
+| killed | not a row | killed | none on the board |
 
 \* Reassign only shows when the current station is an `agent` station.
 † Hand off now only shows when that station has a later chain entry.
+
+The last three are not rows at all. A finished card is one line in the ledger
+drawer (`finishedLine` in `src/board/board.js`), `done after 3 runs, landed
+7f3a2c1` or `failed at station build after 2 runs: <last event>`, with no
+buttons beside it. `availableActions` in `src/chain.mjs` still returns `rerun`
+for a terminal status, and Remove is its own `DELETE /api/cards/:id`, so both
+verbs remain reachable through the API and `bin/leg.mjs`; the board simply
+stops spending a row on work that has stopped.
 
 ## Floor view
 

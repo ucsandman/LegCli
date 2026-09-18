@@ -11,7 +11,7 @@
 
 *Claude hits the five-hour wall. The terminal reads `handing off to codex`, and codex carries on there. Nothing is retyped. ([the full 53-second run](https://legcli.com/#handoff))*
 
-![The Leg board at 1280px: a headline reading "All 4 terminals are on claude, and claude has 5% left", under it the staleness of the reading; a lit claude panel with its 7 day gauge at 95 percent past the reserve notch and its 5 hour gauge at 38; half panels for codex, at the wall, and agy, which publishes no figure; four terminal rows with their prompts and buttons; and counts for finished terminals, what landed and background tasks](https://legcli.com/img/docs/terminals-1280.png)
+![The Leg board at 1280px: a headline naming the terminal that has waited on you longest; under it a capacity strip with claude at 63 percent of its fable week, codex back on Saturday, agy with no figure and grok with no reading, and a button that opens the login panels; then four terminal rows, each with its status, repo and branch, uncommitted and unpushed counts, agent and model, the prompt, the one thing worth knowing and four buttons; then a Background panel of live cards and a one-line field for starting another; then counts for finished terminals, what landed, conversations and finished cards](https://legcli.com/img/docs/terminals-1280.png)
 
 You keep using your coding agents exactly as you do today, in any terminal,
 from your own config directory: Leg adds its hooks in a separate per-session
@@ -21,11 +21,16 @@ files and regions). `leg claude --model opus` is
 `claude --model opus` with four things running alongside it:
 
 1. **A board.** Opened once in your browser, reused after that. Every Leg
-   session in every terminal is a card on it: agent, account, repo and branch,
-   the task, the files it is touching, its 5h and 7d usage, what has landed on
-   trunk. Two sessions editing the same file in one repo are flagged on both
-   cards, and a second session in a checkout that already has one gets its
-   own worktree and a **Land** button instead of writing over the first.
+   session in every terminal is a row on it, and the row's register reads
+   status, repo on branch, uncommitted and unpushed counts, agent and model,
+   and how long it has been quiet: `waiting on you  baton on main  dirty 3
+   ahead 2  claude/fable`. Under that come the prompt, the one thing worth
+   knowing, the files it is touching and the usage bucket that will stop it.
+   Capacity is one strip at the top rather than a region, with the login
+   panels and their gauges behind **Capacity and models**. Two sessions
+   editing the same file in one repo are flagged on both rows, and a second
+   session in a checkout that already has one gets its own worktree and a
+   **Land** button instead of writing over the first.
 2. **Usage tracking** per agent and account, from what each CLI already
    exposes: Claude Code's usage endpoint and its `StopFailure` hook, Codex's
    read-only app-server rate-limit read, agy's log, and Grok's billing proxy endpoint.
@@ -33,12 +38,18 @@ files and regions). `leg claude --model opus` is
    refreshed as the session goes, so the work is always ready to hand off.
 4. **The handoff itself.** Near the limit you get a warning. At the limit Leg
    saves the bundle, stops the agent, and starts the next option in the same
-   terminal from that bundle: another login of the same agent if you added
-   one, otherwise the next agent in the order shown on the terminal card.
-   The default is claude -> codex -> agy (with grok supported in handoff order),
-   and Settings changes the default for new terminals. Nothing is retyped.
-   When every option is out, it tells you which resets first and when, waits
-   for that reset with a countdown, and starts that agent from the bundle.
+   terminal from that bundle. The options are a ladder of rungs, and a rung is
+   an agent, a login and a model: the default is `claude/fable`,
+   `claude/opus`, `claude/sonnet`, then each remaining installed agent. A
+   Fable limit walls Fable and not the login, so the first move is usually to
+   another model on the same subscription, and for claude that move is
+   `claude --resume <id> --model opus`, which keeps the conversation instead
+   of replaying the bundle. Only when every claude rung is out does it move to
+   another CLI. Settings holds the ladder for new terminals, `leg ladder`
+   edits it from a shell, and **Details** on a row edits the copy that
+   terminal is running. Nothing is retyped. When every rung is out, Leg tells
+   you which resets first and when, waits for that reset with a countdown, and
+   starts that agent from the bundle.
 
 Subscription logins only: Leg strips `ANTHROPIC_API_KEY`,
 `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`,
@@ -183,21 +194,23 @@ presenting it as current.
    both are stamped with the commit and the live terminals they describe.
    `claude "<prompt>"`, `codex "<prompt>"` and `agy -i "<prompt>"` all open the
    normal interactive session with that first turn.
-5. **Order.** Other accounts of the same agent come first, then every other
-   agent in the saved order, each tried once. The order is a priority list, not
-   a rotation: put agy at the bottom and agy is the last option from a Claude
-   terminal and from a Codex terminal alike. The board shows the exact
-   sequence with the agent running now skipped, plus the preferred option and
-   the first option eligible from current install and limit state. Use **Change
-   order** on a terminal card to change that terminal, or Settings to set the
-   default copied by new terminals. An option whose CLI is missing or whose
-   wall has not reset is skipped.
+5. **The ladder.** A rung is an agent, a login and a model, and Leg walks from
+   rung 1 every time. Other models on the same login come first, then other
+   accounts of the same agent, then every other agent in the saved order, each
+   tried once. It is a priority list, not a rotation: put agy at the bottom and
+   agy is the last rung from a Claude terminal and from a Codex terminal alike.
+   The board prints the exact sequence with the rung running now marked, plus
+   the first rung eligible from current install and limit state. Use **Change
+   the ladder** in a terminal's expansion to change that terminal, `leg ladder`
+   to do it from a shell, or Settings to set the default copied by new
+   terminals. A rung whose CLI is missing, whose wall has not reset, or that
+   shares the window that is already out, is skipped with its reason.
 6. **All out.** The terminal prints each option with its reset time, soonest
    first, then stays open with a countdown to the first reset and starts that
-   agent from the bundle when it arrives. The card says `waiting for <agent>
-   at <time>`. Ctrl-C (or End on the card) quits with exit 3 instead.
+   agent from the bundle when it arrives. The row says `waiting for <agent>
+   at <time>`. Ctrl-C (or End on the row) quits with exit 3 instead.
 
-You can force a handoff any time: the **Hand off now** button on the card, or
+You can force a handoff any time: the **Hand off now** button on the row, or
 `leg sessions handoff <id>`. Verified on this machine: `leg claude` opened
 the real Claude Code TUI with Leg's hooks firing into the session log, the
 usage poll recorded 36 % of the 5h window and 74 % of the 7d window, the
@@ -216,10 +229,12 @@ row flipped to observed-live (`node scripts/live-limits.mjs`). The same
 capture is wired for codex `usage_limit_exceeded` and agy `RESOURCE_EXHAUSTED`;
 no payload for either has been kept yet.
 
-Terminals started by this version can change order while they run. An older
-terminal stays on the order it started with; its card says a restart is needed
-and can save the desired default for the next launch. A normal agent exit ends
-the terminal. It does not trigger a handoff.
+Terminals started by this version can change their ladder while they run:
+Settings holds the default for new terminals, and **Details** on a row edits
+the copy that terminal is running. An older terminal stays on the order it
+started with; its row says a restart is needed and can save the desired
+default for the next launch. A normal agent exit ends the terminal. It does
+not trigger a handoff.
 
 ### The working environment travels too (optional)
 
@@ -350,22 +365,28 @@ only: the trail names repositories and people.
 
 `leg <agent>` opens it; `leg open` reopens it; `leg down` stops it.
 
-- **Instrument head**: one row per login, sticky at the top of the board and of
-  the floor. Each row carries the 5h and 7d rails, the percentage, when that
-  window resets and how long that is, a burn-rate sentence under the 5h rail,
-  where and when Leg read the number, and one word for the state: `under 60`,
-  `over 60`, `over 85`, `stale <n>m`, `at the wall` or `no reading`. A login
-  at its wall keeps both rails and gains `at the wall`, `back <day time>` and
-  `in <duration>` beside them.
-- **Terminals**: one full-width panel per session, the ones that need an answer
-  first. Agent and session tail, the status word, the first prompt as a button,
-  exactly one sentence (the highest-ranked thing true about the terminal), an
-  `also:` disclosure naming the rest, the files as comma-separated text,
-  `repo@branch`, `own worktree, from main` when the session cut its own
-  worktree, and an elapsed clock. Two live sessions in one repo touching the
-  same file print `codex (codex-99ab) is changing src/server.mjs in another
-  checkout; whoever lands second rebases` on both panels, and a panel that needs
-  you rises one step and says `waiting on you` in place of its status word.
+- **Verdict and capacity strip**: the largest sentence on the page, then one
+  strip with a token per login carrying the binding bucket, a short track, the
+  percentage and one state word or clock: `claude 63% 6:01 PM`, `codex back
+  Sat 10:11 PM`, `agy no figure`, `grok no reading`. **Capacity and models**
+  opens a drawer holding the full login panels: the 5h and 7d rails, the reset
+  and how long that is, where and when Leg read the number, `at the wall` with
+  its `back <day time>`, and on the claude panel a rail of model chips
+  (`fable 63%`, `opus 12%`, a walled one saying `out until 9:14 PM`). The
+  sticky instrument head is still what `/floor` puts at the top.
+- **Terminals**: one full-width row per session, the ones that need an answer
+  first. The register reads the status word, `repo on branch`, `dirty <n>` and
+  `ahead <n>`, `agent/model`, `quiet <n>m`, and `own worktree, from main` when
+  the session cut its own worktree; then the first prompt as a
+  button, exactly one sentence (the highest-ranked thing true about the
+  terminal), an `also:` disclosure naming the rest, the files as
+  comma-separated text, the binding bucket as `63% of the fable week`, and an
+  elapsed clock with the session tail. Two live sessions in one repo touching
+  the same file print `codex (codex-99ab) is changing src/server.mjs in
+  another checkout; whoever lands second rebases` on both rows. A Claude row
+  parked at a permission or idle prompt rises to the top, says `waiting on
+  you` in place of its status word, prints the question verbatim, and puts a
+  count in the browser tab (`(2) Leg`, with a dot on the favicon).
   After a Land the sentence is `landed on <base>, <7-char sha>, <n> files,
   +<added>/-<removed>`, or `Land was attempted at <time> onto <base> and
   bounced: <first line of the reason>. The branch still holds every commit;
@@ -376,21 +397,24 @@ only: the trail names repositories and people.
 - **Buttons**, in a fixed order that never reflows: Land, Hand off now,
   Details, End. Once a session has ended, Remove and Remove record take End's
   place. Details opens an expansion in flow under the panel.
-  **Hand off now** takes the next option in the order. To name the destination
-  instead, open Details and use **Hand off now to**, which lists every
-  destination with the reason a greyed one cannot be picked (`at its usage
-  limit, back 11:40`, `not installed on this machine`). `leg sessions handoff
-  <id> --to codex` is the same choice from a terminal. If the destination you
-  picked walls between the click and the hand-off, the work still continues
-  down the order and the terminal says which one took it instead.
+  **Hand off now** takes the first open rung of the ladder. To name the
+  destination instead, open Details and use **Hand off now to**, which lists
+  every rung with its model, whether it keeps the conversation, and the reason
+  a greyed one cannot be picked (`at its usage limit, back 11:40`, `shares the
+  window that is out, buys nothing`, `not installed on this machine`).
+  `leg sessions handoff <id> --to claude/default/opus` is the same choice from
+  a terminal. If the rung you picked walls between the click and the hand-off,
+  the work still continues down the ladder and the terminal says which one
+  took it instead.
 - Below it, **Conversations**: every coding-agent conversation on this machine
   as a count that opens, the ones Leg started and the ones Claude Code, Codex,
   Grok, Antigravity and Copilot keep in their own stores. Filter by agent,
   search, repository, or only what Leg started; a row opens its last messages
   in place, with the `leg history continue` command to copy where the agent
   can resume by id. The same drawer lists every checkout Leg can see. Then
-  optional **Background tasks** an agent runs in a separate worktree without
-  joining the terminal conversation (see below), then **Settings**.
+  **Settings**. Background tasks are not down here: a live card is a row in
+  the **Background** panel directly under Terminals (see below), and only the
+  finished ones collapse into a ledger line beside these counts.
 
 The board reads `~/.leg/sessions/*/session.json` over server-sent events; a
 session whose runner process is gone is marked `lost`, never shown as live.
@@ -547,17 +571,23 @@ terminal this is when the board is shared), `LEG_TLS_CERT` / `LEG_TLS_KEY`
 
 Version 0.1 was the other way round: you dropped a task card on the board and
 Leg ran the agents headless in a git worktree, one per card, with a fallback
-chain, path leases, a scheduler and a merge queue. All of that still works and
-lives below the terminals lane, but it is no longer the way in.
+chain, path leases, a scheduler and a merge queue. All of that still runs, and
+a card is now a terminal you are not sitting at: same register, same one
+sentence, same ladder, same bundle. Live cards are rows in the **Background**
+panel directly under Terminals; finished ones fall into one ledger line that
+opens.
 
-The New background card form starts with a repo, task, and real first agent.
-**Run now** queues it; turning that off saves a draft in Backlog. The default
-**Build only** workflow stops with its changes in the card's worktree and does
-not merge them. The Advanced **Build, test, and merge** and **Factory**
-workflows include an automatic land station; their labels say so before you
-choose them. Fallback agents, permissions, approval gates, turn caps, leases,
-trunk, merge method, tests, title, and scripted test/demo adapters are also
-under Advanced options.
+Starting one is a single field. `Run in the background:` takes the task, and
+the sentence under it is inferred with its nouns as buttons: the repo of the
+terminal you were last in, the saved ladder, and the `build` workflow, which
+stops with its changes in the card's worktree and does not merge them.
+**More settings** is the full form, with the **Build, test, and merge** and
+**Factory** workflows that include an automatic land station, plus fallback
+agents, permissions, approval gates, turn caps, leases, trunk, merge method,
+tests, title, and scripted test and demo adapters. **End, and keep going as a
+card** on a terminal's End row makes a card out of the work in front of you;
+**Take over** on a card gives you the command that turns it back into a
+terminal.
 
 - `leg up` boots the board with the scheduler and merge queue and streams
   redacted logs; `leg card add --repo <path> --task "<t>" --chain claude,codex --queue`
@@ -684,7 +714,7 @@ Leg is commercial software under the [Leg License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.8.0; see
+and remain available. The version in this source tree is 0.12.0; see
 [npm](https://www.npmjs.com/package/legcli) for published versions and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
 

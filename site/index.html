@@ -281,7 +281,7 @@
         <h2 id="two-h">Two agents in one repo, without either one stepping on the other.</h2>
         <p>Run a second agent in a repo where one is already working and they would normally fight over the same files. Leg gives the second one its own private copy of the checkout instead, on its own branch, so both edit freely and neither sees the other's half-finished work. Nothing is merged until you say so.</p>
         <p class="small muted">Under the hood that private copy is a git worktree at <code>.leg-worktrees/&lt;id&gt;</code> on branch <code>leg/&lt;id&gt;</code>, cut from whatever branch the checkout has out. The terminal prints one line saying where it is. If you have never used worktrees, you do not need to: Leg makes it and cleans it up.</p>
-        <p>The board's second lane is for background cards: work an agent does with no interactive terminal, each in its own worktree. Build stops with the changes sitting in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. You pick the first agent, and the fallback agents under Advanced options are the same handoff order. That order is a ladder now: each rung is an agent, a login and a model, so <code>claude/opus</code> and <code>claude/sonnet</code> are two separate steps down before Leg leaves the login at all, and Settings on the board is where you reorder them.</p>
+        <p>The board's second lane is for background cards: work an agent does with no interactive terminal, each in its own worktree. Build stops with the changes sitting in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. Type the task in the one-line entry under Terminals and Start runs it on the ladder's top rung, or open More settings for the full form. That order is a ladder now: each rung is an agent, a login and a model, so <code>claude/opus</code> and <code>claude/sonnet</code> are two separate steps down before Leg leaves the login at all, and Settings on the board is where you reorder them.</p>
         <p>Its row has a <b>Land</b> button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the row says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of the output, <code>dirty-trunk</code> when the checkout has local changes the landing would overwrite. Nothing is ever pushed.</p>
       </div>
       <figure class="recreated">
@@ -326,7 +326,7 @@
     <div class="cols" style="margin-top: 56px">
       <div class="stack-tight">
         <h3>The order</h3>
-        <p class="muted">You set it. Other logins of the same agent come first, then the other agents in the order you saved, each tried once. It is a priority list, not a rotation: put agy at the bottom and agy is the last option from a claude terminal and from a codex terminal alike. Settings holds the default new terminals copy, and <b>Change order</b> in a terminal's details changes that one terminal while it runs. An option whose CLI is missing or whose wall has not reset is skipped.</p>
+        <p class="muted">You set it. A wall on one model now moves the terminal to another model on the same login, keeping the conversation, before it moves to another CLI. Other logins of the same agent come next, then the other agents in the order you saved, each tried once. It is a priority list, not a rotation: put agy at the bottom and agy is the last option from a claude terminal and from a codex terminal alike. Settings holds the default new terminals copy, and <b>Change order</b> in a terminal's details changes that one terminal while it runs. An option whose CLI is missing or whose wall has not reset is skipped.</p>
       </div>
       <div class="stack-tight">
         <h3>When every option is out</h3>
@@ -421,7 +421,7 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
       <div class="cmd"><code>cd &lt;any repo&gt; &amp;&amp; leg claude</code><button class="copy" type="button" data-copy="leg claude">Copy</button></div>
     </div>
-    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 674 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
+    <p class="muted">Verified live on 11 September 2026 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 783 tests. Commercial software; the JavaScript ships readable so every claim on this page can be checked in the package.</p>
     <div class="links">
       <a href="https://www.npmjs.com/package/@ucsandman/legcli">README and changelog on npm</a>
       <a href="license">License agreement</a>

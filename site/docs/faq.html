@@ -108,9 +108,24 @@ same summary). The short version: owning two paid subscriptions is not named
 as prohibited by Anthropic or OpenAI, but rotating to a second account of the
 same vendor because the first is rate-limited sits close to OpenAI&#39;s
 &quot;circumvent any rate limits&quot; wording and Anthropic&#39;s &quot;circumvent product
-guardrails&quot;. Leg&#39;s default chain switches vendors (claude, codex, agy),
-which is plainly fine. Same-vendor rotation only happens after you run
-<code>leg accounts add</code>.</p>
+guardrails&quot;. Leg&#39;s default fallback ladder switches vendors (claude, codex,
+agy) only after it has already tried claude&#39;s own weaker models (fable, opus,
+sonnet), which is plainly fine. Same-vendor rotation only happens after you
+run <code>leg accounts add</code>; switching models on one login, claude/fable to
+claude/opus, is not a second account at all and none of this applies to it.</p>
+<p><strong>Can I switch models mid-session, or does a hand-off always mean a different CLI?</strong>
+Yes. <code>handoff_ladder</code> in <code>preferences.json</code> names an agent, account and model
+per rung (<code>src/preferences.mjs</code>), and a fresh install tries claude/fable, then
+claude/opus, then claude/sonnet before it ever leaves the claude login, then
+the other agents. A downshift to a weaker claude model with a known session id
+runs <code>claude --resume &lt;id&gt; --model &lt;alias&gt;</code> and keeps the conversation; every
+other rung takes the bundle as today. <code>may_spend</code> (default <code>false</code>) keeps an
+automatic hand-off off any rung whose live cost is <code>credits</code> or <code>metered</code>; a
+hand-off you press yourself can still take it. <code>climb_back</code> decides whether
+Leg returns to the top rung at the next hand-off (<code>next-handoff</code>, the default)
+or waits for you to press <strong>Back to fable</strong> (<code>never</code>). Edit the ladder with
+<code>leg ladder</code> or in Settings; see
+<a href="/docs/configuration#the-hand-off-ladder">configuration.md</a>.</p>
 <p><strong>What does <code>leg uninstall</code> remove?</strong>
 <code>~/.leg</code> and nothing else: sessions, usage files, the extra account
 directories with their junctions, the v0.1 cards and runs, and the board
@@ -123,7 +138,7 @@ package gone too.</p>
 Yes. A parent Claude Code session exports <code>CLAUDECODE</code> and <code>CLAUDE_CODE_*</code>
 markers that make a nested Claude refuse to start; <code>sanitizeEnv</code>
 (<code>src/env.mjs</code>) strips them along with the API-key variables, so the child
-starts normally. It becomes its own session with its own card on the board,
+starts normally. It becomes its own session with its own row on the board,
 unrelated to the parent&#39;s.</p>
 <p><strong>Why are <code>--dangerously-skip-permissions</code> and similar flags never
 available?</strong>
@@ -161,7 +176,7 @@ and nothing a terminal has said, read or written: no prompt, no file names, no
 paths, no bundle, no events, no logs, and none of the pipeline side. The
 limit line keeps only the reason and the reset time, never the raw limit
 text. The one thing they can do on your terminal is ask for a hand-off, which
-you approve or dismiss on the card. <code>leg share off</code> ends it and every link
+you approve or dismiss on the row. <code>leg share off</code> ends it and every link
 stops working. There is no TLS, so keep it on Tailscale or a network you trust.</p>
 <p><strong>What if the CLI I want isn&#39;t installed?</strong>
 <code>node bin/leg.mjs up --dry</code> prints a preflight table with <code>ok</code>/<code>missing</code>

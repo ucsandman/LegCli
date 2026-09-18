@@ -113,6 +113,25 @@ unchanged.</p>
 <code>handing_off</code>, <code>waiting</code>, <code>handed_off</code>, <code>ended</code>, <code>lost</code>. <code>lost</code> means the runner process
 that owned the terminal is gone (closed window, crash); the board never shows
 it as live.</p>
+<p>Two fields on <code>session.json</code> say what the row is running and what it is stuck
+on. <code>model</code> is the model this leg resolved to: the <code>--model</code> or <code>-m</code> the human
+passed, else null. It is never a guessed default, because a model token nobody
+chose is a wrong number in disguise. For claude the runner corrects it from the
+transcript&#39;s per-message <code>model</code> while the agent works, so a silent fallback
+off Fable is visible instead of being reported as the model you asked for.</p>
+<p><code>waiting</code> is null, or what this terminal is waiting for, in one of two shapes
+told apart by <code>type</code>. <code>{ type: &#39;reset&#39;, agent, account, resets_at, since }</code> is
+the all-out countdown: every option is walled and the terminal is waiting for
+the first one back. <code>{ type, message, since }</code> with <code>type</code> one of
+<code>permission_prompt</code>, <code>idle_prompt</code>, <code>agent_needs_input</code> or <code>quota_auto_resume</code>
+is a human being waited on, from Claude Code&#39;s <code>Notification</code> hook (claude
+sessions only); <code>message</code> is the question verbatim, cut at 160 characters, and
+the next prompt or the end of the turn clears it. <code>quota_auto_resume</code> means
+Claude Code is waiting at the limit by itself, and Leg&#39;s automatic hand-off
+stands down for that terminal rather than making it wait twice.</p>
+<p>Both are owner-only on a shared board, and a guest keeps both on their own
+terminal: a terminal stopped at a permission prompt is useless to the person
+sitting at it if the board will not say so, and it is nobody else&#39;s business.</p>
 <p>The board is started detached on <code>127.0.0.1:4747</code> by the first session that
 finds it down, and opened once. Later sessions reuse it.</p>
 <h2 id="accounts"><a class="anchor" href="#accounts">Accounts</a></h2>
@@ -141,8 +160,21 @@ README.</p>
 keeps the latest reading per (agent, account) in
 <code>$LEG_HOME/usage/&lt;agent&gt;--&lt;account&gt;.json</code> (<code>src/usage.mjs</code>):</p>
 <pre><code>{ five_hour: {pct, resets_at}, seven_day: {pct, resets_at},
-  limited_until, limited_reason, source, updated_at }
+  limited_until, limited_reason, source, updated_at,
+  buckets, walls, history, extra_usage, facts }
 </code></pre>
+<p>A login can be limited per model as well as per account, so the record carries
+both kinds of fact and keeps them apart. <code>buckets</code> is measured: one row per
+bucket the agent publishes (<code>{kind, group, model, percent, resets_at, is_active, severity}</code>, from Claude&#39;s <code>limits[]</code>), and <code>binding(u, model)</code> picks
+the row that will actually stop a terminal. <code>walls</code> is attributed from wording
+rather than measured: <code>bucketFromWall()</code> in <code>src/buckets.mjs</code> reads the wall
+message, and a model-scoped wall goes to <code>walls[model]</code> while the login stays
+open, so a Fable wall never stops <code>claude/sonnet</code>. <code>history</code> is a ring of at
+most 24 percentage samples per bucket, started again whenever that window
+resets. <code>extra_usage</code> is the credits sentence, and <code>facts</code> holds strings the
+agent measured itself (codex&#39;s <code>plan_type</code> and <code>credits_balance</code>). An older Leg
+reading this file ignores all five, and an agent that publishes no buckets
+leaves them empty.</p>
 <p>Where each number comes from is per agent, and is in
 <a href="/docs/adapters">adapters.md</a>. The rules on top of them are shared:</p>
 <ul>
@@ -156,6 +188,15 @@ and with neither it assumes five hours.</li>
 clears the wall.</li>
 </ul>
 <h2 id="handoff-interactive"><a class="anchor" href="#handoff-interactive">Handoff (interactive)</a></h2>
+<p>A hand-off destination is a <strong>rung</strong>, not just an agent: <code>{agent, account, model, when, cost}</code>. A rung can name a model, so a hand-off can move from
+<code>claude/fable</code> to <code>claude/opus</code> without leaving the login, or it can leave the
+model out and behave exactly like the plain agent destinations Leg has always
+had. <code>preferences.json</code> keeps an ordered list of rungs, the <strong>ladder</strong>, tried
+top first (<code>src/preferences.mjs</code>; the keys are documented in
+<a href="/docs/configuration">configuration.md</a>). <code>handoff_order</code>, the older list of
+agents, is never removed: it is derived from the ladder&#39;s distinct agent order
+every time the ladder is saved, so a reader that has never heard of rungs sees
+the same order it always did.</p>
 <p>When a session hits its limit, or you press <strong>Hand off now</strong>, Leg does four
 things in order (<code>src/attach.mjs</code>, <code>src/bundle.mjs</code>):</p>
 <ol>
@@ -169,17 +210,40 @@ edited this session, recent commits and why it stopped. The CLI is called as
 in place. A checkpoint runs about every two minutes while the session has
 turns, and at every warning, limit and hand-off.</li>
 <li><strong>Choose.</strong> <code>candidates()</code> lists the other accounts of the same agent first,
-then every other agent in the terminal&#39;s saved order. That order is an
-absolute priority list, not a rotation anchored on the agent running now:
-an agent placed last is tried last whichever agent the terminal started on,
-and every option is still tried once. The default order is claude, codex,
-agy. <code>chooseNext()</code> skips a missing CLI or an option whose wall has not
-reset. The board can save a new order for an active terminal; the wrapper reads
-it again at the transition and during all-out waiting. Machine Settings is
-copied only when a new terminal starts.</li>
-<li><strong>Switch.</strong> The agent process is stopped and the terminal restored. The
-bundle&#39;s <code>context-handoff-bundle load &lt;id&gt;</code> output (with the <code>## Synthesis</code>
-section prepended if <code>.leg/SYNTHESIS-&lt;session-id&gt;.md</code> is present) is written to
+then walks the ladder, and after each rung, the other accounts of that
+rung&#39;s agent. <code>evaluateLadder()</code> walks that list top to bottom and takes the
+first rung that clears every gate, checked in this order: the agent is
+installed on this machine; the rung was not excluded for this hand-off; its
+live cost (<code>rungCost()</code>, computed from usage, never trusted from disk) is
+<code>free</code> or <code>plan</code>, or <code>may_spend</code> is on, else the rung is skipped with the
+reason <code>it spends usage credits and you have not allowed that</code>; the rung
+sits on the same login the terminal just fell off of and what stopped that
+login is its own account-wide window, in which case another model there
+cannot help and the rung is skipped as <code>shares the window that is out, buys nothing</code>, whatever model it names; the account itself is not walled; the
+model, if the rung names one, is not walled; on an automatic hand-off with
+<code>climb_back</code> set to <code>never</code>, the rung is not a stronger model of the login
+the terminal just left (a human&#39;s own pick still reaches it; only an
+automatic climb is held back); the rung&#39;s login is not past its <code>reserve</code>
+floor; and its <code>when</code> is satisfied (<code>always</code>; <code>below:N</code>, which needs the
+rung&#39;s own bucket to read under N percent and is skipped with a reason when
+there is no reading, because a threshold on a login with no figure is a
+wrong number in disguise; <code>walled-only</code>, which only opens once every rung
+above it is walled). Every rung the walk passes before the one it picks is
+named in the session&#39;s ledger with its reason, one line each, for example
+<code>skipped claude/fable: it spends usage credits and you have not allowed that</code>; a rung is never passed over silently. The board can save a new
+ladder for an active terminal; the wrapper reads it again at the transition
+and during all-out waiting. Machine Settings is copied only when a new
+terminal starts.</li>
+<li><strong>Switch.</strong> The agent process is stopped and the terminal restored. A
+same-login move to a weaker claude model (a downshift, by the
+<code>fable, opus, sonnet, haiku</code> order) with the agent&#39;s own session id on the
+record keeps the conversation instead: Leg runs
+<code>claude --resume &lt;agent_session_id&gt; --model &lt;alias&gt;</code>, no bundle is written
+into a prompt, and the ledger says so. Every other rung, including an
+upshift back to a stronger model, a different account, or a different
+agent, takes the bundle: the <code>context-handoff-bundle load &lt;id&gt;</code> output
+(with the <code>## Synthesis</code> section prepended if
+<code>.leg/SYNTHESIS-&lt;session-id&gt;.md</code> is present) is written to
 <code>.leg/RESUME-&lt;session-id&gt;.md</code> and copied to <code>.leg/RESUME.md</code>, and the next
 agent starts in the same terminal with a short pointer prompt as its first
 positional argument: <code>claude &quot;&lt;prompt&gt;&quot;</code>, <code>codex &quot;&lt;prompt&gt;&quot;</code>,
@@ -195,6 +259,12 @@ waits again. The card records <code>session.all_out</code> and <code>session.wai
 (<code>{ agent, account, resets_at, since }</code>) and shows status <code>waiting</code>. Ctrl-C
 in the terminal, or End on the card, quits with exit 3.</li>
 </ol>
+<p><code>climb_back</code> decides what happens once a lower rung&#39;s own login recovers.
+<code>next-handoff</code>, the default, needs no extra step: <code>chooseNext()</code> always walks
+from rung 1, so the next time this terminal hands off it is offered the
+higher rung again. <code>never</code> holds a terminal on the rung it downshifted to
+until a human hands it off there by name; an automatic hand-off will not walk
+back up on its own.</p>
 <h2 id="the-portable-harness"><a class="anchor" href="#the-portable-harness">The portable harness</a></h2>
 <p>Off by default. <code>leg harness enable</code> adds a step to the hand-off, between
 <strong>Choose</strong> and <strong>Switch</strong>: the destination&#39;s working environment is prepared
@@ -294,8 +364,41 @@ who it was for.</li>
 <p><code>leg share off</code> puts the board back on <code>127.0.0.1</code> and every link stops
 working; <code>leg share rotate &lt;name&gt;</code> replaces one.</p>
 <h2 id="cards-stations-and-pipelines"><a class="anchor" href="#cards-stations-and-pipelines">Cards, stations and pipelines</a></h2>
-<p>Everything from here down is the v0.1 pipeline: headless agents in a git
-worktree, one per card. It has not changed since 0.2.0 and is not the way in.</p>
+<p>A <strong>card is a terminal you are not sitting at.</strong> It has the same register
+(state, where, model), the same one sentence, the same buttons, the same
+fallback ladder and the same hand-off bundle as a terminal. Two differences
+are real, and the board prints both: a card runs <code>-p --output-format json</code>,
+which says nothing until the leg exits, so its sentence reads <code>no message until this leg ends, started 11:04 PM</code>; and it never waits on a permission
+prompt, because its permissions are decided before it starts.</p>
+<p>Liveness decides where a card is drawn. A card in <code>backlog</code>, <code>queued</code>,
+<code>running</code>, <code>handing_off</code>, <code>needs_approval</code>, <code>waiting_human</code> or <code>paused</code> is a
+row in the Background panel under Terminals. A card in <code>done</code>, <code>failed</code> or
+<code>killed</code> is one line in the ledger: <code>3 finished cards, 2 done, 1 failed, last 11:02 PM</code>. Ten finished cards are one row, not eleven.</p>
+<p>A live card&#39;s row carries a <strong>work stat</strong>, and only the parts of it that were
+measured: <code>4 files, +212 -18, tests green 6m ago</code>. The diff comes from <code>git diff --shortstat &lt;trunk&gt;..HEAD</code> run in the card&#39;s own worktree; the test and
+land verdicts come from that card&#39;s ledger. A part that was not measured is
+left off, never estimated.</p>
+<h3 id="a-terminal-becomes-a-card-and-a-card-becomes-a-terminal"><a class="anchor" href="#a-terminal-becomes-a-card-and-a-card-becomes-a-terminal">A terminal becomes a card, and a card becomes a terminal</a></h3>
+<p><code>End, and keep going as a card</code> (the second verb on a terminal&#39;s End confirm
+row, <code>POST /api/sessions/&lt;id&gt;/end-as-card</code>) is for &quot;I have to leave, keep
+going&quot;. It writes the terminal&#39;s hand-off bundle at the path every hand-off
+uses, creates a card whose task is the terminal&#39;s prompt plus <code>Continue from the bundle at &lt;path&gt;.</code>, and then ends the terminal exactly the way End does.
+The card <strong>continues in the terminal&#39;s own worktree</strong> rather than a fresh one:
+two worktrees on one branch is a conflict machine, and the card carries
+<code>worktree_adopted: true</code> so no later run cuts a second one over the top. Its
+chain starts at the rung the terminal was standing on, not at the top of the
+ladder, and <code>lineage.from</code> names the terminal it came from.</p>
+<p><code>Take over</code> in a card&#39;s expansion (<code>POST /api/cards/&lt;id&gt;/take-over</code>) is the way
+back. It pauses the card, which kills its child and writes its bundle, then
+hands back one command:</p>
+<pre><code>leg claude --resume-card card-20260917-2234-add-the-audit-csv-export
+</code></pre>
+<p>That opens an ordinary interactive terminal in the card&#39;s worktree, primed
+from the card&#39;s bundle, with <code>lineage.from</code> naming the card. This is the one
+place Leg hands a human a command to paste, because a terminal cannot be
+opened from a browser tab, and the board says so on the line above it.</p>
+<p>Everything from here down is the v0.1 pipeline mechanism: headless agents in a
+git worktree, one per card.</p>
 <p>A <strong>card</strong> is one task moving through a <strong>pipeline</strong>: an ordered list of
 <strong>stations</strong>. A station has a <code>kind</code>:</p>
 <table>
@@ -461,7 +564,9 @@ text) followed by the same contract.</p>
 </ul>
 <h2 id="worktrees"><a class="anchor" href="#worktrees">Worktrees</a></h2>
 <p>Every card runs in its own git worktree: <code>&lt;repo&gt;/.leg-worktrees/&lt;card-id&gt;</code>
-on branch <code>leg/&lt;card-id&gt;</code> (<code>src/worktree.mjs</code>). The repo root is never
+on branch <code>leg/&lt;card-id&gt;</code> (<code>src/worktree.mjs</code>), with one exception: a card born
+from <code>End, and keep going as a card</code> adopts the terminal&#39;s worktree and works
+there, exactly where the terminal stopped. The repo root is never
 touched by an agent directly. Every git call sets <code>MSYS_NO_PATHCONV=1</code> so
 Git Bash on Windows does not rewrite absolute path arguments. Leg never
 pushes, opens a remote, or removes a path outside

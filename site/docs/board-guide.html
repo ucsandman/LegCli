@@ -58,7 +58,8 @@
 <h1 id="board-guide"><a class="anchor" href="#board-guide">Board guide</a></h1>
 <p>For anyone using the Leg board day to day: what every element means and when
 it shows up. The board is one page, read top to bottom: <strong>the verdict</strong> (one
-sentence saying what to do next), <strong>the logins</strong> (one panel each), <strong>Terminals</strong>
+sentence saying what to do next), <strong>the capacity strip</strong> (one token per login,
+with the login panels behind its disclosure), <strong>Terminals</strong>
 (one row each), <strong>the ledger</strong> (finished terminals, what landed, background
 tasks, as three counts that open), then <strong>Settings</strong>. Start a session
 (<code>leg claude</code>) or the background-task board (<code>npm start</code>), see
@@ -66,15 +67,19 @@ tasks, as three counts that open), then <strong>Settings</strong>. Start a sessi
 <p>The visual system, and why it is what it is, is <code>DESIGN.md</code> at the repo root.</p>
 <h2 id="screenshots"><a class="anchor" href="#screenshots">Screenshots</a></h2>
 <p><code>docs/screenshots/</code> (listed here so you know what exists before you look for
-one). All nineteen were retaken on 2026-09-15 against the current build, after
-the dark-product-surface redesign and the card-row port that followed it:</p>
-<pre><code>terminals-1280.png        the board at 1280 px, four terminals on one login
-board-400px.png           the same board at 400 px
-board-details-open.png    a terminal with its expansion open
+one). Nine were retaken on 2026-09-17 against this build, on a board seeded by
+<code>scripts/seed-wes-board.mjs</code> plus <code>scripts/seed-fake-cards.mjs --count 1 --finished 10 --live 3</code>; the rest are from the 2026-09-15 sweep and are noted
+below:</p>
+<pre><code>terminals-1280.png        the whole board at 1280 px (2026-09-17)
+board-400px.png           the same board at 400 px (2026-09-17)
+capacity-drawer-1280.png  the strip with Capacity and models open (2026-09-17)
+board-details-open.png    a terminal row with its expansion open (2026-09-17)
+board-handoff.png         one row waiting on you, with the question (2026-09-17)
+background-1280.png       the Background panel and the one-line entry (2026-09-17)
+settings-ladder-1280.png  the ladder editor in Settings (2026-09-17)
 board-empty.png           no background tasks at all
-board-running.png         one card running its first agent
-board-handoff.png         the limit hit, the card waiting on you
-board-drawer.png          that card expanded: bundle, runs, timeline
+board-running.png         one card running its first agent (2026-09-17)
+board-drawer.png          that card expanded: where, runs, take over, timeline (2026-09-17)
 board-done.png            the card finished, on the agent that finished it
 floor.png                 /floor with nothing queued
 floor-landing.png         /floor with every lane full
@@ -90,6 +95,13 @@ demo-5-done.png            done, both legs on the chain
 </code></pre>
 <p>The five <code>demo-*.png</code> are one run of the sequence in <a href="https://www.npmjs.com/package/@ucsandman/legcli">DEMO.md</a>, all at
 1280 px.</p>
+<p><strong>Still stale, as of 2026-09-17:</strong> <code>share-owner-1280.png</code>,
+<code>share-guest-1280.png</code>, <code>board-empty.png</code>, <code>board-done.png</code> and the five
+<code>demo-*.png</code> show the old top of the board (a 56px verdict over a column of
+login panels) rather than the capacity strip and its drawer, and the card shots
+among them predate the Background panel. Their terminal rows and their floor
+are still accurate. Retake them with the commands below rather than trusting
+the top band of any of those pictures.</p>
 <p>To retake one, seed a board with the shape a real one has and drive it to the
 state the shot needs:</p>
 <pre><code>node scripts/seed-wes-board.mjs     # 4 live terminals, 5 finished, long paths
@@ -103,26 +115,94 @@ board, with real sessions on it.</p>
 styling scoped to live rows and measured on a clean board reported 40px terminal
 rows while the real screen showed 400px.</p>
 <h2 id="the-verdict-and-the-logins"><a class="anchor" href="#the-verdict-and-the-logins">The verdict and the logins</a></h2>
-<p><code>src/board/sessions.js</code> draws both, from the <code>accounts</code> array of
+<p><code>src/board/sessions.js</code> draws all of it, from the <code>accounts</code> array of
 <code>GET /api/sessions</code> and the sessions beside it.</p>
 <p><strong>The verdict</strong> is the largest thing on the page and it is a sentence, not a
 number. It names the one fact that decides what happens next:</p>
-<pre><code>All 4 terminals are on claude, and claude has 5% left.
+<pre><code>Fable is at 63% of its week, the only login open.
 </code></pre>
-<p>One login carrying every terminal is one point of failure, so that is what the
-sentence says. With the terminals spread across logins it names the one closest
-to a wall instead; with nothing running it says so, and names any login that is
-walled. The number it prints is what is <strong>left</strong>, because that is the quantity
-you are deciding against.</p>
+<p>The sentence comes from a branch table with a fixed precedence, and the order
+is what the table is for. A human waiting on a terminal outranks every usage
+figure, because attention is the scarcer thing. Then a login whose whole
+account is nearly spent (<code>claude has 3% left, shared by every model.</code>), because
+no model switch can help there. Then a single model at its wall with the login
+still open (<code>Fable is out until 9:14 PM; opus is open.</code>), which is the one case
+where a same-login switch is the answer. Then the burn rate, when it is known
+(<code>About 2h 40m of Fable left.</code>), because the decision is about the afternoon
+and not about the number. Then one login carrying every terminal, several
+logins carrying work, and the quiet states: nothing running, everything walled,
+and no figure anywhere. There is always a sentence.</p>
+<p><strong>Every time figure carries the volume it was drawn from</strong>, always:
+<code>From 9 samples over 4h. Opus and Sonnet have their own buckets.</code> The rate is
+measured from the readings Leg has kept for that one bucket, and three rules
+hold it honest. Under <strong>three samples spanning ten minutes</strong> there is no time
+at all: the row prints the percentage and the reset clock instead, because a
+slope drawn through two readings a minute apart is a guess printed in the
+largest type on the page. A rate <strong>never crosses a reset</strong>: the samples are
+cleared when the window rolls over, and the time is capped at the reset even
+when the slope says there is more. A figure that has held flat for an hour is a
+measured zero, not a forecast, and a percentage that fell inside one window is
+a data error rather than a refund; neither prints a time. The second sentence
+names the other models on that login, because a Fable figure is not the login&#39;s
+figure and the reader who takes it for one plans the wrong afternoon; on a
+login where every model shares the window it says <code>Shared by every model.</code></p>
+<p>The headline is capped at <strong>56 characters</strong>, and that number is a measurement,
+not a preference: at 1280 the verdict column is 26ch and 300 sampled sentences
+per length still fit two 52px lines at 60 characters, so 56 is that ceiling
+with slack for a long login name. <code>test/board-verdict.test.mjs</code> holds every
+branch under it, including branches fed deliberately long repository and
+account names. A headline that wrapped to three lines is what put a thousand
+pixels between the top of the page and the first terminal row.</p>
 <p>Under it, one line carrying the age of the reading and which direction it is
 wrong in:</p>
-<pre><code>Measured 2h 13m ago. 4 terminals have been running since, so the real figure is
-higher than 95 percent, never lower.
+<pre><code>Measured 2h 13m ago. 4 terminals run on it, so the real figure is higher, never
+lower.
 </code></pre>
 <p>A reading taken two hours ago is a floor, not a measurement, and saying so is
 the entire reason to print its age. Any login at a wall other than the one in
 the headline is named on the same line.</p>
-<p><strong>The logins</strong> sit under the verdict, one panel each, and how much surface a
+<p><strong>The capacity strip</strong> is the band under the verdict: one token per login, a
+dot in its identity colour, its name, a 120 by 6 track and one figure. The
+figure is the <strong>binding</strong> bucket, the one that will actually stop the work:
+the bucket the endpoint itself marks active, else the highest percentage it
+reported, else the hottest of the two legacy windows. That distinction is the
+reason the strip exists. A login whose weekly account window reads 95% and
+whose active Fable bucket reads 63% is stopped by the 63, and the board used to
+print the 95.</p>
+<pre><code>claude |=======---| 63% fable week      codex |==========| back Sat 10:11 PM
+agy    no figure                        grok  no reading
+</code></pre>
+<ul>
+<li><code>63% fable week</code> is a fresh reading with its bucket word.</li>
+<li><code>100% Tue 9:55 AM</code> is a reading older than five minutes: the percentage with
+the clock it was taken at, because it describes a moment, not now.</li>
+<li><code>back Sat 10:11 PM</code> is a login at its wall. The track fills in the wall
+colour and the words carry the state, which is the one place on the board a
+word may wear a severity colour: the word is itself the failure.</li>
+<li><code>no figure</code> is agy, which publishes no percentage, ever. <strong>No track is
+drawn.</strong> An empty track reads as a measurement of zero.</li>
+<li><code>no reading</code> is a login that has a window and has never reported it.</li>
+<li><code>not shared</code> is what a guest sees: usage figures are the owner&#39;s.</li>
+</ul>
+<p>Each track is a <code>meter</code> with an <code>aria-valuetext</code> carrying the percentage, the
+reset, the source, any wall and the age of the reading, the same sentence the
+gauges carry. A login with no percentage is not a <code>meter</code> at all, because
+<code>aria-valuenow</code> would have to be a number nobody measured.</p>
+<p><strong><code>Capacity and models &gt;</code></strong>, at the end of the strip, opens a drawer holding
+the login panels unchanged, plus a rail of model chips on each panel head:
+<code>fable 63%</code> for a measured bucket, <code>fable out until 9:14 PM</code> for a model at its
+wall, and a bare model name where Leg has a name but no figure. A percentage is
+measured and a wall is attributed from wording, so the two are never printed as
+each other. The drawer remembers whether you left it open. The
+<code>Times are local.</code> caption lives inside it.</p>
+<p>An <strong>open chip is a button</strong>: pressing it puts that rung at the top of one
+terminal&#39;s ladder, so the next hand-off takes it. The terminal is the one whose
+expansion is open if it is on this login, else the first live row on it, and the
+press is the same <code>POST /api/sessions/:id/handoff-order</code> the ladder editor
+makes. A chip stays plain text when it is walled, when it is the model that
+terminal is already running, or when no live terminal on this login can take a
+ladder change: a control that would do nothing is not drawn as one.</p>
+<p><strong>The login panels</strong>, in that drawer, are one per login, and how much surface a
 panel gets is the design saying how much it matters:</p>
 <ul>
 <li>The login carrying the terminals gets a wide panel, lit one step brighter than
@@ -145,7 +225,7 @@ one it does not have.</p>
 <p>Nothing here is on hover. A screen reader gets the whole answer from each
 track&#39;s <code>aria-valuetext</code>, including the reset, the source and the staleness; a
 window with no value is not a <code>meter</code> at all and carries the same sentence as
-its label. The caption under the logins reads <code>Times are local.</code></p>
+its label. The caption at the foot of the drawer reads <code>Times are local.</code></p>
 <p>For Codex, the board reads the app-server&#39;s read-only
 <code>account/rateLimits/read</code> response every 60 seconds and maps its 300- and
 10080-minute windows to 5h and 7d. The active <code>leg codex</code> attach also polls
@@ -156,7 +236,11 @@ an explicit available answer from the backend.</p>
 by the server-sent <code>sessions</code> event, re-sorted every 15 s, with the elapsed
 clocks ticking every second. With no sessions it prints <code>No terminal is running. Start one in any repo: leg claude, leg codex or leg agy. It appears here within a second of the agent&#39;s first turn.</code></p>
 <p>The region head carries one verdict with its volume: <code>3 running, 2 waiting on you</code>, or <code>3 running, nothing is waiting on you</code>, or <code>nothing is running</code>, with
-<code>, last landed 11:02 PM</code> appended when a terminal on the page has landed.</p>
+<code>, 3 share the claude login</code> when two or more live rows are on one login, and
+<code>, last landed 11:02 PM</code> appended when a terminal on the page has landed. The
+share clause is the only place per-login burn is addressed: a figure on a row
+is per model, which is real, and the reader who would add three rows&#39; figures
+together is stopped here, once, at the region.</p>
 <h3 id="terminal-row"><a class="anchor" href="#terminal-row">Terminal row</a></h3>
 <p>One row per live session, inside a single panel, separated from its siblings by
 a hairline. Rows that need an answer come first; the rest follow in start order.
@@ -165,11 +249,27 @@ the state is never carried by colour or position alone.</p>
 <p>Reading across the row: what it is doing, what it is working on, how long it has
 been at it, and what you can do about it.</p>
 <ul>
-<li><strong>The register</strong>, one line of the smallest type on the board: the status word
-with its dot, then where the work is (<code>leg on main</code>, or the folder when it
-is not a repo), then anything unusual about this terminal as plain words, the
-account when it is not <code>default</code>, the owner on a shared board, <code>from &lt;agent&gt;</code>
-when it was handed off, <code>own worktree, from main</code> when it cut its own.</li>
+<li><strong>The register</strong>, one line of the smallest type on the board, read left to
+right: the status word with its dot, then where the work is (<code>leg on main</code>,
+or the folder when it is not a repo), then <code>dirty 3</code> and <code>ahead 2</code> when the
+git poll has counted them, then the model token <code>claude/fable</code>, then
+<code>quiet 4m</code> when the terminal has said nothing for two minutes or more. After
+those come the words that are unusual about this terminal: the account when
+it is not <code>default</code>, the owner on a shared board, <code>from &lt;agent&gt;</code> when it was
+handed off, <code>own worktree, from main</code> when it cut its own.<ul>
+<li><code>dirty 3</code> is <code>files_dirty</code>, <code>ahead 2</code> is the commit count against the base.
+Neither is printed as a zero, and <code>ahead</code> is absent on a record written by
+an older Leg rather than shown as <code>ahead 0</code>.</li>
+<li>The model token is the agent and the model this leg resolved to
+(<code>claude/fable</code>, <code>codex/gpt-5.6-sol</code>). With no model on the record it is the
+agent alone, <code>claude</code>: a printed model nobody chose is a wrong number in
+disguise, so there is never a default. For Claude it is refreshed from the
+transcript, so a silent fallback off Fable shows up here.</li>
+<li><code>quiet 4m</code> is <code>last_activity</code>, in the muted tone, for every agent. It is an
+observation, not a demand. A terminal that is waiting on you says that
+instead, and a finished one says nothing: it has stopped, not gone quiet.</li>
+</ul>
+</li>
 <li><strong>The prompt</strong>, as a button: the first prompt of the session, carried in full
 in its tooltip and in the expansion. A pasted screenshot arrives as an
 <code>&lt;image name=... path=...&gt;</code> tag with an absolute temp path in it; the tag is
@@ -183,6 +283,33 @@ expansion; printed in full it was ninety characters of temp path per file. A
 file another live session is also touching is printed in the warning colour.
 A terminal that is merely running prints no sentence at all: its own row
 already says so, and four rows each saying <code>activity</code> is four lines of noise.</li>
+<li><strong>The capacity phrase</strong>, at the right of the files line: <code>63% of the fable week</code>, the bucket that will actually stop THIS terminal. It is
+<code>binding(usage, session.model)</code>, computed per request, so a row on Fable and a
+row on Sonnet in the same login can print different figures and both are
+true. The figure is per model; the reader who would add three rows&#39; figures
+together is stopped by the share clause at the region head, once. Nothing is
+printed when no bucket is known: a percentage nobody measured is worse than
+no percentage at all.<ul>
+<li>Once that bucket has <strong>three readings spanning ten minutes</strong>, the phrase
+becomes the time instead: <code>about 2h 40m of fable left, from 9 samples over 4h</code>. The sample count is part of the phrase and is never dropped. Under the
+gate it stays the percentage and the reset clock, and the time never runs
+past the reset: a rate measured in this window says nothing about the next
+one.</li>
+<li>The strip token above keeps the percentage even while the row says the
+time. The strip is the measurement and the time is the inference, and the
+inference lives where its sample count can sit beside it.</li>
+</ul>
+</li>
+<li><strong><code>Back to fable</code></strong>, a link on the capacity line beside that figure, on a row
+that Leg dropped to a lower model and can climb again. It appears only when
+both facts are known: the row&#39;s model is below the top rung of its own
+login&#39;s ladder, and that top rung is open (no wall on the model, no wall on
+the login, and either no bucket for it or a bucket under 100). Pressing it
+replaces the button row with one sentence, <code>Hands off now. The current turn stops and fable continues from the bundle.</code>, or <code>from the conversation</code> when
+that rung is one a <code>--resume</code> keeps. Confirming posts the hand-off with the
+model on it; a rung that walled between the draw and the press comes back as
+the server&#39;s own 409 sentence in the row. It is a link and not a fifth button:
+the 2x2 grid is the shipped shape and does not reflow.</li>
 <li><strong>The clock</strong>: elapsed since the session started (<code>4h 24m</code>), and the session&#39;s
 short id. The id used to print as <code>claude-7f3a</code> immediately after the word
 <code>claude</code>; the prefix is the agent name twice and it is gone.</li>
@@ -192,6 +319,15 @@ it can actually run, when it is blocked the accent moves to Hand off now,
 because a disabled control should not wear the one accent colour in the
 design. When Land is disabled its reason is printed, never left in a tooltip.</li>
 </ul>
+<p><strong>A terminal waiting on a human says so, and the tab says it too.</strong> Claude
+Code&#39;s Notification hook writes <code>waiting</code> on the record when it puts up a
+permission prompt, when it has been idle at the prompt, or when a subagent asks
+for input; the row&#39;s status word becomes <code>waiting on you</code>, its sentence is the
+question itself (rank 3 below), and it sorts to the top of the region and into
+the region head&#39;s count. While any row is waiting the tab title reads
+<code>(1) Leg</code> and the favicon carries a dot, always, with no permission and no
+setting. codex, agy and grok publish no such signal, so their rows never say
+<code>waiting on you</code>; they say <code>quiet 4m</code>.</p>
 <p><strong>A fact true of every row is said once, at the region.</strong> Three rows all reading
 <code>this terminal works in the checkout itself: there is no branch of its own to land</code> is one fact and two lines of noise, so it is hoisted to the region head as
 <code>every terminal here works in the checkout itself...</code>. The per-row copy stays in
@@ -227,7 +363,7 @@ rest behind <code>also:</code>. Rank 1 is worst.</p>
 </tr>
 <tr>
 <td>3</td>
-<td>an overlap with another live session</td>
+<td><code>waiting on you: permission to run Bash(git push origin HEAD), asked 40s ago</code>, <code>waiting on you: idle since 11:04 PM</code>, or an overlap with another live session</td>
 </tr>
 <tr>
 <td>4</td>
@@ -248,6 +384,10 @@ rest behind <code>also:</code>. Rank 1 is worst.</p>
 <tr>
 <td>8</td>
 <td><code>near the 5h wall, next: codex</code></td>
+</tr>
+<tr>
+<td>8.5</td>
+<td><code>fable at 92% of its week; Hand off &gt; claude/opus keeps this terminal</code>, or <code>claude at 97%, shared by every model; next off claude: codex</code></td>
 </tr>
 <tr>
 <td>9</td>
@@ -319,6 +459,13 @@ Nothing to land: <code>nothing to land: &lt;branch&gt; has no changes beyond mai
 only repeats the tone. <code>waiting</code> means every option is walled and the terminal
 is counting down to the first reset; its sentence reads <code>waiting for &lt;agent&gt; at &lt;time&gt;</code>, and End quits that terminal with exit 3. <code>lost</code> means the runner
 process that owned that terminal is gone. It is never counted as live.</p>
+<p>A tenth word, <code>waiting on you</code>, replaces the status word on any row that needs a
+human. Two different things live on the record&#39;s <code>waiting</code> key and the board
+tells them apart by <code>type</code>, never by which fields are set: <code>type: reset</code> is the
+all-out countdown above, where the child is already dead and nobody is being
+waited on, and <code>permission_prompt</code>, <code>idle_prompt</code>, <code>agent_needs_input</code> and
+<code>quota_auto_resume</code> are a human being waited on. <code>quota_auto_resume</code> is the one
+that prints <code>Claude Code is waiting at the limit itself; Leg is not handing this one off.</code>, because two waiters on one terminal is the failure to avoid.</p>
 <h3 id="terminal-buttons"><a class="anchor" href="#terminal-buttons">Terminal buttons</a></h3>
 <p>The order is fixed, Land, Hand off now, Details, End, and it never reflows by
 availability: a button that does not apply is omitted, never moved.</p>
@@ -356,9 +503,9 @@ availability: a button that does not apply is omitted, never moved.</p>
 <td><code>POST /api/sessions/:id/handoff</code>: saves the bundle, stops this agent, starts the next option in the same terminal</td>
 </tr>
 <tr>
-<td>Change order</td>
+<td>Change the ladder</td>
 <td>inside the expansion, while the status is <code>starting</code>, <code>running</code>, <code>warning</code>, <code>limit</code> or <code>waiting</code></td>
-<td>saves its validated claude/codex/agy priority; an older wrapper instead saves the machine default and says to restart the terminal</td>
+<td><code>POST /api/sessions/:id/handoff-order</code> with the whole <code>handoff_ladder</code>; an older wrapper instead saves the machine default and says to restart the terminal</td>
 </tr>
 <tr>
 <td>End</td>
@@ -378,8 +525,8 @@ availability: a button that does not apply is omitted, never moved.</p>
 </tbody></table>
 <p>End, Remove and Remove record confirm first: the button row is replaced in place
 by one sentence and two buttons, focus moves to Cancel, and Escape cancels.
-There is no modal and no browser <code>confirm()</code>. Settings has the same order editor
-for the default copied by new terminals.</p>
+There is no modal and no browser <code>confirm()</code>. Settings has the same ladder
+editor for the default copied by new terminals.</p>
 <h3 id="the-expansion"><a class="anchor" href="#the-expansion">The expansion</a></h3>
 <p><strong>Details</strong>, or a click on the prompt, expands a region in flow directly under
 that panel; the page grows and the panel stays where it is. Nothing slides in
@@ -398,10 +545,10 @@ shape Leg does not recognise.</li>
 <code>new</code> or <code>committed</code> when there are no counts against <code>HEAD</code>. A row expands
 to that file&#39;s diff, capped at 400 lines.</li>
 <li><strong>Timeline</strong>: the last 40 events, newest first.</li>
-<li><strong>What happens next</strong>: <code>now: claude, then codex, then agy</code>, which fallback is
-preferred and which is eligible now, the line <code>Used after a usage limit or Hand off now. A normal exit ends this terminal.</code>, the <strong>Change order</strong>
-editor, the current bundle id, and whether <code>.leg/RESUME.md</code> still describes
-the repository (recomputed from git on every poll).</li>
+<li><strong>What happens next</strong>: <code>now: claude / opus, then claude / fable, then claude / sonnet, then codex, then agy</code>, which rung is preferred and which is
+eligible now, the line <code>Used after a usage limit or Hand off now. A normal exit ends this terminal.</code>, the <strong>Hand off now to</strong> picker, the <strong>Change the
+ladder</strong> editor, the current bundle id, and whether <code>.leg/RESUME.md</code> still
+describes the repository (recomputed from git on every poll).</li>
 <li><strong>Harness</strong> (only when the <a href="/docs/harness">portable harness</a> is on): the
 source client, when it was captured and synced, the policy, one line for
 the leg now running (<code>codex harness partial · 8/8 components, 3 dropped · 1 file(s) written</code>), a row per component with its state and <code>carried / total</code>, <strong>Needs you</strong> for a hand-edited file or an unreadable config,
@@ -414,11 +561,56 @@ when the tab is in the background, or when it is closed. The rest of the page
 stays live, so the panel&#39;s own buttons keep working. Messages and diffs are
 scrubbed for secrets on the way out, and the whole region is refused for a
 terminal that belongs to someone else. <strong>Close</strong> or the Escape key closes it.</p>
-<p><strong>Change order</strong> moves the three agents without removing one; same-agent
-secondary accounts still come before the other agents. The list is an absolute
-priority: an agent moved to the bottom is tried last from every starting agent.
-The editor previews the resulting priority, with the agent running now skipped,
-before saving.</p>
+<p><strong>The Hand off now to picker</strong> lists one row per rung of this terminal&#39;s ladder,
+each of them three fields separated by a middot:</p>
+<pre><code>claude / opus · same terminal, keeps the conversation · ready
+claude / sonnet · new agent, from the bundle · ready
+codex · new agent, from the bundle · at its usage limit until Sat 10:11 PM
+claude / fable · new agent, from the bundle · ready, spends usage credits
+agy · new agent, from the bundle · only when every rung above it is walled
+</code></pre>
+<p>The rung first, then what taking it does to the conversation, then what it costs
+you right now. The state word is <code>ready</code> for a rung that is simply open; a rung
+that cannot be taken carries <strong>the server&#39;s own reason</strong>, verbatim, and is
+disabled, with <code>until &lt;clock&gt;</code> when there is a reset to name. A rung that is
+open but worth a warning keeps its reason as plain text and stays clickable:
+<code>past your 10% reserve</code> is the one you will see, because a human pressing this
+button ignores the reserve and a floor you cannot see is a floor you swear at.
+The refusal that reads <code>shares the window that is out, buys nothing</code> is a
+same-login rung under an account-wide wall: every model shares that window, so
+switching model would buy nothing. The rung Leg would take on its own is not in
+the list twice; the terminal&#39;s current rung is not in it at all. Picking one
+replaces the row&#39;s button grid with a sentence naming the destination and
+whether the conversation survives, and the hand-off carries the model.</p>
+<p><strong>Change the ladder</strong> edits this terminal&#39;s own copy. Each rung is a numbered
+row: the agent and model with the login&#39;s dot, a <code>when</code> select (<code>always</code>,
+<code>below N%</code> with a number from 1 to 99, or <code>walled only</code>), the cost word, and
+<strong>Up</strong>, <strong>Down</strong>, <strong>Remove</strong>. <code>+ Add a rung</code> takes an agent and one of its
+models, or <code>default</code> for the model the CLI picks itself. There is no drag: a
+list this short is faster with two buttons and a drag has no keyboard. Saving
+posts the whole ladder; a rung the server will not accept comes back as its own
+sentence (<code>claude has no model &quot;gpt-5&quot;</code>) in the status line, and nothing is
+saved. The draft line under the list previews what this terminal would try
+next, with the rung it is on skipped.</p>
+<p><strong>Settings</strong> carries the same editor for the machine default, under
+<code>New terminal handoff ladder</code>, plus the three rules that are machine-wide:</p>
+<ul>
+<li><strong>Let an automatic hand-off spend</strong>, with the sentence <code>A rung that spends usage credits or metered balance may be taken by an automatic hand-off.</code> Off
+by default. While it is off, a <code>credits</code> or <code>metered</code> rung is skipped by an
+unattended hand-off and the ledger says which and why; a human pressing Hand
+off can still take it. When the claude login reports credits off, the panel
+adds <code>Usage credits are off, so there is nothing to spend through the wall.</code>
+and offers no button to turn them on, because that cannot be done from here.</li>
+<li><strong>Climbing back</strong>, two radios: <code>Leg climbs back to the top rung at the next hand-off.</code> (the default) or <code>Stay on the lower rung until you press Back to fable.</code> Under them, the rule that is not a choice:
+<code>Leg never interrupts a running turn to climb.</code></li>
+<li><strong>Keep N% of <code>&lt;login&gt;</code> for your own terminals</strong>, one number per login on the
+ladder. 0 keeps nothing back. An automatic hand-off skips a rung whose login
+is past the floor; a hand-off you press yourself still takes it, and the
+picker prints <code>past your 10% reserve</code> on that row rather than hiding it.</li>
+</ul>
+<p>Saving Settings writes <code>handoff_ladder</code>, <code>climb_back</code>, <code>may_spend</code> and
+<code>reserve</code> in one <code>PATCH /api/settings</code>, and the status line reports the
+<code>handoff_order</code> the ladder derives, which is what older terminals still read.</p>
 <h2 id="the-ledger"><a class="anchor" href="#the-ledger">The ledger</a></h2>
 <p>Below the terminals, four counts sitting on the ground with no panel, because a
 raised surface here would compete with the terminals that are live. Each is a
@@ -469,22 +661,42 @@ sam</strong>.</p>
 <p>A guest&#39;s board has no background tasks cell, no New card button and no Floor
 link: that side belongs to the owner of the machine, and the API answers 403.</p>
 <h2 id="background-tasks-page-layout"><a class="anchor" href="#background-tasks-page-layout">Background tasks: page layout</a></h2>
-<p>Everything from here down is the v0.1 card runtime. Each card runs separately
-from the interactive terminal conversations, in its own git worktree. It is the
-third ledger cell, and its rows open in a drawer under the ledger.</p>
+<p>Everything from here down is the card runtime. Each card runs separately from
+the interactive terminal conversations, in its own git worktree. Liveness, not
+kind, decides where a card appears: a live card (<code>backlog</code>, <code>queued</code>,
+<code>running</code>, <code>handing_off</code>, <code>needs_approval</code>, <code>waiting_human</code>, <code>paused</code>) is a row
+in the <strong>Background</strong> panel directly under Terminals, in the terminal row&#39;s own
+shape; a finished one (<code>done</code>, <code>failed</code>, <code>killed</code>) collapses into the ledger
+cell, <code>10 finished cards, 5 done, 5 failed, last 8:15 PM</code>, whose <strong>View</strong> opens
+them newest first. Ten finished cards are one row, not ten.</p>
 <p>The masthead (<code>src/board/index.html</code>) has the Leg wordmark on the left and, on
 the right, the connection word (<code>connecting</code> / <code>live</code> / <code>reconnecting…</code>) with its
 dot, the scheduler status (<code>scheduler running, 2 max</code>), and the <strong>Floor</strong> link.
 <strong>New card</strong> is in the ledger cell, not the masthead, and <strong>Settings</strong> is the
 last region of the page, in flow. Nothing on the board is sticky: the verdict is
 what you came for and it is at the top, so there is nothing to pin.</p>
-<p>With no cards the region prints <code>No background task. New card queues one. They run headless in their own worktree and report on the floor.</code> With cards the
-region head prints the counts instead: <code>2 running, 1 queued, 3 finished</code>.</p>
+<p>With no live cards the Background panel&#39;s rows are gone and only its entry line
+is left; with live cards the region head prints the same counts a terminals
+head does, <code>1 running, 1 waiting on you</code>. Under the rows sits the entry: a
+single field, <code>Run in the background:</code>, a <strong>Start</strong> button, and an inferred
+sentence whose nouns are buttons, <code>in leg on main, with claude/fable then claude/opus then codex, build only</code>, plus <strong>More settings</strong> for the full form.
+Start with an empty task is disabled and says why.</p>
 <p><strong>Settings</strong> holds the <strong>API token</strong> field (only needed when the server is bound
 off loopback; see <a href="/docs/configuration#network-exposure">configuration.md</a>), the
-<strong>New terminal handoff order</strong> editor used by terminals started after you save,
-and the board&#39;s own facts: version and bind address, who you are signed in as,
-whether share is on, the scheduler, and the board home. Its region head says
+<strong>New terminal handoff ladder</strong> editor used by terminals started after you save
+(the rungs, the spend rule, the climb-back policy and the per-login reserve),
+<strong>Notifications</strong>, and the board&#39;s own facts: version and bind address, who you are signed in as,
+whether share is on, the scheduler, and the board home. <strong>Notifications</strong> holds
+two toggles, both about a terminal that is waiting on you: <em>Terminal toast when
+a terminal waits on you</em> (on by default, Claude Code only: an OSC 9 sequence
+returned by the Notification hook, which is the toast Windows Terminal renders
+in the window the agent is already running in) and <em>Browser notification when a
+terminal waits on you</em> (off by default; the browser asks for permission the
+first time you turn it on, and it fires on the transition into waiting, never on
+every refresh). The board toggle reads <code>window.isSecureContext</code> when it renders;
+where that is false it is disabled and says <code>This page is not a secure context. Open the board at http://localhost:&lt;port&gt; to turn toasts on.</code> The tab title
+badge has no toggle: it needs no permission, so it is always on. Its region head
+says
 <code>No API token set, requests reach 127.0.0.1:4747 unauthenticated</code>, or <code>API token set, sent to 127.0.0.1:4747 as a bearer token</code> once a token is stored.</p>
 <h2 id="order"><a class="anchor" href="#order">Order</a></h2>
 <p>There are no columns. Cards are rows in one list, ordered by status (<code>ROW_RANK</code>
@@ -822,25 +1034,31 @@ is fixed: Approve, Run, Resume, Pause, Hand off now, Rerun, Reassign, Kill.</p>
 </tr>
 <tr>
 <td>done</td>
-<td>6</td>
+<td>not a row</td>
 <td>done</td>
-<td>Rerun, Remove</td>
+<td>none on the board</td>
 </tr>
 <tr>
 <td>failed</td>
-<td>1</td>
+<td>not a row</td>
 <td>failed</td>
-<td>Rerun, Remove</td>
+<td>none on the board</td>
 </tr>
 <tr>
 <td>killed</td>
-<td>1</td>
+<td>not a row</td>
 <td>killed</td>
-<td>Rerun, Remove</td>
+<td>none on the board</td>
 </tr>
 </tbody></table>
 <p>* Reassign only shows when the current station is an <code>agent</code> station.
 † Hand off now only shows when that station has a later chain entry.</p>
+<p>The last three are not rows at all. A finished card is one line in the ledger
+drawer (<code>finishedLine</code> in <code>src/board/board.js</code>), <code>done after 3 runs, landed 7f3a2c1</code> or <code>failed at station build after 2 runs: &lt;last event&gt;</code>, with no
+buttons beside it. <code>availableActions</code> in <code>src/chain.mjs</code> still returns <code>rerun</code>
+for a terminal status, and Remove is its own <code>DELETE /api/cards/:id</code>, so both
+verbs remain reachable through the API and <code>bin/leg.mjs</code>; the board simply
+stops spending a row on work that has stopped.</p>
 <h2 id="floor-view"><a class="anchor" href="#floor-view">Floor view</a></h2>
 <p><code>/floor</code> (<code>docs/screenshots/floor.png</code>) is the scheduler-eye view across every
 card. It carries the same instrument head as the board, then polls <code>/api/floor</code>
@@ -883,25 +1101,85 @@ table is <code>src/leases.mjs</code> <code>held()</code>: one row per lease curr
 running or handing-off card.</p>
 <h2 id="keyboard-and-accessibility"><a class="anchor" href="#keyboard-and-accessibility">Keyboard and accessibility</a></h2>
 <ul>
-<li>Every interactive element (links, buttons, inputs, selects, textareas,
+<li><p>Every interactive element (links, buttons, inputs, selects, textareas,
 summaries) gets a visible focus ring: <code>outline: 2px solid var(--focus); outline-offset: 2px</code> on <code>:focus-visible</code> only (<code>src/board/board.css</code>). There
-is no bare <code>:focus</code> rule, so a mouse click leaves no ring behind it.</li>
-<li>Escape closes the open expansion, the terminal&#39;s and the card&#39;s. If a confirm
-row is open, Escape cancels that first. The floor has neither, so Escape does
-nothing there.</li>
-<li>Buttons carry descriptive <code>aria-label</code>s (for example &quot;Pause <code>&lt;card title&gt;</code>&quot;,
+is no bare <code>:focus</code> rule, so a mouse click leaves no ring behind it.</p>
+</li>
+<li><p>Escape closes the open expansion, the terminal&#39;s and the card&#39;s. If the
+keyboard map is open, Escape closes that first, then a confirm row if one is
+open. The floor has neither, so Escape does nothing there.</p>
+</li>
+<li><p><strong>The keyboard map.</strong> <code>?</code> opens and closes a small panel listing every
+binding. Every key CLICKS a button that is already on the row, so no key is a
+second way to do anything:</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>what it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>j</code></td>
+<td>move the ring to the next terminal</td>
+</tr>
+<tr>
+<td><code>k</code></td>
+<td>move the ring to the previous terminal</td>
+</tr>
+<tr>
+<td><code>1</code> to <code>9</code></td>
+<td>move the ring to that terminal</td>
+</tr>
+<tr>
+<td><code>h</code></td>
+<td>press Hand off now on the terminal the ring is on</td>
+</tr>
+<tr>
+<td><code>l</code></td>
+<td>press Land on the terminal the ring is on</td>
+</tr>
+<tr>
+<td><code>d</code></td>
+<td>press Details on the terminal the ring is on</td>
+</tr>
+<tr>
+<td><code>e</code></td>
+<td>press End on the terminal the ring is on</td>
+</tr>
+<tr>
+<td><code>?</code></td>
+<td>open and close the map</td>
+</tr>
+<tr>
+<td><code>Escape</code></td>
+<td>close the map, cancel a confirm row, or close an expansion</td>
+</tr>
+</tbody></table>
+<p>The ring is a bar down the left edge of the row, and moving it also moves
+keyboard focus to that row&#39;s first button, which is its prompt, so a screen
+reader announces which terminal the ring landed on rather than a bare <code>Land</code>.
+A disabled button is never clicked. While an input, a select or a textarea has
+focus, every one of these keys is text and nothing else.</p>
+</li>
+<li><p>Buttons carry descriptive <code>aria-label</code>s (for example &quot;Pause <code>&lt;card title&gt;</code>&quot;,
 &quot;Reassign adapter for <code>&lt;card title&gt;</code>&quot;) so a screen reader announces which card
-an action applies to, not just the button label.</li>
-<li>A terminal&#39;s expansion is a <code>role=&quot;region&quot;</code> labelled &quot;What this terminal is
-doing&quot;, and both expansions set <code>aria-hidden</code> and <code>hidden</code> on open and close.</li>
-<li>The 7 px status mark is an <code>aria-hidden</code> decoration; the status word beside it
+an action applies to, not just the button label.</p>
+</li>
+<li><p>A terminal&#39;s expansion is a <code>role=&quot;region&quot;</code> labelled &quot;What this terminal is
+doing&quot;, and both expansions set <code>aria-hidden</code> and <code>hidden</code> on open and close.</p>
+</li>
+<li><p>The 7 px status mark is an <code>aria-hidden</code> decoration; the status word beside it
 carries the meaning. The chain rail prints each leg&#39;s state as a word, so
-nothing on it is hidden from a screen reader either.</li>
-<li>No state is carried by colour alone: a panel that needs you also says <code>waiting on you</code> and gains a 2 px bar, and every usage tier prints its word beside the
-rail.</li>
-<li><code>@media (prefers-reduced-motion: reduce)</code> is respected in
+nothing on it is hidden from a screen reader either.</p>
+</li>
+<li><p>No state is carried by colour alone: a panel that needs you also says <code>waiting on you</code> and gains a 2 px bar, and every usage tier prints its word beside the
+rail.</p>
+</li>
+<li><p><code>@media (prefers-reduced-motion: reduce)</code> is respected in
 <code>src/board/board.css</code>: the status mark&#39;s annunciation animation and every
-transition on the page are disabled for readers who ask for it.</li>
+transition on the page are disabled for readers who ask for it.</p>
+</li>
 </ul>
 <h2 id="see-also"><a class="anchor" href="#see-also">See also</a></h2>
 <ul>

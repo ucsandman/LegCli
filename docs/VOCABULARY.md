@@ -62,6 +62,32 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `bounced` | the landing stopped with a [bounce reason](#bounce-reasons-land-station); the full detail is in `body` |
 | `land_noop` | Land found nothing on the branch beyond its base |
 
+## Routing and capacity words
+
+The words the ladder, the usage record and the board top use. Source:
+`src/preferences.mjs` (`RUNG_COSTS`, `WHEN_RE`, `defaultLadder`),
+`src/usage.mjs` (`binding`, `burn`, `emptyRecord`), `src/buckets.mjs`
+(`bucketFromWall`) and `src/board/sessions.js`.
+
+| word | meaning |
+|------|---------|
+| rung | one destination on the ladder: `{agent, account, model, when, cost}`. `leg ladder` writes `claude/default/opus`; a rung with `model: null` means "whatever that CLI's default is", never a guess |
+| ladder | the ordered list of rungs a terminal falls down, `preferences.handoff_ladder`. `handoff_order` is its older, narrower form and is derived from it, so both stay true |
+| `when` | when a rung may be taken: `always`, `below:N` (only while that login's binding percent is under N), or `walled-only` (only when every rung above it is walled, never when they are merely slow) |
+| `cost` | what a rung spends: `free`, `plan`, `credits` or `metered`. Computed at the moment of choosing, never trusted from disk, because `credits` depends on whether the login has extra usage enabled right now |
+| `may_spend` | off by default. While it is off, an automatic hand-off skips any `credits` or `metered` rung and says so in the ledger. A hand-off a human presses is not automatic and is not gated |
+| `reserve` | a per-login floor, `{agent: percent}`. An automatic hand-off skips a rung past the floor so a background card cannot eat what you kept for yourself; a human pick still takes it and the picker says `past your N% reserve` |
+| `climb_back` | `next-handoff` (the default: the ladder is walked from rung 1 every time, so a reset model is picked up at the next hand-off) or `never` (stay put until **Back to fable**). Leg never interrupts a running turn to climb |
+| bucket | one measured window in a usage record's `buckets[]`: `kind` (`session`, `weekly_all`, `weekly_scoped`), `model` (set only on `weekly_scoped`), `percent`, `resets_at`, `is_active`. A percentage, always measured, never inferred from wording |
+| binding bucket | the bucket that will stop this login first, what `binding(u, model)` returns. The strip, the verdict and the row all print this one rather than whichever window happened to be stored |
+| wall scope | how far a wall reaches, from `bucketFromWall`. `model` walls one model family and writes `walls[model]`, leaving the login open; `account` walls the whole login through `limited_until`. Wording Leg cannot parse is `account`, and the row prints the evidence it failed on |
+| capacity | the phrase a row prints for its own binding bucket: `63% of the fable week`, or nothing when there is no reading. Computed per request, never persisted |
+| forecast | a time figure from `burn()`, and only ever with its sample count: `about 2h 40m of Fable left, from 9 samples over 4h`. Under three samples spanning ten minutes, or on a flat or falling line, or across a reset, it prints nothing at all |
+| waiting on you | a row's status word when `session.waiting` is set by a claude `Notification` hook. It sorts the row first, counts in the Terminals head and puts `(N) Leg` with a dotted favicon in the browser tab. Only claude publishes this signal; other agents say `quiet Nm` and never claim to be waiting |
+| Background | the panel of live cards directly under Terminals. Liveness decides the surface, not kind: `backlog`, `queued`, `running`, `handing_off`, `needs_approval`, `waiting_human` and `paused` are rows here, and `done`, `failed` and `killed` collapse into one ledger line |
+| end as a card | the second verb on a terminal's End confirm row (`POST /api/sessions/:id/end-as-card`): writes the bundle, hands the terminal's own worktree to a card starting at the terminal's current rung, and records the terminal as its `lineage.from` |
+| take over | the reverse, in a card's expansion (`POST /api/cards/:id/take-over`): pauses the card and prints `leg claude --resume-card <id>`, the one command a browser cannot run for you |
+
 ## Harness states (terminal cards, drawer, `leg harness`)
 
 Source: `STATES` in `src/harness/index.mjs`; recorded on `session.harness.state`.

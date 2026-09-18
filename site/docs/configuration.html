@@ -185,6 +185,90 @@ runs on a named account; see <a href="#accounts">Accounts</a> below.</p>
 <li>Environment variable: set <code>LEG_AUTO_APPROVE=0</code> or <code>LEG_NO_AUTO_APPROVE=1</code> (or legacy <code>BATON_AUTO_APPROVE=0</code> / <code>BATON_NO_AUTO_APPROVE=1</code>).</li>
 <li>Persistent preference: set <code>&quot;auto_approve&quot;: false</code> in <code>~/.leg/preferences.json</code>.</li>
 </ol>
+<h3 id="the-hand-off-ladder"><a class="anchor" href="#the-hand-off-ladder">The hand-off ladder</a></h3>
+<p><code>~/.leg/preferences.json</code> also holds the ladder a terminal falls down when its
+login stops (<code>src/preferences.mjs</code>), alongside the older <code>handoff_order</code>:</p>
+<pre><code class="language-json">{
+  &quot;handoff_order&quot;: [&quot;claude&quot;, &quot;codex&quot;, &quot;agy&quot;],
+  &quot;handoff_ladder&quot;: [
+    { &quot;agent&quot;: &quot;claude&quot;, &quot;account&quot;: &quot;default&quot;, &quot;model&quot;: &quot;fable&quot;,  &quot;when&quot;: &quot;always&quot;, &quot;cost&quot;: &quot;plan&quot; },
+    { &quot;agent&quot;: &quot;claude&quot;, &quot;account&quot;: &quot;default&quot;, &quot;model&quot;: &quot;opus&quot;,   &quot;when&quot;: &quot;always&quot;, &quot;cost&quot;: &quot;plan&quot; },
+    { &quot;agent&quot;: &quot;claude&quot;, &quot;account&quot;: &quot;default&quot;, &quot;model&quot;: &quot;sonnet&quot;, &quot;when&quot;: &quot;always&quot;, &quot;cost&quot;: &quot;plan&quot; },
+    { &quot;agent&quot;: &quot;codex&quot;,  &quot;account&quot;: &quot;default&quot;, &quot;model&quot;: null,     &quot;when&quot;: &quot;always&quot;, &quot;cost&quot;: &quot;plan&quot; },
+    { &quot;agent&quot;: &quot;agy&quot;,    &quot;account&quot;: &quot;default&quot;, &quot;model&quot;: null,     &quot;when&quot;: &quot;always&quot;, &quot;cost&quot;: &quot;free&quot; }
+  ],
+  &quot;climb_back&quot;: &quot;next-handoff&quot;,
+  &quot;may_spend&quot;: false,
+  &quot;reserve&quot;: {}
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>default</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>handoff_ladder</code></td>
+<td>one rung per agent in <code>handoff_order</code>, model <code>null</code></td>
+<td>the fallback list, rung 1 first; each rung is <code>{agent, account, model, when, cost}</code>. <code>model</code> is <code>null</code> or one of that agent&#39;s names in <code>src/buckets.mjs</code> <code>MODEL_ALIASES</code> (only claude has any: <code>fable</code>, <code>opus</code>, <code>sonnet</code>, <code>haiku</code>). <code>when</code> is <code>always</code>, <code>below:N</code>, or <code>walled-only</code>. <code>cost</code> is <code>free</code>, <code>plan</code>, <code>credits</code>, or <code>metered</code>, and is a static label; the live cost a rung would spend right now is computed, never read off this key</td>
+</tr>
+<tr>
+<td><code>climb_back</code></td>
+<td><code>next-handoff</code></td>
+<td><code>next-handoff</code> picks a recovered higher rung up again at the very next hand-off, with no extra step; <code>never</code> keeps a terminal on the rung it downshifted to until a human hands it off there by name</td>
+</tr>
+<tr>
+<td><code>may_spend</code></td>
+<td><code>false</code></td>
+<td>while <code>false</code>, an automatic hand-off skips any rung whose live cost is <code>credits</code> or <code>metered</code>, and records why; a human&#39;s own pick is not gated by this</td>
+</tr>
+<tr>
+<td><code>reserve</code></td>
+<td><code>{}</code></td>
+<td><code>{ &quot;&lt;agent&gt;&quot;: percent }</code>; an automatic hand-off will not take a rung on that login once its binding bucket is above <code>100 - percent</code>. A human&#39;s own pick still reaches it, and the picker names the reserve on that row instead of hiding it</td>
+</tr>
+</tbody></table>
+<p>A fresh install with no <code>preferences.json</code> starts with <code>claude/fable</code>,
+<code>claude/opus</code>, <code>claude/sonnet</code>, then every other installed agent from
+<code>handoff_order</code> with <code>model: null</code>.</p>
+<p>Leg writes <code>handoff_ladder</code> and <code>handoff_order</code> together and keeps them in
+step: saving a ladder rewrites <code>handoff_order</code> from its distinct agent order,
+and saving a bare <code>handoff_order</code> rewrites the ladder as one <code>model: null</code>
+rung per agent, so an older install behaves exactly as it did until a rung is
+edited. If the file is hand-edited so the two disagree, <code>handoff_order</code> wins
+and the ladder is rebuilt from it, because the order is the shape a hand
+edit is more likely to have meant.</p>
+<p><code>leg ladder</code> (<code>leg ladder ls</code>) prints the ladder with each rung&#39;s live state;
+<code>leg ladder set &lt;n&gt; &lt;agent&gt;[/&lt;account&gt;[/&lt;model&gt;]]</code>, <code>leg ladder rm &lt;n&gt;</code> and
+<code>leg ladder spend on|off</code> change it. See <a href="/docs/cli-contracts">cli-contracts.md</a>.</p>
+<h3 id="notifications"><a class="anchor" href="#notifications">Notifications</a></h3>
+<p><code>~/.leg/preferences.json</code> also holds two toggles for a terminal that is
+waiting on you (<code>src/preferences.mjs</code> <code>defaults()</code>):</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>default</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>notify_terminal</code></td>
+<td><code>true</code></td>
+<td>&quot;Terminal toast when a terminal waits on you&quot;: on Claude Code&#39;s own <code>Notification</code> hook (<code>permission_prompt</code>, <code>idle_prompt</code>, <code>agent_needs_input</code>), send an OSC 9 toast to the window the agent is already running in</td>
+</tr>
+<tr>
+<td><code>notify_board</code></td>
+<td><code>false</code></td>
+<td>&quot;Browser notification when a terminal waits on you&quot;: fire a browser <code>Notification()</code> the moment a row or card becomes <code>needsYou</code>; the board reads <code>window.isSecureContext</code> at render time and disables the toggle with an explanatory sentence where that is false</td>
+</tr>
+</tbody></table>
+<p>Both are set from Settings on the board, or by writing the key directly. The
+tab title badge (<code>(1) Leg</code> plus a favicon dot) has no toggle: it needs no
+permission, so it is always on.</p>
 <h2 id="core"><a class="anchor" href="#core">Core</a></h2>
 <table>
 <thead>

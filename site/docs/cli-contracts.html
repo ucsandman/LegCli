@@ -436,20 +436,65 @@ passed through (<code>src/attach.mjs</code> <code>spawnSpec</code>); the child e
 variable and <code>LEG_SESSION</code> (source: src/attach.mjs, src/env.mjs).</p>
 <h3 id="claude-tap"><a class="anchor" href="#claude-tap">claude tap</a></h3>
 <ul>
-<li>Attach: <code>claude &lt;args&gt; --settings &lt;LEG_HOME&gt;/sessions/&lt;id&gt;/claude-settings.json</code>
+<li>Attach: <code>claude &lt;args&gt; -n &quot;leg#&lt;short id&gt; &lt;repo&gt;/&lt;branch&gt;&quot; --settings &lt;LEG_HOME&gt;/sessions/&lt;id&gt;/claude-settings.json</code>
 (source: src/attach.mjs <code>spawnSpec</code>; src/taps/claude.mjs <code>writeSettings</code>).
 Hooks in a <code>--settings</code> file merge with the user&#39;s rather than replacing
 them; <code>statusLine</code> is the one key that replaces, so Leg runs the user&#39;s own
 command first (source: code.claude.com/docs/en/settings;
 src/taps/claude.mjs <code>userStatusLine</code>). observed-live 2026-09-11: a Leg
 session ran with every user hook still firing.</li>
+<li>Terminal title: <code>-n, --name &lt;name&gt;</code> &quot;Set a display name for this session
+(shown in the prompt box, /resume picker, and terminal title)&quot; —
+fixtures/help/claude.txt line 132. It sits in the general Options block, not
+among the flags marked &quot;only works with --print&quot;, and two of its three
+surfaces (the prompt box, the <code>/resume</code> picker) exist only in interactive
+mode, so it is the interactive title flag. Leg passes
+<code>leg#&lt;short id&gt; &lt;repo&gt;/&lt;branch&gt;</code>; a <code>-n</code> or <code>--name</code> the human passed is
+never overwritten. codex, agy and grok have no such flag, so Leg writes OSC 2
+(<code>\x1b]2;leg#7f3a leg/main\x07</code>) to stdout once before the child spawns, and
+only on a TTY. <strong>ASSUMED</strong>: that the child does not overwrite the title once
+it starts drawing; no terminal has been read either way yet.</li>
 <li>Hooks written (source: src/taps/claude.mjs <code>settingsFor</code>): <code>SessionStart</code>,
 <code>UserPromptSubmit</code>, <code>PostToolUse</code> with matcher <code>Edit|Write|MultiEdit|NotebookEdit</code>,
+<code>Notification</code> with matcher
+<code>permission_prompt|idle_prompt|agent_needs_input|quota_auto_resume_fired</code>,
 <code>Stop</code>, <code>StopFailure</code>, <code>SessionEnd</code>, each
 <code>node &lt;src&gt;/hook.mjs claude-hook --session &lt;id&gt;</code> with a 20 s timeout.
-observed-live 2026-09-11 (hook.log in the session directory).</li>
+observed-live 2026-09-11 for the six that shipped then (hook.log in the
+session directory); the <code>Notification</code> entry is docs-only until a real
+permission prompt is captured.</li>
+<li>Waiting on a human: the <code>Notification</code> hook. It &quot;matches on notification
+type&quot; and, not being one of the two narrower events (FileChanged,
+StopFailure), takes <code>|</code> as its alternation separator
+(<a href="https://code.claude.com/docs/en/hooks">https://code.claude.com/docs/en/hooks</a> lines 1424, 173, 165). The payload
+carries <code>message</code>, an optional <code>title</code> and <code>notification_type</code> (line 1480).
+<code>permission_prompt</code>, <code>idle_prompt</code> and <code>agent_needs_input</code> write
+<code>session.waiting = { type, message (verbatim, 160 chars), since }</code>;
+<code>UserPromptSubmit</code> and <code>Stop</code> clear it. <code>permission_prompt</code> fires only after
+the prompt has waited about six seconds and shares its timing with desktop
+notifications, so in a terminal it arrives only when the human appears to be
+away (lines 1162, 1443): &quot;waiting on you&quot; is late by design and must not be
+sold as instant.</li>
+<li>The toast: the hook prints <code>{&quot;terminalSequence&quot;:&quot;\x1b]9;&lt;message&gt;\x07&quot;}</code>.
+Notification hooks cannot block or modify anything and their <code>systemMessage</code>
+and <code>continue</code> are discarded, but Claude Code still emits <code>terminalSequence</code>
+for them (lines 1490, 622). The field is restricted to OSC 0/1/2/9/99/777 and
+BEL, and is ignored wholesale if anything outside that rides in it (line
+608), so control bytes in the message are stripped first. OSC 9 is what
+Windows Terminal, iTerm2, ConEmu and WezTerm render (line 617). Gated on
+<code>preferences.notify_terminal</code>, default true.</li>
 <li><code>autoContinueAtUsageLimit: false</code> in the same file, because Leg owns the
-hand-off (source: src/taps/claude.mjs <code>settingsFor</code>).</li>
+hand-off (source: src/taps/claude.mjs <code>settingsFor</code>). If the human&#39;s own
+settings re-enable it, the <code>quota_auto_resume_fired</code> notification arrives
+anyway; Leg then writes <code>waiting = { type: &#39;quota_auto_resume&#39; }</code> and the
+automatic hand-off stands down for that terminal (src/attach.mjs
+<code>handoffStoodDown</code>). Two waiters on one terminal is the failure to avoid.</li>
+<li>The model that answered: each assistant line of the transcript carries
+<code>message.model</code> (VERIFIED: 29 lines of the newest jsonl for this repo read
+<code>claude-fable-5-1</code>). The runner reads the tail of that file on the usage poll
+and says it as its alias (<code>fable</code>), so a silent fallback off Fable shows on
+the row; an id matching no alias is kept raw (src/taps/claude.mjs
+<code>modelFromTranscript</code>, <code>modelAlias</code>).</li>
 <li>Usage: <code>GET https://api.anthropic.com/api/oauth/usage</code>
 (<code>LEG_CLAUDE_USAGE_URL</code> overrides) with <code>Authorization: Bearer &lt;accessToken&gt;</code>
 from <code>&lt;CLAUDE_CONFIG_DIR&gt;/.credentials.json</code> key <code>claudeAiOauth</code>, and header
@@ -579,7 +624,10 @@ junctioned directories with copied <code>config.toml</code> (source: src/account
 <h3 id="usage-store-and-the-chooser"><a class="anchor" href="#usage-store-and-the-chooser">Usage store and the chooser</a></h3>
 <ul>
 <li><code>&lt;LEG_HOME&gt;/usage/&lt;agent&gt;--&lt;account&gt;.json</code>:
-<code>{ five_hour: {pct, resets_at}, seven_day: {…}, limited_until, limited_reason, source, updated_at }</code> (source: src/usage.mjs).</li>
+<code>{ five_hour: {pct, resets_at}, seven_day: {…}, limited_until, limited_reason, source, updated_at, buckets, walls, history, extra_usage, facts }</code> (source: src/usage.mjs). The last five are the per-model half of the
+record: measured buckets, walls attributed from wording, a 24-sample ring per
+bucket, the credits block and agent-measured strings. See
+<a href="/docs/concepts">concepts.md</a>.</li>
 <li>Warning threshold <code>WARN_PCT</code>, default 85, from <code>LEG_WARN_PCT</code>; the warning
 is an amber card, an event, and one terminal bell (source: src/usage.mjs,
 src/attach.mjs).</li>
@@ -601,6 +649,64 @@ in <a href="/docs/vocabulary">VOCABULARY.md</a>. Board routes: <code>GET /api/se
 <code>GET /api/sessions/:id</code>, <code>POST /api/sessions/:id/handoff</code>,
 <code>POST /api/sessions/:id/end</code>, <code>DELETE /api/sessions/:id</code>, with the list pushed
 as the SSE <code>sessions</code> event (source: src/server.mjs, src/board/sessions.js).</p>
+<p><code>session.ahead</code> is the number of commits the checkout is past its upstream, or
+past <code>head_at_start</code> when it tracks nothing. It is counted with <code>git rev-list --count &lt;base&gt;..HEAD</code> on the runner&#39;s git poll and is <code>null</code>, never <code>0</code>, when
+this is not a repository or the count could not be taken (source:
+src/attach.mjs <code>aheadCount</code>). Like the dirty file list, it is owner-only:
+<code>redactSession</code> drops it from another human&#39;s row.</p>
+<p><code>GET /api/sessions</code> also carries <code>cards_waiting</code>, the number of cards in
+<code>needs_approval</code> or <code>waiting_human</code>, so the terminals verdict can name one
+without reading the pipeline board. A guest is not sent it (source:
+src/server.mjs <code>cardsWaiting</code>).</p>
+<h3 id="a-terminal-becomes-a-card-and-a-card-becomes-a-terminal"><a class="anchor" href="#a-terminal-becomes-a-card-and-a-card-becomes-a-terminal">A terminal becomes a card, and a card becomes a terminal</a></h3>
+<p><code>POST /api/sessions/:id/end-as-card</code> (owner or operator; a guest is refused)
+writes the terminal&#39;s hand-off bundle with <code>saveSessionBundle</code>, creates a card
+whose task is the terminal&#39;s prompt plus <code>Continue from the bundle at &lt;path&gt;.</code>,
+adopts the terminal&#39;s worktree when it has one (<code>worktree_adopted: true</code>, so no
+later run cuts a second worktree on that branch), starts the card&#39;s chain at
+the rung the terminal is standing on, records <code>lineage.from</code>, and then requests
+<code>end</code> on the terminal exactly as <code>POST /api/sessions/:id/end</code> does. <code>201</code> with
+<code>{card, bundle}</code>. The bundle is written first: if it cannot be written, nothing
+is created and the terminal is left running (source: src/server.mjs).</p>
+<p><code>POST /api/cards/:id/take-over</code> pauses a running card through the existing
+<code>pause</code> transition (child killed, bundle written) and answers <code>200</code> with
+<code>{card, command}</code>, where <code>command</code> is <code>leg &lt;agent&gt; --resume-card &lt;card-id&gt;</code> for
+the agent on the card&#39;s current leg. A card in <code>done</code>, <code>failed</code> or <code>killed</code> is
+refused with <code>409</code> (source: src/server.mjs).</p>
+<p><code>leg &lt;agent&gt; --resume-card &lt;id&gt;</code> is Leg&#39;s own flag and never reaches the
+agent&#39;s argv. It opens an ordinary interactive terminal in that card&#39;s
+worktree, whatever directory it was run from, primed with the card&#39;s bundle as
+the first prompt and with <code>lineage.from</code> naming the card. The id may be the
+full card id or a unique tail of it; an ambiguous one is refused by name with
+the matches listed, and an unknown one exits <code>3</code> (source: src/attach.mjs
+<code>takeFlagValue</code>, <code>resolveCardId</code>, <code>takeOverPrompt</code>).</p>
+<p>A live card&#39;s board payload carries what was measured and nothing else: <code>work</code>
+<code>{files, insertions, deletions}</code> parsed from <code>git diff --shortstat &lt;trunk&gt;..HEAD</code> in its worktree, <code>tests</code> <code>{state, at}</code> and <code>land</code> <code>{state, reason, sha}</code> read from the card&#39;s own ledger. A key that could not be measured
+is absent; a finished card carries none of them (source: src/server.mjs
+<code>parseShortstat</code>, <code>cardOutcomes</code>, <code>summarize</code>).</p>
+<h3 id="the-hand-off-ladder"><a class="anchor" href="#the-hand-off-ladder">The hand-off ladder</a></h3>
+<p><code>leg sessions handoff &lt;id&gt; --to &lt;agent&gt;[/&lt;account&gt;[/&lt;model&gt;]]</code> names the rung
+directly. Three parts are unambiguous; with two, the second is read as an
+account when the agent has one by that name, else as a model when the agent
+has one by that name, else the command is refused by name rather than guessed
+at (source: bin/leg.mjs <code>parseTarget</code>). <code>leg sessions simulate-limit &lt;id&gt; --message &quot;&lt;text&gt;&quot;</code> drives that exact wording through the real classifier
+(<code>src/hook.mjs</code> for claude, the session&#39;s own log for agy and grok), which is
+how a per-model wall is reached without waiting for a real one; codex has no
+Leg-owned input to simulate through and is refused by name (source:
+bin/leg.mjs <code>simulateLimit</code>).</p>
+<p><code>leg ladder</code> (also <code>leg ladder ls</code>) prints the ladder, rung 1 first, each with
+its live state (a wall and its clock, a percentage, or &quot;no figure&quot;) and the
+reason it would be skipped right now, then the spending, climb-back, reserve
+and derived-order lines. <code>leg ladder set &lt;n&gt; &lt;agent&gt;[/&lt;account&gt;[/&lt;model&gt;]] [--when always|below:N|walled-only]</code> writes rung <code>n</code> (past the end of the
+ladder, it appends); <code>leg ladder rm &lt;n&gt;</code> removes rung <code>n</code> and refuses to
+remove the last rung left; <code>leg ladder spend on|off</code> flips <code>may_spend</code>
+(source: bin/leg.mjs <code>ladderCommand</code>).</p>
+<p>Board routes: <code>PATCH /api/settings</code> (owner only) also accepts
+<code>handoff_ladder</code>, <code>climb_back</code>, <code>may_spend</code>, <code>reserve</code>, <code>notify_terminal</code> and
+<code>notify_board</code>. <code>POST /api/sessions/:id/handoff-order</code> accepts either
+<code>{handoff_order}</code> or <code>{handoff_ladder}</code> and rewrites both on the session.
+<code>POST /api/sessions/:id/handoff</code> accepts <code>target.model</code> alongside
+<code>target.agent</code> and <code>target.account</code> (source: src/server.mjs).</p>
 <h3 id="history-index"><a class="anchor" href="#history-index">History index</a></h3>
 <p><code>&lt;LEG_HOME&gt;/history/index.json</code> is the one file <code>leg history</code> writes: per
 provider, per transcript, size, mtime and a small scrubbed record (source:
@@ -631,7 +737,7 @@ changes, no DONE → <code>incomplete</code>; exit 0, nothing changed → <code>
 non-zero exit → <code>failed</code>. Every outcome except <code>completed</code>, <code>auth_failed</code> and
 <code>killed</code> asks the chain to hand off.</p>
 <!-- limits-table:start -->
-<p>Generated by <code>node scripts/limits-table.mjs</code> from 22 fixtures (4 observed-live, 18 docs-only). Classification <code>limit</code> hands the card to the next agent as a usage limit; <code>auth</code> is a failed launch (never a limit); <code>launch</code> is a failed launch that the next agent may still try; <code>budget</code> is a turn or spend cap set by Leg itself; <code>info</code> must never classify as a limit.</p>
+<p>Generated by <code>node scripts/limits-table.mjs</code> from 24 fixtures (6 observed-live, 18 docs-only). Classification <code>limit</code> hands the card to the next agent as a usage limit; <code>auth</code> is a failed launch (never a limit); <code>launch</code> is a failed launch that the next agent may still try; <code>budget</code> is a turn or spend cap set by Leg itself; <code>info</code> must never classify as a limit.</p>
 <table>
 <thead>
 <tr>
@@ -661,6 +767,15 @@ non-zero exit → <code>failed</code>. Every outcome except <code>completed</cod
 <td><strong>docs-only</strong></td>
 <td>Budget limit reached</td>
 <td><a href="https://code.claude.com/docs/en/cli-reference">https://code.claude.com/docs/en/cli-reference</a> (--max-budget-usd)</td>
+</tr>
+<tr>
+<td>claude-fable-limit</td>
+<td>claude</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>observed-live</strong></td>
+<td>You&#39;ve reached your Fable limit. Run /usage-credits to continue or switch models with /mod</td>
+<td>fixtures/live/claude/limit-rate_limit.json: StopFailure error rate_limit, last_assistant_message on the real run, 2026-09-11 (a per-model wall: the account&#39;s session and weekly windows were open)</td>
 </tr>
 <tr>
 <td>claude-max-turns</td>
@@ -796,6 +911,15 @@ non-zero exit → <code>failed</code>. Every outcome except <code>completed</cod
 <td><strong>docs-only</strong></td>
 <td>usage limit</td>
 <td>generic matcher; lowest priority</td>
+</tr>
+<tr>
+<td>grok-balance-exhausted</td>
+<td>grok</td>
+<td>limit</td>
+<td>any</td>
+<td><strong>observed-live</strong></td>
+<td>API error (status 402 Payment Required): Grok Build usage balance exhausted</td>
+<td>grok 1.0.34 -p --output-format json on an account with no balance left, 2026-09-17: stdout {&quot;type&quot;:&quot;error&quot;,&quot;message&quot;:&quot;Internal error: {   &quot;message&quot;: &quot;API error (status 402 Payment Required): Grok Build usage balance exhausted&quot;,   &quot;http_status&quot;: 402 }&quot;}, exit 1</td>
 </tr>
 <tr>
 <td>grok-not-logged-in</td>

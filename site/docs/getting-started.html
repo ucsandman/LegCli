@@ -104,10 +104,12 @@ Claude print session. The subscription login is always what runs. Nothing in
 <code>~/.claude</code>, <code>~/.codex</code> or agy&#39;s home is edited.</p>
 <h2 id="4-what-you-get-while-it-runs"><a class="anchor" href="#4-what-you-get-while-it-runs">4. What you get while it runs</a></h2>
 <ul>
-<li>A card on the board for this terminal: agent, account, repo@branch, the first
-prompt, turns, the files being touched, 5h and 7d usage.</li>
-<li>A warning at 85 % of either window (<code>LEG_WARN_PCT</code>): amber card, an event,
-one terminal bell.</li>
+<li>A row on the board for this terminal: status, repo@branch, dirty/ahead
+counts, agent/model, the first prompt, turns, the files being touched, and
+the capacity phrase for whichever bucket actually binds (a percentage, or a
+forecast like <code>about 2h 40m of fable left</code> once there are enough readings).</li>
+<li>A warning at 85 % of either window (<code>LEG_WARN_PCT</code>): the row goes amber, an
+event, one terminal bell.</li>
 <li>For Codex, the board and active attach poll the read-only app-server
 <code>account/rateLimits/read</code> response every 60 seconds. Leg maps the returned
 300- and 10080-minute durations to 5h and 7d, shows <code>&lt;n&gt;% used</code>, and labels
@@ -119,13 +121,15 @@ maintained by the agent, it is inlined into <code>.leg/RESUME.md</code> as a <co
 section before the raw bundle dump.</li>
 <li>At the limit: the bundle is saved, the agent is stopped, and the next option
 starts in the same terminal from <code>.leg/RESUME-&lt;session-id&gt;.md</code>, copied to
-<code>.leg/RESUME.md</code>. Order is other logins of
-the same agent first, then the remaining agents (claude, codex, agy). When
-every option is out, Leg prints each reset time, soonest first, waits with
-a countdown, and starts the first one back from the bundle. Ctrl-C quits.</li>
+<code>.leg/RESUME.md</code>. The order is a ladder of rungs, each an agent, account and
+model: a fresh install goes claude/fable, then claude/opus, then
+claude/sonnet before it ever leaves the claude login, then the remaining
+agents (codex, agy). <code>leg ladder</code> (or Settings) edits it. When every option
+is out, Leg prints each reset time, soonest first, waits with a countdown,
+and starts the first one back from the bundle. Ctrl-C quits.</li>
 </ul>
-<p>Force a hand-off at any time with the <strong>Hand off now</strong> button on the card, or
-<code>leg sessions handoff &lt;id&gt;</code>.</p>
+<p>Force a hand-off at any time with the <strong>Hand off now</strong> button on the row, or
+<code>leg sessions handoff &lt;id&gt; [--to &lt;agent&gt;[/&lt;account&gt;[/&lt;model&gt;]]]</code>.</p>
 <h2 id="is-the-resume-file-still-true"><a class="anchor" href="#is-the-resume-file-still-true">Is the resume file still true?</a></h2>
 <pre><code class="language-powershell">leg resume --check      # exit 0 current, 1 stale or unstamped, 3 none here
 leg resume              # the same verdict, then the pointer itself
@@ -133,7 +137,7 @@ leg resume              # the same verdict, then the pointer itself
 <p>Leg stamps every resume file with the commit, the working tree and the
 terminals it was written against, and recomputes freshness from git when you
 read it. A commit landing, the tree moving, or the terminal it described going
-away all make it stale; the terminal card&#39;s drawer shows the same verdict under
+away all make it stale; the terminal&#39;s expansion shows the same verdict under
 &quot;What happens next&quot;. A session ending rewrites <code>RESUME.md</code> to say nothing is in
 flight, and the board does the same at start for a terminal that crashed, so
 nothing is left describing work that has moved on.</p>

@@ -79,16 +79,19 @@ It prints a preflight table, then
 address in your browser. The board polls every three seconds, so nothing below
 needs a reload.
 
-The page is one column, read top to bottom: the instrument head with one row per
-login, then **Terminals**, **Landed on main**, **Background tasks**, and
-**Settings**. This demo happens entirely in **Background tasks**. On a fresh
-board home the head reads `no reading` on every rail, because no agent has
-reported usage into this home yet.
+The page is one column, read top to bottom: the verdict, the capacity strip
+(one token per login, with the login panels behind its `Capacity and models`
+disclosure), **Terminals**, **Background** (live cards only, hidden while none
+are running), the ledger (finished terminals, landed commits, conversations
+and finished cards, as four counts), and **Settings**. This demo happens
+entirely in **Background**. On a fresh board home the capacity strip reads
+`no reading` for every login, because no agent has reported usage into this
+home yet.
 
 ### 3. Queue the card
 
-Click **New card** in the **Background tasks** head. The dialog opens on **New
-background card**.
+Click **New card**, in the ledger's finished-cards cell below Terminals and
+Background. The dialog opens on **New background card**.
 
 1. **Repo path**: `C:\baton-demo\toy-demo`.
 2. **Task**: `Add a file greeting.txt containing 'hello from baton'`.
@@ -112,8 +115,9 @@ The recorded chain is `fake-claude>fake-codex`.
 
 ### 4. Leg 1, on fake-claude
 
-The card appears as a row in **Background tasks**. The line beside the region
-title reads `1 running`, and the row reads left to right:
+The card appears as a row in **Background**, directly under Terminals. The
+line beside the region title reads `1 running`, and the row reads left to
+right:
 
 - `fake-claude`, `build`, `running`
 - the title, and under it the one sentence
@@ -173,11 +177,13 @@ the bundle Leg wrote. The status word is `running` again, the run is `run=2`,
 and the chain reads `fake-claude · handed off · fake-codex · running`. This is
 `demo-4-codex-running.png`.
 
-Twenty seconds later the station finishes. The line beside the region title
-reads `1 finished`, the status word is `done`, the sentence is
-`done after 2 runs, card done: all 1 station(s) complete`, the chain reads
-`fake-claude · handed off · fake-codex · done`, and the buttons are **Rerun**
-and **Remove**. This is `demo-5-done.png`.
+Twenty seconds later the station finishes. The card leaves **Background**,
+which goes back to empty and hides itself, and the ledger's finished-cards
+cell reads `1 finished card, 1 done, last <time>`. Clicking **View** there
+opens the one line the drawer keeps for it: `done after 2 runs, card done:
+all 1 station(s) complete`. A finished card carries no buttons; Rerun and
+Remove apply to a live row, and this one no longer is one. This is
+`demo-5-done.png`.
 
 The worktree named in **Where** now holds the file the fake agent wrote,
 `hello-fake.txt`, and `.leg/DONE`.

@@ -2,7 +2,7 @@
   "_comment": "The single source of truth for every dated, numbered claim Leg makes in public. scripts/check-claims.mjs asserts that each surface listed here states exactly these values, and --strict additionally compares the pinned CLI versions against what those CLIs currently publish. Re-verify on a real machine, then edit this file and every surface in the same commit.",
   "verifiedOn": "2026-09-11",
   "verifiedOnLong": "11 September 2026",
-  "tests": 674,
+  "tests": 783,
   "clis": {
     "claude": {
       "label": "Claude Code",

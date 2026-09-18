@@ -1,5 +1,147 @@
 # Changelog
 
+## 0.12.0 (2026-09-17)
+
+The board is rebuilt around the two questions you actually open it to answer:
+which terminal needs you, and which model is about to run out. Usage stops
+being a region and becomes one strip plus a property of every row; a hand-off
+can now change the model instead of the CLI; and background work comes back as
+rows you can read at a glance instead of a ledger you have to dig through.
+
+- **The board top: a capacity strip, and the login panels behind one
+  disclosure.** Under the verdict, one strip prints each login's *binding*
+  bucket rather than whichever window happened to be stored: `claude 63%
+  6:01 PM`, `codex back Sat 10:11 PM`, `agy no figure`, `grok no reading`. The
+  four login panels are not rewritten, they move intact behind **Capacity and
+  models** with every gauge, notch and `aria-valuetext` they had, and the
+  claude panel head grows a model rail whose chips read `fable 63%` and
+  `opus 12%`. Every branch of `verdictLines()` is now asserted under
+  `VERDICT_CH` by `test/board-verdict.test.mjs`, so a 52px headline can no
+  longer wrap to three lines. Measured on the seeded board at 1280: the first
+  terminal row sits at 536px, where it used to sit at 1382px.
+- **A terminal row says what it is doing, on which model.** The register reads
+  `waiting on you  baton on main  dirty 3  ahead 2  claude/fable`, and a quiet
+  agent carries `quiet 5m`. `ahead` is one `git rev-list --count` on the
+  existing poll; the model is the alias the leg resolved to, updated from the
+  transcript for claude so a silent fallback off Fable becomes visible, and
+  never a guessed default. Under the prompt the row prints its binding bucket,
+  `63% of the fable week`, and past the warn threshold the rung that would keep
+  the terminal.
+- **A terminal waiting on a human says so, everywhere.** Leg now wires Claude
+  Code's `Notification` hook (`permission_prompt`, `idle_prompt`,
+  `agent_needs_input`). The row's status word becomes `waiting on you` and it
+  carries the question verbatim: `waiting on you: permission to run Bash(git
+  push origin HEAD), asked 2m ago`. That sorts the row first, counts it in the
+  region head (`4 running, 2 waiting on you, 4 share the claude login`) and in
+  the tab, which becomes `(2) Leg` with a dotted favicon. Codex, agy and grok
+  publish no such signal, so their rows say `quiet Nm` and never claim to be
+  waiting. `permission_prompt` fires after about six seconds and mostly when
+  you look away, so this is a reliable notice, not an instant one.
+- **A hand-off can now change the model, not just the CLI.** Destinations are
+  rungs of `(agent, account, model)`. The ladder's default is `claude/fable`,
+  `claude/opus`, `claude/sonnet`, then each remaining installed agent, and a
+  terminal's expansion prints it: `now: claude / fable, then claude / opus,
+  then claude / sonnet, then codex, then agy` with `first eligible now:
+  claude / opus` under it. A claude downshift with a known session id starts
+  `claude --resume <id> --model <alias>` and skips the bundle, so the
+  conversation survives the switch; every other rung is primed from the bundle
+  as before. `leg ladder` prints and edits the same thing from a terminal
+  (`ls`, `set <n> <agent>[/<account>[/<model>]]`, `rm <n>`, `spend on|off`),
+  and `leg sessions handoff <id> --to claude/default/opus` names a rung.
+- **The wall is attributed to what it actually walled.** A Fable limit walls
+  Fable, not the login: `walls{}` is keyed by model and `limited_until` is left
+  alone, so `claude/sonnet` keeps working. A session, weekly or spend limit is
+  account scoped, and a same-login model rung is then refused as a wasted
+  switch with the reason on the row. Wording Leg cannot parse walls the whole
+  login and prints the evidence it failed on rather than guessing.
+- **Nothing spends money unless you said it could.** `may_spend` is off. An
+  automatic hand-off skips any rung that bills credits or a metered balance and
+  writes the reason to the ledger; the Settings sentence is *A rung that spends
+  usage credits or metered balance may be taken by an automatic hand-off*, and
+  today it adds *Usage credits are off, so there is nothing to spend through
+  the wall.* rather than offering a dead control. A `reserve` per login holds a
+  floor back from automatic hand-offs only: *An automatic hand-off skips a rung
+  past the floor; a hand-off you press yourself still takes it, and the picker
+  says so.* Climbing back is a radio with the rule printed under it: *Leg never
+  interrupts a running turn to climb.*
+- **Cards are terminals you are not sitting at.** Live cards are rows in a
+  **Background** panel directly under Terminals, in the terminal row's
+  register with a measured work stat and the same button grid; a running card
+  says `no message until this leg ends, started 8:15 PM`, because `-p
+  --output-format json` is mute until the leg exits. Finished cards fall into
+  one ledger line, `10 finished cards, 5 done, 5 failed, last 8:15 PM`, so ten
+  done cards are one row and not ten. Starting one is a single field,
+  `Run in the background:`, over an inferred sentence whose nouns are buttons
+  (*in recruiting-tool on main, with claude/fable then claude/opus then
+  claude/sonnet then codex then agy, build only*); the old thirteen-field
+  dialog is still there as **More settings**.
+- **Two verbs for leaving and coming back.** The End confirm row grows
+  **End, and keep going as a card**: it writes the bundle, hands the
+  terminal's own worktree to a card with its lineage, and says where the work
+  went. On a card, **Take over** pauses it and hands back the one command a
+  browser cannot run, `leg claude --resume-card <id>`, in an interactive
+  terminal primed from the card's bundle.
+- **A time figure, or nothing, and never a time without its sample count.**
+  `burn()` reads a per-bucket history ring and prints a rate only with at least
+  three samples spanning ten minutes inside the current window; the estimate is
+  the endpoint slope, capped at the reset, and a flat or falling line prints
+  nothing at all. Where it can speak, the row and the verdict say *about 2h 40m
+  of Fable left, from 9 samples over 4h*. A reading that comes back unchanged
+  more than ten minutes after the last sample is still recorded, so a flat hour
+  is a measured zero rather than a starved gate.
+
+Fixes:
+
+- **Fixed: the only live Claude wall Leg ever captured was classified as no
+  progress.** The fixture pattern matched `You've hit your Fable limit` and
+  Anthropic now writes `You've reached your Fable limit`, so a real wall on the
+  headless path scored `{outcome: "no_progress", signal: "none"}` and the
+  terminal sat on a dead login. The pattern takes both wordings, and
+  `fixtures/limits/claude/claude-fable-limit.json` is a new `observed-live`
+  fixture produced from the captured response rather than from the docs.
+- **Fixed: the board printed the wrong percentage for a claude login.** The tap
+  kept only `five_hour` and `seven_day` out of the usage response and threw the
+  rest away, so a login whose binding bucket was the Fable week was reported at
+  the account-wide figure. The whole `limits[]` array is now read into
+  `buckets[]`, and the strip, the verdict and the row all print the bucket that
+  will actually stop you.
+- **Fixed: a seeded board's rows were live controls on real repositories.**
+  `scripts/seed-wes-board.mjs` named real paths, and a click on a seeded row
+  cut a worktree in a real checkout. The seed now names `C:\Projects-seed\...`,
+  realistic in shape and impossible in fact. `docs/ERRORS.md` carries the
+  entry.
+
+Migration:
+
+- `preferences.json` keeps `handoff_order` and now derives it from the ladder,
+  so `validHandoffOrder`, `requireHandoffOrder` and every older terminal keep
+  working unchanged. It gains `handoff_ladder` (rungs of `{agent, account,
+  model, when, cost}`), `may_spend` (default `false`), `climb_back` (default
+  `next-handoff`, or `never`), `reserve` (`{agent: percent}`),
+  `notify_terminal` (default `true`) and `notify_board` (default `false`). A
+  bare `handoff_order` expands into one `model: null, when: always` rung per
+  agent, so behaviour is unchanged until you edit a rung.
+- Usage records under `$LEG_HOME/usage/` gain `buckets`, `walls`, `history`,
+  `extra_usage` and `facts`. An older Leg ignores them; a record without them
+  falls back to the two windows it has always had.
+- Session records gain `model`, `waiting` and `ahead`, all nullable. On a
+  shared board all three are dropped from someone else's row (`waiting` carries
+  the verbatim question, `model` and `ahead` describe this machine's usage and
+  someone else's work). Your own terminal is never redacted, so you keep all
+  three on it whichever role you hold.
+- `playwright` is a dev dependency now, so `scripts/board-shots.mjs` runs from
+  a fresh `npm install`. It is not shipped in the package.
+
+Still assumed, and marked as such:
+
+- Whether `codex resume <id> -m <model>` composes. The `resume` subcommand and
+  the `-m` flag are each verified from `codex --help`; putting them together is
+  not. A codex rung therefore ships primed from the bundle, and only the claude
+  rungs claim to keep the conversation.
+- Whether codex, agy and grok leave an OSC 2 terminal title alone once the
+  child starts drawing. That is why naming the terminal tab is not in this
+  release: the browser tab badge needs no such assumption, and ships.
+
 ## 0.11.0 (2026-09-17)
 
 - **grok is a card adapter, not just a terminal.** `--chain grok` works. Its

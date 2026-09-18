@@ -54,7 +54,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#session-statuses">Session statuses</a></li><li><a href="#session-event-types">Session event types</a></li><li><a href="#harness-states-terminal-cards-drawer-leg-harness">Harness states (terminal cards, drawer, leg harness)</a></li><li><a href="#land-states-terminal-cards">Land states (terminal cards)</a></li><li><a href="#share-roles-more-than-one-human">Share roles (more than one human)</a></li><li><a href="#card-statuses">Card statuses</a></li><li><a href="#leg-outcomes">Leg outcomes</a></li><li><a href="#station-kinds">Station kinds</a></li><li><a href="#event-types">Event types</a></li><li><a href="#actor-types">Actor types</a></li><li><a href="#human-actions-and-board-buttons">Human actions and board buttons</a></li><li><a href="#bounce-reasons-land-station">Bounce reasons (land station)</a></li><li><a href="#cross-check-against-visible-strings">Cross-check against visible strings</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#session-statuses">Session statuses</a></li><li><a href="#session-event-types">Session event types</a></li><li><a href="#routing-and-capacity-words">Routing and capacity words</a></li><li><a href="#harness-states-terminal-cards-drawer-leg-harness">Harness states (terminal cards, drawer, leg harness)</a></li><li><a href="#land-states-terminal-cards">Land states (terminal cards)</a></li><li><a href="#share-roles-more-than-one-human">Share roles (more than one human)</a></li><li><a href="#card-statuses">Card statuses</a></li><li><a href="#leg-outcomes">Leg outcomes</a></li><li><a href="#station-kinds">Station kinds</a></li><li><a href="#event-types">Event types</a></li><li><a href="#actor-types">Actor types</a></li><li><a href="#human-actions-and-board-buttons">Human actions and board buttons</a></li><li><a href="#bounce-reasons-land-station">Bounce reasons (land station)</a></li><li><a href="#cross-check-against-visible-strings">Cross-check against visible strings</a></li></ul></nav>
 <h1 id="vocabulary"><a class="anchor" href="#vocabulary">Vocabulary</a></h1>
 <p>One page of the words Leg uses for state, events and actions, pulled
 straight from the source (not invented). Each table lists the exact
@@ -180,6 +180,10 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 <td>the switch happened: from, to, reason, bundle id</td>
 </tr>
 <tr>
+<td><code>waiting</code></td>
+<td>a claude <code>Notification</code> said a human is being waited on: the type (<code>permission_prompt</code>, <code>idle_prompt</code>, <code>agent_needs_input</code>) and the question verbatim; the next prompt or the end of the turn clears it</td>
+</tr>
+<tr>
 <td><code>all_out</code></td>
 <td>every option is walled; the resets are printed and the terminal waits for the first one (<code>ended</code> with &quot;quit while waiting&quot; if Ctrl-C or End cuts the wait short, exit 3)</td>
 </tr>
@@ -238,6 +242,83 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 <tr>
 <td><code>land_noop</code></td>
 <td>Land found nothing on the branch beyond its base</td>
+</tr>
+</tbody></table>
+<h2 id="routing-and-capacity-words"><a class="anchor" href="#routing-and-capacity-words">Routing and capacity words</a></h2>
+<p>The words the ladder, the usage record and the board top use. Source:
+<code>src/preferences.mjs</code> (<code>RUNG_COSTS</code>, <code>WHEN_RE</code>, <code>defaultLadder</code>),
+<code>src/usage.mjs</code> (<code>binding</code>, <code>burn</code>, <code>emptyRecord</code>), <code>src/buckets.mjs</code>
+(<code>bucketFromWall</code>) and <code>src/board/sessions.js</code>.</p>
+<table>
+<thead>
+<tr>
+<th>word</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>rung</td>
+<td>one destination on the ladder: <code>{agent, account, model, when, cost}</code>. <code>leg ladder</code> writes <code>claude/default/opus</code>; a rung with <code>model: null</code> means &quot;whatever that CLI&#39;s default is&quot;, never a guess</td>
+</tr>
+<tr>
+<td>ladder</td>
+<td>the ordered list of rungs a terminal falls down, <code>preferences.handoff_ladder</code>. <code>handoff_order</code> is its older, narrower form and is derived from it, so both stay true</td>
+</tr>
+<tr>
+<td><code>when</code></td>
+<td>when a rung may be taken: <code>always</code>, <code>below:N</code> (only while that login&#39;s binding percent is under N), or <code>walled-only</code> (only when every rung above it is walled, never when they are merely slow)</td>
+</tr>
+<tr>
+<td><code>cost</code></td>
+<td>what a rung spends: <code>free</code>, <code>plan</code>, <code>credits</code> or <code>metered</code>. Computed at the moment of choosing, never trusted from disk, because <code>credits</code> depends on whether the login has extra usage enabled right now</td>
+</tr>
+<tr>
+<td><code>may_spend</code></td>
+<td>off by default. While it is off, an automatic hand-off skips any <code>credits</code> or <code>metered</code> rung and says so in the ledger. A hand-off a human presses is not automatic and is not gated</td>
+</tr>
+<tr>
+<td><code>reserve</code></td>
+<td>a per-login floor, <code>{agent: percent}</code>. An automatic hand-off skips a rung past the floor so a background card cannot eat what you kept for yourself; a human pick still takes it and the picker says <code>past your N% reserve</code></td>
+</tr>
+<tr>
+<td><code>climb_back</code></td>
+<td><code>next-handoff</code> (the default: the ladder is walked from rung 1 every time, so a reset model is picked up at the next hand-off) or <code>never</code> (stay put until <strong>Back to fable</strong>). Leg never interrupts a running turn to climb</td>
+</tr>
+<tr>
+<td>bucket</td>
+<td>one measured window in a usage record&#39;s <code>buckets[]</code>: <code>kind</code> (<code>session</code>, <code>weekly_all</code>, <code>weekly_scoped</code>), <code>model</code> (set only on <code>weekly_scoped</code>), <code>percent</code>, <code>resets_at</code>, <code>is_active</code>. A percentage, always measured, never inferred from wording</td>
+</tr>
+<tr>
+<td>binding bucket</td>
+<td>the bucket that will stop this login first, what <code>binding(u, model)</code> returns. The strip, the verdict and the row all print this one rather than whichever window happened to be stored</td>
+</tr>
+<tr>
+<td>wall scope</td>
+<td>how far a wall reaches, from <code>bucketFromWall</code>. <code>model</code> walls one model family and writes <code>walls[model]</code>, leaving the login open; <code>account</code> walls the whole login through <code>limited_until</code>. Wording Leg cannot parse is <code>account</code>, and the row prints the evidence it failed on</td>
+</tr>
+<tr>
+<td>capacity</td>
+<td>the phrase a row prints for its own binding bucket: <code>63% of the fable week</code>, or nothing when there is no reading. Computed per request, never persisted</td>
+</tr>
+<tr>
+<td>forecast</td>
+<td>a time figure from <code>burn()</code>, and only ever with its sample count: <code>about 2h 40m of Fable left, from 9 samples over 4h</code>. Under three samples spanning ten minutes, or on a flat or falling line, or across a reset, it prints nothing at all</td>
+</tr>
+<tr>
+<td>waiting on you</td>
+<td>a row&#39;s status word when <code>session.waiting</code> is set by a claude <code>Notification</code> hook. It sorts the row first, counts in the Terminals head and puts <code>(N) Leg</code> with a dotted favicon in the browser tab. Only claude publishes this signal; other agents say <code>quiet Nm</code> and never claim to be waiting</td>
+</tr>
+<tr>
+<td>Background</td>
+<td>the panel of live cards directly under Terminals. Liveness decides the surface, not kind: <code>backlog</code>, <code>queued</code>, <code>running</code>, <code>handing_off</code>, <code>needs_approval</code>, <code>waiting_human</code> and <code>paused</code> are rows here, and <code>done</code>, <code>failed</code> and <code>killed</code> collapse into one ledger line</td>
+</tr>
+<tr>
+<td>end as a card</td>
+<td>the second verb on a terminal&#39;s End confirm row (<code>POST /api/sessions/:id/end-as-card</code>): writes the bundle, hands the terminal&#39;s own worktree to a card starting at the terminal&#39;s current rung, and records the terminal as its <code>lineage.from</code></td>
+</tr>
+<tr>
+<td>take over</td>
+<td>the reverse, in a card&#39;s expansion (<code>POST /api/cards/:id/take-over</code>): pauses the card and prints <code>leg claude --resume-card &lt;id&gt;</code>, the one command a browser cannot run for you</td>
 </tr>
 </tbody></table>
 <h2 id="harness-states-terminal-cards-drawer-leg-harness"><a class="anchor" href="#harness-states-terminal-cards-drawer-leg-harness">Harness states (terminal cards, drawer, <code>leg harness</code>)</a></h2>

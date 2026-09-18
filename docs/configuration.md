@@ -109,6 +109,20 @@ edit is more likely to have meant.
 `leg ladder set <n> <agent>[/<account>[/<model>]]`, `leg ladder rm <n>` and
 `leg ladder spend on|off` change it. See [cli-contracts.md](cli-contracts.md).
 
+### Notifications
+
+`~/.leg/preferences.json` also holds two toggles for a terminal that is
+waiting on you (`src/preferences.mjs` `defaults()`):
+
+| key | default | meaning |
+|-----|---------|---------|
+| `notify_terminal` | `true` | "Terminal toast when a terminal waits on you": on Claude Code's own `Notification` hook (`permission_prompt`, `idle_prompt`, `agent_needs_input`), send an OSC 9 toast to the window the agent is already running in |
+| `notify_board` | `false` | "Browser notification when a terminal waits on you": fire a browser `Notification()` the moment a row or card becomes `needsYou`; the board reads `window.isSecureContext` at render time and disables the toggle with an explanatory sentence where that is false |
+
+Both are set from Settings on the board, or by writing the key directly. The
+tab title badge (`(1) Leg` plus a favicon dot) has no toggle: it needs no
+permission, so it is always on.
+
 ## Core
 
 | variable | default | meaning | read in |

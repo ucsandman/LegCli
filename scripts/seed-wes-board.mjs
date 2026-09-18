@@ -40,8 +40,8 @@ const w = (...parts) => parts.join(B)
 // 'Projects-seed', not 'Projects': these rows print like real repos, but a
 // button on a seeded row (End as a card, Land) runs git against the path it
 // names. On 2026-09-17 a seeded End-as-card cut a worktree and wrote a bundle
-// into the real C:Projectsecruiting-tool. A path that does not exist
-// 409s instead.
+// into the real recruiting-tool repository on this machine. A path that
+// does not exist 409s instead.
 const P = (...rest) => w('C:', 'Projects-seed', ...rest)
 // the shape that matters is LENGTH: a real worktree path under a temp dir runs
 // past 90 characters, which is what buried the prompt in the rejected design

@@ -458,7 +458,7 @@ footer a { color: var(--on-blue); }
 /* Responsive */
 @media (max-width: 860px) {
   .cols, .cols.rev { grid-template-columns: 1fr; }
-  .nav-links { gap: 14px; }
+  .nav-links { gap: 14px; flex-wrap: wrap; }
   .nav-links .hide-sm { display: none; }
 }
 @media (max-width: 560px) {
