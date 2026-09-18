@@ -1,0 +1,5 @@
+*
+!site
+!site/**
+site/.vercel
+site/.env*
