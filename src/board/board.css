@@ -582,6 +582,10 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .ladder-costcol { width: 12ch; }
 .ladder-when { flex: none; min-height: 36px; font-size: var(--t--1); }
 .ladder-pct { flex: none; width: 7ch; min-height: 36px; font-size: var(--t--1); }
+/* a stored 0 or 100 is shown as it is and says what it does: the editor never
+   rewrites a number nobody chose. It wraps the rule cell rather than widening
+   it, so the columns beside it do not move. */
+.ladder-flag { flex: 1 0 100%; font-size: var(--t--1); }
 .ladder-add { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0 2px; font-size: var(--t-0); border-top: 1px solid var(--line); }
 .ladder-policy { display: grid; gap: 8px; margin-top: 18px; border: 0; padding: 0; }
 .ladder-policy legend { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); padding: 0; }

@@ -23,7 +23,7 @@ import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.m
 import { canonPath, realPath } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
-import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable, rungLabel, skipLine } from './usage.mjs'
+import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable, wallActive, rungLabel, skipLine } from './usage.mjs'
 import { entitlement, allows, describe as describeLicense } from './license.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail, modelAlias, modelFromTranscript, printable } from './taps/claude.mjs'
 import { modelFlagFor, isDownshift } from './buckets.mjs'
@@ -301,8 +301,11 @@ export function cardWorkRoot(card) {
   if (card?.worktree && existsSync(card.worktree)) return card.worktree
   if (card?.repo) {
     try { const p = worktreePath(card.repo, card.card_id); if (existsSync(p)) return p } catch { /* not a repo any more */ }
-    if (existsSync(card.repo)) return card.repo
   }
+  // never the main checkout: a card's work belongs in its own worktree, and a
+  // terminal opened in `card.repo` would edit the human's checkout under the
+  // card's name. The take-over route cuts a worktree before it hands out the
+  // command, so this is only reached for a card made by an older Leg.
   return null
 }
 
@@ -703,9 +706,16 @@ function messagesFor(agent, s) {
 // an order save is consumed here, or the editor sees handing_off and refuses.
 // No eligible choice leaves the session unclaimed so all-out waiting can keep
 // accepting order edits.
-export function claimHandoffChoice({ sid, agent, account, model = null, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000), exclude = [], prefer = null, preferences = null }) {
+// `automatic` is the fact, not a guess from the shape of the call: only the
+// usage limit (and the scheduler behind a card) hands off unasked. A human
+// pressing Hand off now sends no destination at all when they take the default
+// option, and inferring "automatic" from that missing target applied the
+// reserve, the cost gate and climb-back to a hand-off the human asked for, on
+// rungs the picker had just shown them as available (B.3).
+export function claimHandoffChoice({ sid, agent, account, model = null, installed, bundle = null, reason = 'limit', nowS = Math.floor(Date.now() / 1000), exclude = [], prefer = null, preferences = null, automatic = null }) {
   let choice = { next: null, out: [], reasons: [] }
   let claimed = false
+  const auto = automatic === null ? reason === 'limit' : Boolean(automatic)
   // The machine's spending rules are read once, here: a rung that costs credits
   // is skipped unless the human allowed it, the reserve applies to automatic
   // hand-offs only, and climb-back decides whether an automatic hand-off may
@@ -717,11 +727,22 @@ export function claimHandoffChoice({ sid, agent, account, model = null, installe
     // the terminal's own ladder, else the long-hand form of its order: a
     // terminal started before ladders existed behaves exactly as it did.
     const ladder = ladderFor(current)
+    const legModel = model ?? current.model ?? null
     choice = chooseNext({
-      agent, account, model: model ?? current.model ?? null, accounts, installed, order, ladder, nowS, exclude, prefer,
-      maySpend: prefs.may_spend, reserve: prefs.reserve, climbBack: prefs.climb_back,
+      agent, account, model: legModel, accounts, installed, order, ladder, nowS, exclude, prefer,
+      maySpend: prefs.may_spend, reserve: prefs.reserve, climbBack: prefs.climb_back, automatic: auto,
     })
-    if (!choice.next && isAvailable(readUsage(agent, account), nowS) && !exclude.some((x) => x.agent === agent && x.account === account)) choice = { next: { agent, account }, out: [], reasons: choice.reasons ?? [], preferred_taken: false }
+    // Nothing on the ladder: keep the login the terminal is already on, but
+    // only when it can really run the next leg. A model wall leaves the account
+    // open by design, so claiming {agent, account} with no model here respawned
+    // the CLI on the model that had just walled, walled again, and burned all
+    // twelve legs. The model rides the claimed rung for the same reason, and
+    // `out` is kept so the all-out wait below still has its reset clocks.
+    const own = readUsage(agent, account)
+    const ownOpen = isAvailable(own, nowS) && !(legModel && wallActive(own.walls?.[legModel], nowS))
+    if (!choice.next && ownOpen && !exclude.some((x) => x.agent === agent && x.account === account)) {
+      choice = { next: { agent, account, ...(legModel ? { model: legModel } : {}) }, out: choice.out ?? [], reasons: choice.reasons ?? [], preferred_taken: false }
+    }
     if (!choice.next) return {}
     claimed = true
     return {
@@ -742,6 +763,25 @@ export function claimHandoffChoice({ sid, agent, account, model = null, installe
     }
   })
   return { choice, claimed, session }
+}
+
+// A pick that could not be taken, said in the words the ladder already used.
+// `choice.reasons` carries {agent, account, model, reason} for every rung the
+// walk passed over, so the cost gate, the reserve and a `below:N` rule all have
+// their own sentence sitting there; re-deriving the explanation from the
+// account's `limited_until` printed "at its limit until unknown" for a rung
+// that was never walled at all. The limit sentence stays as the fallback for a
+// rung the walk never reached. Both names carry their model (rungLabel), or a
+// downshift reads as "claude was picked but ...; handing off to claude".
+// → { asked, got, why }
+export function pickedAside({ prefer, next, choice, excluded = [], read = readUsage }) {
+  const want = { agent: prefer.agent, account: prefer.account ?? 'default', model: prefer.model ?? null }
+  const asked = rungLabel(want)
+  const got = rungLabel(next)
+  if (excluded.some((x) => x.agent === want.agent && x.account === want.account)) return { asked, got, why: 'the strict harness policy refused it' }
+  const hit = (choice?.reasons ?? []).find((r) => r.agent === want.agent && r.account === want.account && (want.model ? (r.model ?? null) === want.model : true))
+  if (hit?.reason) return { asked, got, why: hit.reason }
+  return { asked, got, why: `it is at its limit until ${fmtReset(read(want.agent, want.account).limited_until)}` }
 }
 
 // The portable harness, decided before a leg starts (src/harness/index.mjs).
@@ -829,7 +869,10 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   const nowS = Math.floor(Date.now() / 1000)
   const u0 = readUsage(agent, account)
   if (u0.limited_until && u0.limited_until > nowS) {
-    const alt = chooseNext({ agent, account, accounts, installed, order: handoffOrder, ladder: handoffLadder, nowS, maySpend: prefs.may_spend, reserve: prefs.reserve, climbBack: prefs.climb_back })
+    // automatic: the human asked for this agent, not for this destination, so
+    // the machine's own floors (the reserve, the spending gate) still apply to
+    // the rung Leg substitutes for it.
+    const alt = chooseNext({ agent, account, accounts, installed, order: handoffOrder, ladder: handoffLadder, nowS, maySpend: prefs.may_spend, reserve: prefs.reserve, climbBack: prefs.climb_back, automatic: true })
     if (alt.next) { say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting ${rungLabel(alt.next)} instead`); agent = alt.next.agent; account = alt.next.account; startModel = alt.next.model ?? null }
     else say(`${agent} (${account}) is at its limit until ${fmtReset(u0.limited_until)}; starting anyway (every option is out)`)
   }
@@ -898,7 +941,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     const excluded = []
     // the destination a human picked on the board, if they picked one
     const prefer = r.target ?? null
-    let claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer })
+    let claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer, automatic: r.reason !== 'handoff' })
     let choice = claim.choice
     let cancelled = false
     let blocked = false
@@ -922,7 +965,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { type: 'reset', agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
       const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
       if (r2 === 'cancelled') { cancelled = true; break }
-      claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer })
+      claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer, automatic: r.reason !== 'handoff' })
       choice = claim.choice
     }
     if (cancelled) {
@@ -938,7 +981,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       if (prepared.proceed) break
       excluded.push(choice.next)
       say(`${choice.next.agent} refused by the strict harness policy: ${prepared.reason ?? prepared.state}`)
-      claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer })
+      claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer, automatic: r.reason !== 'handoff' })
       choice = claim.choice
       if (!choice.next) blocked = true
     }
@@ -954,11 +997,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     // refuse it, and a terminal that quietly went somewhere else is the kind
     // of surprise this board exists to remove.
     if (prefer && !choice.preferred_taken) {
-      const asked = `${prefer.agent}${prefer.account !== 'default' ? '/' + prefer.account : ''}`
-      const got = `${next.agent}${next.account !== 'default' ? '/' + next.account : ''}`
-      const why = excluded.some((x) => x.agent === prefer.agent && x.account === prefer.account)
-        ? 'the strict harness policy refused it'
-        : `it is at its limit until ${fmtReset(readUsage(prefer.agent, prefer.account).limited_until)}`
+      const { asked, got, why } = pickedAside({ prefer, next, choice, excluded })
       say(`${asked} was picked but ${why}; handing off to ${got} instead`)
       appendEvent(sid, { type: 'status', summary: `${asked} was picked for this hand-off but ${why}; ${got} took it instead` })
     }

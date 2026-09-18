@@ -448,3 +448,28 @@ test('static file serving: / and /board serve index.html, /floor serves floor.ht
   assert.match(floor.text, /<!doctype html>/i)
 })
 
+
+// A `pipeline` that is neither a preset nor an inline list used to be opened as
+// a file, and the JSON parser's message (which quotes the first bytes of what
+// it read) went back in the 400 body. An operator may post cards and may not
+// read this machine, so that 400 was a filesystem oracle with the bytes
+// attached.
+test('POST /api/cards never opens a path from the body, and its refusal quotes no file', async () => {
+  const secretFile = join(HOME, 'not-a-pipeline.txt')
+  writeFileSync(secretFile, 'CANARY-PIPELINE-BYTES-4f21 is the first line of this file\n')
+  const r = await api('/api/cards', { method: 'POST', body: { repo, task: 'read me a file', chain: 'fake', pipeline: secretFile } })
+  assert.equal(r.status, 400, r.text.slice(0, 200))
+  assert.equal(r.text.includes('CANARY-PIPELINE-BYTES-4f21'), false, `the refusal quoted the file: ${r.text.slice(0, 300)}`)
+  assert.equal(r.text.includes(JSON.stringify(secretFile).slice(1, -1)), false, `the refusal echoed the path: ${r.text.slice(0, 300)}`)
+  assert.match(r.json.error, /preset/, r.text.slice(0, 200))
+  // and a missing path is answered exactly the same way, so the 400 cannot tell
+  // an existing file from one that is not there
+  const missing = await api('/api/cards', { method: 'POST', body: { repo, task: 'read me a file', chain: 'fake', pipeline: join(HOME, 'no-such-file.json') } })
+  assert.equal(missing.status, 400)
+  assert.equal(missing.json.error, r.json.error, `${missing.json.error} vs ${r.json.error}`)
+  // the presets themselves still work over HTTP
+  const ok = await api('/api/cards', { method: 'POST', body: { repo, task: 'a preset is fine', chain: 'fake', pipeline: 'build' } })
+  assert.equal(ok.status, 201, ok.text.slice(0, 200))
+  const inline = await api('/api/cards', { method: 'POST', body: { repo, task: 'an inline list is fine', chain: 'fake', pipeline: [{ name: 'build', kind: 'agent' }] } })
+  assert.equal(inline.status, 201, inline.text.slice(0, 200))
+})

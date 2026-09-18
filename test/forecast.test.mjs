@@ -130,3 +130,70 @@ test('a reset clears the ring, and the forecast is null until three new samples 
   assert.deepEqual(u.history[KEY].map((e) => e.percent), [4], 'the new window starts its own ring')
   assert.equal(usage.burn(u, KEY), null, 'and there is no rate across the reset')
 })
+
+// ---- the ring itself: what it keeps, and for how long ----
+
+test('the ring is written on a time basis, so three terminals on one login still reach the gate', () => {
+  // Each attached terminal runs its own usage poller against the same per-login
+  // record (src/attach.mjs USAGE_MS), so three of them write every 20 seconds.
+  // A ring capped only by count would then span 24 x 20s = under the 10-minute
+  // burn gate, and the forecast would vanish from exactly the busiest login.
+  const acct = 'three-terminals'
+  const resets = nowS() + 40 * HOUR
+  const start = Date.now() - 45 * 60_000
+  let percent = 40
+  for (let s = 0; s <= 30 * 60; s += 20) {
+    usage.recordUsage('claude', acct, { buckets: [{ ...base, percent: Math.round(percent * 10) / 10, resets_at: resets }] }, 'test', { observed_at: new Date(start + s * 1000).toISOString() })
+    percent += 0.2
+  }
+  const u = usage.readUsage('claude', acct)
+  const ring = u.history[KEY]
+  assert.ok(ring.length <= usage.HISTORY_MAX, `the ring still caps at ${usage.HISTORY_MAX}, was ${ring.length}`)
+  assert.ok(ring.at(-1).at - ring[0].at >= usage.BURN_MIN_SPAN_S, `the ring spans the burn gate, was ${ring.at(-1).at - ring[0].at}s`)
+  const f = usage.burn(u, KEY)
+  assert.ok(f, 'three live terminals on one login still get a forecast')
+  assert.ok(f.samples >= usage.BURN_MIN_SAMPLES)
+  // and no two samples are closer together than the minimum gap
+  for (let i = 1; i < ring.length; i += 1) assert.ok(ring[i].at - ring[i - 1].at >= usage.HISTORY_MIN_GAP_S, 'samples are spaced by time, not by write')
+})
+
+test('the ring never carries samples across a reset, even when the bucket was missing for a write', () => {
+  const acct = 'gap-then-reset'
+  const first = nowS() + 20 * HOUR
+  const start = Date.now() - 90 * 60_000
+  const iso = (mins) => new Date(start + mins * 60_000).toISOString()
+  const write = (buckets, mins) => usage.recordUsage('claude', acct, { buckets }, 'test', { observed_at: iso(mins) })
+  const scoped = (percent, resets_at) => ({ ...base, percent, resets_at })
+  const account = { kind: 'weekly_all', group: 'weekly', model: null, percent: 47, resets_at: first, is_active: false }
+
+  write([scoped(55, first), account], 0)
+  write([scoped(59, first), account], 15)
+  write([scoped(63, first), account], 30)
+  assert.deepEqual(usage.readUsage('claude', acct).history[KEY].map((e) => e.percent), [55, 59, 63])
+  // one reading that carries the account row and not the scoped one: an older
+  // endpoint, or a degraded payload. The ring has no `prev` to compare against.
+  write([account], 45)
+  // …and then the window resets and the new one starts filling
+  const second = first + 7 * 24 * HOUR
+  write([scoped(56, second), { ...account, resets_at: second }], 60)
+  const u = usage.readUsage('claude', acct)
+  assert.deepEqual(u.history[KEY].map((e) => e.percent), [56], 'the new window starts its own ring')
+  assert.equal(u.history[KEY][0].resets_at, second, 'each sample carries the window it was taken in')
+  assert.equal(usage.burn(u, KEY), null, 'and no rate is drawn across the reset')
+})
+
+test('the ring evicts by age as well as by count: a sample older than its own window is gone', () => {
+  const acct = 'age'
+  const session = { kind: 'session', group: 'session', model: null, is_active: true, severity: 'normal' }
+  const resets = nowS() + 2 * HOUR
+  const start = Date.now() - 8 * 60 * 60_000
+  const iso = (mins) => new Date(start + mins * 60_000).toISOString()
+  const write = (percent, mins) => usage.recordUsage('claude', acct, { buckets: [{ ...session, percent, resets_at: resets }] }, 'test', { observed_at: iso(mins) })
+  write(10, 0)      // eight hours ago
+  write(12, 60)     // seven hours ago
+  write(50, 460)
+  write(55, 470)
+  write(60, 480)
+  const u = usage.readUsage('claude', acct)
+  assert.deepEqual(u.history.session.map((e) => e.percent), [50, 55, 60], 'a 5-hour window keeps no sample older than five hours')
+})

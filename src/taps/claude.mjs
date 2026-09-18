@@ -107,7 +107,9 @@ export function modelAlias(agent, id) {
   const raw = String(id ?? '').trim()
   if (!raw) return null
   for (const alias of MODEL_ALIASES[agent] ?? []) {
-    if (new RegExp(`(?:^|[-_])${alias}(?:$|[-_.])`, 'i').test(raw)) return alias
+    // whitespace is a separator too: a display name reads "Claude Opus 5" where
+    // a CLI id reads "claude-opus-5", and both name the same rung
+    if (new RegExp(`(?:^|[-_\\s])${alias}(?:$|[-_.\\s])`, 'i').test(raw)) return alias
   }
   return raw
 }
@@ -177,7 +179,14 @@ const clearHumanWait = (cur) => (humanWait(cur.waiting) ? { waiting: null } : {}
 // would close the sequence Leg is building and open whatever followed it.
 // Written as a scan rather than a regex because a control-character class is
 // exactly what the linter stops, and for good reason.
-export const printable = (s) => [...String(s ?? '')].map((c) => (c.codePointAt(0) < 0x20 || c.codePointAt(0) === 0x7f ? ' ' : c)).join('')
+// The C1 range (U+0080 to U+009F) goes out with C0 and DEL: on a terminal that
+// decodes C1 from UTF-8, U+009C is ST and closes the sequence Leg is building,
+// and U+009D is OSC and opens whatever follows it. That is the same hazard as a
+// raw ESC or BEL, in two bytes instead of one.
+export const printable = (s) => [...String(s ?? '')].map((c) => {
+  const cp = c.codePointAt(0)
+  return cp < 0x20 || (cp >= 0x7f && cp <= 0x9f) ? ' ' : c
+}).join('')
 
 export function terminalSequenceFor(p, { preferences = null } = {}) {
   if (p?.hook_event_name !== 'Notification') return null

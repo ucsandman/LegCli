@@ -31,6 +31,7 @@ export const TRANSITIONS = [
   ['running', 'land:bounced', 'queued', 'land red/conflict → bounce to build with the failure attached (phase 7)'],
   ['running', 'land:failed', 'failed', 'land attempts exhausted (phase 7)'],
   ['running', 'pause', 'paused', 'human: kill the child, write a bundle'],
+  ['*non-terminal*', 'take_over', 'paused', 'human: sits down in the card\'s worktree themselves; the child is killed and the card leaves the runnable set'],
   ['paused', 'resume', 'queued', 'human: same station and leg; prompt = bundle load + contract'],
   ['*non-terminal*', 'kill', 'killed', 'human'],
   ['*non-terminal*', 'reassign', 'queued', 'human: rewrite the current station\'s chain from the current leg'],
@@ -194,6 +195,18 @@ export function transition(card, action, payload = {}) {
     case 'pause': {
       assertStatus(card, action, ['running'])
       events.push(ev('paused', 'paused by human'))
+      return { card: { ...card, status: 'paused' }, events }
+    }
+    // Take over: a human opens an interactive terminal in this card's worktree.
+    // `pause` is legal from `running` alone, so a queued or handing_off card
+    // stayed in the set the scheduler starts from and a leg was launched into
+    // the checkout the human had just been handed. Legal from every
+    // non-terminal status, and it always lands on `paused`, which is the one
+    // state that is both out of the scheduler's reach and honest about what
+    // the card is doing: nothing, because a person has it.
+    case 'take_over': {
+      assertStatus(card, action, NON_TERMINAL)
+      events.push(ev('taken_over', `taken over by a human at ${card.station} leg ${card.leg} (was ${card.status})`))
       return { card: { ...card, status: 'paused' }, events }
     }
     case 'resume': {

@@ -238,3 +238,39 @@ writeFileSync(process.env.STUB_DIR + '/agy-' + Date.now() + '.json', JSON.string
   }
   t.diagnostic(stderr.split('\n').filter((line) => line.includes('[leg]')).slice(-8).join('\n'))
 })
+
+// ---- the cost word and the account name (adversarial review, 2026-09-17) ----
+
+test('a ladder migrated from an order costs what the agent costs, and the spending gate fires on it', () => {
+  const migrated = preferences.ladderFromOrder(['claude', 'codex', 'agy', 'grok'])
+  assert.deepEqual(migrated.map((r) => `${r.agent}:${r.cost}`), ['claude:plan', 'codex:plan', 'agy:free', 'grok:metered'], 'the migration reads the cost off the agent, never a hard-coded word')
+  // a persisted word may never make a rung look CHEAPER than the agent is: that
+  // is the whole cost gate bypassed on an upgrading machine
+  assert.equal(preferences.rungCost({ agent: 'grok', account: 'default', model: null, cost: 'plan' }), 'metered')
+  assert.equal(preferences.rungCost({ agent: 'agy', account: 'default', model: null, cost: 'plan' }), 'free')
+  assert.equal(preferences.rungCost({ agent: 'claude', account: 'default', model: 'opus', cost: 'credits' }), 'plan', 'a word persisted on the rung is a label, never the gate\'s input')
+  assert.equal(preferences.rungCost({ agent: 'claude', account: 'default', model: 'fable' }, { extra_usage: { enabled: true } }), 'credits', 'and the live part still decides fable')
+
+  const rows = usage.evaluateLadder({ from: { agent: 'claude', account: 'default' }, list: migrated, ladder: migrated, maySpend: false })
+  const grok = rows.find((r) => r.agent === 'grok')
+  assert.equal(grok.cost, 'metered')
+  assert.equal(grok.ok, false)
+  assert.equal(grok.reason, 'it spends metered credits and you have not allowed that', 'the ledger line the gate exists for reaches an upgrading machine too')
+  // the same word on the extra-account rungs candidates() synthesises
+  const accounts = { claude: ['default'], codex: ['default'], agy: ['default'], grok: ['default', 'second'] }
+  const list = usage.candidates({ agent: 'claude', account: 'default', accounts, order: ['claude', 'codex', 'agy', 'grok'], ladder: migrated })
+  assert.equal(list.find((r) => r.agent === 'grok' && r.account === 'second').cost, 'metered')
+  assert.equal(list.find((r) => r.agent === 'agy').cost, 'free')
+})
+
+test('a rung account is a name this machine has, never a path', () => {
+  // the config dir the CLI is pointed at and the file the usage record is
+  // written to are both built from this string (src/accounts.mjs, usage.mjs)
+  assert.throws(() => preferences.requireHandoffLadder([{ agent: 'claude', account: '../../../../pwned', model: 'opus' }]), /account/)
+  assert.throws(() => preferences.requireHandoffLadder([{ agent: 'claude', account: 'C:\\Windows', model: 'opus' }]), /account/)
+  assert.throws(() => preferences.requireHandoffLadder([{ agent: 'claude', account: 'work', model: 'opus' }]), /no account "work"/)
+  assert.equal(preferences.requireHandoffLadder([{ agent: 'claude', account: 'default', model: 'opus' }])[0].account, 'default')
+  // belt and braces: the usage writer refuses a name that could leave its directory
+  assert.throws(() => usage.usageFile('claude', '../../../../pwned'), /account/)
+  assert.equal(usage.usageFile('claude', 'default').endsWith('claude--default.json'), true)
+})

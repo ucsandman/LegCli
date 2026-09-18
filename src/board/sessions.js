@@ -44,7 +44,14 @@
   const lastTone = new Map()
   const defaultEditor = { ladder: null, climb_back: 'next-handoff', may_spend: false, reserve: {}, dirty: false, saving: false, status: '', statusClass: '' }
 
-  function getToken() { return localStorage.getItem('legToken') || localStorage.getItem('batonToken') || '' }
+  // localStorage THROWS rather than answering null in a browser with site data
+  // blocked, in a partitioned webview and on a board opened from a file. This
+  // read runs inside api(), so an unguarded one takes every fetch on the page
+  // down before it is issued and the board looks exactly like a dead server.
+  // An empty token is already a valid state: the header is only added if (token).
+  function getToken() {
+    try { return localStorage.getItem('legToken') || localStorage.getItem('batonToken') || '' } catch { return '' }
+  }
   async function api(path, opts = {}) {
     const headers = { 'Content-Type': 'application/json' }
     const token = getToken()
@@ -351,9 +358,15 @@
   // src/taps/claude.mjs QUOTA_STAND_DOWN, character for character: two waiters
   // on one terminal is the failure to avoid, so the row says who is waiting.
   const QUOTA_STAND_DOWN = 'Claude Code is waiting at the limit itself; Leg is not handing this one off.'
+  // Nothing clears `waiting` on the way out: the ended transition in
+  // src/attach.mjs and the lost one in src/sessions.mjs both leave the last
+  // Notification shape on the record. A dead terminal is not waiting on
+  // anybody, so the guard is the one quietPhrase below already keeps: without
+  // it a terminal that exited at a permission prompt said "waiting on you"
+  // forever, held the tab badge and never fell into the Finished ledger.
   function notifyWait(s) {
     const w = s && s.waiting
-    return w && NOTIFY_TYPES.includes(w.type) ? w : null
+    return w && s.active && NOTIFY_TYPES.includes(w.type) ? w : null
   }
   function resetWait(s) {
     const w = s && s.waiting
@@ -671,7 +684,18 @@
 
   // A.5, top to bottom. A bucket whose state is unknown is never named, and
   // "Measured Ns ago" appears only when the reading is actually stale.
-  function verdictLines(list, sessions) {
+  // C.5: the verdict never mentions cards unless one is waiting on a human.
+  // `cards_waiting` on the payload is {count, first:{id,title,station,since}};
+  // an older server sends a bare number and a guest is sent nothing at all, and
+  // neither of those can name a card, so neither prints a sentence about one.
+  function waitingCard(cards) {
+    const first = cards && typeof cards === 'object' ? cards.first : null
+    return first && first.id ? first : null
+  }
+  // `card 3e1c`: the tail of the card id, which is how a card is named on its
+  // own row and out loud.
+  function cardName(id) { return `card ${String(id).split('-').filter(Boolean).slice(-1)[0] || id}` }
+  function verdictLines(list, sessions, cards) {
     const accounts = (list || []).filter((a) => a && a.agent && !a.loading)
     if (!accounts.length) return { line: 'Reading the logins.', sub: '' }
     const live = (sessions || []).filter((s) => s.active)
@@ -722,6 +746,22 @@
               : blocked.waiting.message ? `It asked: ${String(blocked.waiting.message).slice(0, 80)}` : null,
           others > 0 ? `The other ${others === 1 ? 'terminal is' : `${others} terminals are`} still running.` : null,
         ),
+      }
+    }
+
+    // 1b. the same rule one level down: no terminal is blocked, but a card is,
+    // and a card waiting at a review station is a human being waited on too. It
+    // outranks every usage branch for the reason branch 1 does, and it is the
+    // ONLY thing that puts a card in the verdict (C.5).
+    const card = waitingCard(cards)
+    const cardSince = card ? Date.parse(card.since || '') : NaN
+    if (card) {
+      const who = cardName(card.id)
+      return {
+        line: Number.isFinite(cardSince)
+          ? headline(`${who} has waited on you for ${spoken(Date.now() - cardSince)}.`, `${who} has waited on you for ${ago(Date.now() - cardSince)}.`, `${who} is waiting on you.`)
+          : headline(`${who} is waiting on you.`),
+        sub: subLine(card.station ? `It is at the ${card.station} station.` : null, 'Approve or Reassign on its row.'),
       }
     }
 
@@ -911,7 +951,7 @@
     box.textContent = ''
     const list = accounts || []
 
-    const { line, sub } = verdictLines(list, view ? view.sessions : [])
+    const { line, sub } = verdictLines(list, view ? view.sessions : [], view ? view.cards_waiting : null)
     const h1 = document.getElementById('verdict-line')
     const p = document.getElementById('verdict-sub')
     if (h1) h1.textContent = line
@@ -1107,14 +1147,48 @@
     else state = ['credits', 'metered'].includes(t.cost) ? `ready, ${costWord(t.cost)}` : 'ready'
     return [rungLabel(t), mode, state].join(' · ')
   }
+  // A destination is a rung, so it is remembered as one. The index is still the
+  // option's value (an account name is not ours to parse), but an index is a
+  // position in a list the poll rewrites, and the pick has to outlive that.
+  function pickKey(t) { return t && t.agent ? `${t.agent}/${t.account || 'default'}/${t.model || ''}` : null }
+  function pickIndex(targets, key) {
+    if (!key) return ''
+    const at = (targets || []).findIndex((t) => pickKey(t) === key)
+    return at < 0 ? '' : String(at)
+  }
   // `when` is one string on the record and two controls on screen.
   function whenKind(when) { return String(when || 'always').startsWith('below:') ? 'below' : (when === 'walled-only' ? 'walled-only' : 'always') }
-  function whenPct(when) { const n = Number(String(when || '').slice('below:'.length)); return Number.isFinite(n) && n > 0 ? n : 50 }
+  // The server's own range is 0 to 100 (WHEN_RE in src/preferences.mjs), and
+  // what is stored is what is shown: a zero is a reading, so a rung saved as
+  // `below:0` renders as 0 and carries its consequence (whenFlag) rather than
+  // being redrawn as a 50 nobody chose. Only a `below:` with no number at all
+  // falls back.
+  function whenPct(when) {
+    const n = Number(String(when || '').slice('below:'.length))
+    return Number.isFinite(n) && n >= 0 && n <= 100 && String(when || '').slice('below:'.length).trim() !== '' ? n : 50
+  }
   function whenString(kind, pct) {
     if (kind === 'walled-only') return 'walled-only'
     if (kind !== 'below') return 'always'
-    const n = Math.max(1, Math.min(99, Math.round(Number(pct) || 0)))
+    const n = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)))
     return `below:${n}`
+  }
+  // An empty box is not a percentage. Clearing the number to type a new one and
+  // tabbing away used to store `below:1`, a rung that is never taken; the rung
+  // goes back to `always`, which is the rule with no number in it.
+  function whenFromBox(value) {
+    const raw = String(value === null || value === undefined ? '' : value).trim()
+    return raw === '' ? 'always' : whenString('below', raw)
+  }
+  // A stored number the editor would never produce is shown with what it does,
+  // never rewritten: both ends of the server's range are legal and neither is
+  // a percentage anybody means.
+  function whenFlag(when) {
+    if (whenKind(when) !== 'below') return null
+    const n = whenPct(when)
+    if (n === 0) return 'below 0% is never true: this rung is never taken'
+    if (n === 100) return 'below 100% is always true: this rung is taken like always'
+    return null
   }
   const WHEN_WORDS = [['always', 'always'], ['below', 'below N%'], ['walled-only', 'walled only']]
 
@@ -1148,12 +1222,14 @@
       row.appendChild(rule)
       if (kind === 'below') {
         const pct = el('input', {
-          type: 'number', min: '1', max: '99', class: 'ladder-pct', value: String(whenPct(r.when)),
+          type: 'number', min: '0', max: '100', class: 'ladder-pct', value: String(whenPct(r.when)),
           'aria-label': `Take ${label} only under this percent`, 'data-focus-key': `ladder:${scope}:${key}:pct`,
         })
-        pct.addEventListener('change', () => onChange(ladder.map((x, i) => (i === index ? { ...x, when: whenString('below', pct.value) } : x))))
+        pct.addEventListener('change', () => onChange(ladder.map((x, i) => (i === index ? { ...x, when: whenFromBox(pct.value) } : x))))
         rule.appendChild(pct)
         rule.appendChild(el('span', { class: 'ladder-cost' }, ['%']))
+        const flag = whenFlag(r.when)
+        if (flag) rule.appendChild(el('span', { class: 'ladder-flag tone-warn' }, [flag]))
       }
       row.appendChild(el('span', { class: 'ladder-cost ladder-costcol' }, [costWord(r.cost)]))
 
@@ -1172,7 +1248,15 @@
   // `[+ Add a rung]`: an agent and one of its models, or `default` for the
   // model the CLI picks itself. An agent Leg knows no model names for offers
   // `default` alone rather than a guess.
-  function addRungRow(ladder, onChange, scope) {
+  // A dead control is worse than none: pressing Add on a rung the ladder
+  // already carries used to do nothing at all, with no row, no sentence and no
+  // hover reason, so the reader pressed it again. It names the rung it found
+  // and where it already is.
+  function duplicateRung(ladder, rung) {
+    const at = (ladder || []).findIndex((r) => rungKey(r) === rungKey(rung))
+    return at < 0 ? null : `${rungLabel(rung)} is already rung ${at + 1}.`
+  }
+  function addRungRow(ladder, onChange, scope, onRefuse) {
     const row = el('div', { class: 'ladder-add' })
     const agentId = `ladder-add-agent-${scope}`
     const modelId = `ladder-add-model-${scope}`
@@ -1191,7 +1275,8 @@
     const add = el('button', { type: 'button', class: 'btn btn-secondary', 'data-focus-key': `ladder:${scope}:add:go` }, ['+ Add a rung'])
     add.addEventListener('click', () => {
       const rung = { agent: agent.value, account: 'default', model: model.value || null, when: 'always', cost: agent.value === 'agy' ? 'free' : agent.value === 'grok' ? 'metered' : 'plan' }
-      if (ladder.some((r) => rungKey(r) === rungKey(rung))) return
+      const already = duplicateRung(ladder, rung)
+      if (already) { if (onRefuse) onRefuse(already); return }
       onChange([...ladder, rung])
     })
     row.append(el('label', { for: agentId }, ['Add']), agent, el('label', { for: modelId }, ['model']), model, add)
@@ -1318,7 +1403,11 @@
     const list = document.getElementById('default-order-list')
     list.textContent = ''
     list.appendChild(ladderRows(defaultEditor.ladder, touch, 'default'))
-    list.appendChild(addRungRow(defaultEditor.ladder, touch, 'default'))
+    list.appendChild(addRungRow(defaultEditor.ladder, touch, 'default', (msg) => {
+      defaultEditor.status = msg
+      defaultEditor.statusClass = 'bad'
+      renderDefaultOrder(view)
+    }))
 
     // may_spend
     const spend = document.getElementById('ladder-spend')
@@ -1441,7 +1530,7 @@
         await api(`/api/sessions/${encodeURIComponent(id)}/${action}`, { method: 'POST', body })
         if (action === 'handoff') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: body && body.agent ? `hand-off to ${rungLabel(body)} requested; this terminal switches agents in a few seconds` : 'hand-off requested; this terminal switches agents in a few seconds' })
         else if (action === 'end') actionNotes.set(id, { at: Date.now(), tone: 'warn', text: 'end requested; the agent stops after its current turn' })
-        else if (action === 'end-as-card') actionNotes.set(id, { at: Date.now(), tone: 'ok', text: 'ended; a background card continues the task in this checkout. It is under Background, and Take over on it brings the work back to a terminal.' })
+        else if (action === 'end-as-card') actionNotes.set(id, { at: Date.now(), tone: 'ok', text: 'ended; a background card continues the task: in this checkout when the terminal had one of its own, else in a checkout of its own with the uncommitted work carried over. It is under Background, and Take over on it brings the work back to a terminal.' })
         else if (action === 'land/fix') actionNotes.set(id, { at: Date.now(), tone: 'ok', text: 'applied fix' })
       }
       refresh()
@@ -1489,6 +1578,17 @@
         // the index is the value: an account name is not ours to parse
         select.appendChild(el('option', { value: String(i), disabled: t.available ? null : 'disabled' }, [handoffOptionText(t)]))
       })
+      // The drawer rebuilds itself every 3 seconds, and a destination chosen
+      // four seconds ago was silently back to "the next option in the order"
+      // while the confirm row still said the rung's name. The pick is held on
+      // `drawer`, beside turnCap and expanded, and it is keyed by the RUNG, not
+      // by the index: the poll can reorder the rows under it.
+      select.value = pickIndex(targets, drawer.pick)
+      if (drawer.pick && select.value === '') drawer.pick = null
+      select.addEventListener('change', () => {
+        const at = select.value === '' ? null : targets[Number(select.value)]
+        drawer.pick = at ? pickKey(at) : null
+      })
       const go = el('button', { type: 'button', class: 'btn btn-secondary' }, ['Hand off'])
       go.addEventListener('click', () => {
         const t = select.value === '' ? null : targets[Number(select.value)]
@@ -1535,7 +1635,11 @@
           : 'This terminal started before ladder changes were available. Save this ladder as the default, then restart when ready.']))
         const touch = (next) => { state.ladder = next; state.dirty = true; state.status = ''; renderDrawer() }
         editor.appendChild(ladderRows(state.ladder, touch, s.session_id))
-        editor.appendChild(addRungRow(state.ladder, touch, s.session_id))
+        editor.appendChild(addRungRow(state.ladder, touch, s.session_id, (msg) => {
+          state.status = msg
+          state.statusClass = 'bad'
+          renderDrawer()
+        }))
         editor.appendChild(el('p', { class: 'blocker' }, [`Draft ladder after ${rungLabel(s)}: ${rungsAfter(s, state.ladder).map(rungLabel).join(', then ') || 'nothing left'}`]))
         const status = el('span', { class: `field-status ${state.statusClass}`, 'aria-live': 'polite' }, [state.status])
         const save = el('button', { type: 'button', class: 'btn btn-secondary', disabled: state.saving || !state.dirty ? '' : null, 'data-focus-key': `order-save:${s.session_id}` }, [state.saving ? 'Saving…' : s.can_edit_handoff_order ? 'Save for this terminal' : 'Save as default for next launch'])
@@ -1789,7 +1893,10 @@
     }
     if (s.active) {
       const h = el('button', { type: 'button', class: `btn ${blocker ? 'btn-primary' : 'btn-secondary'}`, title: 'save the bundle, stop this agent, start the next option in the same terminal', 'data-focus-key': `handoff:${s.session_id}` }, ['Hand off now'])
-      h.addEventListener('click', () => act(s.session_id, 'handoff', h))
+      // the same confirm row End and the picker already use. This stops the
+      // current turn of a working agent, and the `h` key presses this button:
+      // an action that costs a turn asks first, whichever hand pressed it.
+      h.addEventListener('click', ask('Hands off to the first open rung of this terminal\'s ladder. The current turn stops.', 'Hand off', 'handoff'))
       actions.appendChild(h)
     }
     const details = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-expanded': drawer.id === s.session_id ? 'true' : 'false', 'data-focus-key': `details:${s.session_id}` }, ['Details'])
@@ -1858,9 +1965,15 @@
   // The messages, the diffs and the timeline are one extra fetch per open
   // terminal, so nothing here is requested until the region is open, and the
   // poll stops when it is paused or the tab is in the background.
-  const drawer = { id: null, paused: false, timer: null, detail: null, error: '', expanded: new Set(), diffs: new Map(), turnCap: 8, openedBy: 'prompt' }
+  const drawer = { id: null, paused: false, timer: null, detail: null, error: '', expanded: new Set(), diffs: new Map(), turnCap: 8, openedBy: 'prompt', pick: null }
 
   function drawerSession() { return view && view.sessions ? view.sessions.find((s) => s.session_id === drawer.id) : null }
+  // the one control on this page whose value is a decision in flight
+  function pickHasFocus() {
+    const node = document.activeElement
+    const id = node && typeof node.id === 'string' ? node.id : ''
+    return id.startsWith('handoff-to-')
+  }
   // The region is MOVED under the panel it expands, so the reference is cached:
   // once it has been moved into the sessions list, getElementById would stop
   // finding it the moment that list is rebuilt.
@@ -1877,6 +1990,8 @@
     drawer.error = ''
     drawer.paused = false
     drawer.turnCap = 8
+    // a destination chosen on one terminal is not a destination on the next
+    drawer.pick = null
     drawer.expanded.clear()
     drawer.diffs.clear()
     const region = detailRegion()
@@ -1889,7 +2004,11 @@
     renderDrawer()
     loadDrawer()
     if (drawer.timer) clearInterval(drawer.timer)
-    drawer.timer = setInterval(() => { if (!drawer.paused && !document.hidden) loadDrawer() }, 3000)
+    // and it stands down while the reader is inside the destination select:
+    // rebuilding a <select> under an open option list closes it, so a list that
+    // takes longer than three seconds to read could not be read at all. The
+    // pick itself survives the rebuild by rung (pickIndex above).
+    drawer.timer = setInterval(() => { if (!drawer.paused && !document.hidden && !pickHasFocus()) loadDrawer() }, 3000)
     document.getElementById('session-drawer-close')?.focus()
   }
 
@@ -2312,10 +2431,18 @@
   // every render and never on first paint: the same rule the status mark's
   // annunciation keeps, for the same reason. A reload is not a new event.
   let announced = null
-  function announceWaiting(rows) {
+  // An OS toast is for a transition the reader was not there for. Firing one
+  // over the window they are watching announces a state they just caused and
+  // have already read on the row (pressing Land and getting a bounce is the
+  // common one). The tab badge still updates either way: it costs nothing and
+  // asks for nothing. Both halves are needed, because a visible tab in an
+  // unfocused window is a reader who is somewhere else.
+  function readerIsWatching() {
+    return document.visibilityState === 'visible' && typeof document.hasFocus === 'function' && document.hasFocus()
+  }
+  function announceWaiting(rows, prefs) {
     const ids = new Set(rows.map((s) => s.session_id))
-    const prefs = (view && view.preferences) || {}
-    if (announced && prefs.notify_board && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    if (announced && !readerIsWatching() && prefs && prefs.notify_board && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       for (const s of rows) {
         if (announced.has(s.session_id)) continue
         const note = rankedNotes(s)[0]
@@ -2385,19 +2512,34 @@
     { key: '?', what: 'open and close this map' },
     { key: 'Escape', what: 'close this map, cancel a confirm row, or close an expansion' },
   ]
-  let ringAt = -1
+  // The ring is a TERMINAL, not a position. The grid re-sorts on every SSE push
+  // and on the 15 second timer (needs-you rows first), so an index left the
+  // ring painted on whichever row slid into that slot while the reader was
+  // looking at their terminal, and the next key ended a session they never
+  // chose. `data-session-id` is on every .term, and DOM focus is already
+  // carried by identity through data-focus-key, so this makes the two agree.
+  let ringId = null
   let keymapOpen = false
   function termRows() { return [...document.querySelectorAll('#session-grid .term')] }
+  function ringIndex(list) {
+    if (!ringId) return -1
+    return (list || termRows()).findIndex((r) => r.getAttribute('data-session-id') === ringId)
+  }
   function paintRing(list) {
     const rows = list || termRows()
-    rows.forEach((r, i) => r.classList.toggle('is-focused', i === ringAt))
+    const at = ringIndex(rows)
+    // a terminal that ended and moved to the ledger takes its ring with it,
+    // rather than leaving it to be inherited by the row that took its place
+    if (ringId && at < 0) ringId = null
+    rows.forEach((r, i) => r.classList.toggle('is-focused', i === at))
   }
   // the ring moves focus to the row's first button, so a screen reader
   // announces the row it landed on rather than leaving the reader nowhere
   function moveRing(to) {
     const rows = termRows()
     if (!rows.length) return
-    ringAt = Math.max(0, Math.min(rows.length - 1, to))
+    const ringAt = Math.max(0, Math.min(rows.length - 1, to))
+    ringId = rows[ringAt].getAttribute('data-session-id')
     paintRing(rows)
     // the prompt button first: it is the row's first control and its label is
     // the prompt, so a screen reader announces WHICH terminal the ring landed
@@ -2408,9 +2550,14 @@
   }
   function pressOnRing(focusKey) {
     const rows = termRows()
-    const row = rows[ringAt] || rows[0]
-    if (!row) return
-    const btn = row.querySelector(`[data-focus-key^="${focusKey}:"]`)
+    if (!rows.length) return
+    const at = ringIndex(rows)
+    // With no ring there is nothing painted, so a key that acted would act on
+    // whichever row the needs-you sort put first, with no way for the reader to
+    // see which one that was before the POST went out. The first press only
+    // moves and paints the ring; the second acts.
+    if (at < 0) { moveRing(0); return }
+    const btn = rows[at].querySelector(`[data-focus-key^="${focusKey}:"]`)
     if (btn && !btn.disabled) btn.click()
   }
   function renderKeymap() {
@@ -2440,11 +2587,23 @@
     const tag = t && t.tagName ? String(t.tagName).toLowerCase() : ''
     return tag === 'input' || tag === 'select' || tag === 'textarea' || Boolean(t && t.isContentEditable)
   }
+  // A <dialog> opened with showModal() still sends its keydowns to document, so
+  // `h` typed at the New card dialog reached a row the reader cannot see, and a
+  // confirm row is a question that has not been answered yet. Both own the page
+  // while they are up. Escape has its own branch above this handler, so every
+  // one of them can still be dismissed.
+  function boardBusy() {
+    if (pendingConfirm) return true
+    try { return Boolean(document.querySelector('dialog[open]')) } catch { return false }
+  }
   function boardKey(e) {
     if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return
+    if (boardBusy()) return
     if (e.key === '?') { toggleKeymap(); e.preventDefault(); return }
-    if (e.key === 'j') { moveRing(ringAt + 1); e.preventDefault(); return }
-    if (e.key === 'k') { moveRing(ringAt - 1); e.preventDefault(); return }
+    // the map is a panel explaining these keys; reading it must not fire them
+    if (keymapOpen) return
+    if (e.key === 'j') { moveRing(ringIndex() + 1); e.preventDefault(); return }
+    if (e.key === 'k') { moveRing(ringIndex() - 1); e.preventDefault(); return }
     if (/^[1-9]$/.test(e.key)) { moveRing(Number(e.key) - 1); e.preventDefault(); return }
     const hit = KEY_BUTTONS.find((k) => k.key === e.key)
     if (hit) { pressOnRing(hit.focus); e.preventDefault() }
@@ -2525,7 +2684,7 @@
     // cannot disagree about who is waiting.
     const waiting = list.filter(urgent)
     titleBadge(waiting.length)
-    announceWaiting(waiting)
+    announceWaiting(waiting, (view && view.preferences) || {})
     terminalsMeta(live, notesOf)
     // computed over the rows that are actually drawn: a sentence shared only by
     // terminals collapsed into the ledger is not on screen to be deduped
@@ -2548,8 +2707,9 @@
     // the control they were on, at the offset they had scrolled to
     if (region && parked) putScroll(region, parked)
     putFocus(document, focus)
-    // the rows are new elements: the ring is a class, so it is repainted from
-    // the index the reader left it on rather than stealing focus again
+    // the rows are new elements: the ring is a class, so it is repainted onto
+    // the terminal the reader left it on rather than stealing focus again. This
+    // list was just re-sorted, so painting by position would move it.
     paintRing()
   }
 
@@ -2654,6 +2814,15 @@
       verdictLines, VERDICT_CH, SUB_CH, WARN_PCT, bindingOf, capFigure, capToken, shareClause, headline,
       rankedNotes, needsYou, registerTokens, capacityPhrase, capacityNote, waitingNote, notifyWait, resetWait,
       KEY_BUTTONS, KEY_MOVES,
+      // D14: the ring is state, not a pure function, so test/board-keyboard
+      // drives it through the same keydown listener a reader presses and reads
+      // the paint back through these two. getToken is here because a board in a
+      // browser with storage blocked has to render, and that cannot be asserted
+      // from the source text.
+      paintRing, ringSession: () => ringId, getToken, announceWaiting, readerIsWatching,
+      // B.6: the pick that survives the poll, the rule box and the refusal the
+      // Add button prints are all pure and are asserted without a DOM
+      pickKey, pickIndex, whenFromBox, whenFlag, duplicateRung,
       // B.6: the picker's option text, the ladder's round trip and the climb
       // predicate are pure, so they are asserted without a DOM
       handoffOptionText, rungLabel, costWord, whenKind, whenPct, whenString, moveRung, rungsAfter,

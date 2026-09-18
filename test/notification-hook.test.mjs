@@ -130,6 +130,19 @@ test('terminalSequenceFor: OSC 9 for the three waiting types, gated on notify_te
   const dirty = claudeTap.terminalSequenceFor({ hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'a\x07b\x1b]0;evil\x07' }, { preferences: prefs })
   assert.equal(dirty.slice(4, -1).includes('\x1b'), false)
   assert.equal(dirty.slice(4, -1).includes('\x07'), false)
+  // the C1 controls do the same job as ESC and BEL on a terminal that decodes
+  // them from UTF-8: U+009C (ST) closes the sequence Leg is building and U+009D
+  // (OSC) opens whatever follows it
+  const c1 = claudeTap.terminalSequenceFor({ hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'hiP;e;s;whoami tail' }, { preferences: prefs })
+  const payload = c1.slice(4, -1)
+  for (const cp of [...payload].map((c) => c.codePointAt(0))) {
+    assert.equal(cp >= 0x80 && cp <= 0x9f, false, `a C1 control (U+${cp.toString(16)}) rode into the OSC 9 payload`)
+    assert.equal(cp < 0x20 || cp === 0x7f, false, 'a C0 control rode into the OSC 9 payload')
+  }
+  assert.equal(payload, 'hi  P;e;s;whoami  tail'.trim(), 'each control byte becomes a space, so the text is still readable')
+  // and the payload is capped, whatever the agent quoted into the message
+  const long = claudeTap.terminalSequenceFor({ hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'x'.repeat(4000) }, { preferences: prefs })
+  assert.equal(long.slice(4, -1).length, 160, 'the OSC 9 payload is capped at 160 characters')
 })
 
 test('preferences: notify_terminal and notify_board persist', () => {

@@ -359,3 +359,25 @@ test('every key the board handles is named in the map it opens', () => {
   // a key pressed into a field is text, not a command
   assert.ok(SESSIONS_SRC.includes("tag === 'input' || tag === 'select' || tag === 'textarea'"), 'the handler must stand down while a field has focus')
 })
+
+// A dialog's accessible name replaces its contents for a screen reader, so an
+// aria-label that does not match the heading on screen gives two names to one
+// thing: the voice-control user says the visible one and finds no control.
+test('every dialog is announced by the heading it shows', () => {
+  const dialogs = [...INDEX_HTML.matchAll(/<dialog\b([^>]*)>([\s\S]*?)<\/dialog>/g)]
+  assert.ok(dialogs.length, 'index.html has at least one dialog')
+  for (const [, attrs, body] of dialogs) {
+    const id = /\bid="([^"]+)"/.exec(attrs)?.[1] || '(no id)'
+    const heading = /<h2[^>]*class="dialog-title"[^>]*>([^<]+)<\/h2>/.exec(body)?.[1]?.trim()
+    assert.ok(heading, `${id} has no visible .dialog-title heading`)
+    const labelledBy = /\baria-labelledby="([^"]+)"/.exec(attrs)?.[1]
+    const label = /\baria-label="([^"]+)"/.exec(attrs)?.[1]
+    if (labelledBy) {
+      const target = new RegExp(`id="${labelledBy}"[^>]*>([^<]+)<`).exec(body)?.[1]?.trim()
+      assert.equal(target, heading, `${id}: aria-labelledby points at something other than its heading`)
+      assert.equal(label, undefined, `${id}: an aria-label beside aria-labelledby is a second name`)
+    } else {
+      assert.equal(label, heading, `${id}: the announced name and the heading on screen say different things`)
+    }
+  }
+})

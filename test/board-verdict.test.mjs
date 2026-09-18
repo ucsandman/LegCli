@@ -547,10 +547,13 @@ test('the ladder editor round trips every rule a rung can carry', () => {
     assert.equal(B.whenString(B.whenKind(when), B.whenPct(when)), when, `${when} survives the round trip`)
   }
   // the number input is clamped where the server clamps it, so a save is never
-  // refused for a number the editor itself produced
-  assert.equal(B.whenString('below', 0), 'below:1')
-  assert.equal(B.whenString('below', 140), 'below:99')
-  assert.equal(B.whenString('below', 'nonsense'), 'below:1')
+  // refused for a number the editor itself produced. WHEN_RE in
+  // src/preferences.mjs is `below:(100|[0-9]{1,2})`, so that range is 0 to 100:
+  // clamping to 1 and 99 instead rewrote two values the record can legally hold
+  // and made a stored `below:100` silently become `below:99`.
+  assert.equal(B.whenString('below', 0), 'below:0')
+  assert.equal(B.whenString('below', 140), 'below:100')
+  assert.equal(B.whenString('below', 'nonsense'), 'below:0')
   assert.equal(B.whenKind(undefined), 'always', 'a rung with no rule is taken always')
   assert.equal(B.costWord('credits'), 'spends usage credits')
   assert.equal(B.costWord('free'), 'free')
@@ -625,4 +628,91 @@ test('the account-scoped verdict names the rung a hand-off would actually take',
   assert.equal(B.verdictLines(accounts, withNext).sub, 'Switching to fable buys nothing. Next off claude: codex.')
   const named = [session({ eligible_next: { agent: 'claude', account: 'work', model: 'haiku' } })]
   assert.equal(B.verdictLines(accounts, named).sub, 'Switching to fable buys nothing. Next off claude: claude/work / haiku.')
+})
+
+// ---- an ended terminal is not waiting on anybody (finding 27) -------------
+test('an ended or lost terminal never says "waiting on you"', () => {
+  const asked = { type: 'permission_prompt', message: 'Bash(rm -rf build)', since: iso(90 * 60_000) }
+  for (const dead of [{ active: false, status: 'ended', ended_at: iso(60_000) }, { active: false, status: 'lost', ended_at: iso(60_000) }]) {
+    const s = session({ ...dead, waiting: asked })
+    assert.equal(B.notifyWait(s), null, `${dead.status}: nothing clears \`waiting\` on the way out, so the board must not read it as a live question`)
+    const notes = B.rankedNotes(s)
+    assert.equal(notes.some((n) => n.cat === 'waiting on you'), false, `${dead.status}: no rank 3 note`)
+    assert.equal(B.needsYou(s, notes), false, `${dead.status}: it does not count in the region head, the badge or the sort`)
+  }
+  // and the live row it was copied from still does
+  const live = session({ waiting: asked })
+  assert.equal(B.needsYou(live, B.rankedNotes(live)), true)
+})
+
+// ---- the `below N%` box (finding 29) --------------------------------------
+test('the below box shows what is stored and an empty box means always', () => {
+  // the server's own range is 0 to 100 (WHEN_RE in src/preferences.mjs), so a
+  // stored value inside it round trips instead of being rewritten on sight
+  for (const when of ['below:0', 'below:100', 'below:50']) {
+    assert.equal(B.whenString('below', B.whenPct(when)), when, `${when} survives the round trip`)
+  }
+  assert.equal(B.whenPct('below:0'), 0, 'a zero is a reading, not a missing number')
+  assert.equal(B.whenPct('below:100'), 100)
+  assert.equal(B.whenPct('below:'), 50, 'no number at all is the only case that takes the default')
+  // an empty box is not a percentage: the rung goes back to always
+  assert.equal(B.whenFromBox(''), 'always')
+  assert.equal(B.whenFromBox('   '), 'always')
+  assert.equal(B.whenFromBox('80'), 'below:80')
+  // a stored number the editor cannot offer carries its consequence
+  assert.equal(B.whenFlag('below:0'), 'below 0% is never true: this rung is never taken')
+  assert.equal(B.whenFlag('below:100'), 'below 100% is always true: this rung is taken like always')
+  assert.equal(B.whenFlag('below:80'), null)
+})
+
+// ---- + Add a rung on a duplicate (finding 28) -----------------------------
+test('+ Add a rung on a rung that is already there says which one it is', () => {
+  const ladder = [
+    { agent: 'claude', account: 'default', model: 'fable' },
+    { agent: 'claude', account: 'default', model: 'opus' },
+    { agent: 'codex', account: 'default', model: null },
+  ]
+  assert.equal(B.duplicateRung(ladder, { agent: 'claude', account: 'default', model: 'opus' }), 'claude / opus is already rung 2.')
+  assert.equal(B.duplicateRung(ladder, { agent: 'codex', account: 'default', model: null }), 'codex is already rung 3.')
+  assert.equal(B.duplicateRung(ladder, { agent: 'claude', account: 'default', model: 'haiku' }), null, 'a new rung is added with no sentence')
+})
+
+// ---- the picker's pick survives the 3-second poll (finding 10) ------------
+test('a chosen destination is held by its rung, not by its index', () => {
+  const t = (agent, model) => ({ agent, account: 'default', model })
+  const targets = [t('claude', 'opus'), t('claude', 'sonnet'), t('codex', null)]
+  const key = B.pickKey(targets[1])
+  assert.equal(B.pickIndex(targets, key), '1')
+  // the poll rebuilds the select from a payload whose rows have moved: the same
+  // destination, at a different index
+  assert.equal(B.pickIndex([t('codex', null), t('claude', 'sonnet')], key), '1')
+  assert.equal(B.pickIndex([t('claude', 'sonnet'), t('codex', null)], key), '0')
+  // a destination that is no longer offered falls back to "the next option in
+  // the order", which is what an empty value means
+  assert.equal(B.pickIndex([t('codex', null)], key), '')
+  assert.equal(B.pickIndex(targets, null), '')
+  assert.match(SRC, /drawer\.pick/, 'the pick lives beside drawer.turnCap, which already survives a rebuild')
+})
+
+// ---- C.5: a card waiting on a human reaches the verdict -------------------
+test('the verdict names a card that is waiting on a human', () => {
+  const accounts = [acct({ live: 1, buckets: [bucket('weekly_scoped', 63, { model: 'fable', is_active: true })] })]
+  const live = [session()]
+  const cards = { count: 1, first: { id: 'card-20260917-2347-review-3e1c', title: 'add the audit csv export', station: 'review', since: iso(12 * 60_000) } }
+  const v = B.verdictLines(accounts, live, cards)
+  assert.equal(v.line, 'card 3e1c has waited on you for 12 minutes.')
+  assert.equal(v.sub, 'It is at the review station. Approve or Reassign on its row.')
+  // a blocked TERMINAL still outranks a blocked card: it is the thing in front
+  // of the reader
+  const blocked = [session({ waiting: { type: 'permission_prompt', message: 'Bash(git push origin HEAD)', since: iso(3 * 60_000) } })]
+  assert.match(B.verdictLines(accounts, blocked, cards).line, /has waited on you for 3 minutes\.$/)
+  assert.doesNotMatch(B.verdictLines(accounts, blocked, cards).line, /^card /)
+  // the old numeric shape and no shape at all are both read without throwing,
+  // and neither invents a card sentence
+  assert.doesNotMatch(B.verdictLines(accounts, live, 1).line, /^card /)
+  assert.doesNotMatch(B.verdictLines(accounts, live).line, /^card /)
+  assert.doesNotMatch(B.verdictLines(accounts, live, { count: 0 }).line, /^card /)
+  // and the headline stays inside its measured budget
+  assert.ok(v.line.length <= B.VERDICT_CH, `${v.line.length} > ${B.VERDICT_CH}`)
+  assert.ok(v.sub.length <= B.SUB_CH)
 })

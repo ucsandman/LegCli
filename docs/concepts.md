@@ -102,9 +102,17 @@ is_active, severity}`, from Claude's `limits[]`), and `binding(u, model)` picks
 the row that will actually stop a terminal. `walls` is attributed from wording
 rather than measured: `bucketFromWall()` in `src/buckets.mjs` reads the wall
 message, and a model-scoped wall goes to `walls[model]` while the login stays
-open, so a Fable wall never stops `claude/sonnet`. `history` is a ring of at
-most 24 percentage samples per bucket, started again whenever that window
-resets. `extra_usage` is the credits sentence, and `facts` holds strings the
+open, so a Fable wall never stops `claude/sonnet`; a model wall with no clock of
+its own is dated from that model's bucket, else from the weekly window, because
+a per-model limit is a weekly fact and the five-hour clock would hand the model
+back within the hour. `history` is a ring per bucket, capped by the clock first
+and by 24 samples second: at most one sample a minute, none older than the
+window it was measured in, and started again whenever that window resets (each
+sample carries its own `resets_at`, so a bucket that is missing from one reading
+cannot carry its old samples into the next window). Capping by count alone made
+the forecast vanish from any login with three terminals on it, because three
+pollers fill the ring three times as fast. `extra_usage` is the credits
+sentence, and `facts` holds strings the
 agent measured itself (codex's `plan_type` and `credits_balance`). An older Leg
 reading this file ignores all five, and an agent that publishes no buckets
 leaves them empty.
@@ -116,8 +124,11 @@ Where each number comes from is per agent, and is in
   highest percentage across the known windows is the pressure; the hottest
   window names the warning.
 - **Wall.** `markLimited()` records `limited_until` from the reset time the CLI
-  itself reported. With no reset time it uses the soonest known window reset,
-  and with neither it assumes five hours.
+  itself reported. With no reset time, an account wall takes the window that
+  actually walled (the highest used percentage, so a weekly wall is not
+  recorded as the five-hour window's near reset) and a model wall takes that
+  model's own bucket, else the weekly window. With neither it assumes five
+  hours.
 - **Clearing.** A usage reading that arrives after `limited_until` has passed
   clears the wall.
 
@@ -135,7 +146,12 @@ every time the ladder is saved, so a reader that has never heard of rungs sees
 the same order it always did.
 
 When a session hits its limit, or you press **Hand off now**, Leg does four
-things in order (`src/attach.mjs`, `src/bundle.mjs`):
+things in order (`src/attach.mjs`, `src/bundle.mjs`). Which of the two it was
+decides the gates below: a hand-off nobody asked for (the usage limit, and a
+card the scheduler is driving) is **automatic** and keeps the `reserve` and the
+`climb_back` policy; pressing **Hand off now** is a human pick and is not held
+back by either, with or without a named destination, because the default option
+in that picker ("the next option in the order") is still a press of the button.
 
 1. **Bundle.** `sessionNotes()` writes the six sections
    `context-handoff-bundle` parses (Scope, Projects mentioned, Findings,
@@ -165,8 +181,10 @@ things in order (`src/attach.mjs`, `src/bundle.mjs`):
    floor; and its `when` is satisfied (`always`; `below:N`, which needs the
    rung's own bucket to read under N percent and is skipped with a reason when
    there is no reading, because a threshold on a login with no figure is a
-   wrong number in disguise; `walled-only`, which only opens once every rung
-   above it is walled). Every rung the walk passes before the one it picks is
+   wrong number in disguise; `walled-only`, which only opens once no rung above
+   it could take the hand-off anyway: walled, at 100 percent, not installed on
+   this machine, or refused for this hand-off, but not merely slow and not
+   merely dearer than `may_spend` allows). Every rung the walk passes before the one it picks is
    named in the session's ledger with its reason, one line each, for example
    `skipped claude/fable: it spends usage credits and you have not allowed
    that`; a rung is never passed over silently. The board can save a new
@@ -551,7 +569,9 @@ status (`backlog`, `queued`, `running`, `handing_off`, `waiting_human`,
 `needs_approval`, `paused`) straight to `killed`, and `rerun` moves any
 terminal status (`done`, `failed`, `killed`) back to `queued` (station 0,
 leg 0). `reassign` also applies to any non-terminal status when the current
-station is an agent station, staying in `queued`.
+station is an agent station, staying in `queued`, and `take_over` moves any
+non-terminal status to `paused` (a human is taking the card's checkout, so the
+scheduler must not start a leg in it).
 
 ```mermaid
 stateDiagram-v2

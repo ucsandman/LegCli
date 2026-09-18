@@ -21,14 +21,23 @@ import { join } from 'node:path'
 import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { AGENTS } from './sessions.mjs'
-import { rungCost } from './preferences.mjs'
+import { ACCOUNT_NAME_RE } from './accounts.mjs'
+import { rungCost, staticCost } from './preferences.mjs'
 
 export const WARN_PCT = Number((process.env.LEG_WARN_PCT || process.env.BATON_WARN_PCT) || 85)
 // A limit hit with no reset time from the agent: assume the 5-hour window.
 const DEFAULT_LIMIT_S = 5 * 3600
 
 export function usageDir() { return join(home(), 'usage') }
-export function usageFile(agent, account = 'default') { return join(usageDir(), `${agent}--${account}.json`) }
+// The file name is built from two names, so both are names: `claude--<account>`
+// with `../../..` in it resolves to a fully chosen path with a .json suffix,
+// written by every recordUsage and markLimited call. A rung's account is
+// validated where it is saved (src/preferences.mjs); this is the second latch.
+export function usageFile(agent, account = 'default') {
+  if (!ACCOUNT_NAME_RE.test(String(agent ?? ''))) throw new TypeError(`invalid agent name "${agent}"`)
+  if (!ACCOUNT_NAME_RE.test(String(account ?? ''))) throw new TypeError(`invalid account name "${account}"`)
+  return join(usageDir(), `${agent}--${account}.json`)
+}
 
 export function readUsage(agent, account = 'default') {
   const f = usageFile(agent, account)
@@ -90,8 +99,20 @@ export function recordUsage(agent, account, windows, source, { observed_at = new
     if (windows.seven_day !== undefined) u.seven_day = windows.seven_day
     if (Array.isArray(windows.buckets)) {
       const atS = Number.isFinite(seenMs) ? Math.floor(seenMs / 1000) : Math.floor(Date.now() / 1000)
-      u.history = recordHistory(u.history ?? {}, u.buckets ?? [], windows.buckets, atS)
-      u.buckets = windows.buckets
+      if (windows.buckets.length) {
+        u.history = recordHistory(u.history ?? {}, u.buckets ?? [], windows.buckets, atS)
+        u.buckets = windows.buckets
+      } else {
+        // An empty list is no information, not "this login has no buckets": an
+        // older endpoint answers the two windows and no `limits` key at all
+        // (src/taps/claude-usage.mjs), and erasing the measured buckets on it
+        // loses the wall clock, the ring and the binding bucket in one write.
+        // The one thing an empty reading does settle is a window that has run
+        // out: a bucket whose reset has passed is dropped rather than kept.
+        const kept = (u.buckets ?? []).filter((b) => !(Number.isFinite(b?.resets_at) && b.resets_at <= atS))
+        for (const b of u.buckets ?? []) if (!kept.includes(b)) delete u.history?.[bucketKey(b)]
+        u.buckets = kept
+      }
     }
     if (windows.extra_usage !== undefined) u.extra_usage = windows.extra_usage
     if (windows.facts && typeof windows.facts === 'object') {
@@ -126,10 +147,17 @@ export function recordUsage(agent, account, windows, source, { observed_at = new
   return { ...value, usage_applied: applied }
 }
 
-// One ring per bucket, max HISTORY_MAX, a new entry when the percentage moved
-// OR when HISTORY_FLAT_S has passed since the last sample. A window that has
-// reset starts its ring again: a rate computed across a reset is a wrong
-// number, and a wrong number is worse than none.
+// One ring per bucket, capped by TIME first and by HISTORY_MAX second: a new
+// entry at most once per HISTORY_MIN_GAP_S, and never one older than the
+// window it was measured in. A window that has reset starts its ring again: a
+// rate computed across a reset is a wrong number, and a wrong number is worse
+// than none.
+//
+// Why time and not writes: every attached terminal runs its own poller against
+// the same per-login record, so three terminals write three times as often. A
+// ring capped only by count then spans a third of the wall clock, falls under
+// the 10-minute burn gate, and the forecast disappears from exactly the login
+// the board's headline is about.
 //
 // The "only when it changed" rule is about NOISE (a status line writing the
 // same 63 every second fills a 24-entry ring in half a minute), not about
@@ -137,6 +165,14 @@ export function recordUsage(agent, account, windows, source, { observed_at = new
 // zero rate, and a ring that refuses to record it can never say so. One sample
 // per ten minutes while the figure holds keeps both facts.
 export const HISTORY_FLAT_S = 10 * 60
+export const HISTORY_MIN_GAP_S = 60
+// How long a bucket's own window runs, which is how far back its ring may
+// reach. Weekly buckets run seven days; a session (5-hour) window runs five.
+const WEEK_S = 7 * 24 * 3600
+function windowLength(b) {
+  if (b?.group === 'weekly' || String(b?.kind ?? '').startsWith('weekly')) return WEEK_S
+  return DEFAULT_LIMIT_S
+}
 function recordHistory(history, oldBuckets, newBuckets, atS) {
   const out = { ...history }
   const before = new Map((oldBuckets ?? []).map((b) => [bucketKey(b), b]))
@@ -144,12 +180,24 @@ function recordHistory(history, oldBuckets, newBuckets, atS) {
     if (!Number.isFinite(b?.percent)) continue
     const key = bucketKey(b)
     const prev = before.get(key)
-    if (prev && prev.resets_at !== b.resets_at) out[key] = []
-    else if (prev && prev.percent === b.percent) {
-      const last = (out[key] ?? []).at(-1)
-      if (last && Number.isFinite(last.at) && atS - last.at < HISTORY_FLAT_S) continue
+    const resets = b.resets_at ?? null
+    let ring = out[key] ?? []
+    // The window a ring belongs to is remembered ON the ring, not derived from
+    // the previous write: a bucket that was missing from one reading has no
+    // `prev`, and deriving it there carried the old window's samples into the
+    // new one and printed a forecast twice as long as the truth.
+    const lastWindow = ring.length ? ring[ring.length - 1].resets_at : undefined
+    const moved = lastWindow !== undefined ? lastWindow !== resets : Boolean(prev && prev.resets_at !== resets)
+    if (moved) ring = []
+    const last = ring.at(-1)
+    if (last && Number.isFinite(last.at)) {
+      const held = last.percent === b.percent
+      if (atS - last.at < (held ? HISTORY_FLAT_S : HISTORY_MIN_GAP_S)) { out[key] = ring; continue }
     }
-    out[key] = [...(out[key] ?? []), { percent: b.percent, at: atS }].slice(-HISTORY_MAX)
+    const maxAge = windowLength(b)
+    out[key] = [...ring, { percent: b.percent, at: atS, resets_at: resets }]
+      .filter((e) => Number.isFinite(e.at) && atS - e.at <= maxAge)
+      .slice(-HISTORY_MAX)
   }
   return out
 }
@@ -171,7 +219,12 @@ function recordHistory(history, oldBuckets, newBuckets, atS) {
 export const BURN_MIN_SAMPLES = 3
 export const BURN_MIN_SPAN_S = 10 * 60
 export function burn(u, key, nowS = Math.floor(Date.now() / 1000)) {
-  const ring = (Array.isArray(u?.history?.[key]) ? u.history[key] : []).filter((e) => e && Number.isFinite(e.percent) && Number.isFinite(e.at))
+  const bucket = (Array.isArray(u?.buckets) ? u.buckets : []).find((x) => x && bucketKey(x) === key)
+  const ring = (Array.isArray(u?.history?.[key]) ? u.history[key] : [])
+    .filter((e) => e && Number.isFinite(e.percent) && Number.isFinite(e.at))
+    // a sample that names a different window than the bucket now standing is
+    // not part of this rate, whoever wrote it (an older record names none)
+    .filter((e) => e.resets_at === undefined || !bucket || e.resets_at === (bucket.resets_at ?? null))
   if (ring.length < BURN_MIN_SAMPLES) return null
   const first = ring[0]
   const last = ring[ring.length - 1]
@@ -182,8 +235,7 @@ export function burn(u, key, nowS = Math.floor(Date.now() / 1000)) {
   // inside one window is a data error, not a refund, and a negative rate would
   // print a time running backwards.
   if (!(rate > 0)) return null
-  const b = (Array.isArray(u?.buckets) ? u.buckets : []).find((x) => x && bucketKey(x) === key)
-  const resets = Number.isFinite(b?.resets_at) ? b.resets_at : null
+  const resets = Number.isFinite(bucket?.resets_at) ? bucket.resets_at : null
   // Never extrapolate across a reset. Past `resets_at` the percentage belongs
   // to a window this rate says nothing about, so the time is capped there; a
   // reset already behind us means the ring is waiting to be cleared by the next
@@ -218,7 +270,11 @@ export function binding(u, model = null, nowS = Math.floor(Date.now() / 1000)) {
   const buckets = Array.isArray(u?.buckets) ? u.buckets.filter((b) => b && Number.isFinite(b.percent)) : []
   const pick = (list) => (list.length ? [...list].sort((a, b) => b.percent - a.percent)[0] : null)
   const want = model ? String(model).toLowerCase() : null
-  const b = pick(buckets.filter((x) => x.is_active))
+  // The active row answers for the model that was asked about, never for
+  // another one: a fable row at 100% is not the sonnet rung's percentage, and
+  // judging sonnet by it skips the whole downshift ladder (B.5). An
+  // account-scoped active row carries no model, so it still wins for every one.
+  const b = pick(buckets.filter((x) => x.is_active && (!want || !x.model || x.model === want)))
     ?? (want ? pick(buckets.filter((x) => x.model === want)) : null)
     ?? pick(buckets.filter((x) => x.kind === 'weekly_all'))
     ?? pick(buckets.filter((x) => x.kind === 'session'))
@@ -276,9 +332,17 @@ function markModelLimited(agent, account, { resets_at, reason, source, observed_
       if (own) until = own.resets_at
     }
     if (!until) {
-      const windows = [u.five_hour, u.seven_day].filter((w) => w && Number.isFinite(w.resets_at) && w.resets_at > nowS)
-      windows.sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
-      until = windows.length ? windows[0].resets_at : nowS + DEFAULT_LIMIT_S
+      // No bucket of its own: date it from the WEEKLY window, not the hottest
+      // one. Every wording that reaches here is a per-model limit, and a
+      // per-model limit is a weekly bucket (B.1, docs/en/costs). The account
+      // path's highest-used heuristic inverts for a model: the 5-hour window
+      // churns past 80% several times a day, so it would hand fable back in
+      // twelve minutes and re-wall it every few minutes for the rest of the week.
+      const weekly = (u.buckets ?? []).find((b) => String(b?.kind ?? '').startsWith('weekly') && Number.isFinite(b.resets_at) && b.resets_at > nowS)
+      if (u.seven_day && Number.isFinite(u.seven_day.resets_at) && u.seven_day.resets_at > nowS) until = u.seven_day.resets_at
+      else if (weekly) until = weekly.resets_at
+      else if (u.five_hour && Number.isFinite(u.five_hour.resets_at) && u.five_hour.resets_at > nowS) until = u.five_hour.resets_at
+      else until = nowS + DEFAULT_LIMIT_S
     }
     u.walls = { ...(u.walls ?? {}) }
     u.walls[model] = {
@@ -352,7 +416,7 @@ export function candidates({ agent, account = 'default', accounts, order = AGENT
     // which. This is also what the agent order did before rungs existed.
     if (r.agent === from.agent && r.account === from.account && (!r.model || r.model === from.model)) return
     seen.add(key)
-    out.push({ agent: r.agent, account: r.account, ...(r.model ? { model: r.model } : {}), when: r.when ?? 'always', cost: r.cost ?? 'plan' })
+    out.push({ agent: r.agent, account: r.account, ...(r.model ? { model: r.model } : {}), when: r.when ?? 'always', cost: r.cost ?? staticCost(r.agent) })
   }
   for (const a of accounts[agent] ?? ['default']) if (a !== account) push({ agent, account: a, model: null })
   for (const r of ladder) {
@@ -393,9 +457,21 @@ export function evaluateLadder({
     if (!usageOf.has(key)) usageOf.set(key, read(r.agent, r.account))
     return usageOf.get(key)
   }
+  // What `walled-only` means by "walled": a rung above that could not take this
+  // hand-off in the next minute either way. The account wall and the model wall
+  // are the walls themselves; a bucket at 100% is at its limit with or without
+  // a recorded wall; and a rung that is not installed on this machine, or that
+  // the strict harness policy refused for this hand-off, is not an open rung
+  // above by any reading. The cost gate is deliberately NOT in this list: a
+  // rung the human could take by allowing spending is a rung that is open.
   const walled = list.map((r) => {
     const u = usage(r)
-    return !isAvailable(u, nowS) || Boolean(r.model && wallActive(u.walls?.[r.model], nowS))
+    if (!isAvailable(u, nowS)) return true
+    if (r.model && wallActive(u.walls?.[r.model], nowS)) return true
+    if (installed && installed[r.agent] === false) return true
+    if (exclude.some((x) => x.agent === r.agent && x.account === r.account)) return true
+    const b = binding(u, r.model ?? null, nowS)
+    return Boolean(b && Number.isFinite(b.percent) && b.percent >= 100)
   })
   const rank = (r) => (ladder ?? []).findIndex((x) => x.agent === r.agent && x.account === r.account && (x.model ?? null) === (r.model ?? null))
   const fromRank = from ? rank(from) : -1
@@ -467,6 +543,10 @@ export function chooseNext({
     // instead of a terminal turning up somewhere unexplained.
     const reasons = []
     const list = candidates({ agent, account, accounts, order, ladder, model })
+    // Only a caller that says nothing at all falls back to the old inference.
+    // "No destination named" is NOT "nobody asked": the plain Hand off now
+    // button sends no target, and reading that as automatic applied the reserve
+    // and the cost gate to a hand-off a human had just pressed (B.3).
     const auto = automatic === null ? !prefer : automatic
     const rows = evaluateLadder({ from: { agent, account, model: model ?? null }, list, installed, nowS, exclude, maySpend, reserve, automatic: auto, climbBack, ladder })
     const trim = (r) => ({ agent: r.agent, account: r.account, ...(r.model ? { model: r.model } : {}) })

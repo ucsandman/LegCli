@@ -583,6 +583,28 @@ it), and check whether a board was listening on 4747 at the time.
   cache keyed on a directory's mtime sees files added and removed, never a
   file rewritten in place.
 
+## The 0.12.0 redesign review confirmed 51 findings before the fix pass, 23 of them high (2026-09-18)
+
+- **What happened.** The eight-step redesign (per-model buckets, the ladder,
+  the capacity strip, cards reborn) was reviewed before commit by six finders
+  and three refuters per finding: 174 agents, 51 findings confirmed, 23 high.
+  The highs were all in code that had passed its own tests: `binding()`
+  short-circuited on the first active bucket instead of the one that stops
+  the requested model, `summarize()` parsed the ledger once per card per
+  refresh, the take-over route handed out a command for a card with no
+  checkout, `cardWorkRoot()` fell back to the main checkout, and the guest
+  payload leaked buckets, walls and hand-off reasons through the new fields.
+- **Fix.** Three parallel fix passes, one owner per file group, every finding
+  closed with a regression test in the same change; the suite went from 783
+  to 830 tests. The lockfile's root `repository` field, lost when Playwright
+  was installed, was restored so `scripts/npm-publish-gate.mjs` passes.
+- **The lesson that generalises.** A feature's own tests prove the feature's
+  own model of itself. The defects a review finds sit where two new pieces
+  meet (a new field and an old redaction list, a new route and an old helper),
+  and the review has to run on the uncommitted tree, before the commit exists
+  to be pushed by someone else. A `npm i` that regenerates the lockfile is a
+  release change and gets the publish gate run in the same turn.
+
 ## A seeded board's End-as-card button wrote into a real repo (2026-09-17)
 
 - **What happened.** Driving the new "End, and keep going as a card" verb in

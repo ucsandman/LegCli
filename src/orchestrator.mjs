@@ -295,8 +295,11 @@ async function driveCard(id, card, actor) {
   const wt = card.worktree_adopted && card.worktree && existsSync(card.worktree)
     ? { path: card.worktree, branch: null, created: false }
     : ensureWorktree(card.repo, card.card_id, { trunk: card.trunk || 'main' })
-  if (card.worktree !== wt.path) {
-    ledgerUpdate(id, { patch: { worktree: wt.path } })
+  // the branch that checkout is on is recorded with it: the board's row prints
+  // it, and for an adopted checkout it is the TERMINAL's branch, which no
+  // reader can derive from the card id (redesign C.3)
+  if (card.worktree !== wt.path || (wt.branch && card.worktree_branch !== wt.branch)) {
+    ledgerUpdate(id, { patch: { worktree: wt.path, ...(wt.branch ? { worktree_branch: wt.branch } : {}) } })
     card = readCard(id)
   }
   for (;;) {
@@ -355,7 +358,7 @@ export function humanAction(id, action, payload = {}, actor = { type: 'human', i
   if (!card) throw new Error(`card not found: ${id}`)
   const result = transition(card, action, payload)
   const next = apply(id, card, result, actor)
-  if (['kill', 'pause', 'reassign', 'handoff_now'].includes(action) && card.status === 'running') killActiveRun(id)
+  if (['kill', 'pause', 'reassign', 'handoff_now', 'take_over'].includes(action) && card.status === 'running') killActiveRun(id)
   return next
 }
 

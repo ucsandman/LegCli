@@ -21,7 +21,7 @@ process.env.BATON_RATE_MAX_FAILURES = '5000'
 const usage = await import('../src/usage.mjs')
 const sessions = await import('../src/sessions.mjs')
 const { createBoardServer } = await import('../src/server.mjs')
-const { claimHandoffChoice, spawnSpec } = await import('../src/attach.mjs')
+const { claimHandoffChoice, spawnSpec, pickedAside } = await import('../src/attach.mjs')
 const buckets = await import('../src/buckets.mjs')
 
 const ACCOUNTS = { claude: ['default'], codex: ['default'], agy: ['default'] }
@@ -516,6 +516,151 @@ test('End is unchanged by the picker and still needs no body', async () => {
     const f = join(sessions.sessionDir('s-pick-end'), 'control.json')
     assert.equal(JSON.parse(readFileSync(f, 'utf8')).end, true)
   } finally {
+    await server.stop()
+  }
+})
+
+// ---- what the ladder does when nothing is open (adversarial review, 2026-09-17) ----
+
+test('every model walled and every other login out reaches the all-out wait, and never respawns the walled model', () => {
+  const repo = initRepo('picker-all-walled-')
+  sessions.createSession({ id: 's-all-walled', agent: 'claude', cwd: repo, repo, owner: 'wes', handoffOrder: ORDER, installed: INSTALLED, model: 'fable' })
+  sessions.updateSession('s-all-walled', { status: 'running', handoff_ladder: LADDER })
+  const resets = nowS() + 3600
+  writeUsage('claude', 'default', {
+    walls: {
+      fable: { limited_until: resets + 10, limited_reason: 'model_limit' },
+      opus: { limited_until: resets + 20, limited_reason: 'model_limit' },
+      sonnet: { limited_until: resets + 30, limited_reason: 'model_limit' },
+    },
+  })
+  writeUsage('codex', 'default', { limited_until: resets + 1000, limited_reason: 'usage_limit_exceeded' })
+  writeUsage('agy', 'default', { limited_until: resets + 2000, limited_reason: 'rate_limit' })
+  try {
+    const claim = claimHandoffChoice({ sid: 's-all-walled', agent: 'claude', account: 'default', model: 'fable', installed: INSTALLED, reason: 'limit' })
+    assert.equal(claim.choice.next, null, 'a login whose every model is walled is not a destination for itself')
+    assert.equal(claim.claimed, false)
+    assert.ok(claim.choice.out.length >= 2, `the all-out wait keeps its reset clocks, got ${JSON.stringify(claim.choice.out)}`)
+    assert.ok(claim.choice.out.every((o) => Number.isFinite(o.resets_at)), 'every clock is a number the countdown can use')
+    assert.equal(sessions.readSession('s-all-walled').status, 'running', 'nothing was claimed, so the terminal is free to wait')
+  } finally { clearUsage() }
+})
+
+test('with the current model open and the ladder exhausted, the fallback keeps the login AND the model', () => {
+  const repo = initRepo('picker-fallback-model-')
+  sessions.createSession({ id: 's-fallback-model', agent: 'claude', cwd: repo, repo, owner: 'wes', handoffOrder: ORDER, installed: INSTALLED, model: 'fable' })
+  sessions.updateSession('s-fallback-model', {
+    status: 'running',
+    handoff_ladder: [
+      { agent: 'codex', account: 'default', model: null, when: 'always', cost: 'plan' },
+      { agent: 'agy', account: 'default', model: null, when: 'always', cost: 'free' },
+    ],
+  })
+  const resets = nowS() + 1800
+  writeUsage('codex', 'default', { limited_until: resets, limited_reason: 'usage_limit_exceeded' })
+  writeUsage('agy', 'default', { limited_until: resets + 60, limited_reason: 'rate_limit' })
+  try {
+    const claim = claimHandoffChoice({ sid: 's-fallback-model', agent: 'claude', account: 'default', model: 'fable', installed: INSTALLED, reason: 'limit' })
+    assert.deepEqual(claim.choice.next, { agent: 'claude', account: 'default', model: 'fable' }, 'the terminal keeps going on the model it was running, not on whatever the CLI defaults to')
+    assert.deepEqual(claim.choice.out.map((o) => o.agent), ['codex', 'agy'], 'and the clocks survive the fallback for the wait that may follow')
+  } finally { clearUsage() }
+})
+
+test('Hand off now with no destination is a human pick: the reserve notes it and does not refuse it', () => {
+  const repo = initRepo('picker-plain-handoff-')
+  sessions.createSession({ id: 's-plain-handoff', agent: 'codex', cwd: repo, repo, owner: 'wes', handoffOrder: ORDER, installed: INSTALLED })
+  sessions.updateSession('s-plain-handoff', { status: 'running', handoff_ladder: LADDER })
+  const resets = nowS() + 3600
+  writeUsage('claude', 'default', { buckets: [{ kind: 'weekly_all', group: 'weekly', model: null, percent: 95, resets_at: resets, is_active: true }] })
+  const preferences = { may_spend: false, reserve: { claude: 10 }, climb_back: 'next-handoff' }
+  try {
+    const human = claimHandoffChoice({ sid: 's-plain-handoff', agent: 'codex', account: 'default', installed: INSTALLED, reason: 'handoff', preferences })
+    assert.deepEqual(human.choice.next, { agent: 'claude', account: 'default', model: 'fable' }, 'a human pressed the button, so the floor is a note and not a refusal')
+    const auto = claimHandoffChoice({ sid: 's-plain-handoff', agent: 'codex', account: 'default', installed: INSTALLED, reason: 'limit', preferences })
+    assert.deepEqual(auto.choice.next, { agent: 'agy', account: 'default' }, 'an unattended hand-off still keeps the last 10% for Wes')
+  } finally { clearUsage() }
+})
+
+test('walled-only is not held back by a rung above that is uninstalled, excluded, or already at its limit', () => {
+  const accounts = { ...ACCOUNTS, grok: ['default'] }
+  const resets = nowS() + 1800
+  const ladder = [
+    { agent: 'claude', account: 'default', model: 'fable', when: 'always', cost: 'plan' },
+    { agent: 'codex', account: 'default', model: null, when: 'always', cost: 'plan' },
+    { agent: 'grok', account: 'default', model: null, when: 'walled-only', cost: 'metered' },
+  ]
+  try {
+    writeUsage('claude', 'default', { walls: { fable: { limited_until: resets, limited_reason: 'model_limit' } } })
+    // codex is not installed on this machine, so it is not a rung that could
+    // take this hand-off in the next minute: the last resort is reachable
+    const c = usage.chooseNext({ agent: 'agy', account: 'default', accounts, order: ORDER, ladder, installed: { claude: true, codex: false, agy: true, grok: true }, nowS: nowS(), maySpend: true })
+    assert.deepEqual(c.next, { agent: 'grok', account: 'default' })
+    // a rung the strict harness policy refused for this hand-off, the same way
+    const excluded = usage.chooseNext({ agent: 'agy', account: 'default', accounts, order: ORDER, ladder, installed: { claude: true, codex: true, agy: true, grok: true }, nowS: nowS(), maySpend: true, exclude: [{ agent: 'codex', account: 'default' }] })
+    assert.deepEqual(excluded.next, { agent: 'grok', account: 'default' })
+    // but a rung that is merely slow still holds it back
+    const slow = usage.evaluateLadder({ from: { agent: 'agy', account: 'default' }, list: ladder, ladder, installed: { claude: true, codex: true, agy: true, grok: true }, maySpend: true })
+    assert.equal(slow.find((r) => r.agent === 'grok').reason, 'only when every rung above it is walled')
+  } finally { clearUsage(); rmSync(join(HOME, 'usage', 'grok--default.json'), { force: true }) }
+
+  // a rung above at 100% of the window it shares with the terminal is at its
+  // limit, whether or not a wall was ever recorded for it
+  const atLimit = [
+    { agent: 'claude', account: 'default', model: 'opus', when: 'always', cost: 'plan' },
+    { agent: 'grok', account: 'default', model: null, when: 'walled-only', cost: 'metered' },
+  ]
+  writeUsage('claude', 'default', { buckets: [{ kind: 'weekly_all', group: 'weekly', model: null, percent: 100, resets_at: resets, is_active: true }] })
+  try {
+    const c = usage.chooseNext({ agent: 'claude', account: 'default', model: 'fable', accounts, order: ORDER, ladder: atLimit, installed: { claude: true, codex: true, agy: true, grok: true }, nowS: nowS(), maySpend: true })
+    assert.deepEqual(c.next, { agent: 'grok', account: 'default' }, 'the rung above buys nothing, so the last resort is what is left')
+  } finally { clearUsage(); rmSync(join(HOME, 'usage', 'grok--default.json'), { force: true }) }
+})
+
+test('a pick the ladder refused is reported with the ladder\'s own reason, never a limit it never had', () => {
+  writeUsage('claude', 'default', { extra_usage: { enabled: true, reason: null, can_toggle: true } })
+  const prefer = { agent: 'claude', account: 'default', model: 'fable' }
+  try {
+    const choice = walk({ agent: 'codex', account: 'default', maySpend: false, prefer })
+    assert.equal(choice.preferred_taken, false)
+    assert.deepEqual(choice.next, { agent: 'claude', account: 'default', model: 'opus' })
+    const aside = pickedAside({ prefer, next: choice.next, choice })
+    assert.equal(aside.why, 'it spends usage credits and you have not allowed that', 'the true reason is already in choice.reasons')
+    assert.equal(aside.asked, 'claude/fable', 'and both names carry their model')
+    assert.equal(aside.got, 'claude/opus')
+    // the strict harness policy still speaks for itself
+    assert.equal(pickedAside({ prefer, next: choice.next, choice, excluded: [{ agent: 'claude', account: 'default' }] }).why, 'the strict harness policy refused it')
+    // a rung the walk never reached at all falls back to the limit sentence
+    assert.match(pickedAside({ prefer: { agent: 'agy', account: 'default' }, next: choice.next, choice: { reasons: [] } }).why, /at its limit until/)
+  } finally { clearUsage() }
+})
+
+test('a rung the cost gate refuses is not offered as available on the board', async () => {
+  const prefs = await import('../src/preferences.mjs')
+  const repo = initRepo('picker-cost-gate-')
+  const resets = nowS() + 3600
+  // usage credits are on at the login, so claude/fable is a credits rung, and
+  // may_spend is off: the picker row the board reads must say so rather than
+  // offer a destination the chooser will decline (B.5's gate)
+  writeUsage('claude', 'default', {
+    extra_usage: { enabled: true, reason: null, can_toggle: true },
+    buckets: [{ kind: 'weekly_scoped', group: 'weekly', model: 'fable', percent: 20, resets_at: resets, is_active: true }],
+  })
+  prefs.writePreferences({ handoff_ladder: LADDER, may_spend: false, climb_back: 'next-handoff', reserve: {} })
+  sessions.createSession({ id: 's-cost-gate', agent: 'codex', cwd: repo, repo, owner: 'wes', handoffOrder: ORDER, installed: INSTALLED })
+  sessions.updateSession('s-cost-gate', { status: 'running', handoff_ladder: LADDER })
+  const server = createBoardServer({ bind: '127.0.0.1', port: 0, token: '', scheduler: false })
+  const { port } = await server.start()
+  try {
+    const view = await api(`http://127.0.0.1:${port}`, '/api/sessions')
+    const s = view.json.sessions.find((x) => x.session_id === 's-cost-gate')
+    const fable = s.handoff_targets.find((r) => r.agent === 'claude' && r.model === 'fable')
+    assert.equal(fable.cost, 'credits')
+    assert.equal(fable.available, false, 'the board reads `available`, so the cost gate has to be in it')
+    assert.equal(fable.reason, 'it spends usage credits and you have not allowed that')
+    assert.deepEqual(s.eligible_next, { agent: 'claude', account: 'default', model: 'opus' }, 'and the rung an automatic hand-off would take is the next one down')
+  } finally {
+    clearUsage()
+    prefs.writePreferences({ handoff_order: ORDER })
     await server.stop()
   }
 })

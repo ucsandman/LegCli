@@ -7,7 +7,7 @@
 import http from 'node:http'
 import https from 'node:https'
 import { spawnSync, execFile } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync, watch as fsWatch, mkdirSync, openSync, fstatSync, readSync, closeSync } from 'node:fs'
 import { join, dirname, resolve, extname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkBind, authorize, remoteAddress, presentedToken, isLoopback, isLoopbackRequest, tokenMatches } from './auth.mjs'
@@ -25,7 +25,7 @@ import { held } from './leases.mjs'
 import { PRESETS } from './presets.mjs'
 import { names as adapterNames, get as getAdapter, isFake } from './adapters/index.mjs'
 import { createScheduler, schedulerStatus, MAX_CONCURRENT } from './scheduler.mjs'
-import { remove as removeWorktree, worktreeDirty } from './worktree.mjs'
+import { ensure as ensureWorktree, remove as removeWorktree, worktreeDirty } from './worktree.mjs'
 import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
 import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY, SUPERVISED_AGENTS } from './sessions.mjs'
@@ -164,29 +164,106 @@ export function ladderFromCurrentRung(session) {
   return byAgent >= 0 ? ladder.slice(byAgent) : ladder
 }
 
-// How many cards are waiting on a human, for the terminals verdict to read
-// (redesign C.5). Cached for a beat: listCards() reads one file per card, and
-// this is computed on every sessions push.
-const CARDS_WAITING_TTL = 5000
-let cardsWaitingCache = { at: 0, n: 0 }
-function cardsWaiting() {
-  if (Date.now() - cardsWaitingCache.at < CARDS_WAITING_TTL) return cardsWaitingCache.n
-  let n = 0
-  try { for (const c of listCards()) if (['needs_approval', 'waiting_human'].includes(c.status)) n += 1 } catch { n = 0 }
-  cardsWaitingCache = { at: Date.now(), n }
-  return n
+// ---- carrying a checkout's uncommitted work into another one --------------
+// "End, and keep going as a card" on a lone terminal (the ordinary case: a
+// terminal only cuts a worktree of its own when a second live session shares
+// the checkout, src/attach.mjs isolate()) has to move the work the human was
+// looking at, not just the branch it sits on. Captured in two halves, because
+// git keeps them apart: a patch of everything it tracks, staged and unstaged
+// (`git diff HEAD --binary`), and the bytes of the files it does not
+// (`git ls-files --others`). The second half is the one `git stash create`
+// cannot carry, and it is where a terminal's newest file always is.
+const CARRY_SKIP = ['.git', '.leg-worktrees', '.baton-worktrees', '.context-handoffs', '.leg', '.baton', 'node_modules']
+const CARRY_MAX_BYTES = 8 * 1024 * 1024
+function gitIn(dir, args, opts = {}) {
+  const r = spawnSync('git', ['-C', dir, ...args], { windowsHide: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30000, env: { ...process.env, MSYS_NO_PATHCONV: '1' }, ...opts })
+  if (r.error) throw r.error
+  if (r.status !== 0) throw new Error(`git ${args[0]} failed: ${String(r.stderr ?? '').trim().slice(0, 200)}`)
+  return r.stdout
 }
 
-export function summarize(card) {
+export function captureUncommitted(dir) {
+  const status = gitIn(dir, ['status', '--porcelain'])
+  if (!status.trim()) return null
+  // --binary keeps a changed image or lockfile intact; the output is ASCII
+  const patch = gitIn(dir, ['diff', 'HEAD', '--binary'])
+  const files = []
+  for (const rel of gitIn(dir, ['ls-files', '--others', '--exclude-standard']).split('\n').map((s) => s.trim()).filter(Boolean)) {
+    if (CARRY_SKIP.includes(rel.split('/')[0])) continue
+    const from = join(dir, rel)
+    let st
+    try { st = statSync(from) } catch { continue }
+    if (!st.isFile()) continue
+    // refuse loudly rather than carry half the work: the caller turns this
+    // into a 409 and the terminal is left alone
+    if (st.size > CARRY_MAX_BYTES) throw new Error(`${rel} is ${Math.round(st.size / 1048576)}MB, too large to carry into the card's checkout`)
+    files.push({ rel, data: readFileSync(from) })
+  }
+  if (!patch.trim() && !files.length) return null
+  const names = new Set(status.trim().split('\n').map((l) => l.slice(3).trim()).filter(Boolean))
+  for (const f of files) names.add(f.rel)
+  return { patch, files, names: [...names] }
+}
+
+export function carryUncommitted(dir, carried) {
+  if (!carried) return 0
+  if (carried.patch.trim()) {
+    const r = spawnSync('git', ['-C', dir, 'apply', '--binary', '--whitespace=nowarn', '-'], { input: carried.patch, windowsHide: true, encoding: 'utf8', timeout: 30000, env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
+    if (r.status !== 0) throw new Error(`the tracked changes did not apply: ${String(r.stderr ?? '').trim().slice(0, 200)}`)
+  }
+  for (const f of carried.files) {
+    const to = join(dir, f.rel)
+    mkdirSync(dirname(to), { recursive: true })
+    writeFileSync(to, f.data)
+  }
+  return (carried.names ?? []).length
+}
+
+// The cards waiting on a human, for the terminals verdict to read (redesign
+// C.5): `card 3e1c has waited on you for 12 minutes.` needs the id, the title,
+// the station and the moment it stopped, so a bare count cannot write the
+// sentence the spec asks for. The oldest one is `first`, because that is the
+// one the sentence names.
+// Cached for a beat: listCards() reads one file per card, and this is computed
+// on every sessions push.
+const CARDS_WAITING_TTL = 5000
+const WAITING_STATUSES = ['needs_approval', 'waiting_human']
+let cardsWaitingCache = { at: 0, data: null }
+function cardsWaiting() {
+  if (cardsWaitingCache.data && Date.now() - cardsWaitingCache.at < CARDS_WAITING_TTL) return cardsWaitingCache.data
+  let waiting = []
+  try { waiting = listCards().filter((c) => WAITING_STATUSES.includes(c.status)) } catch { waiting = [] }
+  // `updated_at` is when the card reached this state, which is what "has
+  // waited on you for 12 minutes" measures from
+  waiting.sort((a, b) => (String(a.updated_at ?? '') < String(b.updated_at ?? '') ? -1 : 1))
+  const first = waiting[0] ?? null
+  const data = {
+    count: waiting.length,
+    first: first ? { id: first.card_id, title: first.title ?? null, station: first.station ?? null, since: first.updated_at ?? null } : null,
+  }
+  cardsWaitingCache = { at: Date.now(), data }
+  return data
+}
+
+// `events` is the card's ledger, already read by the caller. readEvents() does
+// a readdir, a full readFileSync, a JSON.parse per line and a sort every call,
+// and this function needed it three times per push (the last event, the legs
+// that started at a finished station, and the test/land outcomes of a live
+// card) on the one event loop the board serves every request from. Read once,
+// reused; a caller that has no events passes none and pays for one read.
+export function summarize(card, events = null) {
   const st = (card.pipeline ?? []).find((s) => s.name === card.station) ?? null
-  const last = lastEventOf(card.card_id)
+  // `cards.map(summarize)` would hand this the array index, so the type is
+  // checked rather than the emptiness
+  const evs = Array.isArray(events) ? events : readEvents(card.card_id)
+  const last = evs.length ? evs[evs.length - 1] : null
   const runs = readRuns(card.card_id)
   const activeRun = runs.find((r) => ['launching', 'running'].includes(r.status)) ?? null
   // Once a station is over (done/failed) card.leg is reset, so the rail is
   // rebuilt from the legs that actually started at this station.
   const terminal = ['done', 'failed', 'killed'].includes(card.status)
   const startedLegs = terminal && st?.kind === 'agent'
-    ? readEvents(card.card_id).filter((ev) => ev.type === 'leg_started' && ev.station === card.station).map((ev) => ev.leg)
+    ? evs.filter((ev) => ev.type === 'leg_started' && ev.station === card.station).map((ev) => ev.leg)
     : []
   const lastLeg = startedLegs.length ? Math.max(...startedLegs) : card.leg
   // card.leg is reset when the station ends, so a finished card read its adapter
@@ -209,7 +286,7 @@ export function summarize(card) {
   // ledger, and a git subprocess for each of ten of those buys nothing (C.1).
   const live = NON_TERMINAL.includes(card.status)
   const work = live ? workFor(card) : null
-  const outcomes = live ? cardOutcomes(readEvents(card.card_id)) : {}
+  const outcomes = live ? cardOutcomes(evs) : {}
   return {
     ...card,
     column: columnOf(card),
@@ -406,8 +483,18 @@ function trunkFor(repo) {
   const hit = trunkCache.get(repo)
   if (hit && Date.now() - hit.at < 15000) return hit.data
   const g = (args) => { const r = spawnSync('git', args, { cwd: repo, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } }); return r.status === 0 ? r.stdout.trim() : null }
+  // The branch this repo actually calls its trunk: origin's default if there is
+  // one, then the usual names, then whatever this checkout is on. A repo whose
+  // default is `develop` used to read as "main" here, and the board's one-line
+  // entry then posted a card against a branch that does not exist.
   let branch = null
-  for (const b of ['main', 'master', 'trunk']) if (g(['rev-parse', '--verify', '--quiet', b]) !== null) { branch = b; break }
+  const originHead = g(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])
+  if (originHead) {
+    const name = originHead.replace(/^origin\//, '')
+    if (name && g(['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]) !== null) branch = name
+  }
+  if (!branch) for (const b of ['main', 'master', 'trunk']) if (g(['rev-parse', '--verify', '--quiet', b]) !== null) { branch = b; break }
+  if (!branch) branch = g(['symbolic-ref', '--short', 'HEAD']) || null
   const log = branch ? g(['log', '--format=%h%x1f%s%x1f%cr%x1f%an', '-6', branch]) : null
   const data = {
     repo, repo_name: repo.split(/[\\/]/).filter(Boolean).pop(), branch,
@@ -432,13 +519,19 @@ function withLandings(t, landings) {
 // What another human sees of a terminal that is not theirs: that it is there,
 // nothing it has said, read or written. No task, no paths, no file names, no
 // limit text, no bundle, no events.
+// No usage either. `limits` is the five-hour and seven-day percentage of this
+// machine's login, written onto the record by the poller and by every claude
+// status line, and `warning` carries the same percentage with the clock it
+// resets on. Both are the number the capacity drawer, the accounts payload and
+// guestReason all withhold, so neither may ride out on a row instead
+// (.design/BOARD-DESIGN.md 6.13). The band survives, the figure does not.
 function redactSession(s) {
   return {
     session_id: s.session_id, agent: s.agent, account: s.account, status: s.status, active: s.active,
     started_at: s.started_at, elapsed_ms: s.elapsed_ms, turns: s.turns, repo_name: s.repo_name, branch: s.branch,
-    owner: s.owner ?? null, limits: s.limits ?? null, lineage: s.lineage ?? null,
-    warning: s.warning ? { window: s.warning.window, pct: s.warning.pct, resets_at: s.warning.resets_at } : null,
-    limit: s.limit ? { reason: s.limit.reason, resets_at: s.limit.resets_at ?? null } : null,
+    owner: s.owner ?? null, lineage: s.lineage ?? null,
+    warning: s.warning ? { window: s.warning.window } : null,
+    limit: s.limit ? { reason: s.limit.reason } : null,
     // `ahead` is owner-only for the same reason `files` is: how far someone
     // else's branch has moved is a fact about their work, and the register
     // prints it beside the dirty count that is already withheld here.
@@ -457,6 +550,29 @@ function redactSession(s) {
     task: null, cwd: null, files: [], overlap: [], requests: [], hidden: true,
     land_blocker: `read-only: this terminal belongs to ${s.owner ?? 'someone else'}`,
   }
+}
+
+// A guest's OWN terminal is not redacted: it is their work. The login it runs
+// on is still this machine's, though, and every figure on the record that was
+// measured from the owner's accounts is the same secret `capacity`, `buckets`
+// and the accounts payload already withhold: the two window percentages
+// (`limits`), the near-wall warning, the reset clock on a limit or an all-out
+// wait, and the name of the reading source. The row keeps every fact about the
+// work and loses every figure about the login (.design/BOARD-DESIGN.md 6.13).
+function scrubOwnerUsage(s) {
+  const out = { ...s }
+  delete out.limits
+  delete out.all_out
+  delete out.usage_source
+  delete out.usage_error
+  // the band survives, the figure and the clock do not: their own row may say
+  // it is near a wall, the same way a redacted row does
+  if (out.warning) out.warning = { window: out.warning.window }
+  if (out.limit) out.limit = { ...out.limit, resets_at: null }
+  // a 'reset' wait is a reset time with a sentence around it; the guest still
+  // learns that their terminal is waiting for one
+  if (out.waiting && out.waiting.type === 'reset') out.waiting = { type: 'reset', since: out.waiting.since ?? null }
+  return out
 }
 
 // A guest owns their own terminal, so its picker rows are theirs to read, but
@@ -521,13 +637,22 @@ export function sessionsView({ viewer = null, share = null } = {}) {
         account: r.account,
         model: r.model ?? null,
         available: r.ok,
-        reason: guest ? guestReason(r.reason) : r.reason,
+        // A row that CAN be picked has nothing to explain: the reserve and the
+        // `below:N` rules come back as a note on an ok row (usage.mjs), and
+        // generalising that note reads as a refusal beside a button that works.
+        // A row that is blocked keeps a reason a guest may read.
+        reason: guest ? (r.ok ? null : guestReason(r.reason)) : r.reason,
         resets_at: !guest ? (r.resets_at ?? null) : null,
         // the probe in fixtures/live/claude/resume-model-probe.json: a claude
         // downshift resumes the same conversation; everything else is primed
         // from the bundle, codex included until its own resume is observed
         keeps_conversation: Boolean(isDownshift(from, r) && r.agent === 'claude' && s.agent_session_id),
-        cost: r.cost,
+        // the cost word is not static: `credits` on a claude/fable rung means
+        // this machine's login has usage credits switched on (preferences.mjs
+        // rungCost reads extra_usage.enabled), which is a fact about the
+        // owner's account that the accounts payload drops on purpose. A guest
+        // gets the row and not the word.
+        ...(guest ? {} : { cost: r.cost }),
       })),
       handoff_availability_known: availabilityKnown,
       handoff_ladder: handoffLadder,
@@ -567,7 +692,11 @@ export function sessionsView({ viewer = null, share = null } = {}) {
   const landingsFor = (key) => landings.filter((l) => { if (!canon.has(l.repo)) canon.set(l.repo, canonPath(l.repo)); return canon.get(l.repo) === key })
   const trunk = [...repos].map(([key, r]) => { try { return withLandings(trunkFor(r), landingsFor(key)) } catch { return { repo: r, commits: [] } } })
   const mine = (s) => !shared || !viewer || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
-  const shown = sessions.map((s) => (mine(s) ? { ...s, requests: readRequests(s.session_id).filter((r) => r.state === 'pending') } : redactSession(s)))
+  const shown = sessions.map((s) => {
+    if (!mine(s)) return redactSession(s)
+    const row = { ...s, requests: readRequests(s.session_id).filter((r) => r.state === 'pending') }
+    return guest ? scrubOwnerUsage(row) : row
+  })
   return {
     sessions: shown,
     // a guest sees which accounts exist and which are busy, never how much of
@@ -580,8 +709,10 @@ export function sessionsView({ viewer = null, share = null } = {}) {
     you: viewer,
     // the terminals verdict has to be able to say "card 3e1c has waited on you
     // for 12 minutes" without reading the whole pipeline board (redesign C.5).
-    // A guest has no cards at all, so they are not told how many are waiting.
-    ...(guest ? {} : { cards_waiting: cardsWaiting() }),
+    // A guest has no cards at all; an operator runs them, approves them and is
+    // exactly the human one can be waiting on, so the gate is the cards
+    // permission the /api/cards routes use, not the owner flag.
+    ...(!shared || mayUseCards(viewer?.role ?? 'owner') ? { cards_waiting: cardsWaiting() } : {}),
     share: { on: shared, bind: shared ? share.bind : null, people: shared ? share.people.length : 0 },
     preferences: guest ? null : readPreferences(),
     ts: new Date().toISOString(),
@@ -649,7 +780,7 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, sessionsDebounce
     if (!card) { for (const c of clients) c.sig.delete(id); broadcast('removed', forOwner({ card_id: id })); return }
     const events = readEvents(id)
     // broadcast() refreshes each client's viewer (and drops revoked ones) first
-    broadcast('card', forOwner(summarize(card)))
+    broadcast('card', forOwner(summarize(card, events)))
     for (const c of [...clients]) {
       if (!c.viewer || !mayUseCards(c.viewer.role)) { c.sig.set(id, events.length); continue }
       const from = c.sig.get(id) ?? 0
@@ -816,6 +947,49 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
     return null
   }
   const sse = createSse({ viewFor, reauth: reauthClient })
+  // A card that adopted a live terminal's checkout waits in the backlog until
+  // that terminal has really stopped. `end` is a REQUEST: src/attach.mjs reads
+  // control.json on its own poll (2s by default) and kills the child at the
+  // next tick, while the scheduler ticks every second, so a card queued here
+  // would put a headless agent in the same working tree as the interactive one
+  // for at least a tick, and longer if the agent is mid-turn. The session
+  // record is how the board learns a terminal ended (attach writes `ended`,
+  // sessions.mjs reaps a lost one), so that is what this waits on.
+  const ENQUEUE_POLL_MS = Math.max(50, Number(process.env.LEG_END_AS_CARD_POLL_MS || process.env.BATON_END_AS_CARD_POLL_MS || 500))
+  const ENQUEUE_WAIT_MS = Math.max(1000, Number(process.env.LEG_END_AS_CARD_WAIT_MS || process.env.BATON_END_AS_CARD_WAIT_MS || 600000))
+  const enqueueTimers = new Map()
+  function enqueueWhenSessionEnds(cardId, sessionId, who) {
+    const from = Date.now()
+    const arm = () => {
+      const t = setTimeout(tick, ENQUEUE_POLL_MS)
+      t.unref?.()
+      enqueueTimers.set(cardId, t)
+    }
+    const tick = () => {
+      enqueueTimers.delete(cardId)
+      const card = readCard(cardId)
+      // killed, removed, or started by hand: it is not this timer's any more
+      if (!card || card.status !== 'backlog') return
+      const s = readSession(sessionId)
+      if (!s || !isActive(s)) {
+        try {
+          const next = humanAction(cardId, 'enqueue', {}, who)
+          log(`end-as-card ${cardId}: terminal ${sessionId} has stopped, the card is queued`)
+          sse.broadcast('card', forOwner(summarize(next)))
+        } catch (err) { log(`end-as-card ${cardId}: ${err.message}`) }
+        return
+      }
+      if (Date.now() - from > ENQUEUE_WAIT_MS) {
+        // never start it behind the human's back after a long wait: say why it
+        // is sitting there and leave Run to them
+        try { ledgerAppend(cardId, { actor: who, type: 'blocked_by', summary: `terminal ${sessionId} has not stopped, so this card is still in the backlog; press Run once it has` }) } catch { /* the log line below is the record */ }
+        log(`end-as-card ${cardId}: terminal ${sessionId} still active after ${Math.round(ENQUEUE_WAIT_MS / 1000)}s, left in the backlog`)
+        return
+      }
+      arm()
+    }
+    arm()
+  }
   let sched = null
   let usageTimer = null
   let usageController = null
@@ -893,12 +1067,13 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
       if (req.method === 'GET' && path === '/api/presets') return send(res, 200, { presets: PRESETS })
       if (req.method === 'GET' && path === '/api/cards') {
         const cards = listCards()
-        return send(res, 200, { columns: columnsFor(cards), cards: cards.map(summarize) })
+        return send(res, 200, { columns: columnsFor(cards), cards: cards.map((c) => summarize(c)) })
       }
       if (req.method === 'POST' && path === '/api/cards') {
         const body = await readBody(req)
         try {
-          const card = await createCard(body, actor)
+          // a pipeline that names a file is a CLI flag, never a request body
+          const card = await createCard(body, actor, { allowPipelineFile: false })
           sse.broadcast('card', forOwner(summarize(card)))
           return send(res, 201, { card: summarize(card) })
         } catch (err) {
@@ -909,7 +1084,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
       if (req.method === 'GET' && path === '/api/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
         const cards = canCards ? listCards() : []
-        res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map(summarize), sessions: viewFor(viewer), ts: new Date().toISOString() })}\n\n`)
+        res.write(`event: hello\ndata: ${JSON.stringify({ columns: columnsFor(cards), cards: cards.map((c) => summarize(c)), sessions: viewFor(viewer), ts: new Date().toISOString() })}\n\n`)
         sse.add(res, cards, viewer, { token: presentedToken(req, url), loopback: isLoopbackRequest(req) })
         return
       }
@@ -1067,10 +1242,18 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           return send(res, 202, { ok: true, requested: 'land' })
         }
         // "I have to leave, keep going." The terminal's context becomes a card
-        // that continues in the SAME worktree, from the SAME rung, and the
-        // terminal then ends exactly the way End ends it. Reusing the worktree
-        // is the decision in redesign G4: two worktrees on one branch is the
-        // conflict machine the roadmap rejects, and Take over is the way back.
+        // that continues from the SAME rung, and the terminal then ends exactly
+        // the way End ends it. Where the card works depends on what the
+        // terminal had:
+        //   - its own worktree: the card adopts it (redesign G4; two worktrees
+        //     on one branch is the conflict machine the roadmap rejects) and
+        //     waits in the BACKLOG until the terminal has really stopped, since
+        //     `end` is a request the runner reads on its own poll and the
+        //     scheduler ticks once a second.
+        //   - no worktree of its own (the ordinary case): a checkout of its own
+        //     is cut from that branch and the uncommitted work is carried into
+        //     it, so the card continues from what the human was looking at
+        //     rather than from the last commit.
         if (req.method === 'POST' && parts[3] === 'end-as-card') {
           // a card is the pipeline board, which belongs to the owner and the
           // operators of this machine even when the terminal is the caller's
@@ -1092,34 +1275,72 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           const models = {}
           for (const r of rungs) if (r.model && !models[r.agent]) models[r.agent] = r.model
           const task = `${sess.task ?? 'Continue the work already under way in this checkout.'}\n\nContinue from the bundle at ${bundle.path}.`
+          const adopted = sess.worktree?.path && existsSync(sess.worktree.path) ? sess.worktree.path : null
+          const trunkBranch = sess.worktree?.base || sess.branch || 'main'
+          // The checkout the human has been working in. Read BEFORE anything is
+          // created or ended: if the work cannot be read, nothing has happened
+          // yet and the terminal is left exactly as it was.
+          // the repository root, which is what `git status --porcelain`,
+          // `git diff` and `git ls-files` all report paths against, so the
+          // patch and the file list line up with the new checkout's root
+          const workRoot = adopted ?? ((sess.repo && existsSync(sess.repo)) ? sess.repo : sess.cwd)
+          let carried = null
+          if (!adopted) {
+            try { carried = captureUncommitted(workRoot) } catch (err) {
+              return send(res, 409, { error: `the uncommitted work in this checkout could not be read, so this terminal was left alone: ${scrub(err.message).slice(0, 200)}` })
+            }
+          }
           let card
           try {
             card = await createCard({
               repo: sess.repo, task,
               chain: rungs.map((r) => r.agent).join(',') || sess.agent,
               model: models,
-              trunk: sess.worktree?.base || sess.branch || 'main',
+              trunk: trunkBranch,
               title: sess.task ? String(sess.task).slice(0, 60) : `continued from ${id}`,
-              queue: true,
+              // never queued here: the card is enqueued below, once its
+              // checkout is its own and nothing else is writing to it
+              queue: false,
             }, actor)
           } catch (err) {
             if (err instanceof CardInputError) return send(res, 400, { error: `the card could not be created, so this terminal was left alone: ${err.message}` })
             throw err
           }
-          const adopted = sess.worktree?.path && existsSync(sess.worktree.path) ? sess.worktree.path : null
-          ledgerUpdate(card.card_id, { patch: { lineage: { from: id }, ...(adopted ? { worktree: adopted, worktree_adopted: true } : {}) } })
+          let carriedFiles = 0
+          if (adopted) {
+            ledgerUpdate(card.card_id, { patch: { lineage: { from: id }, worktree: adopted, worktree_adopted: true, worktree_branch: sess.worktree?.branch ?? null } })
+          } else {
+            try {
+              const wt = ensureWorktree(sess.repo, card.card_id, { trunk: trunkBranch })
+              carriedFiles = carryUncommitted(wt.path, carried)
+              ledgerUpdate(card.card_id, { patch: { lineage: { from: id }, worktree: wt.path, worktree_branch: wt.branch } })
+            } catch (err) {
+              // nothing has been ended and nothing has been queued: take the
+              // half-made card off the board rather than leave it there
+              try { removeWorktree(sess.repo, card.card_id, { force: true }) } catch { /* it may never have been cut */ }
+              try { rmSync(cardDir(card.card_id), { recursive: true, force: true }) } catch { /* the board never saw it */ }
+              return send(res, 409, { error: `the work in this checkout could not be carried into a checkout of its own, so this terminal was left alone: ${scrub(err.message).slice(0, 200)}` })
+            }
+          }
           // `handoff_written` is the ledger's word for "a bundle was written and
           // the work moved on", which is exactly what happened here. The audited
           // line with the actor is on the terminal's side, below.
-          ledgerAppend(card.card_id, { actor, type: 'handoff_written', summary: `continued from terminal ${id}${adopted ? ', in its own worktree' : ', in a worktree of its own cut from the same branch'}` })
+          const where = adopted
+            ? ', in the terminal\'s own worktree, once that terminal has stopped'
+            : `, in a worktree of its own cut from ${trunkBranch}${carriedFiles ? `, carrying ${carriedFiles} uncommitted file(s) over` : ''}`
+          ledgerAppend(card.card_id, { actor, type: 'handoff_written', summary: `continued from terminal ${id}${where}` })
           requestControl(id, { end: true, by: actor.id })
           appendSessionEvent(id, { type: 'handed_off', by: actor.id, summary: `${actor.id} ended this terminal and kept it going as card ${card.card_id}` })
           updateSession(id, (cur) => ({ lineage: { ...(cur.lineage ?? {}), to: card.card_id } }))
-          log(`end-as-card for ${id} by ${actor.id}: ${card.card_id}${adopted ? ` in ${adopted}` : ''}`)
+          if (adopted) enqueueWhenSessionEnds(card.card_id, id, actor)
+          else {
+            try { humanAction(card.card_id, 'enqueue', {}, actor) } catch (err) { log(`end-as-card ${card.card_id}: ${err.message}`) }
+          }
+          log(`end-as-card for ${id} by ${actor.id}: ${card.card_id}${adopted ? ` in ${adopted} (queued when ${id} stops)` : ` in a checkout of its own${carriedFiles ? `, ${carriedFiles} file(s) carried` : ''}`}`)
           const next = summarize(readCard(card.card_id))
           sse.broadcast('card', forOwner(next))
           sse.broadcast('sessions', (v) => viewFor(v))
-          return send(res, 201, { card: next, bundle: { id: bundle.id, path: bundle.path } })
+          return send(res, 201, { card: next, bundle: { id: bundle.id, path: bundle.path }, carried: { files: carriedFiles, adopted: Boolean(adopted) } })
         }
         if (req.method === 'POST' && (parts[3] === 'handoff' || parts[3] === 'end')) {
           if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
@@ -1283,11 +1504,30 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           const raw = String(summarize(card).active_adapter ?? '')
           const agent = [raw, raw.replace(/^fake-/, '')].find((n) => SUPERVISED_AGENTS.includes(n)) ?? null
           if (!agent) return send(res, 409, { error: `this card's current leg runs ${raw || 'no agent'}, which is not one of the agents leg can open a terminal for (${SUPERVISED_AGENTS.join(', ')})` })
-          let next = card
-          if (card.status === 'running') {
-            try { next = humanAction(id, 'pause', {}, actor) } catch (err) {
-              if (err instanceof IllegalTransition) return send(res, 409, { error: err.message })
-              throw err
+          // Every non-terminal status moves to `paused` before the command is
+          // handed back, not just `running`. A `queued` or `handing_off` card
+          // is in the set the scheduler starts from, and it ticks once a
+          // second: the human would paste this command into a worktree an
+          // agent had just been launched in, which is the collision Take over
+          // exists to prevent. The transition also writes the actor's own
+          // `taken_over` line, so the audit trail names who has the checkout.
+          let next
+          try { next = humanAction(id, 'take_over', {}, actor) } catch (err) {
+            if (err instanceof IllegalTransition) return send(res, 409, { error: err.message })
+            throw err
+          }
+          // A card that never ran has no checkout of its own, and the terminal
+          // that takes it over must never open in the human's main checkout
+          // (src/attach.mjs cardWorkRoot refuses that). Cut its worktree now, on
+          // the trunk the card would have used, so the command below has a
+          // place to open.
+          const cur = readCard(id) ?? next
+          if (!(cur.worktree && existsSync(cur.worktree)) && cur.repo) {
+            try {
+              const wt = ensureWorktree(cur.repo, id, { trunk: cur.trunk || trunkFor(cur.repo).branch || 'main' })
+              ledgerUpdate(id, { patch: { worktree: wt.path, worktree_branch: wt.branch } })
+            } catch (err) {
+              return send(res, 409, { error: `could not cut a checkout for ${id}: ${err.message}` })
             }
           }
           const command = `leg ${agent} --resume-card ${id}`
@@ -1371,6 +1611,8 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
     async stop() {
       if (usageTimer) { clearInterval(usageTimer); usageTimer = null }
       usageController?.abort()
+      for (const t of enqueueTimers.values()) clearTimeout(t)
+      enqueueTimers.clear()
       sse.stop()
       if (sched) sched.stop()
       if (loopbackCompanion) await new Promise((r) => { loopbackCompanion.closeAllConnections?.(); loopbackCompanion.close(() => r()) })

@@ -92,9 +92,14 @@ no model switch can help there. Then a single model at its wall with the login
 still open (`Fable is out until 9:14 PM; opus is open.`), which is the one case
 where a same-login switch is the answer. Then the burn rate, when it is known
 (`About 2h 40m of Fable left.`), because the decision is about the afternoon
-and not about the number. Then one login carrying every terminal, several
-logins carrying work, and the quiet states: nothing running, everything walled,
-and no figure anywhere. There is always a sentence.
+and not about the number. A model bucket that came back while a terminal is
+still downshifted (`Fable is back; leg#7f3a is still on opus.`) sits right after
+the walled-model sentence, since a state change outranks a standing figure.
+Then one login carrying every terminal, several logins carrying work, and the
+quiet states: nothing running and no figure anywhere. Everything walled
+(`Every login is at its limit; codex is back first.`) is decided before any
+per-login sentence, because it is a fact about the whole board. There is
+always a sentence.
 
 **Every time figure carries the volume it was drawn from**, always:
 `From 9 samples over 4h. Opus and Sonnet have their own buckets.` The rate is
@@ -412,14 +417,16 @@ availability: a button that does not apply is omitted, never moved.
 | Request handoff | the board is shared and this terminal is someone else's | `POST /api/sessions/:id/request-handoff` (202): asks the owner; nothing happens until they approve |
 | Approve `<name>` / Dismiss `<name>` | the board is shared and someone asked for a hand-off on your terminal | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
 | Details | any terminal of yours | `GET /api/sessions/:id/detail`: the transcript, the files changed with their line counts, the timeline and the current bundle; `GET /api/sessions/:id/diff?file=<path>` for one file, capped at 400 lines, refused for any path outside that terminal's own tree |
-| Hand off now | the session is active | `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal |
+| Hand off now | the session is active | asks first in the row's confirm row (`Hands off to the first open rung of this terminal's ladder. The current turn stops.`), then `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal. It stops a working agent mid-turn, so it asks whether the mouse or the `h` key pressed it |
 | Change the ladder | inside the expansion, while the status is `starting`, `running`, `warning`, `limit` or `waiting` | `POST /api/sessions/:id/handoff-order` with the whole `handoff_ladder`; an older wrapper instead saves the machine default and says to restart the terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
 | Remove | the session is not active | `DELETE /api/sessions/:id`: safely prunes the session record, worktree, and merged branch only when the worktree is clean and the branch is already on its base; otherwise it leaves them and explains why |
 | Remove record | the session is not active and has an own worktree | `DELETE /api/sessions/:id?force=1&keep_worktree=1`: removes only Leg's record and keeps the worktree, branch, unmerged commits, and dirty files |
 
 End, Remove and Remove record confirm first: the button row is replaced in place
-by one sentence and two buttons, focus moves to Cancel, and Escape cancels.
+by one sentence and its buttons, focus moves to Cancel, and Escape cancels. End
+offers a second verb, **End, and keep going as a card**, when the terminal is in
+a repository and the reader may use cards.
 There is no modal and no browser `confirm()`. Settings has the same ladder
 editor for the default copied by new terminals.
 
@@ -488,13 +495,22 @@ same-login rung under an account-wide wall: every model shares that window, so
 switching model would buy nothing. The rung Leg would take on its own is not in
 the list twice; the terminal's current rung is not in it at all. Picking one
 replaces the row's button grid with a sentence naming the destination and
-whether the conversation survives, and the hand-off carries the model.
+whether the conversation survives, and the hand-off carries the model. The
+choice survives the expansion's 3-second refetch: it is held as a rung, so the
+row it names is still selected after the list is rebuilt, or reordered, under
+it, and the poll stands down entirely while the select has focus.
 
 **Change the ladder** edits this terminal's own copy. Each rung is a numbered
 row: the agent and model with the login's dot, a `when` select (`always`,
-`below N%` with a number from 1 to 99, or `walled only`), the cost word, and
-**Up**, **Down**, **Remove**. `+ Add a rung` takes an agent and one of its
-models, or `default` for the model the CLI picks itself. There is no drag: a
+`below N%` with a number from 0 to 100, which is the range the server itself
+accepts, or `walled only`), the cost word, and **Up**, **Down**, **Remove**.
+Clearing the number box puts the rung back to `always` rather than inventing a
+percentage; a stored `below:0` or `below:100` is shown as the number that is
+stored, with a line saying what it does (`below 0% is never true: this rung is
+never taken`), and is never quietly rewritten. `+ Add a rung` takes an agent and
+one of its models, or `default` for the model the CLI picks itself; a rung the
+ladder already carries is refused in the status line by name and position
+(`claude / opus is already rung 2.`), never silently. There is no drag: a
 list this short is faster with two buttons and a drag has no keyboard. Saving
 posts the whole ladder; a rung the server will not accept comes back as its own
 sentence (`claude has no model "gpt-5"`) in the status line, and nothing is
@@ -562,9 +578,10 @@ heading, a line of detail and a button that opens the detail below the row.
   or `N uncommitted`. Nothing here is pushed over the live stream; the count
   re-reads itself once a minute while the drawer is closed. On a shared board
   a guest sees `The owner of this machine sees them.` and nothing else.
-- **N background tasks**, the card runtime below, as a count with **View N
-  cards**, plus **New card**. With none it reads `Nothing is queued. Leg starts
-  the next login only when a terminal hands off.`
+- **N finished cards**, `3 finished cards, 2 done, 1 failed, last 11:02 PM`,
+  with **View** opening them newest first. Live cards are not here: they are
+  rows in the Background panel under Terminals, with the one-line entry under
+  it. With none finished it reads `No finished cards`.
 
 ## A shared board (more than one human)
 
@@ -610,6 +627,17 @@ single field, `Run in the background:`, a **Start** button, and an inferred
 sentence whose nouns are buttons, `in leg on main, with claude/fable then
 claude/opus then codex, build only`, plus **More settings** for the full form.
 Start with an empty task is disabled and says why.
+
+The sentence describes exactly what Start posts, noun by noun. The branch is
+the repo's own default (the server reads `origin/HEAD`, then `main`, `master`
+and `trunk`, then the branch the checkout is on) and it is sent with the card,
+so a repo whose default is `master` or `develop` starts one instead of being
+refused by a trunk that does not exist. The ladder clause is one leg per rung
+carrying that rung's model: `claude/fable then claude/opus then codex` posts
+three legs, the first two on one login and two different models, which is the
+hand-off the ladder exists for. Two rungs that name the same agent AND the same
+model are one leg, not two, so the sentence never lists a hand-off to a leg's
+own twin. Picking a lower rung in the ladder select starts the chain there.
 
 **Settings** holds the **API token** field (only needed when the server is bound
 off loopback; see [configuration.md](configuration.md#network-exposure)), the
@@ -658,12 +686,21 @@ Each card row reads in the same four registers as a terminal panel:
 - **What**: the title (the card's `title`, or the first 60 characters of the
   task) as a button that opens the [expansion](#card-expansion), and one
   sentence under it.
-- **Where**: `repo@trunk`, the worktree path shortened to its tail with the full
-  path in its tooltip, the chain rail, and the lease chips, one per claimed
-  lease or `**` (the whole repo) when none were set, plus `blocked by lease`
-  when the scheduler says so.
-- **When**: the elapsed clock, `mm:ss` while a leg is running and `--:--`
-  otherwise, then the buttons.
+- **Where**: `<repo> on <branch>`, where the branch is the one that checkout is
+  actually on: `leg/<card-id>` for a worktree the card cut, and the terminal's
+  own branch for one it adopted from "End, and keep going as a card", which is
+  not a name anyone can derive from the card id. It is shortened to 32
+  characters on the row with the whole line in the tooltip, so what you copy
+  into `git checkout` is a branch git has. A card with no checkout yet prints
+  the trunk it will branch from. Then the chain rail, and the lease chips, one
+  per claimed lease or `**` (the whole repo) when none were set, plus `blocked
+  by lease` when the scheduler says so.
+- **When**: the elapsed clock, then the buttons. `mm:ss` (or `hh:mm:ss`) counts
+  the leg that is running now, exactly as a terminal row's clock does. A live
+  card between runs has no leg to time, so it prints `idle 12m`, the time since
+  its last state change, labelled for what it is: the card's own age in that
+  column would read `24:05:00` for a card that sat in the backlog for a day. A
+  card that has never run prints `--:--`.
 
 The log is not on the row. It is in the expansion.
 
@@ -766,6 +803,33 @@ is fixed: Approve, Run, Resume, Pause, Hand off now, Rerun, Reassign, Kill.
 | Reassign | any non-terminal status, and the current station is an `agent` station | pick a different adapter/mode for the current leg from a picker |
 | Rerun | `done`, `failed`, `killed` | start the station over from the last bundle |
 | Remove | `done`, `failed`, `killed` | delete the card record, its events and its runs; the worktree is kept (confirms first) |
+| Take over | any non-terminal status, in the [expansion](#card-expansion) | you take the card's checkout yourself |
+
+**Take over** is the one place the board hands you a command, because a browser
+tab cannot open a terminal: it prints `leg claude --resume-card 3e1c`, which
+starts an interactive terminal in the card's own worktree, primed from the
+card's bundle. Before it prints anything the card is moved to `paused`,
+whatever it was doing: a running one has its child killed and its bundle
+written, and a `queued` or `handing_off` one is taken out of the set the
+scheduler starts from, so nothing launches a leg into the checkout you are
+about to sit down in. The card's ledger gets one `taken_over` line with your
+name on it. **Resume** puts it back to work when you are done. A card that is
+`done`, `failed` or `killed` has nothing to take over and says so.
+
+**End, and keep going as a card** is the same trade in the other direction: it
+is the second verb on a terminal's End confirm row (shown for a terminal in a
+git repository, to the owner or an operator). It writes the terminal's hand-off
+bundle, makes a card whose task is the terminal's prompt plus `Continue from
+the bundle at <path>`, starts its ladder at the rung that terminal was on, and
+then ends the terminal. Where the card works depends on what the terminal had:
+a terminal with a worktree of its own hands it over, and the card waits in the
+backlog until that terminal has really stopped, because `End` is a request its
+runner reads on its own poll and two agents in one working tree is the thing
+this whole feature exists to avoid. A terminal working in the repo itself gets
+the card a checkout of its own, cut from the same branch, with the uncommitted
+work carried into it: the tracked edits as a patch and every file git has not
+seen copied across. If that work cannot be read or cannot be carried, nothing
+is created and the terminal is left running with the reason.
 
 ## What a state looks like
 
@@ -845,8 +909,20 @@ running or handing-off card.
   The ring is a bar down the left edge of the row, and moving it also moves
   keyboard focus to that row's first button, which is its prompt, so a screen
   reader announces which terminal the ring landed on rather than a bare `Land`.
-  A disabled button is never clicked. While an input, a select or a textarea has
-  focus, every one of these keys is text and nothing else.
+  A disabled button is never clicked, so `l` does nothing on a row that cannot
+  land. While an input, a select or a textarea has focus, every one of these
+  keys is text and nothing else.
+
+  The ring belongs to a TERMINAL, not to a position: the grid re-sorts whenever
+  a row starts waiting on you, and the ring stays on the terminal you put it on.
+  If that terminal ends and moves to the ledger, the ring is cleared rather than
+  inherited by whatever row took its place.
+
+  With no ring set, `h`, `l`, `d` and `e` only set the ring on the first row and
+  paint it; it takes a second press to act, so no key ever acts on a terminal
+  that was not marked on screen first. Every one of these keys stands down while
+  a dialog is open, while the keyboard map is open (`?` and Escape still close
+  it), and while a confirm row is waiting for its answer.
 - Buttons carry descriptive `aria-label`s (for example "Pause `<card title>`",
   "Reassign adapter for `<card title>`") so a screen reader announces which card
   an action applies to, not just the button label.

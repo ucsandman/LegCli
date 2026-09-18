@@ -476,7 +476,9 @@ test('a guest\'s board carries no usage percentage, no reset time and no reading
     for (const row of theirOwnRow.handoff_targets ?? []) {
       assert.equal(row.resets_at, null, `a guest's picker row carries a reset time (${row.agent}/${row.model ?? '-'})`)
       assert.equal(/\d/.test(String(row.reason ?? '')), false, `a guest's picker row carries a number in its reason: ${row.reason}`)
-      assert.deepEqual(Object.keys(row).sort(), ['account', 'agent', 'available', 'cost', 'keeps_conversation', 'model', 'reason', 'resets_at'])
+      // `cost` is owner-only: `credits` on a claude/fable rung is the owner's
+      // extra_usage flag by another name (see the picker canary below)
+      assert.deepEqual(Object.keys(row).sort(), ['account', 'agent', 'available', 'keeps_conversation', 'model', 'reason', 'resets_at'])
     }
     // `waiting` and `model` are the guest's to see on their OWN terminal: they
     // are sitting at it, and a terminal that has stopped for a permission
@@ -518,6 +520,115 @@ test('a guest\'s board carries no usage percentage, no reset time and no reading
   } finally {
     // put the board back the way the rest of this file found it: no usage read at all
     rmSync(usageFile, { force: true })
+  }
+})
+
+// The same secret by three other routes, none of which the accounts canary
+// above can see: the session RECORD carries the two window percentages and the
+// near-wall clock on every row (the poller and every claude status line write
+// them), a guest's own row carries the same figures for this machine's login,
+// and a picker row's cost word is computed from the owner's extra_usage flag.
+test('a guest reads no usage off a redacted row, off their own row, or off a picker row', async (t) => {
+  const warnResets = 1900000077
+  const allOutResets = 1900000088
+  const limitResets = 1900000099
+  const usageFile = join(HOME, 'usage', 'claude--default.json')
+  const prefsFile = join(HOME, 'preferences.json')
+  const hadPrefs = existsSync(prefsFile) ? readFileSync(prefsFile, 'utf8') : null
+  mkdirSync(join(HOME, 'usage'), { recursive: true })
+  // this machine's claude login: nearly out, with usage credits switched on
+  writeFileSync(usageFile, JSON.stringify({
+    agent: 'claude', account: 'default',
+    five_hour: { pct: 95, resets_at: warnResets }, seven_day: { pct: 44, resets_at: warnResets },
+    source: 'claude usage endpoint', observed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    extra_usage: { enabled: true, reason: null, can_toggle: true, limit_minor: 12500 },
+  }))
+  // the owner's floor under that login, which makes the claude rungs a note
+  // rather than a refusal for a human press (B.3)
+  writeFileSync(prefsFile, JSON.stringify({ version: 1, reserve: { claude: 20 }, may_spend: false }))
+  // wes's terminal, carrying every usage-bearing field a record can carry
+  updateSession(OWNED, {
+    limits: { five_hour: { pct: 62, resets_at: warnResets }, seven_day: { pct: 30, resets_at: warnResets } },
+    warning: { window: '5h', pct: 87.5, resets_at: warnResets },
+    all_out: [{ agent: 'claude', account: 'default', resets_at: allOutResets }],
+    limit: { reason: 'rate_limit', detail: C.limit, resets_at: limitResets, at: new Date().toISOString() },
+  })
+  // sam's own terminal: the same figures, measured from the same login, plus a
+  // ladder whose claude rungs are the ones the reserve and the credits word bite
+  updateSession(OTHER, {
+    limits: { five_hour: { pct: 95, resets_at: warnResets }, seven_day: { pct: 44, resets_at: warnResets } },
+    warning: { window: '5h', pct: 95, resets_at: warnResets },
+    usage_source: 'claude usage endpoint',
+    waiting: { type: 'reset', agent: 'claude', account: 'default', resets_at: allOutResets, since: new Date().toISOString() },
+    handoff_order: ['codex', 'claude', 'agy'],
+    handoff_ladder: [
+      { agent: 'codex', account: 'default', model: null, when: 'always', cost: 'plan' },
+      { agent: 'claude', account: 'default', model: 'fable', when: 'always', cost: 'plan' },
+      { agent: 'claude', account: 'default', model: 'opus', when: 'always', cost: 'plan' },
+    ],
+  })
+  try {
+    const owner = (await request(openBase, '/api/sessions')).json
+    const ownerRow = owner.sessions.find((s) => s.session_id === OWNED)
+    // the detector: the owner really does read all of it, so the guest
+    // assertions below are measuring fields that exist to lose
+    assert.equal(ownerRow.limits.five_hour.pct, 62, 'the owner reads their own window percentages')
+    assert.equal(ownerRow.warning.pct, 87.5)
+    assert.equal(ownerRow.all_out[0].resets_at, allOutResets)
+    assert.equal(ownerRow.limit.resets_at, limitResets)
+    const ownerPick = (owner.sessions.find((s) => s.session_id === OTHER).handoff_targets ?? []).find((t) => t.agent === 'claude' && t.model === 'fable')
+    assert.ok(ownerPick, 'the owner sees the claude/fable rung')
+    assert.equal(ownerPick.cost, 'credits', 'and reads that it spends usage credits')
+
+    const guest = await request(wanBase, '/api/sessions', { token: TOKENS.sam })
+    assert.equal(guest.status, 200)
+    const notTheirs = guest.json.sessions.find((s) => s.session_id === OWNED)
+    const own = guest.json.sessions.find((s) => s.session_id === OTHER)
+    // three separate leaks, so three separate verdicts
+    await t.test('someone else\'s row: no percentage, no window clock, no wall clock', () => {
+      assert.equal(notTheirs.hidden, true)
+      assert.equal(notTheirs.limits ?? null, null, 'a redacted row carries the owner\'s window percentages')
+      assert.equal(notTheirs.warning?.pct ?? null, null, 'a redacted row carries the owner\'s near-wall percentage')
+      assert.equal(notTheirs.warning?.resets_at ?? null, null, 'a redacted row carries the owner\'s reset clock')
+      assert.equal(notTheirs.limit?.resets_at ?? null, null, 'a redacted row carries the owner\'s wall clock')
+      assert.equal(notTheirs.all_out ?? null, null, 'a redacted row carries the owner\'s all-out reset list')
+    })
+    await t.test('the guest\'s own row: theirs to read, but the login is this machine\'s', () => {
+      for (const field of ['limits', 'all_out', 'usage_source']) {
+        assert.equal(field in own, false, `a guest's own row carries ${field}, measured from this machine's login`)
+      }
+      // the band, never the figure or the clock
+      assert.deepEqual(own.warning, { window: '5h' }, `a guest's own row carries ${JSON.stringify(own.warning)}`)
+      assert.equal(own.waiting.type, 'reset', 'the guest still learns their terminal is waiting for a reset')
+      assert.equal(own.waiting.resets_at ?? null, null, 'but not the clock it is waiting on')
+    })
+    await t.test('a picker row that can be pressed says nothing against itself', () => {
+      // the reserve is a note for a human press, not a refusal, and
+      // generalising that note contradicts the button beside it
+      for (const row of own.handoff_targets ?? []) {
+        if (row.available) assert.equal(row.reason, null, `a guest's picker row is available and says "${row.reason}"`)
+      }
+      const claudeRow = (own.handoff_targets ?? []).find((x) => x.agent === 'claude' && x.model === 'opus')
+      assert.ok(claudeRow, 'the claude/opus rung is on sam\'s picker')
+      assert.equal(claudeRow.available, true, 'a human press ignores the reserve, so the row is pickable')
+    })
+    await t.test('a picker row carries no cost word', () => {
+      for (const row of own.handoff_targets ?? []) {
+        assert.equal('cost' in row, false, `a guest's picker row carries a cost word (${row.agent}/${row.model ?? '-'}), which is computed from the owner's extra_usage`)
+      }
+    })
+    await t.test('and none of the clocks anywhere in the bytes', () => {
+      for (const [what, epoch] of [['the near-wall reset', warnResets], ['the all-out reset', allOutResets], ['the wall reset', limitResets]]) {
+        assert.equal(carries(guest.text, String(epoch)), false, `a guest board carries ${what} (${epoch})`)
+      }
+      assertClean(guest, 'guest GET /api/sessions with usage on the record', { presented: TOKENS.sam })
+    })
+  } finally {
+    rmSync(usageFile, { force: true })
+    if (hadPrefs === null) rmSync(prefsFile, { force: true })
+    else writeFileSync(prefsFile, hadPrefs)
+    updateSession(OTHER, { handoff_ladder: null, handoff_order: null, waiting: null, limits: null, warning: null, usage_source: null })
+    updateSession(OWNED, { all_out: null, warning: null })
   }
 })
 

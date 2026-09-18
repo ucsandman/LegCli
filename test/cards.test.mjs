@@ -154,3 +154,20 @@ test('card add refuses a repo path that is a parent of LEG_HOME/BATON_HOME', () 
   assert.equal(bad.status, 2)
   assert.match(bad.stderr, /repo cannot contain (LEG|BATON)_HOME/)
 })
+
+// The board's one-line entry posts the ladder's rungs as objects, so a card can
+// run claude/fable then claude/opus. The CLI's comma form has no way to say
+// that, and the collapsing `--model claude=fable` form can only carry one model
+// per adapter.
+test('a chain of {adapter, model} objects keeps a model per LEG, not one per adapter', async () => {
+  const home = makeHome()
+  process.env.LEG_HOME = home
+  process.env.BATON_HOME = home
+  const repo = initRepo('chain-')
+  const { createCard } = await import('../src/cards.mjs')
+  const card = await createCard({
+    repo, task: 'two claude legs on two models',
+    chain: [{ adapter: 'claude', model: 'fable' }, { adapter: 'claude', model: 'opus' }, { adapter: 'codex' }],
+  }, { type: 'human', id: 'wes' })
+  assert.deepEqual(card.pipeline[0].chain.map((e) => `${e.adapter}/${e.model ?? '-'}`), ['claude/fable', 'claude/opus', 'codex/-'])
+})

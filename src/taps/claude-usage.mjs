@@ -14,6 +14,7 @@ import http from 'node:http'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { LAYOUT } from '../accounts.mjs'
+import { MODEL_ALIASES } from '../buckets.mjs'
 
 export const USAGE_URL = (process.env.LEG_CLAUDE_USAGE_URL || process.env.BATON_CLAUDE_USAGE_URL) || 'https://api.anthropic.com/api/oauth/usage'
 
@@ -47,9 +48,21 @@ function epoch(x) {
 // The model a limit row is scoped to, lowercased, or null when the row is an
 // account-wide bucket. The endpoint is undocumented, so the scope is read by
 // shape (a `model` object carrying a display name) rather than by a type word.
+// A display name carries a version the rest of Leg never says ("Fable 5.1",
+// "Claude Opus 5"), and every other model name in the system is an alias: the
+// walls (src/buckets.mjs), the rungs (src/preferences.mjs) and the board all
+// join on one. So the name is matched word by word against the alias list and
+// the alias is what is stored; a name Leg does not know keeps its own
+// lowercased text, because inventing a model is worse than printing an unknown
+// one.
 function scopeModel(scope) {
   const name = scope?.model?.display_name ?? scope?.model?.displayName ?? null
-  return typeof name === 'string' && name.trim() ? name.trim().toLowerCase() : null
+  if (typeof name !== 'string' || !name.trim()) return null
+  const raw = name.trim().toLowerCase()
+  for (const alias of MODEL_ALIASES.claude) {
+    if (raw.split(/[^a-z0-9]+/).includes(alias)) return alias
+  }
+  return raw
 }
 
 function groupOf(kind) {
@@ -125,8 +138,10 @@ function getJson(url, headers, timeoutMs) {
 
 // → { ok, limits: {five_hour, seven_day, buckets, extra_usage}|null, status, error, expired }
 // The two windows keep their shape and their place: every older reader of this
-// function still gets exactly what it got before. `buckets` is [] when the
-// payload has no `limits` array, which is what an older endpoint answers.
+// function still gets exactly what it got before. `buckets` is OMITTED when the
+// payload has no `limits` array, which is what an older endpoint answers: that
+// is no information about buckets, and recordUsage's `Array.isArray` guard then
+// leaves the last measured ones in place instead of erasing them.
 export async function fetchClaudeUsage({ configDir = LAYOUT.claude.home(), timeoutMs = 8000, url = USAGE_URL } = {}) {
   const t = readToken(configDir)
   if (!t) return { ok: false, limits: null, error: 'no claude.ai login found in ' + configDir }
@@ -135,5 +150,7 @@ export async function fetchClaudeUsage({ configDir = LAYOUT.claude.home(), timeo
   if (r.status !== 200) return { ok: false, limits: null, status: r.status, expired: t.expired, error: `usage endpoint ${r.status}: ${r.text.slice(0, 120)}` }
   let j
   try { j = JSON.parse(r.text) } catch { return { ok: false, limits: null, status: r.status, error: 'usage endpoint returned no JSON' } }
-  return { ok: true, limits: { five_hour: window(j.five_hour), seven_day: window(j.seven_day), buckets: bucketsFrom(j), extra_usage: extraUsageFrom(j) }, status: r.status, expired: t.expired, raw_keys: Object.keys(j) }
+  const limits = { five_hour: window(j.five_hour), seven_day: window(j.seven_day), extra_usage: extraUsageFrom(j) }
+  if (Array.isArray(j.limits)) limits.buckets = bucketsFrom(j)
+  return { ok: true, limits, status: r.status, expired: t.expired, raw_keys: Object.keys(j) }
 }

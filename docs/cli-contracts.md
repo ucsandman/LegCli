@@ -308,6 +308,13 @@ variable and `LEG_SESSION` (source: src/attach.mjs, src/env.mjs).
   `anthropic-beta: oauth-2025-04-20`; response fields `five_hour` and
   `seven_day`, each `{ utilization, resets_at }`; polled every
   `LEG_USAGE_POLL_MS` ms, default 60000 (source: src/taps/claude-usage.mjs).
+  A `limits[]` array, when the response carries one, becomes the per-model
+  buckets; a row's `scope.model.display_name` is joined to the alias the rest of
+  Leg uses by matching a known name as a whole word, so `Fable 5.1` and
+  `Claude Opus 5` are `fable` and `opus` and a name Leg does not know keeps its
+  own lowercased text. A response with no `limits` key is an older endpoint
+  answering: the key is omitted rather than sent as `[]`, because that is no
+  information about buckets and must not erase the measured ones.
   observed-live 2026-09-11: real windows came back and were written to
   `<LEG_HOME>/usage/claude--default.json`; a seven_day window at 93 %
   raised the amber warning.
@@ -466,28 +473,90 @@ this is not a repository or the count could not be taken (source:
 src/attach.mjs `aheadCount`). Like the dirty file list, it is owner-only:
 `redactSession` drops it from another human's row.
 
-`GET /api/sessions` also carries `cards_waiting`, the number of cards in
-`needs_approval` or `waiting_human`, so the terminals verdict can name one
-without reading the pipeline board. A guest is not sent it (source:
-src/server.mjs `cardsWaiting`).
+`GET /api/sessions` also carries `cards_waiting`, so the terminals verdict can
+name a waiting card without reading the pipeline board:
+`{count, first: {id, title, station, since}}`, where `count` is the number
+of cards in `needs_approval` or `waiting_human` and `first` is the one that has
+been waiting longest (`since` is its `updated_at`), or `null` when none is. A
+count alone cannot write `card 3e1c has waited on you for 12 minutes.`, which
+is the sentence the field exists for (redesign C.5). It is sent to anyone who
+may use cards, which is the owner and any operator; a guest has no cards and is
+not sent it (source: src/server.mjs `cardsWaiting`).
+
+A guest's own row carries no figure that was measured from this machine's
+logins: `limits`, `all_out` and `usage_source` are dropped, `warning` keeps its
+window and loses its percentage and its clock, a
+`limit` or a `waiting` of type `reset` keeps its words and loses its
+`resets_at`, and a `handoff_targets` row carries no `cost` (the word `credits`
+on a `claude/fable` rung is the owner's `extra_usage` setting by another name).
+A row that is available carries no reason at all, because the reserve and
+`below:N` notes are advice for a human press, not a refusal. Someone else's row
+is redacted further: no `limits`, and `warning` is reduced to its window
+(source: src/server.mjs `redactSession`, `scrubOwnerUsage`).
+
+### Making a card over HTTP
+
+`POST /api/cards` takes the same body `createCard` takes from the CLI, with one
+difference: `pipeline` must be a preset name (`build`, `build-land`, `factory`)
+or an inline array of stations. A path to a JSON file is a CLI convenience
+(`leg card add --pipeline ./my.json`) and is refused here with `400
+invalid pipeline: pipeline must be one of the presets ... or a list of
+stations`, naming no path and quoting no bytes: an operator may post cards and
+may not read this machine, and the JSON parser's own message quotes the first
+characters of whatever file it opened (source: src/cards.mjs
+`allowPipelineFile`).
+
+`chain` is a comma list (`claude,codex`) or an array of entries
+(`[{adapter, model?, mode?, max_turns?}]`). The array form is what the board's
+one-line entry posts, because it is the only one that can put a different model
+on each leg: `[{adapter: 'claude', model: 'fable'}, {adapter: 'claude', model:
+'opus'}]` is two legs on one login, which `--model claude=fable` (one model per
+adapter) cannot express.
 
 ### A terminal becomes a card, and a card becomes a terminal
 
 `POST /api/sessions/:id/end-as-card` (owner or operator; a guest is refused)
 writes the terminal's hand-off bundle with `saveSessionBundle`, creates a card
 whose task is the terminal's prompt plus `Continue from the bundle at <path>.`,
-adopts the terminal's worktree when it has one (`worktree_adopted: true`, so no
-later run cuts a second worktree on that branch), starts the card's chain at
-the rung the terminal is standing on, records `lineage.from`, and then requests
-`end` on the terminal exactly as `POST /api/sessions/:id/end` does. `201` with
-`{card, bundle}`. The bundle is written first: if it cannot be written, nothing
-is created and the terminal is left running (source: src/server.mjs).
+starts the card's chain at the rung the terminal is standing on, records
+`lineage.from`, and then requests `end` on the terminal exactly as
+`POST /api/sessions/:id/end` does. `201` with
+`{card, bundle, carried: {files, adopted}}`. Where the card works, and when it
+starts, depend on what the terminal had:
 
-`POST /api/cards/:id/take-over` pauses a running card through the existing
-`pause` transition (child killed, bundle written) and answers `200` with
-`{card, command}`, where `command` is `leg <agent> --resume-card <card-id>` for
-the agent on the card's current leg. A card in `done`, `failed` or `killed` is
-refused with `409` (source: src/server.mjs).
+- **Its own worktree.** The card adopts it (`worktree_adopted: true`, so no
+  later run cuts a second worktree on that branch) and is created in
+  `backlog`, not `queued`: `end` is a request the terminal's runner reads on
+  its own poll, and the scheduler ticks once a second, so queuing it at once
+  would put a headless agent in the working tree the interactive one is still
+  writing to. The board polls the session record and enqueues the card the
+  moment it is no longer active; if the terminal is still going ten minutes
+  later, the card stays in the backlog with a `blocked_by` line saying so and
+  Run is left to the human. `heldByLiveTerminal` in src/scheduler.mjs refuses
+  to start such a card whatever queued it.
+- **No worktree of its own** (the ordinary case: a terminal cuts one only when
+  a second live session shares the checkout). A checkout of its own is cut from
+  the terminal's branch and the uncommitted work is carried into it before the
+  terminal is asked to stop: a patch of everything git tracks
+  (`git diff HEAD --binary`, applied with `git apply`) plus the bytes of every
+  file it does not (`git ls-files --others --exclude-standard`, skipping Leg's
+  own directories and `node_modules`). `carried.files` is how many paths moved.
+  The card is queued at once, because nothing else is in that checkout.
+
+The bundle is written first, and the uncommitted work is read before anything
+is created: if either fails, nothing is created, nothing is ended, and the
+terminal is left running with `409` (source: src/server.mjs).
+
+`POST /api/cards/:id/take-over` moves the card to `paused` through the
+`take_over` transition, killing the child of a running one, and answers `200`
+with `{card, command}`, where `command` is `leg <agent> --resume-card <card-id>`
+for the agent on the card's current leg. Every non-terminal status is paused,
+not only `running`: a `queued` or `handing_off` card is in the set the
+scheduler starts from, so leaving it there would launch a leg into the same
+worktree the human was just handed. One `taken_over` event with the caller's
+name is appended whatever the starting status, and it is in the audit trail. A
+card in `done`, `failed` or `killed` is refused with `409` (source:
+src/server.mjs, src/chain.mjs).
 
 `leg <agent> --resume-card <id>` is Leg's own flag and never reaches the
 agent's argv. It opens an ordinary interactive terminal in that card's

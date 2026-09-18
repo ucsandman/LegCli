@@ -109,6 +109,8 @@
     // C.2: the one-line entry infers its repo from the most recently focused
     // terminal, published by sessions.js on the leg:sessions window event.
     sessions: [],
+    // one entry per repo with a live terminal: { repo, repo_name, branch }
+    repoTrunks: [],
     preferences: null,
   }
   // a card push while an agent writes its log only moves these two
@@ -225,20 +227,19 @@
   }
 
   // an idle card has no run to measure, and a run whose start did not parse is
-  // not a zero-length run: both print the placeholder rather than a number
-  // A running card counts up from its current run. A card that has finished
-  // still owes the reader the number: created_at to updated_at is what it took,
-  // and `--:--` in that column was three of the five demo stills saying nothing.
-  // Only a card that has never started keeps the placeholder.
+  // not a zero-length run: both print the placeholder rather than a number.
+  // A running card counts up from its current run, in the column the terminal
+  // rows above hold their run clock in. A live card BETWEEN runs has no run
+  // clock at all: created_at to updated_at is the card's whole age, which for
+  // a card that sat in the backlog for a day reads `24:05:00` in a column that
+  // means "this run", so it is labelled for what it is instead: how long it
+  // has been sitting in the state it is in.
   function runElapsed(card) {
     const from = card.active_run ? Date.parse(card.active_run.started_at) : NaN
     if (Number.isFinite(from)) return elapsedClock(Date.now() - from)
     if (!card.runs_count) return '--:--'
-    const started = Date.parse(card.created_at)
-    const ended = Date.parse(card.updated_at)
-    return Number.isFinite(started) && Number.isFinite(ended) && ended >= started
-      ? elapsedClock(ended - started)
-      : '--:--'
+    const since = Date.parse(card.updated_at)
+    return Number.isFinite(since) && since <= Date.now() ? `idle ${agoShort(Date.now() - since)}` : '--:--'
   }
 
   function clockAt(ms) {
@@ -318,6 +319,9 @@
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('leg:sessions', (e) => {
       state.sessions = (e.detail && e.detail.sessions) || []
+      // each repo's own default branch, read once per push by the server: the
+      // entry line's `on <branch>` and the trunk it posts come from here
+      state.repoTrunks = (e.detail && e.detail.trunk) || []
       renderEntryLine()
     })
   }
@@ -825,10 +829,17 @@
     return out
   }
 
-  // A card's own branch is `leg/<card-id>`, which is the whole id again on a row
-  // that already prints it: print `leg/<short id>` instead, the form the design
-  // uses (`leg on leg/card-3e1c`).
-  function cardBranch(card) { return card.worktree ? `leg/${cardShortId(card.card_id)}` : (card.trunk || 'main') }
+  // The branch this card's checkout is really on, for a reader who is going to
+  // paste it into `git checkout`. A card that cut its own worktree is on
+  // `leg/<card-id>`; one that adopted a terminal's is on that TERMINAL's
+  // branch, which no reader can derive from the card id, so the server records
+  // it with the worktree (`worktree_branch`). Shortened for the row only when
+  // the full name does not fit, and the full name is on the element's title.
+  function cardBranch(card) {
+    if (card.worktree_branch) return card.worktree_branch
+    if (card.worktree) return `leg/${card.card_id}`
+    return card.trunk || 'main'
+  }
 
   function cardAgent(card) { return (card.agent_model && card.agent_model.agent) || card.active_adapter || null }
 
@@ -909,7 +920,7 @@
       el('div', { class: 'r1' }, [
         statusWord(card),
         card.station && card.station !== '-' ? el('span', { class: 'chip' }, [card.station]) : null,
-        el('span', { class: 'row-meta mono' }, [`${card.repo_name || 'no repo'} on ${cardBranch(card)}`]),
+        el('span', { class: 'row-meta mono', title: `${card.repo_name || 'no repo'} on ${cardBranch(card)}` }, [`${card.repo_name || 'no repo'} on ${truncate(cardBranch(card), 32)}`]),
         agentText ? el('span', { class: `chip chip-id-${agentClass(agentBase)}` }, [agentText]) : null,
       ]),
       el('div', { class: 'r2' }, [title, sentence]),
@@ -1245,12 +1256,53 @@
   function ladderLabel(r) { return r.model ? `${r.agent}/${r.model}` : r.agent }
   function ladderSentence(rungs) { return rungs.length ? rungs.map(ladderLabel).join(' then ') : 'no agent is configured' }
 
+  // Exactly what Start posts: one chain entry per rung, carrying that rung's
+  // model, from the rung the reader picked downward. De-duplicated by
+  // (adapter, model) and not by adapter, because `claude/fable` then
+  // `claude/opus` are two real legs and a hand-off between them is the whole
+  // point; two rungs that name the same adapter AND the same model are one leg
+  // twice, and a hand-off from a leg to its own twin buys nothing.
+  function entryChain() {
+    const seen = new Set()
+    const out = []
+    for (const r of ladderRungs().slice(entryState.ladderStart || 0)) {
+      const key = `${r.agent}/${r.model || ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(r)
+    }
+    return out
+  }
+
+  // The branch a card in this repo should be cut from. The sessions payload
+  // carries the repo's own default branch (the server reads origin/HEAD, then
+  // main/master/trunk, then the current branch) and each terminal's branch, so
+  // neither the sentence nor the body has to assume `main` in a repo whose
+  // default is `master` or `develop`: Start could only ever fail there.
+  function entryTrunk(repo) {
+    if (!repo) return null
+    const known = (state.repoTrunks || []).find((t) => t.repo === repo.path || t.repo_name === repo.name)
+    if (known && known.branch) return known.branch
+    for (const s of state.sessions || []) {
+      if (s.repo !== repo.path) continue
+      const b = (s.worktree && s.worktree.base) || (!s.worktree && s.branch)
+      if (b) return b
+    }
+    return null
+  }
+
   async function submitEntry() {
     const repo = entryRepo()
     const task = (entryState.task || '').trim()
     if (!task || !repo) return
-    const rungs = ladderRungs().slice(entryState.ladderStart || 0)
-    const body = { repo: repo.path, task, chain: rungs.map((r) => r.agent).join(','), pipeline: entryState.pipeline, queue: true }
+    const rungs = entryChain()
+    const trunk = entryTrunk(repo)
+    const body = {
+      repo: repo.path, task,
+      chain: rungs.map((r) => ({ adapter: r.agent, ...(r.model ? { model: r.model } : {}) })),
+      ...(trunk ? { trunk } : {}),
+      pipeline: entryState.pipeline, queue: true,
+    }
     try {
       const data = await api('/api/cards', { method: 'POST', body })
       entryState.task = ''
@@ -1295,12 +1347,13 @@
     } else {
       line.appendChild(nounButton(repo ? repo.name : 'no repo', 'repo'))
     }
-    line.appendChild(document.createTextNode(' on main, with '))
+    line.appendChild(document.createTextNode(` on ${entryTrunk(repo) || 'main'}, with `))
     const rungs = ladderRungs()
     if (entryState.editing === 'ladder') {
       line.appendChild(nounSelect(rungs.map((r, i) => ({ value: String(i), label: ladderLabel(r) })), String(entryState.ladderStart || 0), (v) => { entryState.ladderStart = Number(v) }))
     } else {
-      line.appendChild(nounButton(ladderSentence(rungs.slice(entryState.ladderStart || 0)), 'ladder'))
+      // the sentence names the legs Start posts, models and all
+      line.appendChild(nounButton(ladderSentence(entryChain()), 'ladder'))
     }
     line.appendChild(document.createTextNode(', '))
     if (entryState.editing === 'pipeline') {

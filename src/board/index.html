@@ -244,8 +244,11 @@
   <div class="detail-inner" id="session-drawer-content"></div>
 </div>
 
-<dialog id="new-card-dialog" aria-label="New card">
-  <h2 class="dialog-title">More settings</h2>
+<!-- the announced name is the heading on screen: an aria-label here would be a
+     second name for one thing, and the one a voice-control user says out loud
+     is the one they can read -->
+<dialog id="new-card-dialog" aria-labelledby="new-card-dialog-title">
+  <h2 class="dialog-title" id="new-card-dialog-title">More settings</h2>
   <p class="dialog-intro">An agent works without an interactive terminal in a separate git worktree. The default Build workflow stops with changes in that worktree and does not merge them.</p>
   <form id="new-card-form">
     <div class="form-error" id="new-card-error" hidden></div>

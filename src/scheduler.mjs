@@ -9,6 +9,7 @@ import { conflicts } from './leases.mjs'
 import { canonPath } from './fsx.mjs'
 import { runCard, orphanedRun, unsettledRun, driverAlive } from './orchestrator.mjs'
 import { listCards, ledgerAppend, ledgerLog, home, sleep } from './store.mjs'
+import { readSession, isActive } from './sessions.mjs'
 
 export const MAX_CONCURRENT = Math.max(1, parseInt((process.env.LEG_MAX_CONCURRENT || process.env.BATON_MAX_CONCURRENT) || '2', 10) || 2)
 const ACTIVE = ['running', 'handing_off']
@@ -44,6 +45,21 @@ export function pickRunnable(cards, { max = MAX_CONCURRENT, landing = new Set() 
   return { start, blocked, running }
 }
 
+// A card born from "End, and keep going as a card" runs in the terminal's own
+// checkout. The board waits for that terminal to stop before it queues the
+// card, but a card queued by hand (Run), by a rerun, or by an older board must
+// not start a headless agent in a working tree an interactive one is still
+// writing to. The record is the same one the board reads to know a terminal
+// ended.
+export function heldByLiveTerminal(card) {
+  const from = card?.lineage?.from
+  if (!from || !card.worktree_adopted) return null
+  try {
+    const s = readSession(from)
+    return s && isActive(s) ? from : null
+  } catch { return null }
+}
+
 export function pidfile() { return join(home(), 'scheduler.pid') }
 
 export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor = { type: 'leg' } } = {}) {
@@ -53,7 +69,14 @@ export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor
     state.ticks += 1
     const cards = listCards()
     const landing = landingRepos(cards)
-    const { start, blocked } = pickRunnable(cards, { max, landing })
+    const picked = pickRunnable(cards, { max, landing })
+    const start = []
+    const blocked = [...picked.blocked]
+    for (const c of picked.start) {
+      const terminal = heldByLiveTerminal(c)
+      if (terminal) blocked.push({ card: c, conflicts: [], reason: `terminal ${terminal} is still running in this card's checkout` })
+      else start.push(c)
+    }
     for (const b of blocked) {
       const key = b.conflicts.length ? b.conflicts.map((x) => `${x.holder}:${x.lease}`).join(',') : b.reason
       if (state.blockedKeys.get(b.card.card_id) === key) continue

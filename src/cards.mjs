@@ -38,7 +38,12 @@ function kv(raw) {
   return m
 }
 
-export async function createCard(input, actor = { type: 'human', id: 'local' }) {
+// `allowPipelineFile` is false for anything that arrives over HTTP. A pipeline
+// that is a filesystem path is a CLI convenience (`--pipeline ./my.json`);
+// taken from a request body it is an arbitrary read of this machine, and the
+// JSON parser's own message quotes the first bytes of whatever it opened, so a
+// 400 would hand a non-owner the contents of a file they may not see.
+export async function createCard(input, actor = { type: 'human', id: 'local' }, { allowPipelineFile = true } = {}) {
   if (!input.repo) throw new CardInputError('missing repo')
   // stored as given (resolved); every comparison below is canonical, and the
   // worktree path is derived from the real long form in src/worktree.mjs
@@ -93,6 +98,9 @@ export async function createCard(input, actor = { type: 'human', id: 'local' }) 
     if (Array.isArray(pipelineArg)) pipeline = buildPipeline({ stations: pipelineArg, chain })
     else if (typeof pipelineArg === 'string' && pipelineArg.trim().startsWith('[')) pipeline = buildPipeline({ stations: JSON.parse(pipelineArg), chain })
     else if (PRESET_NAMES.includes(pipelineArg)) pipeline = buildPipeline({ preset: pipelineArg, chain })
+    // the refusal names the presets and never the value it was handed: a
+    // message that quoted the path back would still answer "does this exist"
+    else if (!allowPipelineFile) throw new Error(`pipeline must be one of the presets (${PRESET_NAMES.join(', ')}) or a list of stations`)
     else pipeline = buildPipeline({ file: pipelineArg, chain })
     validatePipeline(pipeline, await loadAdapterModes())
   } catch (err) {

@@ -17,7 +17,7 @@ import { readEvents as readCardEvents } from './ledger.mjs'
 // the running commentary. A `status` line is commentary; a hand-off is not.
 export const AUDITED = [
   'handoff', 'handoff_requested', 'handed_off', 'landed', 'land', 'bounced', 'killed',
-  'approved', 'approval_needed', 'reassigned', 'paused', 'resumed', 'ended', 'done',
+  'approved', 'approval_needed', 'reassigned', 'paused', 'resumed', 'taken_over', 'ended', 'done',
   'failed', 'trust', 'harness', 'worktree', 'station_done', 'leg_started', 'rerun',
 ]
 

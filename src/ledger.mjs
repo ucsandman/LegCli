@@ -16,7 +16,7 @@ import { dashclawConfig, record } from './sync/dashclaw.mjs'
 export const EVENT_TYPES = ['card_created', 'leg_started', 'leg_progress', 'leg_exited',
   'limit_detected', 'handoff_written', 'leg_resumed', 'station_done', 'bounced', 'landed',
   'land_warning', 'land_retry', 'blocked_by', 'scheduler_started', 'scheduler_stopped',
-  'approval_needed', 'approved', 'reassigned', 'paused', 'resumed', 'killed', 'done',
+  'approval_needed', 'approved', 'reassigned', 'paused', 'resumed', 'taken_over', 'killed', 'done',
   'failed', 'error', 'status', 'harness', 'harness_blocked']
 export const STATUSES = ['backlog', 'queued', 'running', 'handing_off', 'waiting_human',
   'needs_approval', 'paused', 'done', 'failed', 'killed']
@@ -28,7 +28,10 @@ export const PATCHABLE = ['pipeline', 'leases', 'land_attempts', 'land_mode', 't
   // going as a card"), and whether its worktree was adopted from that terminal
   // rather than cut for the card: the orchestrator must not cut a second one
   // over the top of it (redesign G4)
-  'lineage', 'worktree_adopted']
+  // the branch that checkout is actually on: `leg/<card-id>` for one the card
+  // cut, the TERMINAL's branch for one it adopted, which is not a name the
+  // board can derive from the card id (redesign C.3's register)
+  'lineage', 'worktree_adopted', 'worktree_branch']
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,39}$/i
 
 export const ROOT = process.env.LEG_HOME || process.env.BATON_HOME || (existsSync(join(homedir(), '.leg')) ? join(homedir(), '.leg') : existsSync(join(homedir(), '.baton')) ? join(homedir(), '.baton') : join(homedir(), '.leg'))

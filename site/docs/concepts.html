@@ -169,9 +169,17 @@ bucket the agent publishes (<code>{kind, group, model, percent, resets_at, is_ac
 the row that will actually stop a terminal. <code>walls</code> is attributed from wording
 rather than measured: <code>bucketFromWall()</code> in <code>src/buckets.mjs</code> reads the wall
 message, and a model-scoped wall goes to <code>walls[model]</code> while the login stays
-open, so a Fable wall never stops <code>claude/sonnet</code>. <code>history</code> is a ring of at
-most 24 percentage samples per bucket, started again whenever that window
-resets. <code>extra_usage</code> is the credits sentence, and <code>facts</code> holds strings the
+open, so a Fable wall never stops <code>claude/sonnet</code>; a model wall with no clock of
+its own is dated from that model&#39;s bucket, else from the weekly window, because
+a per-model limit is a weekly fact and the five-hour clock would hand the model
+back within the hour. <code>history</code> is a ring per bucket, capped by the clock first
+and by 24 samples second: at most one sample a minute, none older than the
+window it was measured in, and started again whenever that window resets (each
+sample carries its own <code>resets_at</code>, so a bucket that is missing from one reading
+cannot carry its old samples into the next window). Capping by count alone made
+the forecast vanish from any login with three terminals on it, because three
+pollers fill the ring three times as fast. <code>extra_usage</code> is the credits
+sentence, and <code>facts</code> holds strings the
 agent measured itself (codex&#39;s <code>plan_type</code> and <code>credits_balance</code>). An older Leg
 reading this file ignores all five, and an agent that publishes no buckets
 leaves them empty.</p>
@@ -182,8 +190,11 @@ leaves them empty.</p>
 highest percentage across the known windows is the pressure; the hottest
 window names the warning.</li>
 <li><strong>Wall.</strong> <code>markLimited()</code> records <code>limited_until</code> from the reset time the CLI
-itself reported. With no reset time it uses the soonest known window reset,
-and with neither it assumes five hours.</li>
+itself reported. With no reset time, an account wall takes the window that
+actually walled (the highest used percentage, so a weekly wall is not
+recorded as the five-hour window&#39;s near reset) and a model wall takes that
+model&#39;s own bucket, else the weekly window. With neither it assumes five
+hours.</li>
 <li><strong>Clearing.</strong> A usage reading that arrives after <code>limited_until</code> has passed
 clears the wall.</li>
 </ul>
@@ -198,7 +209,12 @@ agents, is never removed: it is derived from the ladder&#39;s distinct agent ord
 every time the ladder is saved, so a reader that has never heard of rungs sees
 the same order it always did.</p>
 <p>When a session hits its limit, or you press <strong>Hand off now</strong>, Leg does four
-things in order (<code>src/attach.mjs</code>, <code>src/bundle.mjs</code>):</p>
+things in order (<code>src/attach.mjs</code>, <code>src/bundle.mjs</code>). Which of the two it was
+decides the gates below: a hand-off nobody asked for (the usage limit, and a
+card the scheduler is driving) is <strong>automatic</strong> and keeps the <code>reserve</code> and the
+<code>climb_back</code> policy; pressing <strong>Hand off now</strong> is a human pick and is not held
+back by either, with or without a named destination, because the default option
+in that picker (&quot;the next option in the order&quot;) is still a press of the button.</p>
 <ol>
 <li><strong>Bundle.</strong> <code>sessionNotes()</code> writes the six sections
 <code>context-handoff-bundle</code> parses (Scope, Projects mentioned, Findings,
@@ -227,8 +243,10 @@ automatic climb is held back); the rung&#39;s login is not past its <code>reserv
 floor; and its <code>when</code> is satisfied (<code>always</code>; <code>below:N</code>, which needs the
 rung&#39;s own bucket to read under N percent and is skipped with a reason when
 there is no reading, because a threshold on a login with no figure is a
-wrong number in disguise; <code>walled-only</code>, which only opens once every rung
-above it is walled). Every rung the walk passes before the one it picks is
+wrong number in disguise; <code>walled-only</code>, which only opens once no rung above
+it could take the hand-off anyway: walled, at 100 percent, not installed on
+this machine, or refused for this hand-off, but not merely slow and not
+merely dearer than <code>may_spend</code> allows). Every rung the walk passes before the one it picks is
 named in the session&#39;s ledger with its reason, one line each, for example
 <code>skipped claude/fable: it spends usage credits and you have not allowed that</code>; a rung is never passed over silently. The board can save a new
 ladder for an active terminal; the wrapper reads it again at the transition
@@ -632,7 +650,9 @@ status (<code>backlog</code>, <code>queued</code>, <code>running</code>, <code>h
 <code>needs_approval</code>, <code>paused</code>) straight to <code>killed</code>, and <code>rerun</code> moves any
 terminal status (<code>done</code>, <code>failed</code>, <code>killed</code>) back to <code>queued</code> (station 0,
 leg 0). <code>reassign</code> also applies to any non-terminal status when the current
-station is an agent station, staying in <code>queued</code>.</p>
+station is an agent station, staying in <code>queued</code>, and <code>take_over</code> moves any
+non-terminal status to <code>paused</code> (a human is taking the card&#39;s checkout, so the
+scheduler must not start a leg in it).</p>
 <pre><code class="language-mermaid">stateDiagram-v2
     [*] --&gt; backlog
     backlog --&gt; queued: enqueue

@@ -17,6 +17,9 @@ process.env.LEG_QUIET = '1'
 process.env.BATON_QUIET = '1'
 process.env.LEG_TRUST = 'never'
 process.env.BATON_TRUST = 'never'
+// the board polls the session record to know when the terminal a card adopted
+// has stopped; a test should not wait half a second per look
+process.env.LEG_END_AS_CARD_POLL_MS = '100'
 
 const { createBoardServer, parseShortstat, cardOutcomes, ladderFromCurrentRung } = await import('../src/server.mjs')
 const sessions = await import('../src/sessions.mjs')
@@ -151,12 +154,20 @@ test('end-as-card writes the bundle, keeps the terminal worktree, records the li
   // the terminal's own worktree, adopted rather than cut again (G4)
   assert.equal(card.worktree, wt.path)
   assert.equal(card.worktree_adopted, true)
+  assert.equal(card.worktree_branch, wt.branch, 'the branch that checkout is really on, for the row to print')
   assert.deepEqual(card.lineage, { from: id })
 
   // the chain starts at the rung the terminal was on
   assert.deepEqual(card.pipeline[0].chain.map((e) => e.adapter), ['claude', 'codex'])
   assert.equal(card.pipeline[0].chain[0].model, 'opus')
-  assert.equal(card.status, 'queued', 'the card is queued, not left in the backlog')
+  // the terminal is still live in that checkout: `end` is a request its runner
+  // reads on its own poll, and the scheduler ticks every second, so the card
+  // waits in the backlog rather than starting a second agent in there
+  assert.equal(card.status, 'backlog', 'the card waits while the terminal it shares a checkout with is still running')
+  const { pickRunnable, heldByLiveTerminal } = await import('../src/scheduler.mjs')
+  const { listCards } = await import('../src/store.mjs')
+  assert.equal(heldByLiveTerminal(card), id, 'and the scheduler knows which terminal holds it')
+  assert.equal(pickRunnable(listCards(), { max: 10 }).start.some((c) => c.card_id === cardId), false, 'the scheduler would not start it')
 
   // the terminal ends the way End ends it: a control request the runner reads
   const control = JSON.parse(readFileSync(join(sessions.sessionDir(id), 'control.json'), 'utf8'))
@@ -176,6 +187,53 @@ test('end-as-card writes the bundle, keeps the terminal worktree, records the li
   assert.equal(line.who, 'local')
   assert.equal(line.kind, 'human')
   assert.ok(trail.scanned.events > 0, `the audit read nothing: scanned ${JSON.stringify(trail.scanned)}`)
+})
+
+test('the adopted card is queued the moment the terminal it shares a checkout with stops', async () => {
+  const id = 's-reborn-waitsfor'
+  terminal(id, { model: 'opus', task: 'Keep the invoice work going' })
+  const r = await api(`/api/sessions/${id}/end-as-card`, { method: 'POST', body: {} })
+  assert.equal(r.status, 201, r.text.slice(0, 300))
+  const cardId = r.json.card.card_id
+  assert.equal(readCard(cardId).status, 'backlog')
+  await sleep(400)
+  assert.equal(readCard(cardId).status, 'backlog', 'the card stays put while the terminal is still live')
+  // the runner has read control.json and stopped: the record is how the board
+  // learns that, and the card goes in the moment it says so
+  sessions.updateSession(id, { status: 'ended', ended_at: new Date().toISOString() })
+  let status = readCard(cardId).status
+  for (let i = 0; i < 60 && status !== 'queued'; i++) { await sleep(100); status = readCard(cardId).status }
+  assert.equal(status, 'queued', 'the card was never queued after the terminal ended')
+})
+
+test('a terminal with no worktree of its own: the card gets a checkout of its own, with the uncommitted work in it', async () => {
+  const id = 's-reborn-lone'
+  // the ordinary case: one terminal in the repo itself, no worktree (attach
+  // isolate() cuts one only when a second live session shares the checkout)
+  sessions.createSession({ id, agent: 'claude', account: 'default', cwd: repo, repo, branch: 'main', runner_pid: process.pid, owner: 'wes' })
+  sessions.updateSession(id, { status: 'running', task: 'Port the invoice parser', turns: 2, worktree: null })
+  // what the human is looking at: one file git has never seen, and one edit to
+  // a file it tracks
+  writeFileSync(join(repo, 'work-in-progress.txt'), 'the half-finished work\n')
+  writeFileSync(join(repo, 'README.md'), 'edited by the terminal\n')
+  git(repo, ['add', 'README.md'])
+  git(repo, ['commit', '-q', '-m', 'a tracked file to edit'])
+  writeFileSync(join(repo, 'README.md'), 'edited by the terminal, and not committed\n')
+
+  const r = await api(`/api/sessions/${id}/end-as-card`, { method: 'POST', body: {} })
+  assert.equal(r.status, 201, r.text.slice(0, 300))
+  const card = readCard(r.json.card.card_id)
+  assert.equal(card.worktree_adopted, undefined, 'there was no worktree to adopt')
+  assert.ok(card.worktree && card.worktree !== repo, `the card got a checkout of its own: ${card.worktree}`)
+  assert.equal(card.worktree_branch, `leg/${card.card_id}`)
+  assert.equal(card.status, 'queued', 'its checkout is its own, so nothing has to wait')
+  // the whole point: the work the human was looking at is in there
+  assert.equal(existsSync(join(card.worktree, 'work-in-progress.txt')), true, 'the untracked file was left behind')
+  // git may check the file out with this machine's line endings, so compare the text
+  assert.equal(readFileSync(join(card.worktree, 'README.md'), 'utf8').replace(/\r\n/g, '\n'), 'edited by the terminal, and not committed\n', 'the uncommitted edit was left behind')
+  assert.equal(r.json.carried.files >= 2, true, `the answer says what it carried: ${JSON.stringify(r.json.carried)}`)
+  // and the terminal still has its own copy: nothing was moved out from under it
+  assert.equal(existsSync(join(repo, 'work-in-progress.txt')), true)
 })
 
 test('end-as-card refuses a terminal that is not active and leaves it alone', async () => {
@@ -208,14 +266,28 @@ test('an adopted worktree is the one the card actually runs in: no second worktr
 
 test('take-over pauses the card and returns the one command that opens a terminal in its worktree', async () => {
   const card = await createCard({ repo, task: 'take me over', chain: 'claude', queue: true }, { type: 'human', id: 'wes' })
-  // a queued card has no child to kill: the route still hands back the command
+  // a queued card has no child to kill, and the route still hands back the
+  // command — but it leaves the card paused, so the scheduler cannot start a
+  // leg in the worktree the human is about to open (see the next test)
   const queued = await api(`/api/cards/${card.card_id}/take-over`, { method: 'POST', body: {} })
   assert.equal(queued.status, 200, queued.text.slice(0, 300))
   assert.equal(queued.json.command, `leg claude --resume-card ${card.card_id}`)
+  assert.equal(queued.json.card.status, 'paused')
+  // a card that never ran has no checkout, and the command must never open
+  // the human's main checkout under the card's name: the route cuts the
+  // worktree before it hands the command back, and cardWorkRoot refuses the
+  // repo fallback
+  const { existsSync } = await import('node:fs')
+  const { cardWorkRoot } = await import('../src/attach.mjs')
+  const cut = readCard(card.card_id)
+  assert.ok(cut.worktree && existsSync(cut.worktree), `take-over cut a worktree for a card that never ran: ${cut.worktree}`)
+  assert.notEqual(cardWorkRoot(cut), repo, 'the terminal never opens in the main checkout')
+  assert.equal(cardWorkRoot({ card_id: 'card-never', repo, worktree: null }), null, 'no checkout means no place to open, never the repo itself')
 
   // a running one is paused first, so nothing is working in that worktree when
   // the human sits down in it
   const { humanAction } = await import('../src/orchestrator.mjs')
+  humanAction(card.card_id, 'resume', {}, { type: 'human', id: 'wes' })
   humanAction(card.card_id, 'start', {}, { type: 'human', id: 'wes' })
   assert.equal(readCard(card.card_id).status, 'running')
   const running = await api(`/api/cards/${card.card_id}/take-over`, { method: 'POST', body: {} })
@@ -223,7 +295,33 @@ test('take-over pauses the card and returns the one command that opens a termina
   assert.equal(running.json.card.status, 'paused')
   assert.equal(running.json.command, `leg claude --resume-card ${card.card_id}`)
   const evs = (await api(`/api/cards/${card.card_id}/events`)).json.events
-  assert.ok(evs.some((e) => e.type === 'paused'), 'the pause is in the ledger with its actor')
+  assert.ok(evs.some((e) => e.type === 'taken_over'), `the take-over is in the ledger with its actor: ${evs.map((e) => e.type).join(', ')}`)
+})
+
+test('take-over on a card the scheduler could still start leaves it out of the runnable set, with the actor on the line', async () => {
+  const { pickRunnable } = await import('../src/scheduler.mjs')
+  const { listCards } = await import('../src/store.mjs')
+  const card = await createCard({ repo, task: 'queued when taken over', chain: 'claude', queue: true }, { type: 'human', id: 'wes' })
+  assert.equal(readCard(card.card_id).status, 'queued', 'the card is in the set the scheduler starts from')
+  const r = await api(`/api/cards/${card.card_id}/take-over`, { method: 'POST', body: {} })
+  assert.equal(r.status, 200, r.text.slice(0, 300))
+  assert.equal(r.json.command, `leg claude --resume-card ${card.card_id}`)
+  // the whole point: one tick later the scheduler must not launch a leg into
+  // the worktree the human was just handed
+  assert.equal(readCard(card.card_id).status, 'paused', 'the card is out of the runnable set')
+  assert.equal(r.json.card.status, 'paused', 'and the board is told so in the same answer')
+  const runnable = pickRunnable(listCards(), { max: 10 }).start.map((c) => c.card_id)
+  assert.equal(runnable.includes(card.card_id), false, `the scheduler would still start it: ${runnable.join(', ')}`)
+  // who has the checkout is an audit question, so the line names them
+  const evs = (await api(`/api/cards/${card.card_id}/events`)).json.events
+  const took = evs.find((e) => e.type === 'taken_over')
+  assert.ok(took, `no taken_over event: ${evs.map((e) => e.type).join(', ')}`)
+  assert.equal(took.actor.id, 'local')
+  assert.match(took.summary, /was queued/)
+  const { auditTrail } = await import('../src/audit.mjs')
+  const line = auditTrail({ limit: 200 }).entries.find((e) => e.what === 'taken_over' && e.id === card.card_id)
+  assert.ok(line, 'the take-over is in the audit trail')
+  assert.equal(line.who, 'local')
 })
 
 test('take-over refuses a finished card rather than pretending there is something to take', async () => {
@@ -237,13 +335,13 @@ test('take-over refuses a finished card rather than pretending there is somethin
 
 // ---- the digest count the terminals verdict reads (C.5) --------------------
 
-test('the sessions view carries how many cards are waiting on a human, and the count moves', async () => {
+test('the sessions view carries the card that is waiting on a human, not just how many', async () => {
   const before = (await api('/api/sessions')).json
-  assert.equal(typeof before.cards_waiting, 'number', 'cards_waiting is on the view')
+  assert.equal(typeof before.cards_waiting.count, 'number', 'cards_waiting carries a count')
   // a card whose first station is a human is waiting on a human the moment it
   // is queued: no agent has to run for the verdict to have something to say
   const card = await createCard({
-    repo, task: 'waiting on you', chain: 'claude',
+    repo, task: 'waiting on you', chain: 'claude', title: 'Waiting on a human',
     pipeline: [{ name: 'review', kind: 'human' }], queue: true,
   }, { type: 'human', id: 'wes' })
   assert.equal(readCard(card.card_id).status, 'waiting_human')
@@ -251,5 +349,48 @@ test('the sessions view carries how many cards are waiting on a human, and the c
   // number that was true before this card existed
   await sleep(5200)
   const after = (await api('/api/sessions')).json
-  assert.equal(after.cards_waiting, before.cards_waiting + 1, `waiting went ${before.cards_waiting} to ${after.cards_waiting}`)
+  assert.equal(after.cards_waiting.count, before.cards_waiting.count + 1, `waiting went ${before.cards_waiting.count} to ${after.cards_waiting.count}`)
+  // C.5's sentence is `card 3e1c has waited on you for 12 minutes.` with the
+  // sub `It is at the review station.`: a count alone cannot write either half
+  const first = after.cards_waiting.first
+  assert.ok(first, 'the waiting card itself is on the view')
+  // the shape src/board/sessions.js `waitingCard` reads
+  assert.deepEqual(Object.keys(first).sort(), ['id', 'since', 'station', 'title'])
+  assert.equal(first.id.startsWith('card-'), true, first.id)
+  assert.equal(first.station, 'review', 'the station the sub-sentence names')
+  assert.ok(Number.isFinite(Date.parse(first.since)), `since is a timestamp: ${first.since}`)
+})
+
+test('an operator runs the cards, so the waiting card reaches them; a guest gets nothing', async () => {
+  const share = await import('../src/share.mjs')
+  const tokens = { wes: share.newToken(), dana: share.newToken(), sam: share.newToken() }
+  const roster = {
+    version: 1, on: true, bind: '127.0.0.1', bind_kind: 'address', port: 0, owner: 'wes', loopback_owner: false,
+    people: [['wes', 'owner'], ['dana', 'operator'], ['sam', 'guest']].map(([name, role]) => ({ name, role, token_sha256: share.hashToken(tokens[name]) })),
+  }
+  const shared = createBoardServer({ bind: '127.0.0.1', port: 0, token: '', scheduler: false, share: roster })
+  const { port } = await shared.start()
+  const at = `http://127.0.0.1:${port}`
+  const get = (token) => new Promise((resolvePromise, reject) => {
+    const req = http.request(`${at}/api/sessions`, { headers: { authorization: `Bearer ${token}` } }, (r) => {
+      let data = ''
+      r.on('data', (c) => { data += c })
+      r.on('end', () => resolvePromise({ status: r.statusCode, json: JSON.parse(data) }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+  try {
+    const owner = await get(tokens.wes)
+    assert.equal(owner.status, 200)
+    assert.ok(owner.json.cards_waiting.count >= 1, 'the owner reads the waiting count')
+    const operator = await get(tokens.dana)
+    assert.equal(operator.status, 200)
+    assert.equal('cards_waiting' in operator.json, true, 'an operator approves cards, so the verdict may name one on their board')
+    assert.equal(operator.json.cards_waiting?.count, owner.json.cards_waiting.count, 'and reads the same waiting cards the owner does')
+    assert.equal(operator.json.capacity, undefined, 'and still nothing that describes the machine')
+    const guest = await get(tokens.sam)
+    assert.equal(guest.status, 200)
+    assert.equal('cards_waiting' in guest.json, false, 'a guest has no cards at all')
+  } finally { await shared.stop() }
 })

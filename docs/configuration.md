@@ -88,7 +88,7 @@ login stops (`src/preferences.mjs`), alongside the older `handoff_order`:
 
 | key | default | meaning |
 |-----|---------|---------|
-| `handoff_ladder` | one rung per agent in `handoff_order`, model `null` | the fallback list, rung 1 first; each rung is `{agent, account, model, when, cost}`. `model` is `null` or one of that agent's names in `src/buckets.mjs` `MODEL_ALIASES` (only claude has any: `fable`, `opus`, `sonnet`, `haiku`). `when` is `always`, `below:N`, or `walled-only`. `cost` is `free`, `plan`, `credits`, or `metered`, and is a static label; the live cost a rung would spend right now is computed, never read off this key |
+| `handoff_ladder` | `claude/fable`, `claude/opus`, `claude/sonnet`, then one rung per remaining agent in `handoff_order` with model `null` | the fallback list, rung 1 first; each rung is `{agent, account, model, when, cost}`. `model` is `null` or one of that agent's names in `src/buckets.mjs` `MODEL_ALIASES` (only claude has any: `fable`, `opus`, `sonnet`, `haiku`). `account` is `default` or a name this machine has for that agent (`leg accounts ls`); anything else is refused with a sentence, because that string becomes the CLI's config dir and the usage record's file name. `when` is `always`, `below:N`, or `walled-only`. `cost` is `free`, `plan`, `credits`, or `metered`, and is a static label; the live cost a rung would spend right now is computed from the agent and the login, never read off this key, so a ladder migrated from an older `handoff_order` still meets the spending gate on `grok` |
 | `climb_back` | `next-handoff` | `next-handoff` picks a recovered higher rung up again at the very next hand-off, with no extra step; `never` keeps a terminal on the rung it downshifted to until a human hands it off there by name |
 | `may_spend` | `false` | while `false`, an automatic hand-off skips any rung whose live cost is `credits` or `metered`, and records why; a human's own pick is not gated by this |
 | `reserve` | `{}` | `{ "<agent>": percent }`; an automatic hand-off will not take a rung on that login once its binding bucket is above `100 - percent`. A human's own pick still reaches it, and the picker names the reserve on that row instead of hiding it |
@@ -117,7 +117,7 @@ waiting on you (`src/preferences.mjs` `defaults()`):
 | key | default | meaning |
 |-----|---------|---------|
 | `notify_terminal` | `true` | "Terminal toast when a terminal waits on you": on Claude Code's own `Notification` hook (`permission_prompt`, `idle_prompt`, `agent_needs_input`), send an OSC 9 toast to the window the agent is already running in |
-| `notify_board` | `false` | "Browser notification when a terminal waits on you": fire a browser `Notification()` the moment a row or card becomes `needsYou`; the board reads `window.isSecureContext` at render time and disables the toggle with an explanatory sentence where that is false |
+| `notify_board` | `false` | "Browser notification when a terminal waits on you": fire a browser `Notification()` the moment a terminal row becomes `needsYou` and the reader is not looking at the board (a waiting card raises the tab badge and the verdict, not the notification); the board reads `window.isSecureContext` at render time and disables the toggle with an explanatory sentence where that is false |
 
 Both are set from Settings on the board, or by writing the key directly. The
 tab title badge (`(1) Leg` plus a favicon dot) has no toggle: it needs no

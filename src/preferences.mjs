@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { MODEL_ALIASES } from './buckets.mjs'
+import { readAccounts, ACCOUNT_NAME_RE } from './accounts.mjs'
 
 export const HANDOFF_AGENTS = ['claude', 'codex', 'agy']
 export const ALL_HANDOFF_AGENTS = ['claude', 'codex', 'agy', 'grok']
@@ -45,15 +46,31 @@ export function staticCost(agent) {
   return agent === 'agy' ? 'free' : agent === 'grok' ? 'metered' : 'plan'
 }
 
-// What this rung spends RIGHT NOW. `credits` is the one cost that depends on
-// live state: claude/fable bills usage credits only once the login has them
-// enabled (extra_usage.enabled), and until then it is ordinary plan usage.
-// Computed, never persisted, so the cost gate can never act on a stale word.
+// What this rung spends RIGHT NOW, derived from the agent and the live login.
+// `credits` is the one cost that depends on live state: claude/fable bills
+// usage credits only once the login has them enabled (extra_usage.enabled),
+// and until then it is ordinary plan usage.
+//
+// The word on the rung is never consulted: it is a label that was persisted
+// once and can be any age. An install whose ladder was migrated from a bare
+// handoff_order carries `plan` on every rung, and reading that word let an
+// unattended hand-off take grok and bill metered credits with may_spend false
+// (B.5's gate exists for exactly that rung). Agent plus live login, every time.
 export function rungCost(rung, usage = null) {
   if (!rung) return 'plan'
   if (rung.agent === 'claude' && rung.model === 'fable' && usage?.extra_usage?.enabled === true) return 'credits'
-  if (RUNG_COSTS.includes(rung.cost)) return rung.cost
   return staticCost(rung.agent)
+}
+
+// An account name reaches the CLI's config dir (CLAUDE_CONFIG_DIR) and the
+// usage record's file name, so a rung may only name one this machine actually
+// has. Anything else is a path in disguise: `../../../../pwned` pointed the
+// client at an attacker-chosen directory and wrote the record beside it.
+export function validRungAccount(agent, account) {
+  if (!ACCOUNT_NAME_RE.test(String(account ?? ''))) return `rung "account" must be a name of letters, digits, - and _ (got "${account}")`
+  const known = readAccounts()[agent] ?? ['default']
+  if (!known.includes(account)) return `${agent} has no account "${account}" on this machine (${known.join(', ')})`
+  return null
 }
 
 export function normalizeRung(value) {
@@ -70,11 +87,14 @@ export function normalizeRung(value) {
 
 export const rungKey = (r) => `${r.agent}--${r.account}--${r.model ?? ''}`
 
-// One rung per agent, model null, cost plan: what an existing `handoff_order`
-// means, written out long-hand. Behaviour is bit-identical to the order it came
-// from until a human edits a rung.
+// One rung per agent, model null, the cost that agent actually has: what an
+// existing `handoff_order` means, written out long-hand. Behaviour is
+// bit-identical to the order it came from until a human edits a rung. The cost
+// word is read off the agent (`staticCost`) rather than fixed at 'plan',
+// because grok and agy are exactly the two agents the word exists for: a
+// migrated grok rung written as 'plan' walks straight through the spending gate.
 export function ladderFromOrder(order) {
-  return normalizeHandoffOrder(order).map((agent) => ({ agent, account: 'default', model: null, when: 'always', cost: 'plan' }))
+  return normalizeHandoffOrder(order).map((agent) => ({ agent, account: 'default', model: null, when: 'always', cost: staticCost(agent) }))
 }
 
 // A fresh install: the claude models first (a same-login switch keeps the
@@ -97,6 +117,8 @@ export function requireHandoffLadder(value) {
     if (!raw || typeof raw !== 'object') throw new TypeError('each rung must be an object: {agent, account, model, when, cost}')
     if (!ALL_HANDOFF_AGENTS.includes(raw.agent)) throw new TypeError(`unknown agent "${raw.agent}" in handoff_ladder (${ALL_HANDOFF_AGENTS.join(', ')})`)
     const rung = normalizeRung(raw)
+    const badAccount = validRungAccount(rung.agent, rung.account)
+    if (badAccount) throw new TypeError(badAccount)
     if (rung.model && !(MODEL_ALIASES[rung.agent] ?? []).includes(rung.model)) {
       const known = (MODEL_ALIASES[rung.agent] ?? []).join(', ')
       throw new TypeError(`${rung.agent} has no model "${rung.model}"${known ? ` (${known})` : ': Leg knows no model names for it'}`)

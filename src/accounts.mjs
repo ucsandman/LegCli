@@ -43,7 +43,12 @@ export const LAYOUT = {
 export function accountsFile() { return join(home(), 'accounts.json') }
 export function accountDir(agent, name) { return join(home(), 'accounts', agent, name) }
 
-const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,29}$/i
+// A name is a directory segment, never a path: it is joined into the CLI's
+// config dir and into the usage record's file name. Exported so the one rule
+// has one owner (src/preferences.mjs validates a rung's account with it, and
+// src/usage.mjs refuses to write a record under anything else).
+export const ACCOUNT_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,29}$/i
+const NAME_RE = ACCOUNT_NAME_RE
 
 export function readAccounts() {
   const base = { claude: ['default'], codex: ['default'], agy: ['default'], grok: ['default'] }

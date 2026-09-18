@@ -212,8 +212,8 @@ login stops (<code>src/preferences.mjs</code>), alongside the older <code>handof
 </thead>
 <tbody><tr>
 <td><code>handoff_ladder</code></td>
-<td>one rung per agent in <code>handoff_order</code>, model <code>null</code></td>
-<td>the fallback list, rung 1 first; each rung is <code>{agent, account, model, when, cost}</code>. <code>model</code> is <code>null</code> or one of that agent&#39;s names in <code>src/buckets.mjs</code> <code>MODEL_ALIASES</code> (only claude has any: <code>fable</code>, <code>opus</code>, <code>sonnet</code>, <code>haiku</code>). <code>when</code> is <code>always</code>, <code>below:N</code>, or <code>walled-only</code>. <code>cost</code> is <code>free</code>, <code>plan</code>, <code>credits</code>, or <code>metered</code>, and is a static label; the live cost a rung would spend right now is computed, never read off this key</td>
+<td><code>claude/fable</code>, <code>claude/opus</code>, <code>claude/sonnet</code>, then one rung per remaining agent in <code>handoff_order</code> with model <code>null</code></td>
+<td>the fallback list, rung 1 first; each rung is <code>{agent, account, model, when, cost}</code>. <code>model</code> is <code>null</code> or one of that agent&#39;s names in <code>src/buckets.mjs</code> <code>MODEL_ALIASES</code> (only claude has any: <code>fable</code>, <code>opus</code>, <code>sonnet</code>, <code>haiku</code>). <code>account</code> is <code>default</code> or a name this machine has for that agent (<code>leg accounts ls</code>); anything else is refused with a sentence, because that string becomes the CLI&#39;s config dir and the usage record&#39;s file name. <code>when</code> is <code>always</code>, <code>below:N</code>, or <code>walled-only</code>. <code>cost</code> is <code>free</code>, <code>plan</code>, <code>credits</code>, or <code>metered</code>, and is a static label; the live cost a rung would spend right now is computed from the agent and the login, never read off this key, so a ladder migrated from an older <code>handoff_order</code> still meets the spending gate on <code>grok</code></td>
 </tr>
 <tr>
 <td><code>climb_back</code></td>
@@ -263,7 +263,7 @@ waiting on you (<code>src/preferences.mjs</code> <code>defaults()</code>):</p>
 <tr>
 <td><code>notify_board</code></td>
 <td><code>false</code></td>
-<td>&quot;Browser notification when a terminal waits on you&quot;: fire a browser <code>Notification()</code> the moment a row or card becomes <code>needsYou</code>; the board reads <code>window.isSecureContext</code> at render time and disables the toggle with an explanatory sentence where that is false</td>
+<td>&quot;Browser notification when a terminal waits on you&quot;: fire a browser <code>Notification()</code> the moment a terminal row becomes <code>needsYou</code> and the reader is not looking at the board (a waiting card raises the tab badge and the verdict, not the notification); the board reads <code>window.isSecureContext</code> at render time and disables the toggle with an explanatory sentence where that is false</td>
 </tr>
 </tbody></table>
 <p>Both are set from Settings on the board, or by writing the key directly. The
