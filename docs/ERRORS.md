@@ -3,6 +3,15 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-18: `vercel --prod --yes` from `site/` failed the deploy and created a stray Vercel project
+
+**Fixed by deploying from the repo root with a root `.vercelignore` and
+`--archive=tgz`; the recipe is in DECISIONS.md under "the site deploys itself
+from git".** The `--yes` also auto-created an empty Vercel project named `leg`
+that still needs `vercel project rm leg`. The lesson: on a project with a Root
+Directory set, the CLI must run from the repo root, and `--yes` is a consent to
+create projects, not only to skip a confirmation.
+
 ## 2026-09-18: the terminal's opening `next:` line named the same agent twice and no model
 
 **Fixed in `src/attach.mjs`: the line maps the chain through `rungLabel`, so it
