@@ -21,7 +21,7 @@ and "CI green" after a push means the run, not the publish; `npm view
 **Fixed by deploying from the repo root with a root `.vercelignore` and
 `--archive=tgz`; the recipe is in DECISIONS.md under "the site deploys itself
 from git".** The `--yes` also auto-created an empty Vercel project named `leg`
-that still needs `vercel project rm leg`. The lesson: on a project with a Root
+that still needs `vercel project rm leg` (2026-09-18 later: `vercel project ls` no longer lists a `leg` project, so it is gone). The lesson: on a project with a Root
 Directory set, the CLI must run from the repo root, and `--yes` is a consent to
 create projects, not only to skip a confirmation.
 
