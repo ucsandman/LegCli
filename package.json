@@ -1,6 +1,6 @@
 {
   "name": "@ucsandman/legcli",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Usage-limit monitor and automatic handoff for Claude Code, Codex, agy and Grok. Type leg claude|codex|agy|grok and get the same interactive agent with a board alongside, auto-approve on by default, usage tracking per agent and account, a live context handoff bundle, and at the limit the next agent continuing in the same terminal. $79 once, 30-day money-back guarantee.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

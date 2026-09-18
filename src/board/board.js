@@ -68,7 +68,7 @@
   // release lands on disk under a board that was started before it: the page
   // then draws controls the process has no routes for (an empty agent select,
   // no buckets). test/files-version.test.mjs pins this to package.json.
-  const FILES_VERSION = '0.13.0'
+  const FILES_VERSION = '0.13.1'
   const TIMELINE_CAP = 12
   // mirrors LOOPBACK in src/auth.mjs; state.bind is "<host>:<port>" and an IPv6
   // host arrives bracketed

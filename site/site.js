@@ -40,21 +40,30 @@
   var timers = [];
   var typedText = lines.map(function (ln) { return ln.getAttribute('data-type') ? ln.textContent : null; });
 
-  function setBar(el, pct, state) {
+  function setBar(el, pct, state, label) {
     el.querySelector('i').style.setProperty('--p', String(pct / 100));
     el.querySelector('b').textContent = pct + '%';
     el.setAttribute('data-state', state);
+    if (label) el.querySelector('span').textContent = label;
   }
+  // Three states: claude on fable (the fable week filling), claude on opus after
+  // the model wall (same login, same conversation), codex after the login wall.
   function finalState() {
     term.setAttribute('data-owner', 'codex');
     who.textContent = 'codex'; acct.textContent = 'wes@personal';
-    setBar(bar5, 18, 'ok'); setBar(bar7, 12, 'ok');
+    setBar(bar5, 18, 'ok', '5h'); setBar(bar7, 12, 'ok', '7d');
+    bell.removeAttribute('data-on');
+  }
+  function opusState() {
+    term.setAttribute('data-owner', 'claude');
+    who.textContent = 'claude/opus'; acct.textContent = 'wes@work';
+    setBar(bar5, 41, 'ok', '5h'); setBar(bar7, 12, 'ok', 'opus week');
     bell.removeAttribute('data-on');
   }
   function startState() {
     term.setAttribute('data-owner', 'claude');
-    who.textContent = 'claude'; acct.textContent = 'wes@work';
-    setBar(bar5, 41, 'ok'); setBar(bar7, 18, 'ok');
+    who.textContent = 'claude/fable'; acct.textContent = 'wes@work';
+    setBar(bar5, 41, 'ok', '5h'); setBar(bar7, 79, 'ok', 'fable week');
     bell.removeAttribute('data-on');
   }
   function showAll() {
@@ -85,16 +94,20 @@
         at(t, function () { ln.hidden = false; });
         t += ln.classList.contains('gap') ? 120 : ((ln.classList.contains('leg') || ln.classList.contains('baton')) ? 700 : 520);
       }
-      if (ln.getAttribute('data-warn')) {
-        at(t - 200, function () { setBar(bar5, 85, 'warn'); bell.setAttribute('data-on', '1'); });
+      var warn = ln.getAttribute('data-warn');
+      if (warn) {
+        // "7" is the fable week crossing its notch; "5" is the login's 5h window.
+        at(t - 200, function () { setBar(warn === '5' ? bar5 : bar7, 85, 'warn'); bell.setAttribute('data-on', '1'); });
         t += 900;
       }
-      if (ln.getAttribute('data-limit')) {
-        at(t - 500, function () { setBar(bar5, 100, 'limit'); });
+      var limit = ln.getAttribute('data-limit');
+      if (limit) {
+        at(t - 500, function () { setBar(limit === 'account' ? bar5 : bar7, 100, 'limit'); });
         t += 500;
       }
-      if (ln.getAttribute('data-switch')) {
-        at(t, function () { finalState(); });
+      var sw = ln.getAttribute('data-switch');
+      if (sw) {
+        at(t, sw === 'opus' ? opusState : finalState);
         t += 600;
       }
       if (ln.getAttribute('data-last')) {

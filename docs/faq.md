@@ -135,7 +135,9 @@ paths, no bundle, no events, no logs, and none of the pipeline side. The
 limit line keeps only the reason and the reset time, never the raw limit
 text. The one thing they can do on your terminal is ask for a hand-off, which
 you approve or dismiss on the row. `leg share off` ends it and every link
-stops working. There is no TLS, so keep it on Tailscale or a network you trust.
+stops working. TLS is served from a certificate pair you supply (`leg share on
+--tls-cert <file> --tls-key <file>`); Leg issues none, so without one keep it on
+Tailscale or a network you trust.
 
 **What if the CLI I want isn't installed?**
 `node bin/leg.mjs up --dry` prints a preflight table with `ok`/`missing`

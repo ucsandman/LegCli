@@ -902,7 +902,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   }
   if (iso) updateSession(sid, { cwd: iso.cwd, branch: iso.branch, worktree: { path: iso.path, branch: iso.branch, base: iso.base } })
   updateSession(sid, { head_at_start: g.head, head: g.head, files_dirty: iso ? [] : g.dirty, board_url: board.url })
-  say(`session ${sid} · ${agent}${account !== 'default' ? '/' + account : ''} · board ${board.url ?? 'off'}${board.started ? ' (started)' : ''} · next: ${chain.map((c) => c.agent + (c.account !== 'default' ? '/' + c.account : '')).join(' → ') || 'none'}`)
+  say(`session ${sid} · ${agent}${account !== 'default' ? '/' + account : ''} · board ${board.url ?? 'off'}${board.started ? ' (started)' : ''} · next: ${chain.map(rungLabel).join(' → ') || 'none'}`)
   if (iso) {
     const others = iso.live.map((s) => `${s.agent} ${s.session_id.split('-').pop()}`).join(', ')
     say(`another session is live in this checkout (${others}): this one works in ${iso.cwd} on ${iso.branch}; Land on its card brings it to ${iso.base ?? 'nothing (detached HEAD)'} · --no-worktree to share`)

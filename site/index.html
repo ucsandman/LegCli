@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your agent hits the limit. The next one keeps your place. | Leg</title>
-<meta name="description" content="A usage monitor and board beside Claude Code, Codex, agy or Grok, a private copy of the repo for a second agent, and at the usage limit a handoff to the next agent in the same terminal. Local, zero dependencies, $79 once with a 30-day money-back guarantee.">
+<meta name="description" content="A usage monitor and board beside Claude Code, Codex, agy or Grok. At the usage limit the work moves down a ladder in the same terminal: Fable to Opus keeps the conversation, the next agent starts from a handoff bundle. Local, zero dependencies, $79 once with a 30-day money-back guarantee.">
 <link rel="canonical" href="https://legcli.com/">
 <meta name="theme-color" content="#1b4fbf">
 <meta name="google-site-verification" content="Eok1iYyy78qZjURJX8m1WEFQJk3H3vKkpwPaFhl5znc">
@@ -14,17 +14,17 @@
 <meta property="og:url" content="https://legcli.com/">
 <meta property="og:site_name" content="Leg">
 <meta property="og:title" content="Your agent hits the limit. The next one keeps your place.">
-<meta property="og:description" content="leg claude, leg codex, leg agy or leg grok: the same agent with a board beside it, usage tracking, and a handoff to the next agent in the same terminal when the limit hits.">
-<meta property="og:image" content="https://legcli.com/og.png?v=3">
-<meta property="og:image:secure_url" content="https://legcli.com/og.png?v=3">
+<meta property="og:description" content="leg claude, leg codex, leg agy or leg grok: the same agent with a board beside it, usage per model, and at the limit the next model or the next agent continuing in the same terminal.">
+<meta property="og:image" content="https://legcli.com/og.png?v=4">
+<meta property="og:image:secure_url" content="https://legcli.com/og.png?v=4">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Leg - Your agent hits the limit. The next one keeps your place.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Your agent hits the limit. The next one keeps your place.">
-<meta name="twitter:description" content="leg claude, leg codex, leg agy or leg grok: the same agent with a board beside it, usage tracking, and a handoff to the next agent in the same terminal when the limit hits.">
-<meta name="twitter:image" content="https://legcli.com/og.png?v=3">
+<meta name="twitter:description" content="leg claude, leg codex, leg agy or leg grok: the same agent with a board beside it, usage per model, and at the limit the next model or the next agent continuing in the same terminal.">
+<meta name="twitter:image" content="https://legcli.com/og.png?v=4">
 <meta name="twitter:image:alt" content="Leg - Your agent hits the limit. The next one keeps your place.">
 <link rel="preload" href="fonts/atkinson-hyperlegible-next-var.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/azeret-mono-var.woff2" as="font" type="font/woff2" crossorigin>
@@ -37,7 +37,7 @@
   "name": "Leg",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Windows, macOS, Linux",
-"softwareVersion": "0.8.0",
+  "softwareVersion": "0.13.1",
   "license": "https://legcli.com/license",
   "url": "https://legcli.com/",
   "downloadUrl": "https://www.npmjs.com/package/@ucsandman/legcli",
@@ -46,7 +46,7 @@
     { "@type": "Offer", "name": "Personal", "price": "79", "priceCurrency": "USD", "url": "https://legcli.com/#pricing" },
     { "@type": "Offer", "name": "Team", "price": "12", "priceCurrency": "USD", "url": "https://legcli.com/#pricing", "description": "per seat per month" }
   ],
-  "description": "A local wrapper for Claude Code, Codex, agy and Grok: a board and usage monitor beside the agent, a private copy of the repo for a second agent, and a handoff to the next agent in the same terminal when the usage limit hits."
+  "description": "A local wrapper for Claude Code, Codex, agy and Grok: a board and per-model usage monitor beside the agent, a ladder of models and agents to fall down at the usage limit in the same terminal, background cards, a private worktree for a second agent, and one index over every coding conversation on the machine."
 }
 </script>
 </head>
@@ -61,8 +61,9 @@
     </a>
     <nav class="nav-links" aria-label="Sections">
       <a href="#handoff">The handoff</a>
+      <a href="#ladder" class="hide-sm">The ladder</a>
       <a href="#board" class="hide-sm">The board</a>
-      <a href="#two-sessions" class="hide-sm">Two sessions</a>
+      <a href="#background" class="hide-sm">Background</a>
       <a href="#touched" class="hide-sm">What is touched</a>
       <a href="#pricing">Pricing</a>
       <a href="#install">Install</a>
@@ -77,7 +78,7 @@
 <section id="top" class="band blue hero">
   <div class="wrap">
     <h1>Your agent hits the limit. The next one keeps your place.</h1>
-    <p class="lead">Leg runs Claude Code, Codex, agy and Grok. It watches the five-hour and weekly windows, and at the wall it saves the session, stops the agent, and starts your next option <b>in the same terminal</b>, from where the last one stopped. Nothing is retyped.</p>
+    <p class="lead">Leg runs Claude Code, Codex, agy and Grok. It watches the five-hour and weekly windows, per model, and at the wall it saves the session, stops the agent, and starts the next rung of your ladder <b>in the same terminal</b>, from where the last one stopped. On Claude, a step down from Fable to Opus keeps the conversation itself. Every other step starts from a handoff bundle. Nothing is retyped.</p>
     <div class="commands">
       <div class="cmd"><code>npm install -g @ucsandman/legcli</code><button class="copy" type="button" data-copy="npm install -g @ucsandman/legcli">Copy</button></div>
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
@@ -90,57 +91,68 @@
 <section id="handoff" class="band blue live" aria-labelledby="handoff-h">
   <div class="wrap">
     <div class="live-head">
-      <h2 id="handoff-h">The handoff, as it happens in the terminal.</h2>
-      <p class="lead muted">A sample session. Every line that begins with <code>[leg]</code> is what Leg prints; the rest is the agent. It plays at reading speed when it scrolls into view.</p>
+      <h2 id="handoff-h">Two walls in one afternoon, as they happen in the terminal.</h2>
+      <p class="lead muted">A sample session. Every line that begins with <code>[leg]</code> is what Leg prints; the rest is the agent. The first wall is on Fable only, so Opus takes the same conversation. The second is on the whole login, so Codex starts from the bundle. It plays at reading speed when it scrolls into view.</p>
     </div>
 
     <div class="marker" aria-hidden="true">
       <span class="tab warn"><code>85%</code><span>the gauge crosses its reserve notch and the terminal bell rings once</span></span>
     </div>
 
-    <figure class="term" id="term" data-owner="claude" aria-label="Terminal transcript of a handoff from claude to codex">
+    <figure class="term" id="term" data-owner="claude" aria-label="Terminal transcript: claude on fable hits the fable limit, opus resumes the same conversation, then the login's five-hour limit hands the work to codex from the bundle">
       <div class="term-strip">
-        <span class="who"><span class="dot"></span><span id="strip-who">claude</span> <span class="muted" id="strip-acct">wes@work</span></span>
-        <span class="bar" id="bar5" data-state="ok"><span>5h</span><i style="--p:0.41"></i><b>41%</b></span>
-        <span class="bar" id="bar7" data-state="ok"><span>7d</span><i style="--p:0.18"></i><b>18%</b></span>
+        <span class="who"><span class="dot"></span><span id="strip-who">claude/fable</span> <span class="muted" id="strip-acct">wes@work</span></span>
+        <span class="bar" id="bar5" data-state="ok"><span id="bar5-label">5h</span><i style="--p:0.41"></i><b>41%</b></span>
+        <span class="bar" id="bar7" data-state="ok"><span id="bar7-label">fable week</span><i style="--p:0.79"></i><b>79%</b></span>
         <span class="bell" id="bell" aria-hidden="true">bell</span>
       </div>
       <div class="term-body" id="term-body">
-        <span class="ln sh">~/acme/api $ <b>leg claude --model opus</b></span>
-        <span class="ln leg">session claude-a3f8 · claude · board http://127.0.0.1:4747 (started) · next: codex → agy</span>
+        <span class="ln sh">~/acme/api $ <b>leg claude --model fable</b></span>
+        <span class="ln leg">session s-20260918-091204-claude-a3f8 · claude · board http://127.0.0.1:4747 (started) · next: claude/opus → claude/sonnet → codex → agy</span>
         <span class="ln gap"></span>
         <span class="ln you" data-type="1">add an idempotency key to the refund path and cover it with tests</span>
         <span class="ln out"><span class="k">Edited</span>src/refunds/create.ts</span>
         <span class="ln out"><span class="k">Edited</span>src/refunds/idempotency.ts</span>
-        <span class="ln out"><span class="k">Ran</span>npm test -- refunds        <span class="fail">14 passed, 1 failed</span></span>
-        <span class="ln out" data-warn="1"><span class="k">Edited</span>test/refunds/idempotency.test.ts</span>
+        <span class="ln out" data-warn="7"><span class="k">Ran</span>npm test -- refunds        <span class="fail">14 passed, 1 failed</span></span>
         <span class="ln gap"></span>
-        <span class="ln leg limit" data-limit="1">claude hit its usage limit: rate_limit</span>
-        <span class="ln leg">bundle saved: .context-handoffs/20260911-154212-leg-claude-a3f8</span>
-        <span class="ln leg" data-switch="1">starting codex in this terminal from the bundle</span>
+        <span class="ln leg limit" data-limit="model">claude hit its usage limit: You've reached your Fable limit. Run /usage-credits to continue or switch models with /model.</span>
+        <span class="ln leg">bundle saved: .context-handoffs/20260918-154212-leg-claude-a3f8</span>
+        <span class="ln leg" data-switch="opus">starting claude/opus in this terminal with --resume: kept the conversation</span>
+        <span class="ln out"><span class="k">&nbsp;</span>The store lookup in idempotency.ts is missing. Adding it and rerunning the failing test.</span>
+        <span class="ln out"><span class="k">Edited</span>src/refunds/idempotency.ts</span>
+        <span class="ln out"><span class="k">Ran</span>npm test -- refunds        15 passed</span>
+        <span class="ln gap"></span>
+        <span class="ln you" data-type="1">now the same key on the capture path</span>
+        <span class="ln out" data-warn="5"><span class="k">Edited</span>src/payments/capture.ts</span>
+        <span class="ln gap"></span>
+        <span class="ln leg limit" data-limit="account">claude hit its usage limit: You've hit your session limit</span>
+        <span class="ln leg">skipped claude/sonnet: shares the window that is out, buys nothing</span>
+        <span class="ln leg">bundle saved: .context-handoffs/20260918-171803-leg-claude-a3f8</span>
+        <span class="ln leg" data-switch="codex">starting codex in this terminal from the bundle</span>
         <span class="ln gap"></span>
         <span class="ln sh">codex <b>wes@personal</b> · same folder, same branch</span>
-        <span class="ln you codex" data-type="1">You are taking over an interactive coding session from claude, which hit its usage limit. Read .leg/RESUME-claude-a3f8.md (the context handoff bundle is at .context-handoffs/20260911-154212-leg-claude-a3f8), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.</span>
-        <span class="ln out"><span class="k">Read</span>.leg/RESUME-claude-a3f8.md</span>
+        <span class="ln you codex" data-type="1">You are taking over an interactive coding session from claude, which hit its usage limit. Read .leg/RESUME-s-20260918-091204-claude-a3f8.md (the context handoff bundle is at .context-handoffs/20260918-171803-leg-claude-a3f8), check git status and git diff, then continue the work from where it stopped. Do not ask the human to restate the task.</span>
+        <span class="ln out"><span class="k">Read</span>.leg/RESUME-s-20260918-091204-claude-a3f8.md</span>
         <span class="ln out"><span class="k">Ran</span>git status · git diff</span>
-        <span class="ln out"><span class="k">&nbsp;</span>The store lookup in idempotency.ts is missing. Adding it and rerunning the failing test.</span>
-        <span class="ln out" data-last="1"><span class="k">Ran</span>npm test -- refunds        15 passed</span>
+        <span class="ln out"><span class="k">&nbsp;</span>capture.ts sets the key on the request but not on the store write. Adding it and covering both paths.</span>
+        <span class="ln out" data-last="1"><span class="k">Ran</span>npm test -- refunds payments        22 passed</span>
       </div>
     </figure>
 
     <div class="marker after" aria-hidden="true">
-      <span class="tab bad"><code>limit</code><span>the bundle is saved and the next option starts here</span></span>
+      <span class="tab bad"><code>fable limit</code><span>a model wall: the login is still open, so Opus resumes the conversation</span></span>
+      <span class="tab bad"><code>session limit</code><span>a login wall: Sonnet buys nothing, so Codex starts from the bundle</span></span>
     </div>
 
     <div class="term-foot">
-      <span>The pointer prompt is the one Leg sends; it also appends the task as you first stated it. The bundle carries the rest: the task, the last messages, <code>git diff --stat</code>, dirty files, recent commits, why it stopped.</span>
+      <span>The Opus step needed no prompt: Leg ran <code>claude --resume &lt;id&gt; --model opus</code>, the same conversation on the next model down. The Codex step got the pointer prompt above, with the task as you first stated it appended. The bundle carries the rest: the task, the last messages, <code>git diff --stat</code>, dirty files, recent commits, why it stopped.</span>
       <button class="replay" id="replay" type="button" hidden>Replay the handoff</button>
     </div>
 
     <figure class="shot">
       <img src="/img/handoff-row.png" width="2080" height="770" loading="lazy" decoding="async"
            alt="A Leg card mid-handoff: the agent now reads fake-codex, the status is needs approval, the chain says fake-claude handed off, fake-codex pending, and the buttons are Approve, Reassign and Kill.">
-      <figcaption>And the same moment on the board, from a real run. The first agent hit its limit, Leg wrote the bundle and moved the card to the next agent; the chain line reads <code>fake-claude handed off · fake-codex pending</code> and it is waiting for you to approve the start. The two <code>fake-</code> agents are the scripted ones the test suite uses, so this run spends no subscription usage.</figcaption>
+      <figcaption>The same moment on the board, from a real run. The first agent hit its limit, Leg wrote the bundle and moved the card to the next agent; the chain line reads <code>fake-claude handed off · fake-codex pending</code> and it is waiting for you to approve the start. The two <code>fake-</code> agents are the scripted ones the test suite uses, so this run spends no subscription usage.</figcaption>
     </figure>
 
     <figure class="demo">
@@ -160,6 +172,55 @@
         <p>Your browser cannot play this video. <a href="/video/leg-handoff.mp4">Download the recording</a> (5.2&nbsp;MB, MP4).</p>
       </video>
     </figure>
+  </div>
+</section>
+
+<section id="ladder" class="band blue" aria-labelledby="ladder-h">
+  <div class="wrap">
+    <div class="cols">
+      <div class="stack">
+        <h2 id="ladder-h">The next option is a rung: an agent, a login, and a model.</h2>
+        <p>A fresh install's ladder is <code>claude/fable</code>, <code>claude/opus</code>, <code>claude/sonnet</code>, then codex, then agy. Fable running out is a wall on Fable, not on your Claude login, so the first two steps down never leave it. Only when the whole login is out, or every Claude rung is, does the work go to another CLI. It is a priority list, not a rotation: put agy at the bottom and agy is the last rung from a Claude terminal and from a Codex terminal alike.</p>
+        <p>Every terminal's details print the sequence with the rung it is on, and which rung would take it right now. <b>Hand off now</b> on the row takes the first open rung. <b>Hand off now to</b>, in the details, names one, and a rung that cannot be picked says why: <code>at its usage limit, back 11:40</code>, <code>shares the window that is out, buys nothing</code>, <code>not installed on this machine</code>. Settings holds the default new terminals copy; <b>Change the ladder</b> in the details changes one terminal while it runs; <code>leg ladder</code> does both from a shell.</p>
+      </div>
+      <div class="stack">
+        <figure class="recreated">
+          <div class="plate rc-ladder" role="img" aria-label="A terminal's handoff sequence as the board prints it: now claude/fable, then claude/opus, then claude/sonnet, then codex, then agy; first eligible now, claude/opus">
+            <p class="rc-chain"><span class="rc-k">now:</span> <span class="rc-model claude">claude/fable</span>, then <span class="rc-model claude">claude/opus</span>, then <span class="rc-model claude">claude/sonnet</span>, then <span class="rc-model codex">codex</span>, then <span class="rc-model agy">agy</span></p>
+            <p class="rc-sub">first eligible now: claude/opus</p>
+            <p class="rc-note">Used after a usage limit or Hand off now. A normal exit ends this terminal.</p>
+          </div>
+          <figcaption>The sequence a terminal's details print, in the board's own words. Fable is out this week, so the first rung that would take the terminal is Opus.</figcaption>
+        </figure>
+        <div class="table-wrap">
+          <table class="reads steps-table">
+            <thead><tr><th scope="col">the step</th><th scope="col">how the work continues</th></tr></thead>
+            <tbody>
+              <tr><td>claude/fable to claude/opus, or opus to sonnet</td><td><code>claude --resume &lt;id&gt; --model opus</code>: the same conversation on the next model down. No bundle in the prompt, nothing re-read, nothing re-explained.</td></tr>
+              <tr><td>a second Claude login, a step back up to Fable, codex, agy, grok</td><td>a new agent in the same terminal, started from the bundle with the pointer prompt. Codex's <code>resume</code> and <code>-m</code> are each verified from <code>codex --help</code>; together they are not, so a Codex rung takes the bundle until that is proven.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="steps-h">Between the warning and the wall, four things happen. You watch them.</h3>
+    <div class="steps">
+      <div class="step warn"><code>85%</code><p>The gauge crosses its reserve notch and the terminal bell rings once. Get to a stopping point, or keep typing.</p></div>
+      <div class="step bad"><code>limit</code><p>Leg reads which bucket walled: one model, or the whole login. It saves the bundle it has been refreshing every two minutes, and walks the ladder from the top, naming every rung it skips and why.</p></div>
+      <div class="step"><code>stop</code><p>The agent process is stopped and the terminal is put back the way it was, down to the mouse modes and scroll margins a killed agent leaves behind, so the next rung starts on a clean line under your history.</p></div>
+      <div class="step ok"><code>first turn</code><p>A same-login downshift picks the conversation up mid-thought. Anything else reads <code>.leg/RESUME.md</code>, checks <code>git status</code> and <code>git diff</code>, and carries on with the same task.</p></div>
+    </div>
+    <div class="cols steps-foot">
+      <div class="stack-tight">
+        <h3>When every rung is out</h3>
+        <p class="muted">The terminal prints each option with its reset time, soonest first, then stays open with a countdown to the first reset and starts that rung from the bundle when it arrives. Ctrl-C, or End on the row, quits instead.</p>
+      </div>
+      <div class="stack-tight">
+        <h3>Climbing back</h3>
+        <p class="muted">Leg never interrupts a running turn to climb. By default the higher rung is offered again at the very next hand-off, and <b>Back to fable</b> on the row does it now. Set <code>climb_back</code> to <code>never</code> and a terminal stays on the rung it stepped down to until you press that button.</p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -183,7 +244,7 @@
           <table class="reads">
             <thead><tr><th scope="col">command</th><th scope="col">usage percentages</th><th scope="col">the wall</th></tr></thead>
             <tbody>
-              <tr><td><span class="sw claude"></span>leg claude</td><td>Claude Code's own usage endpoint, the same numbers as <code>/usage</code>, polled every 60 seconds</td><td>the <code>StopFailure</code> hook with <code>rate_limit</code></td></tr>
+              <tr><td><span class="sw claude"></span>leg claude</td><td>Claude Code's own usage endpoint, the same numbers as <code>/usage</code>, every bucket it publishes, polled once per login every 60 seconds by the board</td><td>the <code>StopFailure</code> hook with <code>rate_limit</code>, attributed to the model or the login its wording names</td></tr>
               <tr><td><span class="sw codex"></span>leg codex</td><td>the rate limits Codex writes to its session rollout file</td><td><code>usage_limit_exceeded</code> in the same file</td></tr>
               <tr><td><span class="sw agy"></span>leg agy</td><td>none; agy exposes no percentages</td><td><code>RESOURCE_EXHAUSTED</code> in agy's log</td></tr>
               <tr><td><span class="sw grok"></span>leg grok</td><td>Grok's billing proxy endpoint</td><td>rate-limit text in grok's log, or a 402 when the balance is spent</td></tr>
@@ -200,20 +261,27 @@
 <section id="board" class="band light" aria-labelledby="board-h">
   <div class="wrap">
     <div class="cols rev" style="margin-bottom: 40px">
-      <h2 id="board-h">One page that says what to do next, in a sentence.</h2>
-      <p>The biggest thing on the board is not a number, it is the finding: which login your terminals are all on, and how much of it is left. Under it, one band with a token per login, carrying the bucket that will actually stop the work, and a button that opens the full panels and the per-model figures when you want them. Each terminal is one row: what it is doing, where, how long, and the buttons that apply to it. Finished terminals and what landed sit at the bottom as counts you can open, because they are history.</p>
+      <div class="stack">
+        <h2 id="board-h">Four terminals open. One page says which one needs you.</h2>
+        <p>The biggest thing on the board is a sentence: which terminal has waited on you longest, or which login your terminals are all on and how much of it is left. Under it, one strip with a token per login carrying the bucket that will actually stop the work. Each terminal is one row: what it is doing, on which model, where, how long, and the buttons that apply to it.</p>
+      </div>
+      <div class="stack">
+        <p>When Claude Code puts up a permission prompt, sits idle at the prompt, or a subagent asks for input, its Notification hook tells Leg. That row's status word becomes <b>waiting on you</b> with the question verbatim, it sorts to the top, the tab title reads <code>(1) Leg</code> with a dot on the favicon, and a toast lands in the terminal window the agent is already running in. A browser notification is there too, off until you turn it on. Codex, agy and grok publish no such signal, so their rows say <code>quiet 4m</code> and never claim to be waiting.</p>
+        <p>Usage is per model, not just per login, because that is how the limits fall. A row says <code>63% of the fable week</code>; the strip says <code>claude 63% 6:01 PM</code>. A time figure appears only when the numbers earn it: three samples over ten minutes inside the current window, and then the row says <code>about 2h 40m of Fable left, from 9 samples over 4h</code>. Fewer samples, or a flat line, prints nothing rather than a guess.</p>
+      </div>
     </div>
 
     <figure class="recreated">
-      <div class="board" role="img" aria-label="The Leg board: a headline reading that Fable is at 63 percent of its week and is the only login open, a capacity strip with one token per login (claude at 63 percent of the Fable week, codex back Saturday 10:11 PM, agy with no figure), a button reading Capacity and models, three terminal rows each naming its state, its repository, the model it is running and how much of that model's week is left, the first of them waiting on you for permission to run a command, and counts for finished and landed work">
-        <p class="rc-verdict">Fable is at 63% of its week, the only login open.</p>
-        <p class="rc-sub">Measured 41s ago. 3 terminals run on it, so the real figure is higher, never lower. codex is at its limit until Saturday 10:11 PM.</p>
+      <div class="tabbar" aria-hidden="true"><span class="tabbar-tab"><i class="tabbar-fav"></i>(1) Leg</span><span class="tabbar-tab dim">acme/api · pull request #412</span></div>
+      <div class="board" role="img" aria-label="The Leg board: a headline reading that the acme/api terminal has waited on you for 25 minutes, a capacity strip with one token per login (claude at 63 percent of the Fable week with about 2h 40m left, codex back Saturday 10:11 PM, agy with no figure), a button reading Capacity and models, three terminal rows each naming its state, its repository, the model it is running and how much of that model's week is left, the first of them waiting on you for permission to run a command, and counts for finished terminals, landed commits and conversations. The browser tab above it reads (1) Leg with a dot on the favicon.">
+        <p class="rc-verdict">acme/api#a3f8 has waited on you for 25 minutes.</p>
+        <p class="rc-sub">It wants permission to run Bash(git push origin HEAD). The other 2 terminals are still running. About 2h 40m of Fable left, from 9 samples over 4h.</p>
 
         <div class="rc-strip">
           <span class="rc-cap">
             <i class="rc-dot claude"></i><b class="rc-capname claude">claude</b>
             <span class="rc-captrack"><i class="claude" style="--p:63%;--stop:100%"></i></span>
-            <span class="rc-capfig">63% fable week</span>
+            <span class="rc-capfig">63% 6:01 PM</span>
           </span>
           <span class="rc-cap">
             <i class="rc-dot codex"></i><b class="rc-capname codex">codex</b>
@@ -230,10 +298,10 @@
         <div class="rc-terms">
           <div class="rc-term">
             <div class="rc-body">
-              <div class="rc-reg"><span class="rc-state"><i class="rc-mark bad"></i>waiting on you</span><span class="rc-where">acme/api on main</span><span class="rc-dim">dirty 3</span><span class="rc-dim">ahead 2</span><span class="rc-model claude">claude/fable</span></div>
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark bad"></i>waiting on you</span><span class="rc-where">acme/api on main</span><span class="rc-dim">dirty 3</span><span class="rc-dim">ahead 2</span><span class="rc-model claude">claude/opus</span></div>
               <p class="rc-prompt">add an idempotency key to the refund path and cover it with tests</p>
-              <p class="rc-note-wait">waiting on you: permission to run Bash(git push origin HEAD), asked 40s ago</p>
-              <div class="rc-meta"><p class="rc-files">create.ts, idempotency.ts</p><span class="rc-cap-phrase">63% of the fable week</span></div>
+              <p class="rc-note-wait">waiting on you: permission to run Bash(git push origin HEAD), asked 25m ago</p>
+              <div class="rc-meta"><p class="rc-files">create.ts, idempotency.ts, capture.ts</p><span class="rc-cap-phrase">63% of the fable week</span></div>
             </div>
             <div class="rc-clock"><span>2h 40m</span><span class="rc-id">a3f8</span></div>
             <div class="rc-btns"><b>Hand off now</b><span>Details</span></div>
@@ -260,7 +328,7 @@
         <div class="rc-ledger">
           <div><b>8 finished</b><span>4 lost, 4 ended, in acme/api, acme/docs</span></div>
           <div><b>18 landed</b><span>newest 38 minutes ago, across three repos</span></div>
-          <div><b>No background tasks</b><span>Nothing is queued.</span></div>
+          <div><b>1,108 conversations</b><span>799 claude, 198 codex, 92 agy, 14 grok, 5 copilot; looked 2m ago</span></div>
         </div>
       </div>
       <figcaption>The board, recreated in HTML from the same sample session as the terminal above. The layout, the wording and the colours are the real ones; the tasks are illustrative.</figcaption>
@@ -268,9 +336,43 @@
 
     <figure class="shot">
       <img src="/img/terminals-1280.png" width="1280" height="2149" loading="lazy" decoding="async"
-           alt="The real Leg board at 1280 pixels: the headline reading that all four terminals are on claude and claude has five percent left, panels for claude, codex and agy, four terminal rows with their prompts and buttons, and counts for finished terminals, landed commits and background tasks.">
-      <figcaption>And the real one, unedited, from a running board. Same page, same words, actual work.</figcaption>
+           alt="The real Leg board at 1280 pixels: the headline reading that recruiting-tool#88e8 has waited on you for 25 minutes, the capacity strip with claude at 63 percent, codex back Saturday, agy with no figure and grok with no reading, four terminal rows of which two are waiting on you, a Background panel with three cards, and the one-line Run in the background entry under it.">
+      <figcaption>And the real one, unedited, from a running board seeded with the shape a real day has. Same page, same words: two terminals waiting on you, two running, three background cards, and the entry row.</figcaption>
     </figure>
+  </div>
+</section>
+
+<section id="background" class="band light" aria-labelledby="background-h">
+  <div class="wrap">
+    <div class="cols">
+      <div class="stack">
+        <h2 id="background-h">Walk away. The terminal becomes a card. Take it back later.</h2>
+        <p>A card is a terminal you are not sitting at: the same checkout, the same ladder, the same bundle at every hand-off, run headless. The End row on a terminal has two verbs. <b>End</b> stops the agent and keeps the bundle. <b>End, and keep going as a card</b> writes the bundle, hands the terminal's own worktree to a card that continues the task from the rung the terminal was on, and then ends the terminal. Nothing is cut a second time over the top of that work.</p>
+        <p>Starting one without a terminal is one field. Type the task into <b>Run in the background</b> under Terminals and press Start; the sentence under it says where it will run and on what, and every noun in it is a button. <b>Build</b> stops with the changes sitting in the worktree and merges nothing. <b>Build and land</b> and <b>Factory</b> run the tests and land on their own.</p>
+        <p><b>Take over</b> on a card pauses it, writes its bundle, and hands you one command: <code>leg claude --resume-card &lt;id&gt;</code>. That opens an ordinary interactive terminal in the card's worktree, primed from its bundle. It is the one place the board hands you a command, because a browser tab cannot open a terminal, and the board says so on the line above it.</p>
+        <p class="small muted">Two things a card cannot do, and the board prints both: a running card says <code>no message until this leg ends</code>, because the headless CLI is mute until it exits, and it never waits on a permission prompt, because its permissions are decided before it starts.</p>
+      </div>
+      <figure class="recreated">
+        <div class="rc-terms rc-bg" role="img" aria-label="The Background panel: one card running on claude/opus in the acme/api checkout it adopted from a terminal, its work stat reading 3 files, +148 -12, tests green 6m ago, and the buttons Pause, Reassign and Kill; under it the one-line entry, Run in the background, with a Start button and the sentence: in acme/api on main, with claude/fable then claude/opus then claude/sonnet then codex then agy, build only">
+          <div class="rc-head"><b>Background</b><span>1 running, nothing is waiting on you</span></div>
+          <div class="rc-term">
+            <div class="rc-body">
+              <div class="rc-reg"><span class="rc-state"><i class="rc-mark run"></i>running</span><span class="rc-where">build</span><span class="rc-where">acme/api on leg/s-20260918-091204-claude-a3f8</span><span class="rc-model claude">claude/opus</span></div>
+              <p class="rc-prompt">add an idempotency key to the refund path and cover it with tests. Continue from the bundle at .context-handoffs/20260918-174011-leg-claude-a3f8.</p>
+              <p class="rc-dim rc-line">no message until this leg ends, started 5:40 PM</p>
+              <p class="rc-files">3 files, +148 -12, tests green 6m ago</p>
+            </div>
+            <div class="rc-clock"><span>14m</span><span class="rc-id">card-a3f8</span></div>
+            <div class="rc-btns"><span>Pause</span><span>Reassign</span></div>
+          </div>
+          <div class="rc-entry">
+            <div class="rc-entry-row"><span>Run in the background:</span><span class="rc-field">Describe the task</span><b>Start</b></div>
+            <p class="rc-entry-line">in <u>acme/api</u> on main, with <u>claude/fable then claude/opus then claude/sonnet then codex then agy</u>, <u>build only</u>. <span class="rc-link">More settings</span></p>
+          </div>
+        </div>
+        <figcaption>The Background panel, recreated: the card the terminal above became when its owner left, and the one-line entry for starting another. Open the card's row and <b>Take over</b> is in its expansion.</figcaption>
+      </figure>
+    </div>
   </div>
 </section>
 
@@ -279,9 +381,8 @@
     <div class="cols">
       <div class="stack">
         <h2 id="two-h">Two agents in one repo, without either one stepping on the other.</h2>
-        <p>Run a second agent in a repo where one is already working and they would normally fight over the same files. Leg gives the second one its own private copy of the checkout instead, on its own branch, so both edit freely and neither sees the other's half-finished work. Nothing is merged until you say so.</p>
-        <p class="small muted">Under the hood that private copy is a git worktree at <code>.leg-worktrees/&lt;id&gt;</code> on branch <code>leg/&lt;id&gt;</code>, cut from whatever branch the checkout has out. The terminal prints one line saying where it is. If you have never used worktrees, you do not need to: Leg makes it and cleans it up.</p>
-        <p>The board's second lane is for background cards: work an agent does with no interactive terminal, each in its own worktree. Build stops with the changes sitting in that worktree and merges nothing. Build-land and Factory run the tests and merge on their own. Type the task in the one-line entry under Terminals and Start runs it on the ladder's top rung, or open More settings for the full form. That order is a ladder now: each rung is an agent, a login and a model, so <code>claude/opus</code> and <code>claude/sonnet</code> are two separate steps down before Leg leaves the login at all, and Settings on the board is where you reorder them.</p>
+        <p>Run a second agent in a repo where one is already working and they would normally fight over the same files. Leg gives the second one its own private copy of the checkout instead, on its own branch, so both edit freely and neither sees the other's half-finished work. Two live sessions touching the same file are flagged on both rows. Nothing is merged until you say so.</p>
+        <p class="small muted">Under the hood that private copy is a git worktree at <code>.leg-worktrees/&lt;id&gt;</code> on branch <code>leg/&lt;id&gt;</code>, cut from whatever branch the checkout has out. Every background card gets one the same way. If you have never used worktrees, you do not need to: Leg makes it and cleans it up.</p>
         <p>Its row has a <b>Land</b> button: commit what the agent left, rebase onto the base, run the repo's tests, fast-forward the base. When a step fails nothing lands and the row says why: <code>rebase-conflict</code> with the files, <code>tests-red</code> with the end of the output, <code>dirty-trunk</code> when the checkout has local changes the landing would overwrite. Nothing is ever pushed.</p>
       </div>
       <figure class="recreated">
@@ -314,23 +415,28 @@
   </div>
 </section>
 
-<section id="changeover" class="band blue" aria-labelledby="change-h">
-  <div class="wrap stack" style="--gap: 40px">
-    <h2 id="change-h">Between the warning and the wall, four things happen. You watch them.</h2>
-    <div class="steps" style="margin-top: 40px">
-      <div class="step warn"><code>85%</code><p>The gauge crosses its reserve notch and the terminal bell rings once. Get to a stopping point, or keep typing.</p></div>
-      <div class="step bad"><code>limit</code><p>Leg saves the bundle it has been refreshing every two minutes: the task, the last messages, <code>git diff --stat</code>, dirty files, recent commits, and why it stopped.</p></div>
-      <div class="step"><code>stop</code><p>The agent process is stopped and the terminal is put back the way it was, down to the mouse modes and scroll margins a killed agent leaves behind, so the next agent starts on a clean line under your history. The next option starts in it: another login of the same agent if you added one, otherwise the next agent in your order.</p></div>
-      <div class="step ok"><code>first turn</code><p>The new agent reads <code>.leg/RESUME.md</code>, checks <code>git status</code> and <code>git diff</code>, and carries on with the same task.</p></div>
+<section id="underneath" class="band light" aria-labelledby="under-h">
+  <div class="wrap">
+    <div class="stack" style="margin-bottom: 44px">
+      <h2 id="under-h">Three more things that come with it.</h2>
+      <p>Each one is a page in the docs. Here is what it does and what it does not do.</p>
     </div>
-    <div class="cols" style="margin-top: 56px">
-      <div class="stack-tight">
-        <h3>The order</h3>
-        <p class="muted">You set it. A wall on one model now moves the terminal to another model on the same login, keeping the conversation, before it moves to another CLI. Other logins of the same agent come next, then the other agents in the order you saved, each tried once. It is a priority list, not a rotation: put agy at the bottom and agy is the last option from a claude terminal and from a codex terminal alike. Settings holds the default new terminals copy, and <b>Change the ladder</b> in a terminal's details changes that one terminal while it runs. An option whose CLI is missing or whose wall has not reset is skipped.</p>
+    <div class="touched under">
+      <div>
+        <h3>Every conversation on this machine</h3>
+        <p>Claude Code, Codex, Grok, Antigravity and Copilot CLI each keep their history in their own place. <code>leg history</code> is one list over all of them, whether or not Leg started the conversation, and <code>leg worktrees</code> is one list over every checkout: git's, Leg's own, and the ones those conversations ran in. The board's <b>Conversations</b> count is the same index with a search box.</p>
+        <div class="plate rc-ledger-cell" aria-hidden="true"><b>1,108 conversations</b><span>799 claude, 198 codex, 92 agy, 14 grok, 5 copilot; looked 2m ago</span><span class="rc-open">Browse 1,108</span></div>
+        <p class="small muted">Nothing moves. Leg reads those stores, writes one index file of its own, and points back. Open one and it shows the last messages and the command to continue it, where the CLI documents resume by id: Claude Code, Codex, Grok and Antigravity do; Copilot lists but cannot be continued through Leg.</p>
       </div>
-      <div class="stack-tight">
-        <h3>When every option is out</h3>
-        <p class="muted">The terminal prints each option with its reset time, soonest first, then stays open with a countdown to the first reset and starts that agent from the bundle when it arrives. Ctrl-C, or End on the row, quits instead.</p>
+      <div>
+        <h3>Your rules, hooks and MCP servers can travel too</h3>
+        <p>Off by default. <code>leg harness enable</code> makes a hand-off carry the working environment with the task: the source client's global rules, identity, hooks, skills, subagents, slash commands, MCP servers and permissions, rendered into the destination client's own files as far as it can represent them, with every dropped item named and explained. Skills are linked, not copied. Sources are Claude Code and Codex; destinations add agy and Gemini CLI; Grok has no adapter yet.</p>
+        <p class="small muted">Every file it writes carries <code>GENERATED by Leg harness</code>, is backed up before an overwrite and skipped when you hand-edited it. Credentials never move: an MCP key becomes <code>${NAME}</code>. The source client is never written. A policy of <code>warn</code>, <code>sync</code> or <code>strict</code> decides what an unattended hand-off may write.</p>
+      </div>
+      <div>
+        <h3>Any CLI as a background agent</h3>
+        <p>A JSON spec in <code>~/.leg/adapters/</code> makes any coding-agent CLI a card adapter, with no code in the package: <code>leg adapter template --name muse &gt; muse.json</code>, <code>leg adapter add muse.json</code>, then <code>--chain muse,claude</code>. <code>leg adapter check muse</code> prints the exact command a leg would run before one does.</p>
+        <p class="small muted">A custom adapter runs cards: headless, in a worktree, handing off like any other leg. It is not an interactive <code>leg &lt;agent&gt;</code> terminal, because that needs a usage tap and a wall signal, which only the four built-ins have. The flags that turn a supervised agent into an unsupervised one are refused whatever the spec says.</p>
       </div>
     </div>
   </div>
@@ -339,19 +445,29 @@
 <section id="touched" class="band light" aria-labelledby="touched-h">
   <div class="wrap">
     <div class="stack" style="margin-bottom: 44px">
-      <h2 id="touched-h">What is written, and what is never touched.</h2>
-      <p>Subscription logins only. Leg is meant to sit beside tools you already trust, so the list of what it does not do is as exact as the list of what it does.</p>
+      <h2 id="touched-h">What is written, what is never touched, and what is never spent.</h2>
+      <p>Subscription logins only. Leg is meant to sit beside tools you already trust, so the list of what it does not do is as exact as the list of what it does, and the same goes for the credits it will not spend without you.</p>
     </div>
     <div class="touched">
+      <div>
+        <h3>Never spent without you</h3>
+        <ul>
+          <li>Spending is off. An automatic hand-off skips any rung that bills usage credits or a metered balance, and writes why: <code>skipped claude/fable: it spends usage credits and you have not allowed that</code></li>
+          <li>A rung on the login that just walled account-wide is skipped as <code>shares the window that is out, buys nothing</code>, whatever model it names</li>
+          <li>A reserve per login holds a floor back from automatic hand-offs only. A hand-off you press yourself still takes it, and the picker says so on that row</li>
+          <li>Every rung passed over is one line in the terminal and the ledger. Nothing is skipped in silence</li>
+          <li>Leg never interrupts a running turn to climb back to a stronger model</li>
+        </ul>
+      </div>
       <div>
         <h3>Never edited</h3>
         <ul>
           <li><code>~/.claude/settings.json</code></li>
           <li><code>~/.claude.json</code></li>
           <li><code>~/.codex/config.toml</code></li>
-          <li>agy's files, and your repo's settings</li>
-          <li>Claude Code gets hooks through a per-session <code>--settings</code> file under <code>~/.leg</code>; codex and agy get nothing injected</li>
-          <li>The optional portable harness (<code>leg harness enable</code>, off by default) is the one exception: marked, backed-up, Leg-owned regions, and never the source client</li>
+          <li>agy's files, grok's files, and your repo's settings</li>
+          <li>Claude Code gets hooks through a per-session <code>--settings</code> file under <code>~/.leg</code>; codex, agy and grok get nothing injected</li>
+          <li>The portable harness above is the one exception, and only after <code>leg harness enable</code>: marked, backed-up, Leg-owned regions, and never the source client</li>
         </ul>
       </div>
       <div>
@@ -359,7 +475,7 @@
         <ul>
           <li><code>.leg/</code>, the session notes and <code>RESUME.md</code></li>
           <li><code>.context-handoffs/</code>, the bundles</li>
-          <li><code>.leg-worktrees/</code>, a second session's worktree, plus its <code>leg/&lt;id&gt;</code> branch</li>
+          <li><code>.leg-worktrees/</code>, a second session's or a card's worktree, plus its <code>leg/&lt;id&gt;</code> branch</li>
           <li>all three added to <code>.git/info/exclude</code>; landing fast-forwards your branch and nothing is pushed</li>
         </ul>
       </div>
@@ -368,7 +484,7 @@
         <ul>
           <li><code>ANTHROPIC_API_KEY</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_CUSTOM_HEADERS</code>, <code>OPENAI_API_KEY</code>, <code>OPENAI_BASE_URL</code>, <code>OPENAI_API_BASE</code>, <code>GEMINI_API_KEY</code>, <code>GOOGLE_API_KEY</code>, <code>GOOGLE_GEMINI_BASE_URL</code>, <code>GOOGLE_GENAI_USE_VERTEXAI</code>, <code>GOOGLE_GENAI_USE_ENTERPRISE</code>, <code>GOOGLE_CLOUD_PROJECT</code>, <code>GOOGLE_CLOUD_LOCATION</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code>, <code>CLAUDECODE</code>, <code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code> and <code>CLAUDE_PLUGIN_DATA</code> are removed from every agent's environment; <code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS</code> is set to <code>0</code> for a detached Claude print session</li>
           <li>Claude Code's stored login is read for the usage numbers and sent only to <code>api.anthropic.com</code>; it is never written or printed</li>
-          <li>the ledger scrubs bearer tokens and key shapes from every line</li>
+          <li>the ledger scrubs bearer tokens and key shapes from every line; the history index caches no message body</li>
           <li>the board binds <code>127.0.0.1</code>; <code>leg share on</code> is the one way to listen elsewhere, with a token per human and, if you hand it a certificate, TLS</li>
           <li><code>leg uninstall --yes</code> removes <code>~/.leg</code> and nothing else</li>
         </ul>
@@ -389,8 +505,9 @@
         <p class="price"><b>$79</b> once</p>
         <ul>
           <li>One human, any number of machines</li>
-          <li>The board, usage tracking, the handoff bundle and the handoff itself</li>
-          <li>A worktree per second session, and Land</li>
+          <li>The board, usage per model, the ladder, the handoff bundle and the handoff itself</li>
+          <li>Background cards, End as a card, Take over, and any CLI as a card adapter</li>
+          <li>A worktree per second session, Land, and <code>leg history</code> across every agent on the machine</li>
           <li>Every release for 12 months; the version you have keeps working after that</li>
         </ul>
         <a class="buy" href="https://buy.stripe.com/dRmcN5727dxG0mS3mzew80j" data-plan="personal">Buy Personal, $79</a>

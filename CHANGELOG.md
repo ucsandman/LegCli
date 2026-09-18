@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.1 (2026-09-18)
+
+A one-line fix in the terminal and the marketing site brought up to what 0.13.0 does.
+
+- **The terminal's opening line names rungs.** `next: claude/opus →
+  claude/sonnet → codex → agy`, through the same `rungLabel` every other
+  surface uses; it read `next: claude → claude → codex → agy` on 0.12.0.
+- **The site says what is underneath the handoff.** legcli.com is reorganised
+  around the product as it is now: the sample transcript shows a Fable wall
+  answered by Opus keeping the conversation and a login wall answered by Codex
+  from the bundle; new sections for the ladder, background cards (End as a
+  card, Run in the background, Take over), `leg history`, the portable
+  harness and custom adapters in one compact group, and a **Never spent
+  without you** column beside what is never touched. The structured data's
+  `softwareVersion` had been stuck at 0.8.0; the OG image gains Grok; the FAQ
+  no longer says a shared board has no TLS.
+
 ## 0.13.0 (2026-09-18)
 
 The first day on 0.12.0 with three real terminals found five things. Usage

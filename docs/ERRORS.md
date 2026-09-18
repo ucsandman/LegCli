@@ -3,6 +3,21 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-18: the terminal's opening `next:` line named the same agent twice and no model
+
+**Fixed in `src/attach.mjs`: the line maps the chain through `rungLabel`, so it
+reads `next: claude/opus → claude/sonnet → codex → agy`.**
+
+The ladder made destinations rungs of (agent, account, model), and every other
+surface (the ledger's `handoff` event, the board's chain rail, `leg ladder`)
+moved to `rungLabel`. The one line the human reads first, printed at session
+start, kept its pre-ladder formatter of `agent[/account]`, so a claude/fable
+terminal announced `next: claude → claude → codex → agy`. Found while writing
+the marketing site's transcript from the source lines rather than from memory:
+a transcript that mirrors the code cannot show a line the code prints wrongly.
+The lesson is the same one as the site rule: a sample transcript is written
+from the `say()` calls, and a `say()` that reads wrong there is a bug here.
+
 ## 2026-09-17: a new field on the session view leaked the owner's reset times to a guest, through the guest's own terminal
 
 **Fixed in `src/server.mjs` (`sessionsView` decides `guest` before the map and

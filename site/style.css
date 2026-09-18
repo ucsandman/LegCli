@@ -442,7 +442,8 @@ figure.shot > figcaption { margin-top: 14px; font-size: 14px; color: var(--muted
 .steps .step p { font-size: 15.5px; }
 
 /* Touched lists */
-.touched { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 32px clamp(24px, 3vw, 48px); }
+.touched { display: grid; grid-template-columns: repeat(auto-fit, minmax(225px, 1fr)); gap: 32px clamp(24px, 3vw, 40px); }
+.touched.under { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .touched h3 { padding-bottom: 10px; border-bottom: 1px solid var(--line-strong); margin-bottom: 14px; }
 .touched li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 15.5px; }
 .touched li:last-child { border-bottom: 0; }
@@ -532,4 +533,68 @@ footer a { color: var(--on-blue); }
   border: 1px solid var(--blue-rule);
   border-radius: var(--r-panel);
   box-shadow: var(--lift);
+}
+
+/* The ladder: the sequence a terminal's details print, on a plate */
+.rc-ladder { padding: 20px 24px; font-size: 15px; }
+.rc-chain { line-height: 1.6; }
+.rc-k { color: var(--muted); }
+.rc-model.agy { color: var(--agy); }
+.rc-ladder .rc-sub { margin-top: 8px; color: var(--muted); }
+.rc-ladder .rc-note { margin-top: 10px; }
+table.reads.steps-table td:first-child { white-space: normal; }
+.steps-h { margin-top: clamp(56px, 8vw, 88px); font-size: clamp(1.3rem, 2.2vw, 1.7rem); max-width: 30ch; text-wrap: balance; }
+.steps-h + .steps { margin-top: 28px; }
+.steps-foot { margin-top: 48px; }
+
+/* The browser tab above the board recreation: the badge a tab gets while a
+   terminal is waiting, and nothing else a browser draws */
+.tabbar { display: flex; gap: 6px; padding: 8px 12px 0; background: var(--e1); border: 1px solid var(--line); border-bottom: 0; border-radius: var(--r-panel) var(--r-panel) 0 0; }
+.tabbar-tab { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--e0); color: var(--on-blue); border-radius: 8px 8px 0 0; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.tabbar-tab.dim { background: transparent; color: var(--on-blue-faint); font-weight: 500; }
+.tabbar-fav { position: relative; display: inline-block; width: 14px; height: 14px; border-radius: 4px; background: var(--e3); flex: none; }
+.tabbar-fav::after { content: ""; position: absolute; right: -3px; top: -3px; width: 7px; height: 7px; border-radius: 999px; background: var(--bad); border: 1px solid var(--e0); }
+.tabbar + .board { border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* The Background panel and its one-line entry */
+.rc-bg { margin-top: 0; }
+.rc-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding: 16px 18px 12px; }
+.rc-head b { font-size: 1.0625rem; }
+.rc-head span { font-size: 14px; color: var(--on-blue-faint); }
+.rc-line { margin-top: 8px; font-size: 14px; }
+.rc-entry { border-top: 1px solid var(--line); padding: 16px 18px 18px; }
+.rc-entry-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; }
+.rc-field { flex: 1 1 160px; min-width: 0; padding: 8px 12px; background: var(--e1); border: 1px solid var(--control-edge); border-radius: var(--r-control); color: var(--on-blue-faint); font-size: 14px; box-shadow: var(--sink); }
+.rc-entry-row b { padding: 8px 14px; border-radius: var(--r-control); font-size: 14px; font-weight: 700; background: var(--accent); color: var(--on-accent); white-space: nowrap; }
+.rc-entry-line { margin-top: 12px; font-size: 14px; line-height: 1.6; color: var(--on-blue-muted); }
+.rc-entry-line u { color: var(--on-blue); font-weight: 700; text-decoration-thickness: 1px; text-underline-offset: 0.16em; }
+.rc-link { color: var(--on-blue); font-weight: 700; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.16em; }
+
+/* The three compact blocks */
+.touched.under > div > * + * { margin-top: 14px; }
+.touched.under p { font-size: 15.5px; }
+.rc-ledger-cell { display: grid; gap: 6px; padding: 18px 20px; justify-items: start; }
+.rc-ledger-cell b { font-size: 1.1875rem; font-weight: 700; letter-spacing: -0.012em; }
+.rc-ledger-cell > span:not(.rc-open) { font-size: 14px; color: var(--muted); }
+.rc-ledger-cell .rc-open { margin-left: 0; margin-top: 6px; }
+
+@media (max-width: 560px) {
+  .rc-term { flex-wrap: wrap; gap: 12px 20px; }
+  .rc-body { flex-basis: 100%; }
+  .rc-clock { order: 2; }
+  .rc-btns { order: 1; }
+  .tabbar-tab.dim { display: none; }
+  .rc-chain, .rc-ladder .rc-sub, .rc-head span, .rc-line, .rc-entry-line, .rc-field, .rc-ledger-cell > span:not(.rc-open) { font-size: 14px; }
+}
+
+/* the ladder's step table: two prose columns, never a scrolling one */
+.steps-table { table-layout: fixed; }
+table.reads.steps-table th:first-child, table.reads.steps-table td:first-child { width: 34%; font-family: var(--sans); font-size: 15.5px; font-weight: 700; }
+.steps-table code { overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .steps-table thead { display: none; }
+  .steps-table, .steps-table tbody, .steps-table tr, .steps-table td { display: block; width: auto; }
+  .steps-table td, table.reads.steps-table td:first-child { width: auto; padding: 8px 0; border-top: 0; }
+  .steps-table tr { border-top: 1px solid var(--line); padding: 10px 0; }
+  .tabbar-tab { font-size: 14px; }
 }

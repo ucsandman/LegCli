@@ -50,7 +50,7 @@
   // name. test/board-updates.test.mjs pins `state.stopped` in this file by
   // source text, which is why the module object keeps the name.
   // pinned to package.json by test/files-version.test.mjs; see board.js FILES_VERSION
-  const FILES_VERSION = '0.13.0'
+  const FILES_VERSION = '0.13.1'
   const state = { es: null, retryMs: 1000, timers: [], stopped: false, sseRequest: 0, floorRequest: 0, trunkRequest: 0, headRequest: 0, cardsRequest: 0, lastReadingAt: null, bind: (typeof location !== 'undefined' && location.host) || '127.0.0.1:4747', pendingFloor: null, pendingCards: null, cards: new Map(), blockers: new Map(), doneOpen: false, ringId: null, scheduler: {}, trunkOff: false }
 
   // What the entry row reads on every render: the terminals (for the repo it
