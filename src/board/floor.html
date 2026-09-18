@@ -21,13 +21,9 @@
     <div class="sched-status" id="sched-status"></div>
   </div>
   <div class="masthead-right">
+    <!-- the counts used to be here as well; every one of them is now the count
+         beside its own station heading, where the rows it counts are. -->
     <div class="repos-status">repos: <span id="repos-list">-</span></div>
-    <div class="counts-status">
-      running <span id="count-running">0</span>
-      queued <span id="count-queued">0</span>
-      waiting <span id="count-waiting">0</span>
-      done <span id="count-done">0</span>
-    </div>
     <a class="floor-link" href="/">Board</a>
   </div>
 </header>
@@ -40,53 +36,66 @@
 
 <main class="wrap">
 
-  <section class="logins" id="floor-accounts" aria-label="Logins"></section>
-  <p class="head-caption">Times are local.</p>
-
-  <section class="region-floor" aria-labelledby="running-head">
-    <div class="section-head">
-      <h2 id="running-head">Running</h2>
-      <p class="region-meta"></p>
+  <!-- The same capacity strip the board draws, from the same accounts payload
+       and the same file (strip.js). The four login panels are behind the same
+       disclosure they are behind on the board: on the floor they used to eat
+       the whole first screen, above every row the page exists to show. -->
+  <section class="capacity" aria-label="Capacity by login">
+    <div class="capacity-strip">
+      <div class="cap-tokens" id="capacity-tokens"></div>
+      <button type="button" class="btn btn-secondary disclosure cap-open" id="capacity-toggle" aria-expanded="false" aria-controls="capacity-drawer">Capacity and models &gt;</button>
     </div>
-    <table class="ftable">
-      <colgroup><col class="c-card"><col class="c-station"><col class="c-agent"><col class="c-leases"><col class="c-event"><col class="c-elapsed"><col class="c-actions"></colgroup>
-      <thead><tr>
-        <th scope="col">Card</th><th scope="col">Station</th><th scope="col">Agent / leg</th>
-        <th scope="col">Leases</th><th scope="col">Last event</th><th scope="col">Elapsed</th>
-        <th scope="col">Actions</th>
-      </tr></thead>
-      <tbody id="running-body"></tbody>
-    </table>
+    <div class="drawer capacity-drawer" id="capacity-drawer" hidden>
+      <section class="logins" id="floor-accounts" aria-label="Logins"></section>
+      <p class="head-caption">Times are local.</p>
+    </div>
   </section>
 
-  <section class="region-floor" aria-labelledby="waiting-head">
+  <!-- entry.js fills this, the same row the board carries: one sentence, one
+       Start, and the same body posted to /api/cards. -->
+  <div class="floor-entry" id="card-entry" hidden></div>
+
+  <section class="region-floor" id="station-running" aria-labelledby="running-head">
     <div class="section-head">
-      <h2 id="waiting-head">Waiting on humans</h2>
+      <h2 id="running-head">Running <span class="region-count" id="count-running">0</span></h2>
       <p class="region-meta"></p>
     </div>
-    <table class="ftable">
-      <colgroup><col class="c-card"><col class="c-station"><col class="c-status"><col class="c-since"><col class="c-actions"></colgroup>
-      <thead><tr>
-        <th scope="col">Card</th><th scope="col">Station</th><th scope="col">Status</th>
-        <th scope="col">Since</th><th scope="col">Actions</th>
-      </tr></thead>
-      <tbody id="waiting-body"></tbody>
-    </table>
+    <div class="card-list" id="running-rows"></div>
   </section>
 
-  <section class="region-floor" aria-labelledby="queued-head">
+  <section class="region-floor" id="station-waiting" aria-labelledby="waiting-head">
     <div class="section-head">
-      <h2 id="queued-head">Queued</h2>
+      <h2 id="waiting-head">Waiting on you <span class="region-count" id="count-waiting">0</span></h2>
       <p class="region-meta"></p>
     </div>
-    <table class="ftable">
-      <colgroup><col class="c-card"><col class="c-station"><col class="c-leases"><col class="c-blocked"></colgroup>
-      <thead><tr>
-        <th scope="col">Card</th><th scope="col">Station</th><th scope="col">Leases</th>
-        <th scope="col">Blocked by</th>
-      </tr></thead>
-      <tbody id="queued-body"></tbody>
-    </table>
+    <div class="card-list" id="waiting-rows"></div>
+  </section>
+
+  <section class="region-floor" id="station-queued" aria-labelledby="queued-head">
+    <div class="section-head">
+      <h2 id="queued-head">Queued <span class="region-count" id="count-queued">0</span></h2>
+      <p class="region-meta"></p>
+    </div>
+    <div class="card-list" id="queued-rows"></div>
+  </section>
+
+  <section class="region-floor" id="station-backlog" aria-labelledby="backlog-head">
+    <div class="section-head">
+      <h2 id="backlog-head">Backlog <span class="region-count" id="count-backlog">0</span></h2>
+      <p class="region-meta"></p>
+    </div>
+    <div class="card-list" id="backlog-rows"></div>
+  </section>
+
+  <!-- what is finished is history: one line per card, behind a disclosure, the
+       same shape the board's finished ledger takes -->
+  <section class="region-floor" id="station-done" aria-labelledby="done-head">
+    <div class="section-head section-head--quiet">
+      <h2 id="done-head">Done today <span class="region-count" id="count-done">0</span></h2>
+      <p class="region-meta"></p>
+      <button type="button" class="btn btn-secondary disclosure" id="done-toggle" aria-expanded="false" aria-controls="done-rows">View</button>
+    </div>
+    <div class="card-list" id="done-rows" hidden></div>
   </section>
 
   <section class="region-floor" aria-labelledby="leases-head">
@@ -122,6 +131,9 @@
 
 <div class="sysmsg" id="toast" aria-live="polite"></div>
 
+<!-- shared with the board, and read at load by floor.js under them -->
+<script src="strip.js" defer></script>
+<script src="entry.js" defer></script>
 <script src="floor.js" defer></script>
 </body>
 </html>

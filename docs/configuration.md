@@ -33,7 +33,8 @@ These apply to `leg claude|codex|agy|grok`.
 | `LEG_NO_OPEN` | (unset, opens once) | set to `1` to start the board without opening a browser | `bin/leg.mjs` |
 | `LEG_NO_BOARD` | (unset) | set to `1` to run a session with no board at all (the record under `$LEG_HOME/sessions/` is still kept; the test suite uses this) | `src/attach.mjs` |
 | `LEG_WAIT_TICK_MS` | `1000` | how often the all-out countdown redraws and re-checks Ctrl-C / End while waiting for the first reset | `src/attach.mjs` |
-| `LEG_USAGE_POLL_MS` | `60000` | how often an active attach polls its usage source; Claude uses its usage endpoint and Codex uses read-only app-server rate limits | `src/attach.mjs` |
+| `LEG_USAGE_POLL_MS` | `60000` | how often the board asks each login's usage source (one poller per login, not one per terminal); Claude uses its usage endpoint, Codex read-only app-server rate limits, Grok its billing proxy | `src/usage-poll.mjs` |
+| `LEG_USAGE_POLL_MAX_MS` | `600000` | the longest the board waits between readings for one login: a refusal (429, timeout, no login) doubles the wait up to this, and the first good reading puts it back to `LEG_USAGE_POLL_MS` | `src/usage-poll.mjs` |
 | `LEG_ATTACH_POLL_MS` | `2000` | how often the session loop re-reads the taps; git is re-read every third poll | `src/attach.mjs` |
 | `LEG_CLAUDE_USAGE_URL` | `https://api.anthropic.com/api/oauth/usage` | the usage endpoint, for a test double | `src/taps/claude-usage.mjs` |
 | `LEG_CLAUDE_ARGS`, `LEG_CODEX_ARGS`, `LEG_AGY_ARGS` | (none) | space-separated extra arguments for a leg Leg starts on its own after a hand-off (your own `leg <agent> …` args never apply to the next agent); e.g. `LEG_CODEX_ARGS="-m gpt-5.3-codex-spark"` keeps a test chain on cheap models | `src/attach.mjs` |
@@ -88,7 +89,7 @@ login stops (`src/preferences.mjs`), alongside the older `handoff_order`:
 
 | key | default | meaning |
 |-----|---------|---------|
-| `handoff_ladder` | `claude/fable`, `claude/opus`, `claude/sonnet`, then one rung per remaining agent in `handoff_order` with model `null` | the fallback list, rung 1 first; each rung is `{agent, account, model, when, cost}`. `model` is `null` or one of that agent's names in `src/buckets.mjs` `MODEL_ALIASES` (only claude has any: `fable`, `opus`, `sonnet`, `haiku`). `account` is `default` or a name this machine has for that agent (`leg accounts ls`); anything else is refused with a sentence, because that string becomes the CLI's config dir and the usage record's file name. `when` is `always`, `below:N`, or `walled-only`. `cost` is `free`, `plan`, `credits`, or `metered`, and is a static label; the live cost a rung would spend right now is computed from the agent and the login, never read off this key, so a ladder migrated from an older `handoff_order` still meets the spending gate on `grok` |
+| `handoff_ladder` | `claude/fable`, `claude/opus`, `claude/sonnet`, then one rung per remaining agent in `handoff_order` with model `null` | the fallback list, rung 1 first; each rung is `{agent, account, model, when, cost}`. `model` is `null` or a model id that agent publishes: claude's four aliases are a closed list (`fable`, `opus`, `sonnet`, `haiku`, from `src/buckets.mjs` `MODEL_ALIASES`) and a fifth word is refused by name, while codex, agy and grok take any id from their own live catalog (`src/models.mjs` reads each CLI's, and the board's model picker offers it) as long as it matches the shape gate: lower-case letters, digits, `.`, `_`, `:` and `-`, 64 characters at most. `account` is `default` or a name this machine has for that agent (`leg accounts ls`); anything else is refused with a sentence, because that string becomes the CLI's config dir and the usage record's file name. `when` is `always`, `below:N`, or `walled-only`. `cost` is `free`, `plan`, `credits`, or `metered`, and is a static label; the live cost a rung would spend right now is computed from the agent and the login, never read off this key, so a ladder migrated from an older `handoff_order` still meets the spending gate on `grok` |
 | `climb_back` | `next-handoff` | `next-handoff` picks a recovered higher rung up again at the very next hand-off, with no extra step; `never` keeps a terminal on the rung it downshifted to until a human hands it off there by name |
 | `may_spend` | `false` | while `false`, an automatic hand-off skips any rung whose live cost is `credits` or `metered`, and records why; a human's own pick is not gated by this |
 | `reserve` | `{}` | `{ "<agent>": percent }`; an automatic hand-off will not take a rung on that login once its binding bucket is above `100 - percent`. A human's own pick still reaches it, and the picker names the reserve on that row instead of hiding it |
@@ -104,6 +105,11 @@ rung per agent, so an older install behaves exactly as it did until a rung is
 edited. If the file is hand-edited so the two disagree, `handoff_order` wins
 and the ladder is rebuilt from it, because the order is the shape a hand
 edit is more likely to have meant.
+
+A rung Leg cannot read (a misspelt claude alias, an account this machine no
+longer has) is dropped on its own and the rest of the ladder is kept, and Leg
+never writes that shortened ladder back: the file keeps the rungs you typed
+until you save a ladder yourself, from the board or with `leg ladder set`.
 
 `leg ladder` (`leg ladder ls`) prints the ladder with each rung's live state;
 `leg ladder set <n> <agent>[/<account>[/<model>]]`, `leg ladder rm <n>` and

@@ -23,15 +23,15 @@ import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.m
 import { canonPath, realPath } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
-import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, isAvailable, wallActive, rungLabel, skipLine } from './usage.mjs'
+import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, usageIsStale, isAvailable, wallActive, rungLabel, skipLine } from './usage.mjs'
 import { entitlement, allows, describe as describeLicense } from './license.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail, modelAlias, modelFromTranscript, printable } from './taps/claude.mjs'
 import { modelFlagFor, isDownshift } from './buckets.mjs'
 import { ensureTrust, trustLine } from './trust.mjs'
 import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as codexTail } from './taps/codex.mjs'
+import { fetchClaudeUsage } from './taps/claude-usage.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
 import { fetchGrokUsage, scanLog as scanGrokLog, promptsSince as grokPromptsSince } from './taps/grok.mjs'
-import { fetchClaudeUsage } from './taps/claude-usage.mjs'
 import { saveSessionBundle, resumePrompt, sessionCommitDelta } from './bundle.mjs'
 import { endSessionPointer } from './resume.mjs'
 import { openBoard, pidfile } from './launcher.mjs'
@@ -56,6 +56,12 @@ const SERVER = resolveServer()
 const POLL_MS = Number(process.env.LEG_ATTACH_POLL_MS || process.env.BATON_ATTACH_POLL_MS || 2000)
 const GIT_EVERY = 3 // polls
 const USAGE_MS = Number(process.env.LEG_USAGE_POLL_MS || process.env.BATON_USAGE_POLL_MS || 60000)
+// One switch for every usage read in a leg's process tree, the board's poller
+// and this terminal's fallback alike (src/server.mjs usageAgentsFor). The
+// suites set it so no test asks a real endpoint about this machine's logins;
+// the *_BIN stubs used to do that by accident, and switched polling off for
+// real users who had simply moved their claude.
+const NO_USAGE_POLL = (process.env.LEG_NO_USAGE_POLL || process.env.BATON_NO_USAGE_POLL) === '1'
 const say = (line) => process.stderr.write(`[leg] ${line}\n`)
 
 async function refreshCodexUsage(account, codexHome, { timeoutMs = 8000, signal = null } = {}) {
@@ -465,77 +471,75 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   child.on('error', (err) => { appendEvent(sid, { type: 'error', summary: `${agent} spawn error: ${err.message}` }); stop({ reason: 'exit', code: 127 }) })
   child.on('exit', (code) => stop({ reason: 'exit', code: code ?? -1 }))
 
-  // claude: the 5h/7d percentages come from Claude Code's usage endpoint
-  // (src/taps/claude-usage.mjs); the wall itself arrives through the
-  // StopFailure hook.
+  // The percentages are NOT read here. One poller per login lives in the board
+  // (src/usage-poll.mjs) and writes `limits`, `usage_source` and `usage_error`
+  // onto this session: three terminals on one login used to ask the same
+  // endpoint three times a minute, draw a 429 every other minute, and print
+  // every one of them in this terminal's timeline.
+  //
+  // What is still this terminal's own: which model claude is actually
+  // answering on. The transcript path arrives on the SessionStart hook payload
+  // (src/taps/claude.mjs `handleHook`, `base`), so this only reads once Claude
+  // Code has told Leg where its jsonl is. A fallback off fable shows up here
+  // and nowhere else.
   let usageTimer = null
-  const usageAbort = new AbortController()
   if (agent === 'claude') {
-    const pollUsage = async () => {
-      const r = await fetchClaudeUsage({ configDir: spec.env.CLAUDE_CONFIG_DIR || LAYOUT.claude.home() })
+    const pollModel = () => {
       const s = readSession(sid)
       if (!isCurrentLeg(s, { pid: child.pid, agent, account })) return
-      // a 404, a body that is not JSON, or a shape with no window at all: the
-      // card says usage unknown and the StopFailure hook still owns the limit
-      // which model actually answered. The transcript path arrives on the
-      // SessionStart hook payload (src/taps/claude.mjs `handleHook`, `base`),
-      // so this only reads once Claude Code has told Leg where its jsonl is.
-      // A fallback off fable shows up here and nowhere else.
       const seen = modelFromTranscript(s.transcript_path, { agent: 'claude' })
       if (seen && seen !== s.model) {
         updateSession(sid, { model: seen }, { event: { type: 'status', summary: `claude is answering on ${seen}${s.model ? ` (was ${s.model})` : ''}` } })
       }
-      const usable = r.ok && r.limits && (r.limits.five_hour || r.limits.seven_day)
-      if (usable) {
-        recordUsage('claude', account, r.limits, 'claude usage endpoint')
-        // the session record keeps the two windows it always had: the buckets
-        // live on the usage record, which is per login and not per terminal
-        updateSession(sid, { limits: { five_hour: r.limits.five_hour, seven_day: r.limits.seven_day }, usage_source: 'claude usage endpoint', usage_error: null })
-      } else if (!s.usage_error) {
-        const why = r.error ?? 'the usage endpoint answered with no window'
-        updateSession(sid, { usage_error: why }, { event: { type: 'status', summary: `claude usage unavailable: ${why}` } })
-      }
     }
-    pollUsage().catch(() => {})
-    usageTimer = setInterval(() => pollUsage().catch(() => {}), USAGE_MS)
+    const safely = () => { try { pollModel() } catch {} }
+    safely()
+    usageTimer = setInterval(safely, USAGE_MS)
     usageTimer.unref?.()
-  } else if (agent === 'codex' && !(process.env.LEG_CODEX_BIN || process.env.BATON_CODEX_BIN)) {
+  }
+
+  // The near-wall warning below is computed from the percentages on this
+  // session, and for claude and grok those are written by the board's poller
+  // (src/usage-poll.mjs). With LEG_NO_BOARD=1, or a board that is down, nobody
+  // is reading that login at all, and the 85% warning never fired: no bell, no
+  // nudge, straight into the wall. So the terminal watches the login's own
+  // record and, when nothing has refreshed it for five minutes, reads the
+  // endpoint itself at the old once-a-minute cadence. A board that is polling
+  // keeps that record fresh, so with one up this costs a readUsage() a minute
+  // and no request. Said once, so a terminal doing its own reading is never a
+  // mystery.
+  let fallbackTimer = null
+  if ((agent === 'claude' || agent === 'grok') && !NO_USAGE_POLL) {
+    const source = agent === 'claude' ? 'claude usage endpoint' : 'grok billing proxy'
+    const readOwn = () => (agent === 'claude'
+      ? fetchClaudeUsage({ configDir: spec.env.CLAUDE_CONFIG_DIR || LAYOUT.claude.home() })
+      : fetchGrokUsage({ configDir: spec.env.GROK_HOME || LAYOUT.grok.home() }))
+    let announced = false
     const pollUsage = async () => {
-      const r = await refreshCodexUsage(account, spec.env.CODEX_HOME || LAYOUT.codex.home(), { signal: usageAbort.signal })
-      const s = readSession(sid)
-      if (!isCurrentLeg(s, { pid: child.pid, agent, account })) return
-      if (r.ok) {
-        const patch = { limits: r.limits, usage_source: 'codex app-server account/rateLimits/read', usage_error: null }
-        if (r.available === false) {
-          patch.status = 'limit'
-          patch.limit = { reason: 'usage_limit_exceeded', detail: 'Codex reports ordinary usage is unavailable', resets_at: r.usage.limited_until, at: r.observed_at }
-        }
-        updateSession(sid, patch)
-      } else if (!s.usage_error) {
-        updateSession(sid, { usage_error: r.error }, { event: { type: 'status', summary: `codex usage unavailable: ${r.error}` } })
-      }
-    }
-    pollUsage().catch(() => {})
-    usageTimer = setInterval(() => pollUsage().catch(() => {}), USAGE_MS)
-    usageTimer.unref?.()
-  } else if (agent === 'grok') {
-    const pollUsage = async () => {
-      const configDir = spec.env.GROK_HOME || LAYOUT.grok.home()
-      const r = await fetchGrokUsage({ configDir })
+      if (!isCurrentLeg(readSession(sid), { pid: child.pid, agent, account })) return
+      if (!usageIsStale(readUsage(agent, account))) return // a board is reading this login
+      if (!announced) { announced = true; say(`no board is reading ${agent} usage, so this terminal reads it itself once a minute`) }
+      const r = await readOwn()
       const s = readSession(sid)
       if (!isCurrentLeg(s, { pid: child.pid, agent, account })) return
       const usable = r.ok && r.limits && (r.limits.five_hour || r.limits.seven_day)
       if (usable) {
-        recordUsage('grok', account, r.limits, 'grok billing proxy')
-        updateSession(sid, { limits: r.limits, usage_source: 'grok billing proxy', usage_error: null })
+        recordUsage(agent, account, r.limits, source)
+        // the two windows the card has always carried; the buckets stay on the
+        // usage record, which is per login and not per terminal
+        const limits = agent === 'claude' ? { five_hour: r.limits.five_hour, seven_day: r.limits.seven_day } : r.limits
+        updateSession(sid, { limits, usage_source: source, usage_error: null })
       } else if (!s.usage_error) {
         const why = r.error ?? 'the usage endpoint answered with no window'
-        updateSession(sid, { usage_error: why }, { event: { type: 'status', summary: `grok usage unavailable: ${why}` } })
+        updateSession(sid, { usage_error: why }, { event: { type: 'status', summary: `${agent} usage unavailable: ${why}` } })
       }
     }
-    pollUsage().catch(() => {})
-    usageTimer = setInterval(() => pollUsage().catch(() => {}), USAGE_MS)
-    usageTimer.unref?.()
+    const safelyUsage = () => { pollUsage().catch(() => {}) }
+    // LEG_NO_BOARD=1 means nobody will ever poll this login, so the reading
+    // happens at once rather than leaving the terminal's first minute blind
+    if (!boardUrl) safelyUsage()
+    fallbackTimer = setInterval(safelyUsage, USAGE_MS)
+    fallbackTimer.unref?.()
   }
 
   const timer = setInterval(() => {
@@ -666,9 +670,8 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   timer.unref?.()
   const result = await done
   clearInterval(timer)
-  usageAbort.abort()
   if (usageTimer) clearInterval(usageTimer)
-  void boardUrl
+  if (fallbackTimer) clearInterval(fallbackTimer)
   return result
 }
 

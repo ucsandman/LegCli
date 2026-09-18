@@ -177,7 +177,7 @@ function assertClean(res, label, { presented = null } = {}) {
 
 // ---- the routes handle() answers ------------------------------------------
 const apiRoutes = () => [
-  ['GET', '/api/health'], ['GET', '/api/adapters'], ['GET', '/api/presets'],
+  ['GET', '/api/health'], ['GET', '/api/adapters'], ['GET', '/api/presets'], ['GET', '/api/models'],
   ['GET', '/api/cards'], ['POST', '/api/cards'],
   ['GET', '/api/sessions'], ['GET', `/api/sessions/${OWNED}`],
   ['POST', `/api/sessions/${OWNED}/request-handoff`],
@@ -286,7 +286,7 @@ test('the canary detector actually fires: the owner\'s own board carries every o
   assert.ok(carries(log.text, C.runlog), 'the owner can read the run log')
   assert.equal(carries(log.text, SCRUBBED_KEY), false, 'an API key in a run log is scrubbed even for the owner')
   assert.ok(log.text.includes('[REDACTED]'), 'scrub() replaced the key')
-  assert.equal(apiRoutes().length, 33, 'every route handle() answers is in the sweep')
+  assert.equal(apiRoutes().length, 34, 'every route handle() answers is in the sweep')
 })
 
 // ---- 1. no token from a non-loopback address -------------------------------
@@ -304,7 +304,7 @@ test('no token, from a non-owner address: every route refuses and says nothing',
     swept++
   }
   assert.equal((await sseCollect(strictBase, null, { ms: 50 })).status, 401, 'SSE with no token')
-  assert.equal(swept, 33, `swept ${swept} routes`)
+  assert.equal(swept, 34, `swept ${swept} routes`)
 })
 
 test('no token on loopback when share asks for one: every route refuses', async () => {
@@ -336,7 +336,7 @@ test('a wrong token: every route refuses, in the header and in the query string'
 })
 
 // ---- 3. another human's token ---------------------------------------------
-const PIPELINE = ['/api/cards', '/api/floor', '/api/presets', '/api/adapters', '/api/leases']
+const PIPELINE = ['/api/cards', '/api/floor', '/api/presets', '/api/adapters', '/api/leases', '/api/models']
 const isPipeline = (path) => PIPELINE.includes(path) || path.startsWith('/api/cards/')
 
 test('sam on wes\'s terminal, kim on sam\'s: read-only, and nothing of the other human comes back', async () => {
@@ -421,7 +421,10 @@ test('a guest\'s board carries no usage percentage, no reset time and no reading
     assert.equal(owner.status, 200)
     assert.equal(owner.json.you.name, 'wes')
     const mine = owner.json.accounts.find((a) => a.agent === 'claude' && a.account === 'default')
-    assert.deepEqual(Object.keys(mine).sort(), ['account', 'agent', 'buckets', 'extra_usage', 'facts', 'five_hour', 'limited_reason', 'limited_until', 'live', 'observed_at', 'seven_day', 'source', 'stale', 'updated_at', 'walls'])
+    // `error`/`error_since` are the board poller's own health (src/usage-poll.mjs):
+    // the owner learns that a reading failed and since when, and the guest branch
+    // below still drops the whole slot to four keys
+    assert.deepEqual(Object.keys(mine).sort(), ['account', 'agent', 'buckets', 'error', 'error_since', 'extra_usage', 'facts', 'five_hour', 'limited_reason', 'limited_until', 'live', 'observed_at', 'seven_day', 'source', 'stale', 'updated_at', 'walls'])
     // the owner reads the per-model record: the bucket that binds, the model
     // that is walled, the credits sentence and the measured facts
     assert.equal(mine.buckets[0].model, 'fable')
@@ -629,6 +632,55 @@ test('a guest reads no usage off a redacted row, off their own row, or off a pic
     else writeFileSync(prefsFile, hadPrefs)
     updateSession(OTHER, { handoff_ladder: null, handoff_order: null, waiting: null, limits: null, warning: null, usage_source: null })
     updateSession(OWNED, { all_out: null, warning: null })
+  }
+})
+
+// Finding 10: the list route scrubs a guest's own row (the two tests above).
+// GET /api/sessions/<their own id> handed back `readSession(id)` verbatim — the
+// window percentages, the reading source, and the usage_error the board's
+// poller writes — and the poller's timeline line names the owner's reason and
+// the clock it started. One request walked around the whole redaction. Note the
+// shape of this bug (see leg-harness memory `session-view-two-redaction-paths`):
+// a guest OWNS their own terminal, so every new field on a session record
+// reaches them by default and has to be taken off where it is built.
+test('a guest\'s own session read one at a time carries no usage figure and no poller failure line', async () => {
+  const fiveHour = 1900000121
+  const usageError = 'CANARY-USAGE-ERROR-9c41 usage endpoint 429: rate_limit_error'
+  const usageSource = 'CANARY-USAGE-SOURCE-5b02 claude usage endpoint'
+  updateSession(OTHER, {
+    limits: { five_hour: { pct: 96, resets_at: fiveHour }, seven_day: { pct: 63, resets_at: fiveHour } },
+    usage_source: usageSource,
+    usage_error: usageError,
+  })
+  appendEvent(OTHER, { type: 'status', summary: `claude usage unavailable since 9:03 AM: ${usageError}` })
+  try {
+    // the detector: the owner really does read all of it on this same route
+    const owner = await request(openBase, `/api/sessions/${OTHER}`)
+    assert.equal(owner.status, 200)
+    assert.equal(owner.json.session.limits.five_hour.pct, 96, 'the owner reads the window percentage')
+    assert.equal(owner.json.session.usage_error, usageError)
+    assert.equal(owner.json.events.some((e) => /usage unavailable/.test(e.summary)), true)
+
+    const mine = await request(wanBase, `/api/sessions/${OTHER}`, { token: TOKENS.sam })
+    assert.equal(mine.status, 200, `sam cannot read their own terminal: ${mine.text.slice(0, 200)}`)
+    assert.equal(mine.json.session.session_id, OTHER, 'it is still their own terminal, with their own work on it')
+    assert.equal(mine.json.session.task, "sam's own prompt")
+    for (const field of ['limits', 'all_out', 'usage_source', 'usage_error']) {
+      assert.equal(field in mine.json.session, false, `a guest's own session route carries ${field}, measured from this machine's login`)
+    }
+    assert.equal(mine.json.events.some((e) => /usage unavailable/.test(e.summary ?? '')), false,
+      'the poller\'s failure line names the owner\'s reason and the clock it started')
+    for (const [what, needle] of [['the usage error', usageError], ['the reading source', usageSource], ['the 5h reset time', String(fiveHour)]]) {
+      assert.equal(carries(mine.text, needle), false, `a guest's own session route carries ${what}`)
+    }
+    assertClean(mine, `guest GET /api/sessions/${OTHER}`, { presented: TOKENS.sam })
+
+    // the drawer is the other way to that same timeline
+    const drawer = await request(wanBase, `/api/sessions/${OTHER}/detail`, { token: TOKENS.sam })
+    assert.equal(drawer.status, 200)
+    assert.equal(carries(drawer.text, usageError), false, 'the drawer carries the poller\'s failure line')
+  } finally {
+    updateSession(OTHER, { limits: null, usage_source: null, usage_error: null })
   }
 })
 

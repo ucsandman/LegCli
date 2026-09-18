@@ -23,7 +23,11 @@ test('the conversation is newest first, so the last turn is at the top of the pa
 })
 
 test('the timeline is newest first too', () => {
-  assert.match(SRC, /events\.slice\(-40\)\.reverse\(\)/, 'the last 40 events are reversed')
+  // 2026-09-18: the 40 are counted in LINES now, not raw events, because a run
+  // of identical status lines collapses to one carrying ×N (collapseEvents,
+  // pinned by test/board-jump.test.mjs). Newest first is unchanged.
+  assert.match(SRC, /const lines = collapseEvents\(events\)/, 'the repeats are folded first')
+  assert.match(SRC, /lines\.slice\(-40\)\.reverse\(\)/, 'the last 40 lines are reversed')
   assert.match(SRC, /section\('Timeline', 'this terminal, newest first'/)
   assert.ok(!/this terminal, newest last/.test(SRC), 'the old wording is gone')
 })
@@ -42,7 +46,10 @@ test('every box that can scroll carries a key, and the offsets are carried acros
 })
 
 test('renderDrawer captures the offsets before it empties the panel and restores them after', () => {
-  const body = SRC.slice(SRC.indexOf('function renderDrawer()'))
+  // renderDrawer takes { timed } since 2026-09-18, so this matches the name and
+  // not the whole signature; an indexOf that misses returns -1 and slices the
+  // last character of the file, which passed nothing and failed everything.
+  const body = SRC.slice(SRC.indexOf('function renderDrawer('))
   const capture = body.indexOf('takeScroll(box)')
   const wipe = body.indexOf("box.textContent = ''")
   const restore = body.indexOf('putScroll(box, inner)')

@@ -136,8 +136,14 @@ variables yourself in that case.</p>
 <tr>
 <td><code>LEG_USAGE_POLL_MS</code></td>
 <td><code>60000</code></td>
-<td>how often an active attach polls its usage source; Claude uses its usage endpoint and Codex uses read-only app-server rate limits</td>
-<td><code>src/attach.mjs</code></td>
+<td>how often the board asks each login&#39;s usage source (one poller per login, not one per terminal); Claude uses its usage endpoint, Codex read-only app-server rate limits, Grok its billing proxy</td>
+<td><code>src/usage-poll.mjs</code></td>
+</tr>
+<tr>
+<td><code>LEG_USAGE_POLL_MAX_MS</code></td>
+<td><code>600000</code></td>
+<td>the longest the board waits between readings for one login: a refusal (429, timeout, no login) doubles the wait up to this, and the first good reading puts it back to <code>LEG_USAGE_POLL_MS</code></td>
+<td><code>src/usage-poll.mjs</code></td>
 </tr>
 <tr>
 <td><code>LEG_ATTACH_POLL_MS</code></td>
@@ -213,7 +219,7 @@ login stops (<code>src/preferences.mjs</code>), alongside the older <code>handof
 <tbody><tr>
 <td><code>handoff_ladder</code></td>
 <td><code>claude/fable</code>, <code>claude/opus</code>, <code>claude/sonnet</code>, then one rung per remaining agent in <code>handoff_order</code> with model <code>null</code></td>
-<td>the fallback list, rung 1 first; each rung is <code>{agent, account, model, when, cost}</code>. <code>model</code> is <code>null</code> or one of that agent&#39;s names in <code>src/buckets.mjs</code> <code>MODEL_ALIASES</code> (only claude has any: <code>fable</code>, <code>opus</code>, <code>sonnet</code>, <code>haiku</code>). <code>account</code> is <code>default</code> or a name this machine has for that agent (<code>leg accounts ls</code>); anything else is refused with a sentence, because that string becomes the CLI&#39;s config dir and the usage record&#39;s file name. <code>when</code> is <code>always</code>, <code>below:N</code>, or <code>walled-only</code>. <code>cost</code> is <code>free</code>, <code>plan</code>, <code>credits</code>, or <code>metered</code>, and is a static label; the live cost a rung would spend right now is computed from the agent and the login, never read off this key, so a ladder migrated from an older <code>handoff_order</code> still meets the spending gate on <code>grok</code></td>
+<td>the fallback list, rung 1 first; each rung is <code>{agent, account, model, when, cost}</code>. <code>model</code> is <code>null</code> or a model id that agent publishes: claude&#39;s four aliases are a closed list (<code>fable</code>, <code>opus</code>, <code>sonnet</code>, <code>haiku</code>, from <code>src/buckets.mjs</code> <code>MODEL_ALIASES</code>) and a fifth word is refused by name, while codex, agy and grok take any id from their own live catalog (<code>src/models.mjs</code> reads each CLI&#39;s, and the board&#39;s model picker offers it) as long as it matches the shape gate: lower-case letters, digits, <code>.</code>, <code>_</code>, <code>:</code> and <code>-</code>, 64 characters at most. <code>account</code> is <code>default</code> or a name this machine has for that agent (<code>leg accounts ls</code>); anything else is refused with a sentence, because that string becomes the CLI&#39;s config dir and the usage record&#39;s file name. <code>when</code> is <code>always</code>, <code>below:N</code>, or <code>walled-only</code>. <code>cost</code> is <code>free</code>, <code>plan</code>, <code>credits</code>, or <code>metered</code>, and is a static label; the live cost a rung would spend right now is computed from the agent and the login, never read off this key, so a ladder migrated from an older <code>handoff_order</code> still meets the spending gate on <code>grok</code></td>
 </tr>
 <tr>
 <td><code>climb_back</code></td>
@@ -241,6 +247,10 @@ rung per agent, so an older install behaves exactly as it did until a rung is
 edited. If the file is hand-edited so the two disagree, <code>handoff_order</code> wins
 and the ladder is rebuilt from it, because the order is the shape a hand
 edit is more likely to have meant.</p>
+<p>A rung Leg cannot read (a misspelt claude alias, an account this machine no
+longer has) is dropped on its own and the rest of the ladder is kept, and Leg
+never writes that shortened ladder back: the file keeps the rungs you typed
+until you save a ladder yourself, from the board or with <code>leg ladder set</code>.</p>
 <p><code>leg ladder</code> (<code>leg ladder ls</code>) prints the ladder with each rung&#39;s live state;
 <code>leg ladder set &lt;n&gt; &lt;agent&gt;[/&lt;account&gt;[/&lt;model&gt;]]</code>, <code>leg ladder rm &lt;n&gt;</code> and
 <code>leg ladder spend on|off</code> change it. See <a href="/docs/cli-contracts">cli-contracts.md</a>.</p>

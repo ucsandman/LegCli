@@ -62,7 +62,13 @@ export function testEnv(home, extra = {}) {
   // config under the OS home, and a test must never reach the developer's
   // real ~/.claude, ~/.codex or ~/.gemini; the throwaway Leg home doubles as
   // that OS home (src/harness/registry.mjs harnessHome).
-  const base = { LEG_HOME: home, BATON_HOME: home, LEG_HARNESS_HOME: home, BATON_HARNESS_HOME: home, LEG_TIMERS_MS: '60000,120000', BATON_TIMERS_MS: '60000,120000', LEG_POLL_MS: '50', BATON_POLL_MS: '50', LEG_QUIET: '1', BATON_QUIET: '1', LEG_TRUST: 'never', BATON_TRUST: 'never', LEG_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64, BATON_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64 }
+  // LEG_NO_USAGE_POLL=1: a board a test spawns must never ask a real usage
+  // endpoint about this machine's real logins. It used to be the *_BIN stubs
+  // that switched the poller off by accident, which also switched it off for
+  // every user who moved their claude (src/server.mjs usageAgentsFor); the
+  // suites say it on purpose instead, and a test that wants the poller either
+  // injects its own fetchers or clears this variable.
+  const base = { LEG_NO_USAGE_POLL: '1', BATON_NO_USAGE_POLL: '1', LEG_HOME: home, BATON_HOME: home, LEG_HARNESS_HOME: home, BATON_HARNESS_HOME: home, LEG_TIMERS_MS: '60000,120000', BATON_TIMERS_MS: '60000,120000', LEG_POLL_MS: '50', BATON_POLL_MS: '50', LEG_QUIET: '1', BATON_QUIET: '1', LEG_TRUST: 'never', BATON_TRUST: 'never', LEG_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64, BATON_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64 }
   const env = Object.assign({}, process.env, base, rest)
   if (BATON_UNLICENSED !== '1') licenseHome(home)
   delete env.DASHCLAW_URL
@@ -139,4 +145,19 @@ export function runCardOrExplain(home, id, env) {
     const runs = existsSync(runsDir) ? readdirSync(runsDir).map((n) => { try { const r = JSON.parse(readFileSync(join(runsDir, n, 'run.json'), 'utf8')); return `run ${n}: ${r.status} ${r.outcome} exit=${r.exit_code} ${r.reason ?? ''}` } catch { return `run ${n}: unreadable` } }) : []
     throw new Error(`card run ${id} exited ${err.status}\nevents:\n  ${evs.join('\n  ')}\nruns:\n  ${runs.join('\n  ')}\nstderr: ${err.stderr?.toString().slice(-800)}`)
   }
+}
+
+// ---- the two shared board scripts -----------------------------------------
+// src/board/strip.js (the capacity strip) and src/board/entry.js (the one-line
+// entry row) are plain scripts that both pages load BEFORE board.js, sessions.js
+// and floor.js, and publish themselves on `window`. A test that runs one of
+// those three through its `module` seam has to put them on the window it hands
+// over, exactly as the two <script> tags do in the browser.
+export function mountSharedScripts(doc, localStorage = { getItem: () => null, setItem() {}, removeItem() {} }) {
+  const win = { dispatchEvent() {}, addEventListener() {} }
+  for (const name of ['strip.js', 'entry.js']) {
+    const src = readFileSync(join(ROOT, 'src', 'board', name), 'utf8')
+    new Function('module', 'document', 'window', 'localStorage', src)({ exports: {} }, doc, win, localStorage)
+  }
+  return win
 }

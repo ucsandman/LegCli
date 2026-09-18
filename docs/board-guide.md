@@ -62,11 +62,19 @@ state the shot needs:
 node scripts/seed-wes-board.mjs     # 4 live terminals, 5 finished, long paths
 node scripts/seed-floor-board.mjs   # cards in every floor lane, plus a landing
 node scripts/board-shots.mjs <port> <tag>   # shoot 1280 and 400, print the numbers
+node scripts/board-jump-probe.mjs           # seeds, serves and drives its own board
 ```
 
 Each seeder writes a throwaway `LEG_HOME` under the OS temp dir; serve it on a
 spare port with `LEG_TRUST=never`. **Never use port 4747**, that is the live
 board, with real sessions on it.
+
+`board-jump-probe.mjs` needs no port and no seeder: it makes its own home, binds
+an ephemeral port, kills everything it started, and prints a table of where the
+expanded region sat in the viewport across thirteen pushes with the list
+re-sorting under it. Run it after any change to `renderSessions` or
+`renderDrawer`. A scroll-hold probe cannot see this class of defect: `scrollY`
+never moves, the content under it does.
 
 Measure against those seeds and never against a board of healthy terminals:
 styling scoped to live rows and measured on a clean board reported 40px terminal
@@ -637,7 +645,20 @@ carrying that rung's model: `claude/fable then claude/opus then codex` posts
 three legs, the first two on one login and two different models, which is the
 hand-off the ladder exists for. Two rungs that name the same agent AND the same
 model are one leg, not two, so the sentence never lists a hand-off to a leg's
-own twin. Picking a lower rung in the ladder select starts the chain there.
+own twin. Pressing the ladder noun opens two selects: the rung the chain starts
+at, and the model that first leg runs on, taken from that provider's catalog
+([`GET /api/models`](cli-contracts.md#get-apimodels)). The model picked there
+applies to the leg that starts and nothing else; the fallbacks under it keep the
+models the ladder gave them, and the saved ladder is not touched. **More
+settings** below the line opens the full form with the same rows in it.
+
+A ladder Leg cannot read is never silently empty. An install whose
+`preferences.json` predates the ladder carries only `handoff_order`, and the
+line derives one rung per agent from it; a board that never got an answer from
+`/api/settings` at all falls back to the adapters that are installed. The
+sentence says `no agent is configured` only when there is genuinely nothing
+installed, and says `every agent here bills by the token, and spending is off`
+when there is, but the spend rule is holding it back.
 
 **Settings** holds the **API token** field (only needed when the server is bound
 off loopback; see [configuration.md](configuration.md#network-exposure)), the
@@ -765,23 +786,48 @@ bottom:
 
 ## New card form
 
-The dialog opened by **New card** (`src/board/index.html`):
+The dialog opened by **New card** (`src/board/index.html`,
+`docs/screenshots/new-card-dialog.png`):
+
+Two columns on a screen 900px or wider, one on a phone: what the work is on the
+left, who runs it on the right. It opens prefilled with the repo, branch and
+ladder the entry line above it would have used, so the dialog and that line say
+the same thing until you change one.
 
 | field | notes |
 |-------|-------|
-| Repo path | required; an absolute path to a git repository |
-| Task | required; the prompt every leg gets |
-| First agent | required; real agents appear here and Claude is preferred when installed |
+| Task | required, and takes the caret when the dialog opens; the prompt every leg gets |
+| Repository | a picker of every repo this board has seen, plus `Another path, typed below` |
+| Path | required; an absolute path to a git repository root. The picker fills it; you can type any path over it |
+| Branch to cut from | the repo's own default branch, read from the sessions payload, not a hardcoded `main` |
 | Run now | checked by default; unchecking saves the card as a draft in `backlog` |
+| Who runs it | the ordered list below; at least one row is required |
+| Save as my default ladder | writes the rows back to `preferences.handoff_ladder` through `PATCH /api/settings`, so the entry line and every new terminal use them too |
 | Workflow (Advanced) | Build only stops unmerged in the worktree; Build-land runs test then land; Factory runs plan, build, review, test, and land; custom JSON reveals a station-array textarea |
-| First-agent controls (Advanced) | allowed permission mode, approval gate, max turns, and scripted behavior when the test/demo override is selected |
-| Fallback agents (Advanced) | one understandable row per later adapter, tried in displayed order only if the previous agent cannot continue |
-| Scripted first agent (Advanced) | explicitly test/demo only; keeps fake adapters out of the normal first-agent default |
+| Scripted first agent (Advanced) | explicitly test/demo only; it replaces the agent on the first row |
 | File leases (Advanced) | comma-separated path globs to reserve so overlapping cards wait |
-| Trunk branch | default `main` |
-| Merge method | `ff` or `pr`; relevant to a workflow with a land station |
-| Test command | overrides the land station's auto-detected command |
-| Title | optional; defaults to the task's first 80 characters |
+| Merge method (Advanced) | `ff` or `pr`; relevant to a workflow with a land station |
+| Test command (Advanced) | overrides the land station's auto-detected command |
+| Card title (Advanced) | optional; defaults to the task's first 80 characters |
+
+**Who runs it** is one row per leg, in the order Leg tries them. The first row is
+the agent that starts; every row under it is a fallback, taken only when the row
+above it cannot continue. Each row carries:
+
+| control | notes |
+|---------|-------|
+| provider | the installed adapters; a test/demo adapter is labelled as one |
+| model | that provider's own catalog from [`GET /api/models`](cli-contracts.md#get-apimodels), with the provider's default as the first option. `codex` lists `gpt-6-astra`, `gpt-5.6-luna` and the rest of its visible models; `claude` lists Fable, Opus, Sonnet and Haiku |
+| permissions | the adapter's own allowed modes, its default preselected |
+| ask before start | gates that leg behind an approval |
+| max turns | a cap for that leg alone |
+| test behavior | scripted outcome, on a test/demo row only |
+| Up / Down / Remove | reorder or drop the row; the last remaining row cannot be removed |
+
+**Add a fallback** appends a row for the first installed agent no row already
+names. Every field is per row, so `claude/fable` then `claude/opus` are two real
+legs with their own models, permissions and limits: the older form keyed those
+by adapter and could not tell one claude row from another.
 
 **Cancel** closes without creating a card; **Create card** posts it and closes on
 success (errors show inline above the form).
@@ -861,25 +907,77 @@ stops spending a row on work that has stopped.
 ## Floor view
 
 `/floor` (`docs/screenshots/floor.png`) is the scheduler-eye view across every
-card. It carries the same instrument head as the board, then polls `/api/floor`
-and `/api/trunk?since=1h` every 2 seconds and refreshes on the same server-sent
-events as the board. Its top bar has the Leg floor brand, the same connection
-word and 24 px rule, a repos list, the scheduler status, running/queued/waiting/
-done counts, then a spacer and the **Board** link. Five tables:
+card, and it starts work as well as watching it. It polls `/api/floor` (the
+scheduler's own view: leases, blockers, the repos it knows), `/api/cards` (the
+rows), `/api/trunk?since=1h` and `/api/sessions` every 2 seconds, and refreshes
+on the same server-sent events as the board.
 
-| section | columns |
-|---------|---------|
-| Running | Card, Station, Agent / leg, Leases, Last event, Elapsed, Actions |
-| Waiting on humans | Card, Station, Status, Since, Actions |
-| Queued | Card, Station, Leases, Blocked by |
-| Leases | Lease, Card, Station, Since |
-| Trunk lane | Time, Card, Summary |
+Top to bottom:
 
-Each region head names its own count, `0 running`, `0 landed in the last hour`,
-and an empty table is replaced by a sentence saying what would put a row there.
-The Trunk lane lists commits landed in the last hour, newest first. The Leases
-table is `src/leases.mjs` `held()`: one row per lease currently claimed by a
-running or handing-off card.
+1. **The masthead.** The Leg floor brand, the connection word and its 24 px
+   rule, the scheduler status, the repos list and the **Board** link. The four
+   counts that used to sit here are beside the station headings now, with the
+   rows they count.
+2. **The capacity strip**, the same one the board draws and from the same file
+   (`src/board/strip.js`): one token per login carrying the bucket that will
+   actually stop the work. The four login panels are behind the same
+   `Capacity and models >` disclosure they are behind on the board, and whether
+   it is open is remembered for both pages. On the floor they used to be the
+   whole first screen, above every row the page exists to show.
+3. **The entry row**, the same one the board carries and from the same file
+   (`src/board/entry.js`): `Run in the background: [task] [Start]`, with the
+   sentence under it naming the repo, the branch, the ladder and the workflow,
+   each a button that opens a select in place. Start posts exactly what the
+   board's Start posts (`POST /api/cards`), the new card appears in Queued or
+   Backlog within one poll with no reload, and a toast names it. **More
+   settings** is the one thing the floor hands over: the New card dialog's
+   markup exists once, on the board, so the link carries the sentence you typed
+   in the hash (`/#new-card=<task>`) and the board opens the dialog with it
+   already in the field.
+4. **Five stations**, each a question with its count in the heading and, under
+   it, either the rows or one sentence saying what would put a row there:
+
+   | station | what is in it |
+   |---------|----------------|
+   | Running | `running`, `handing_off` |
+   | Waiting on you | `needs_approval`, `waiting_human`, `paused` |
+   | Queued | `queued`, each row with its position and what it waits for |
+   | Backlog | `backlog` |
+   | Done today | `done`, `failed`, `killed`, today only, collapsed behind View |
+
+   A row is the board's own card row (`.row`: state, station, repo on branch,
+   agent/model; the title; the one sentence; the run clock or `idle 12m`; the
+   short id; and at most four of its available actions in the fixed order).
+   The title is a link to that card on the board (`/#card=<id>`), which is
+   where the expansion, the log tail and Take over live: one copy of each.
+   **Reassign** opens the board's own picker in place of the row's buttons, an
+   adapter and a mode with Apply and Cancel, because the API refuses a reassign
+   with no adapter. Every other button posts its action straight away.
+   A queued row adds `2 of 3 in the queue` and, when the scheduler has said
+   why, its own words for what holds it; with the scheduler stopped it says
+   `the scheduler is stopped` rather than blaming a slot that nothing is going
+   to free. A row you have focus in is not rebuilt under your finger for 30
+   seconds, so a press, a picker or a selection survives the 2-second poll;
+   every other row in that station keeps updating meanwhile.
+5. **Leases** and **Trunk lane**, the two tables the floor alone has:
+
+   | section | columns |
+   |---------|---------|
+   | Leases | Lease, Card, Station, Since |
+   | Trunk lane | Time, Card, Summary |
+
+   The Trunk lane lists commits landed in the last hour, newest first. The
+   Leases table is `src/leases.mjs` `held()`: one row per lease currently
+   claimed by a running or handing-off card. `/api/trunk` is the map of the
+   machine and stays with the owner (`src/share.mjs` `mayUseMachine`), so an
+   operator sees this one table replaced by a line naming whose it is; the
+   stations, the entry row and the leases are theirs as usual.
+
+`j` and `k` move a ring down and up the rows, and Enter opens the ringed card on
+the board. Enter belongs to whatever has focus: on a button, a link or the
+disclosure it presses that control, and it only opens the ringed card when
+focus is on the page itself. At 400 px the page is one column: the row's
+actions move under its sentence and nothing scrolls sideways.
 
 ## Keyboard and accessibility
 

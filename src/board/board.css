@@ -589,8 +589,6 @@ code { font-family: var(--mono); font-size: 0.94em; }
 .ladder-add { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0 2px; font-size: var(--t-0); border-top: 1px solid var(--line); }
 .ladder-policy { display: grid; gap: 8px; margin-top: 18px; border: 0; padding: 0; }
 .ladder-policy legend { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); padding: 0; }
-/* the label on each agent row in the New card dialog */
-.fallback-row-title { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }
 .confirm-row { margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--e4); border-radius: var(--r-control); padding: 12px 14px; font-size: var(--t-0); }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
@@ -716,3 +714,87 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   * { transition: none !important; }
   .btn:active { transform: none; }
 }
+
+/* ---- appended 2026-09-18: the timeline's repeat count -------------------- */
+/* A run of identical status lines collapses to one line carrying ×N
+   (collapseEvents in sessions.js). The count is a quantity beside a sentence,
+   not part of it, so it is muted and set in the tabular face the rest of the
+   board counts in. */
+.timeline-count { margin-left: 8px; color: var(--text-3); font-variant-numeric: tabular-nums; font-size: var(--t--1); }
+/* ---- end of the 2026-09-18 block ---------------------------------------- */
+
+/* ---- appended 2026-09-18: the new card dialog's two columns -------------- */
+/* The dialog asks two questions and they are read in parallel, not in series:
+   WHAT the work is on the left, WHO runs it on the right. One column under
+   900px, because at a phone's width two columns of selects is one column of
+   selects with half the room. The dialog itself widens only where there are
+   two columns to hold; under the breakpoint the base `dialog` rule still caps
+   it at the viewport. */
+.dialog-cols { display: grid; gap: 4px 28px; }
+.dialog-col { min-width: 0; }
+/* the second label inside one .form-row: the path under the repo picker. It is
+   a label, not a heading, so it is quieter than the field's own. */
+.sub-label { font-weight: var(--w-text); color: var(--text-3); }
+.form-row .sub-label { font-size: var(--t--1); }
+
+/* One rung of "Who runs it": a number, a provider, a model, its permissions,
+   its limits, and the three buttons that move or remove it. It wraps rather
+   than scrolls, so a narrow dialog stacks the controls of one row instead of
+   hiding them off the right edge. Separated from the row above by --line, the
+   only rule allowed inside a panel. */
+.chain-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0; font-size: var(--t-0); }
+.chain-row + .chain-row { border-top: 1px solid var(--line); }
+.chain-num { flex: none; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.chain-row select { flex: 0 1 auto; min-width: 0; max-width: 100%; font-size: var(--t--1); }
+.chain-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t--1); color: var(--text-3); }
+.chain-turns { flex: none; width: 11ch; font-size: var(--t--1); }
+.chain-fake { flex: none; width: 16ch; font-size: var(--t--1); }
+.chain-row .btn { font-size: var(--t--1); }
+/* the three row buttons sit apart from the row's fields: wrapped onto a line
+   of their own, `max turns` beside Up/Down/Remove read as one group and the
+   number looked like it belonged to the buttons. */
+.chain-row .btn:first-of-type { margin-left: auto; }
+
+/* A dialog taller than the window has to scroll itself, or Create card is off
+   the bottom of the screen with no way to reach it. Both widths did exactly
+   that: 960px of dialog in a 900px window. */
+dialog { max-height: calc(100vh - 40px); overflow-y: auto; }
+
+@media (min-width: 900px) {
+  #new-card-dialog { max-width: 980px; }
+  .dialog-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* ---- end of the 2026-09-18 dialog block --------------------------------- */
+
+/* ---- the floor, 2026-09-18: stations instead of tables ------------------ */
+/* The entry row is the first thing under the strip and the only control on the
+   page that starts work, so it sits on the raised surface the rows sit on
+   rather than in the page's own ground. The board's copy is inside the
+   Background panel and inherits its surface; this one has none to inherit. */
+.floor-entry { margin-top: 20px; background: var(--e2); border: 1px solid var(--edge); border-radius: var(--r-well); padding: 20px 24px; }
+.floor-entry .confirm-row { margin-top: 0; }
+.floor-entry .confirm-row input[type="text"] { flex: 1 1 320px; min-width: 0; }
+.floor-entry .field-help { margin-top: 10px; }
+/* the count belongs to the heading it is in, one step quieter than the word */
+.region-count { margin-left: 10px; font-size: var(--t-0); font-weight: var(--w-text); color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* the keyboard ring on a card row, the same 3px edge mark the terminal rows
+   carry (`.term.is-focused`) rather than a fill */
+.row.is-focused { box-shadow: inset 3px 0 0 var(--focus); }
+
+@media (max-width: 760px) {
+  /* R4 is a 272px block in a fixed second column: under about 390px of content
+     width that column alone is wider than the row, and both pages scrolled
+     sideways. One column, with the clock and the buttons under the sentence. */
+  .row { grid-template-columns: minmax(0, 1fr); padding: 22px; }
+  .r4 { grid-column: 1; grid-row: auto; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-top: 14px; }
+  .r4 .row-actions { width: 100%; }
+  .floor-entry { padding: 18px; }
+  .floor-entry .confirm-row { align-items: stretch; flex-direction: column; }
+  .floor-entry .confirm-row input[type="text"] { flex: 1 1 auto; }
+}
+
+/* The heading over a GROUP of controls, not over one: "Who runs it" names the
+   whole chain-rows group through aria-labelledby, so it cannot be a <label> --
+   a label with no control focuses nothing when it is clicked, which is the one
+   thing a label promises. Same face as the row labels beside it. */
+.form-row .form-label { font-size: var(--t-0); font-weight: var(--w-head); color: var(--text-2); }

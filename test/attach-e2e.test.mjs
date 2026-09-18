@@ -5,7 +5,7 @@
 // agent from the bundle; End from the board while waiting quits with exit 3.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readdirSync, readFileSync, existsSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readdirSync, readFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { makeHome, testEnv, initRepo, batonSpawn, sleep, ROOT, git } from './helpers.mjs'
@@ -116,10 +116,49 @@ ${pointer.slice(0, 400)}`)
   assert.equal(resumeVerdict(repo).state, 'fresh', 'and it is not stale the moment it is written')
   assert.ok(existsSync(join(stubDir, 'live', 'claude', 'limit-rate_limit.json')), 'the (non-simulated) StopFailure was kept as live evidence')
   assert.equal(readUsage('claude', 'default').limited_reason, 'rate_limit')
-  // no usage numbers (the config dir has no login) but the wall still landed;
-  // the card is codex's by now, so claude's "usage unknown" is in the timeline
+  // no usage numbers (the config dir has no login) but the wall still landed.
+  // The terminal does not ask the usage endpoint on its own account: one poller
+  // per login lives in the board (src/usage-poll.mjs, test/usage-poller.test.mjs).
+  // With no board at all the terminal falls back to reading it itself (the test
+  // below), and every suite switches that off with LEG_NO_USAGE_POLL
+  // (test/helpers.mjs), so nothing about a missing login reaches this timeline —
+  // where it used to be one line per minute per terminal.
   assert.equal(s.usage_error, null, 'claude’s usage error does not follow codex onto the card')
-  assert.ok(readEvents(s.session_id).some((e) => e.type === 'status' && /usage unavailable: no claude\.ai login found/.test(e.summary)))
+  assert.equal(readEvents(s.session_id).filter((e) => e.type === 'status' && /usage unavailable/.test(e.summary)).length, 0, 'the terminal prints no usage endpoint failures of its own')
+})
+
+// Finding 12: the 85% warning is computed from the percentages on the session,
+// and for claude those are written by the board's poller. With LEG_NO_BOARD=1
+// nobody was reading the login at all, so the warning could never fire: no
+// bell, no nudge, straight into the wall. The terminal reads its own login when
+// the record has gone stale, and says so once.
+test('with no board, the terminal reads its own claude usage instead of going into the wall blind', async () => {
+  const repo = initRepo('attach-e2e-solo-')
+  const stubDir = mkdtempSync(join(tmpdir(), 'stub-rec-')); mkdirSync(join(stubDir, 'live'))
+  // the test above leaves this home's claude login walled, and a walled login
+  // hands off before the claude leg ever starts: this one is about a claude leg
+  // that runs, so the login goes back to "nothing known about it"
+  rmSync(join(HOME, 'usage', 'claude--default.json'), { force: true })
+  // every suite switches usage reads off (test/helpers.mjs); this is the run
+  // that wants one, and its config dir is empty, so the reading never leaves
+  // this machine and no endpoint is asked about a real login
+  const child = batonSpawn(['claude'], envFor(stubDir, { LEG_NO_USAGE_POLL: '', BATON_NO_USAGE_POLL: '' }), { cwd: repo })
+  let err = ''
+  child.stderr.on('data', (d) => { err += d }); child.stdout.resume()
+  const t0 = Date.now()
+  let s = null
+  while (Date.now() - t0 < 20000) {
+    s = listSessions().find((x) => x.cwd.toLowerCase() === repo.toLowerCase())
+    if (s?.usage_error) break
+    await sleep(100)
+  }
+  assert.ok(s?.usage_error, `the terminal never read its own usage in 20 s; stderr: ${err}`)
+  assert.match(s.usage_error, /no claude\.ai login found/, 'the card says what it could not read')
+  assert.match(err, /no board is reading claude usage/, 'and the terminal says why it is doing the reading')
+  const said = readEvents(s.session_id).filter((e) => e.type === 'status' && /usage unavailable/.test(e.summary))
+  assert.equal(said.length, 1, `one line per outage, not one per poll; got ${said.length}`)
+  requestControl(s.session_id, { end: true })
+  await new Promise((r) => child.on('exit', r))
 })
 
 test('End from the board while waiting quits with exit 3 and the session is ended, not lost', async (t) => {

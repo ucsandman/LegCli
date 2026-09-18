@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.13.0 (2026-09-18)
+
+The first day on 0.12.0 with three real terminals found five things. Usage
+polling moves out of the terminals into the board, so the endpoint stops
+answering 429 and the timeline stops repeating it. Every rung of a ladder can
+now name a model from a catalog Leg reads off the installed CLIs, and the new
+card form is rebuilt around that. The board holds still under a reader with a
+row expanded. The floor is a page you can start work from. And a page whose
+files are newer than the process serving them says so.
+
+- **One usage poll per login, in the board.** Every claude terminal used to
+  ask Claude's usage endpoint once a minute on its own; three terminals plus
+  Claude Code's own polling meant a 429 every other minute, and the terminal's
+  timeline logged `claude usage unavailable: usage endpoint 429: {...}` each
+  time the answer flipped. The board process now polls each login once per
+  `LEG_USAGE_POLL_MS` (60s), backs off to ten minutes on any refusal and snaps
+  back on the first good answer, and writes the two windows onto every active
+  session of that login. A refusal is recorded once on the usage record
+  (`error`, `error_since`, owner only) with one status line, `claude usage
+  unavailable since 9:03 AM: usage endpoint 429: rate_limit_error`, and one
+  `claude usage is back`; it never erases the measured buckets. Terminals
+  poll nothing, so a terminal started before this release keeps its old
+  minute-by-minute poll until it is restarted.
+- **A model catalog, read from the CLIs you have.** `GET /api/models` lists
+  what each provider can run today: claude's aliases (fable, opus, sonnet,
+  haiku); codex's `models_cache.json` entries with `visibility: list` plus the
+  default from `config.toml` (gpt-6-astra, gpt-5.6-sol, gpt-5.6-terra,
+  gpt-5.6-luna, gpt-5.5 on the machine this shipped from); `agy models` and
+  `grok models`, each run at most once an hour behind the answer and cached
+  under `<LEG_HOME>/models/`. A rung's model is validated by shape for every
+  provider and by membership for claude only, so next month's codex model is
+  not refused and a saved ladder is never silently reset to the default.
+- **The new card form, rebuilt.** Task first, then the repository as a picker
+  of known repos or a typed path, the branch to cut from, and **Who runs it**:
+  one row per rung with provider, model, permissions, ask before start and max
+  turns, reorderable, prefilled from your ladder, with **Save as my default
+  ladder** writing it back to Settings. Advanced holds the workflow, scripted
+  first agent, leases, merge method, test command and title. The dialog posts
+  its chain as one object per rung, so `claude/fable` then `claude/opus` is
+  finally two legs and not one. Two columns at 900px, one below; it scrolls on
+  a short window instead of hiding Create card below the fold.
+- **The one-line entry row is never empty.** It derives its rungs from
+  `handoff_order` when a preferences file predates ladders, the ladder noun
+  opens both the rung and the model selects, and with only metered providers
+  and spending off it says so instead of "no agent is configured".
+- **The board holds still.** With a row expanded, a text selection live, the
+  pointer on a row or focus in the list, the needs-you re-sort is computed but
+  not drawn until you come out (hover and focus release after 30s on their
+  own). The expansion is never detached from the document, so its selection,
+  scroll offsets and open confirm row survive every 3-second poll; the
+  region's top is anchored against rows above it changing height; the
+  timeline appends new lines above you without moving what you read, and a
+  status line repeated word for word within a minute folds into one with
+  `×N`. `scripts/board-jump-probe.mjs` is the regression harness: it printed a
+  205px drift on 0.12.0 and 0px now.
+- **The floor is a page you start work from.** The four login panels move
+  behind the same **Capacity and models** disclosure as on the board, under
+  the same one-line strip; the **Run in the background** entry sits under it
+  and posts exactly what the board's does; Running, Waiting on you, Queued,
+  Backlog and Done today are Background-style rows with counts in their
+  headings, a queued row says its position and what it waits for, and j/k and
+  Enter work as on the board. `More settings` carries the typed task to the
+  board's dialog through `/#new-card=`. The strip and the entry row live once,
+  in `src/board/strip.js` and `src/board/entry.js`, loaded by both pages.
+- **A page newer than its process says so.** `/api/health` answers with the
+  process version; the page files carry theirs. When they differ the board and
+  the floor print `This board process runs leg 0.10.0 and the page files are
+  0.13.0. Restart it to match: leg down && leg up`, which is the state a board
+  left running across an `npm i -g` lands in, and the state that hid every
+  0.12.0 feature on the first morning.
+
 ## 0.12.0 (2026-09-17)
 
 The board is rebuilt around the two questions you actually open it to answer:

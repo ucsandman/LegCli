@@ -20,7 +20,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ROOT } from './helpers.mjs'
+import { ROOT, mountSharedScripts } from './helpers.mjs'
 
 const SRC = readFileSync(join(ROOT, 'src', 'board', 'sessions.js'), 'utf8')
 
@@ -53,8 +53,13 @@ function load() {
   const mod = { exports: {} }
   const store = new Map()
   const localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) }
+  // src/board/strip.js draws the capacity strip for this page and for the
+  // floor, and sessions.js delegates its bucket grammar to it, so the window
+  // handed over carries it exactly as the <script> tag before it does
+  const win = mountSharedScripts(doc, localStorage)
+  win.addEventListener = () => {}
   new Function('module', 'document', 'window', 'localStorage', 'setInterval', 'setTimeout', SRC)(
-    mod, doc, { addEventListener() {} }, localStorage, () => 0, () => 0,
+    mod, doc, win, localStorage, () => 0, () => 0,
   )
   return mod.exports
 }

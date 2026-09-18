@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { mountSharedScripts } from './helpers.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const BOARD_JS = readFileSync(join(ROOT, 'src/board/board.js'), 'utf8')
@@ -32,8 +33,11 @@ function load(names, fetchImpl = async () => { throw new Error('no fetch in this
   const localStorage = { value: '', getItem() { return this.value }, setItem(_, v) { this.value = v }, removeItem() { this.value = '' } }
   const mod = { exports: {} }
   const src = BOARD_JS.replace(/module\.exports = \{[^}]+\}/, `module.exports = { ${names.join(', ')} }`)
+  // the two shared scripts the page loads before board.js: without them the
+  // board has no entry row and no capacity strip to call into
+  const win = mountSharedScripts(doc, localStorage)
   new Function('module', 'document', 'fetch', 'EventSource', 'localStorage', 'location', 'history', 'window', 'confirm', 'setTimeout', 'setInterval', src)(
-    mod, doc, fetchImpl, EventSource, localStorage, { href: 'http://board/' }, { replaceState() {} }, { dispatchEvent() {} }, () => true, () => 0, () => 0,
+    mod, doc, fetchImpl, EventSource, localStorage, { href: 'http://board/' }, { replaceState() {} }, win, () => true, () => 0, () => 0,
   )
   return { ...mod.exports, els, doc } // `els` is the stub DOM, not a board export
 }
@@ -49,14 +53,14 @@ const LADDER = [
 
 test('Start posts one leg per rung with its model, de-duplicated by adapter AND model', async () => {
   const sent = []
-  const board = load(['submitEntry', 'entryChain', 'ladderSentence', 'state', 'entryState'], async (path, opts) => {
+  const board = load(['entryUi', 'state'], async (path, opts) => {
     sent.push({ path, body: JSON.parse(opts.body) })
     return { ok: true, status: 201, statusText: 'Created', text: async () => JSON.stringify({ card: { card_id: 'c1', status: 'queued', title: 'x' } }) }
   })
   board.state.preferences = { handoff_ladder: LADDER, may_spend: false }
   board.state.sessions = [{ session_id: 's1', repo: 'C:/work/leg', repo_name: 'leg', branch: 'main', last_activity: new Date().toISOString() }]
-  board.entryState.task = 'Port the invoice parser'
-  await board.submitEntry()
+  board.entryUi.entryState.task = 'Port the invoice parser'
+  await board.entryUi.submitEntry()
 
   assert.equal(sent.length, 1, 'Start posted once')
   assert.equal(sent[0].path, '/api/cards')
@@ -69,14 +73,14 @@ test('Start posts one leg per rung with its model, de-duplicated by adapter AND 
   ], `chain posted: ${JSON.stringify(sent[0].body.chain)}`)
   // claude/opus on the `work` account is the same (adapter, model) as the rung
   // above it, so it is one leg, not two identical ones
-  assert.equal(board.entryChain().length, 3)
+  assert.equal(board.entryUi.entryChain().length, 3)
   // and the sentence over the field describes exactly that
-  assert.equal(board.ladderSentence(board.entryChain()), 'claude/fable then claude/opus then codex')
+  assert.equal(board.entryUi.ladderSentence(board.entryUi.entryChain()), 'claude/fable then claude/opus then codex')
 })
 
 test('Start sends the repo\'s own default branch, and the sentence names it', async () => {
   const sent = []
-  const board = load(['submitEntry', 'entryTrunk', 'renderEntryLine', 'state', 'entryState'], async (path, opts) => {
+  const board = load(['entryUi', 'state'], async (path, opts) => {
     sent.push(JSON.parse(opts.body))
     return { ok: true, status: 201, statusText: 'Created', text: async () => JSON.stringify({ card: { card_id: 'c1', status: 'queued', title: 'x' } }) }
   })
@@ -84,12 +88,12 @@ test('Start sends the repo\'s own default branch, and the sentence names it', as
   board.state.sessions = [{ session_id: 's1', repo: 'C:/work/oldrepo', repo_name: 'oldrepo', branch: 'master', last_activity: new Date().toISOString() }]
   // what the server read for that repo: origin/HEAD, else main/master/trunk
   board.state.repoTrunks = [{ repo: 'C:/work/oldrepo', repo_name: 'oldrepo', branch: 'master', commits: [] }]
-  assert.equal(board.entryTrunk({ path: 'C:/work/oldrepo', name: 'oldrepo' }), 'master')
-  board.entryState.task = 'Port the invoice parser'
-  await board.submitEntry()
+  assert.equal(board.entryUi.entryTrunk({ path: 'C:/work/oldrepo', name: 'oldrepo' }), 'master')
+  board.entryUi.entryState.task = 'Port the invoice parser'
+  await board.entryUi.submitEntry()
   assert.equal(sent[0].trunk, 'master', `a card posted with no trunk is refused in this repo: ${JSON.stringify(sent[0])}`)
   // the line the human reads before pressing Start
-  board.renderEntryLine()
+  board.entryUi.renderEntryLine()
   const line = board.els.get('card-entry').children.map((c) => c.textContent).join('')
   assert.match(line, / on master, with /, `the entry line says: ${line}`)
   assert.equal(/ on main, /.test(line), false, `the entry line still hardcodes main: ${line}`)

@@ -583,6 +583,33 @@ it), and check whether a board was listening on 4747 at the time.
   cache keyed on a directory's mtime sees files added and removed, never a
   file rewritten in place.
 
+## The first morning on 0.12.0: a 0.10.0 process served the 0.12.0 page, and three terminals rate-limited the usage endpoint (2026-09-18)
+
+- **What happened.** Wes installed 0.12.0 and opened the board: no Fable
+  bucket anywhere, an empty agent select under "Run in the background", and a
+  timeline full of `claude usage unavailable: usage endpoint 429`. The board
+  process on 4747 had been started the day before from the repo checkout and
+  was still 0.10.0 in memory; it served the 0.12.0 page files straight from
+  disk, so the page drew controls the process had no data for (`handoff_ladder`
+  and `buckets` were simply absent from its payloads). The 429s were a second,
+  real defect: every claude terminal polled the usage endpoint once a minute
+  on its own, three terminals plus Claude Code's own polling, and each flip
+  from success to failure logged the whole JSON body into that terminal's
+  timeline.
+- **Fix.** The board and the floor carry the version their files shipped with
+  and print `This board process runs leg 0.10.0 and the page files are
+  0.13.0. Restart it to match: leg down && leg up` when `/api/health`
+  disagrees (`test/files-version.test.mjs` pins the constant to
+  `package.json`). Usage polling moved into the board, one poller per login
+  with backoff, one line on failure and one on recovery
+  (`src/usage-poll.mjs`, `test/usage-poller.test.mjs`).
+- **The lesson that generalises.** "Installed" is not "running". A release that
+  changes a long-lived process is verified by restarting that process and
+  reading its `/api/health` version, not by reading the page. And a reported
+  symptom that pattern-matches a known cause still gets driven to its own
+  evidence: two of the five symptoms this morning were the stale process, the
+  third was a polling design defect that the stale process was hiding.
+
 ## The 0.12.0 redesign review confirmed 51 findings before the fix pass, 23 of them high (2026-09-18)
 
 - **What happened.** The eight-step redesign (per-model buckets, the ladder,

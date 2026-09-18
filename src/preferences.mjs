@@ -73,6 +73,29 @@ export function validRungAccount(agent, account) {
   return null
 }
 
+// A rung's model reaches the agent's argv as `--model <id>` or `-m <id>`, so
+// the first question is shape, not membership: a value with a space, a quote,
+// a leading dash or a path separator in it is a flag or a path in disguise.
+//
+// Membership is asked of claude alone. MODEL_ALIASES.claude is a CLOSED list:
+// four words Claude Code resolves itself, not service-side ids, so a fifth
+// word there is a typo and saying so is help. The other three catalogs are
+// live (src/models.mjs reads codex's cache file and asks agy and grok), they
+// gain and lose names between Leg releases, and a list frozen in this file
+// would refuse tomorrow's model with "Leg knows no model names for it" while
+// the CLI next to it ran it happily. Their ids are checked for shape and then
+// believed: the CLI itself is the authority on its own catalog, and it answers
+// an id it does not have in one line on the leg's own log.
+const RUNG_MODEL_RE = /^[a-z0-9][a-z0-9._:-]{0,63}$/
+
+export function validRungModel(agent, model) {
+  const id = String(model ?? '')
+  if (!RUNG_MODEL_RE.test(id)) return `rung "model" must be a model id of letters, digits, . _ : and - (got "${model}")`
+  const closed = MODEL_ALIASES[agent] ?? []
+  if (closed.length && !closed.includes(id)) return `${agent} has no model "${id}" (${closed.join(', ')})`
+  return null
+}
+
 export function normalizeRung(value) {
   const agent = String(value?.agent ?? '')
   const model = value?.model === undefined || value?.model === null || value?.model === '' ? null : String(value.model).toLowerCase()
@@ -119,10 +142,8 @@ export function requireHandoffLadder(value) {
     const rung = normalizeRung(raw)
     const badAccount = validRungAccount(rung.agent, rung.account)
     if (badAccount) throw new TypeError(badAccount)
-    if (rung.model && !(MODEL_ALIASES[rung.agent] ?? []).includes(rung.model)) {
-      const known = (MODEL_ALIASES[rung.agent] ?? []).join(', ')
-      throw new TypeError(`${rung.agent} has no model "${rung.model}"${known ? ` (${known})` : ': Leg knows no model names for it'}`)
-    }
+    const badModel = rung.model ? validRungModel(rung.agent, rung.model) : null
+    if (badModel) throw new TypeError(badModel)
     if (raw.when !== undefined && !(typeof raw.when === 'string' && WHEN_RE.test(raw.when))) throw new TypeError(`rung "when" must be always, below:N or walled-only (got "${raw.when}")`)
     if (raw.cost !== undefined && !RUNG_COSTS.includes(raw.cost)) throw new TypeError(`rung "cost" must be one of ${RUNG_COSTS.join(', ')}`)
     const key = rungKey(rung)
@@ -144,11 +165,38 @@ export function orderFromLadder(ladder) {
   return out.filter((a) => wanted.includes(a))
 }
 
+// One bad rung is one bad rung. `requireHandoffLadder` throws on the first
+// problem it meets, and catching that threw the whole ladder away: a user who
+// mistyped one claude alias in a file docs/configuration.md invites them to
+// hand-edit lost their three good rungs with it, silently, and their terminals
+// then handed off somewhere they never asked for. The same swallow fired for a
+// rung naming an account that has since been removed, which is a live check.
+//
+// → { ladder, dropped }, where a dropped rung keeps the reason it was refused.
+export function salvageHandoffLadder(value) {
+  const ladder = []
+  const dropped = []
+  const seen = new Set()
+  for (const raw of Array.isArray(value) ? value : []) {
+    let rung = null
+    try { [rung] = requireHandoffLadder([raw]) } catch (err) { dropped.push({ rung: raw, why: err.message }); continue }
+    const k = rungKey(rung)
+    if (seen.has(k)) { dropped.push({ rung: raw, why: `handoff_ladder names ${rung.agent}/${rung.account}${rung.model ? '/' + rung.model : ''} twice` }); continue }
+    seen.add(k)
+    ladder.push(rung)
+  }
+  return { ladder, dropped }
+}
+
 // The ladder a preferences object means: its own, else the long-hand form of
 // its `handoff_order`, else the default ladder.
 export function normalizeHandoffLadder(prefs) {
   const value = Array.isArray(prefs) ? prefs : prefs?.handoff_ladder
-  if (Array.isArray(value) && value.length) { try { return requireHandoffLadder(value) } catch { /* fall through to the order */ } }
+  if (Array.isArray(value) && value.length) {
+    const { ladder } = salvageHandoffLadder(value)
+    if (ladder.length) return ladder
+    /* nothing readable left: fall through to the order */
+  }
   if (!Array.isArray(prefs) && validHandoffOrder(prefs?.handoff_order)) return ladderFromOrder(prefs.handoff_order)
   if (Array.isArray(prefs)) return defaultLadder()
   return defaultLadder()
@@ -258,6 +306,12 @@ const defaults = () => {
   return { handoff_order: orderFromLadder(ladder), handoff_ladder: ladder, climb_back: 'next-handoff', may_spend: false, reserve: {}, auto_approve: true, notify_terminal: true, notify_board: false, harness: { ...HARNESS_DEFAULTS } }
 }
 
+// The file verbatim, or null when there is not one Leg can parse. Used by
+// writePreferences to leave alone what it could not read.
+function rawPreferences() {
+  try { return JSON.parse(readFileSync(preferencesFile(), 'utf8')) } catch { return null }
+}
+
 export function readPreferences() {
   const file = preferencesFile()
   if (!existsSync(file)) return defaults()
@@ -295,6 +349,16 @@ export function writePreferences(patch) {
   return withFileLock(preferencesFile() + '.lock', () => {
     const current = readPreferences()
     const next = { ...current }
+    // A ladder Leg could only read part of stays on disk exactly as the human
+    // wrote it. readPreferences drops the rung it cannot parse so the machine
+    // keeps walking the rest, but that reading is not a decision to delete
+    // anything: a save about may_spend must never be what removes a rung
+    // somebody typed into a file the docs call hand-editable.
+    const raw = ladder === undefined && order === undefined ? rawPreferences() : null
+    if (Array.isArray(raw?.handoff_ladder) && raw.handoff_ladder.length && !validHandoffLadder(raw.handoff_ladder)) {
+      next.handoff_ladder = raw.handoff_ladder
+      if (validHandoffOrder(raw.handoff_order)) next.handoff_order = [...raw.handoff_order]
+    }
     if (ladder !== undefined) { next.handoff_ladder = ladder; next.handoff_order = orderFromLadder(ladder) }
     if (order !== undefined) { next.handoff_order = order; if (ladder === undefined) next.handoff_ladder = ladderFromOrder(order) }
     if (climbBack !== undefined) next.climb_back = climbBack

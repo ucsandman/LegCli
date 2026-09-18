@@ -253,29 +253,58 @@
   <form id="new-card-form">
     <div class="form-error" id="new-card-error" hidden></div>
 
-    <div class="form-row">
-      <label for="nc-repo">Repo path</label>
-      <input type="text" id="nc-repo" required autocomplete="off">
-    </div>
+    <!-- Two questions, side by side on a wide screen and stacked on a phone:
+         WHAT is being asked for (left) and WHO runs it (right). The right
+         column opens showing the saved handoff ladder, so the dialog and the
+         one-line entry row above it say the same thing until the reader
+         changes one of them. -->
+    <div class="dialog-cols">
+      <div class="dialog-col">
 
-    <div class="form-row">
-      <label for="nc-task">Task</label>
-      <span class="field-help">Describe one concrete outcome the agent can finish.</span>
-      <textarea id="nc-task" rows="3" required></textarea>
-    </div>
+        <div class="form-row">
+          <label for="nc-task">Task</label>
+          <span class="field-help">Describe one concrete outcome the agent can finish.</span>
+          <textarea id="nc-task" rows="5" required autofocus></textarea>
+        </div>
 
-    <div class="form-row">
-      <label for="nc-first-agent">First agent</label>
-      <select id="nc-first-agent" required></select>
-      <span class="field-help" id="nc-fallback-summary">If it cannot continue, Leg tries the fallback agents shown under Advanced options.</span>
-    </div>
+        <div class="form-row">
+          <label for="nc-repo-known">Repository</label>
+          <select id="nc-repo-known"></select>
+          <label for="nc-repo" class="sub-label">Path</label>
+          <input type="text" id="nc-repo" required autocomplete="off" spellcheck="false">
+        </div>
 
-    <div class="form-row">
-      <label for="nc-queue">
-        <input type="checkbox" id="nc-queue" checked>
-        Run now
-      </label>
-      <span class="field-help">Turn this off to save a draft in Backlog.</span>
+        <div class="form-row">
+          <label for="nc-trunk">Branch to cut from</label>
+          <input type="text" id="nc-trunk" value="main" autocomplete="off" spellcheck="false">
+          <span class="field-help" id="nc-trunk-help">The card works in its own checkout cut from this branch.</span>
+        </div>
+
+        <div class="form-row">
+          <label for="nc-queue">
+            <input type="checkbox" id="nc-queue" checked>
+            Run now
+          </label>
+          <span class="field-help">Turn this off to save a draft in Backlog.</span>
+        </div>
+
+      </div>
+      <div class="dialog-col">
+
+        <div class="form-row">
+          <span class="form-label" id="nc-chain-label">Who runs it</span>
+          <span class="field-help">Leg starts at the top and takes the next row only when the row above it cannot continue. Each row is a provider and one of its models.</span>
+          <div id="nc-chain-rows" role="group" aria-labelledby="nc-chain-label"></div>
+          <button type="button" class="btn btn-secondary" id="nc-add-row">Add a fallback</button>
+          <span class="field-help" id="nc-fallback-summary"></span>
+          <label for="nc-save-ladder" class="notify-toggle">
+            <input type="checkbox" id="nc-save-ladder">
+            Save as my default ladder
+          </label>
+          <span class="field-help">Writes these rows to Settings, so the one-line entry row and every new terminal use them too.</span>
+        </div>
+
+      </div>
     </div>
 
     <details class="advanced-options">
@@ -293,31 +322,14 @@
       </div>
 
       <div class="form-row">
-        <label>First-agent permissions and limits</label>
-        <div id="nc-first-controls"></div>
-      </div>
-
-      <div class="form-row">
-        <label>Fallback agents</label>
-        <span class="field-help">Leg tries each row in order only when the agent before it cannot continue.</span>
-        <div id="nc-chain-rows"></div>
-        <button type="button" class="btn btn-secondary" id="nc-add-row">Add fallback agent</button>
-      </div>
-
-      <div class="form-row">
         <label for="nc-test-adapter">Scripted first agent (test/demo only)</label>
-        <select id="nc-test-adapter"><option value="">Use the real first agent above</option></select>
+        <select id="nc-test-adapter"><option value="">Use the real first row above</option></select>
       </div>
 
       <div class="form-row">
         <label for="nc-leases">File leases</label>
         <span class="field-help">Comma-separated paths to reserve so another overlapping card waits.</span>
         <input type="text" id="nc-leases">
-      </div>
-
-      <div class="form-row">
-        <label for="nc-trunk">Trunk branch</label>
-        <input type="text" id="nc-trunk" value="main">
       </div>
 
       <div class="form-row">
@@ -358,6 +370,11 @@
 
 <div class="sysmsg" id="toast" aria-live="polite"></div>
 
+<!-- strip.js and entry.js are shared with /floor and are read at load by the
+     two files under them (the capacity tokens, the one-line entry), so they
+     are first: deferred scripts run in document order. -->
+<script src="strip.js" defer></script>
+<script src="entry.js" defer></script>
 <script src="board.js" defer></script>
 <script src="sessions.js" defer></script>
 <script src="history.js" defer></script>

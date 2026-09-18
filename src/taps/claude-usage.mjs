@@ -119,6 +119,18 @@ export function extraUsageFrom(j) {
   return Object.keys(out).length ? out : null
 }
 
+// What a failing answer is allowed to say: the status code and the `type` the
+// body names ('rate_limit_error'), never the body itself. A login shared by
+// several terminals answers 429 often, and the whole JSON on every one of them
+// turned the terminal's timeline into a wall of payloads.
+function errorType(text) {
+  try {
+    const j = JSON.parse(text)
+    const t = j?.error?.type ?? j?.type
+    return typeof t === 'string' && t && t !== 'error' ? t : null
+  } catch { return null }
+}
+
 function getJson(url, headers, timeoutMs) {
   return new Promise((resolvePromise) => {
     const u = new URL(url)
@@ -147,7 +159,10 @@ export async function fetchClaudeUsage({ configDir = LAYOUT.claude.home(), timeo
   if (!t) return { ok: false, limits: null, error: 'no claude.ai login found in ' + configDir }
   const r = await getJson(url, { Authorization: `Bearer ${t.token}`, 'anthropic-beta': 'oauth-2025-04-20', Accept: 'application/json', 'User-Agent': 'legcli' }, timeoutMs)
   if (r.error) return { ok: false, limits: null, status: 0, error: r.error }
-  if (r.status !== 200) return { ok: false, limits: null, status: r.status, expired: t.expired, error: `usage endpoint ${r.status}: ${r.text.slice(0, 120)}` }
+  if (r.status !== 200) {
+    const kind = errorType(r.text)
+    return { ok: false, limits: null, status: r.status, expired: t.expired, error: `usage endpoint ${r.status}${kind ? `: ${kind}` : ''}` }
+  }
   let j
   try { j = JSON.parse(r.text) } catch { return { ok: false, limits: null, status: r.status, error: 'usage endpoint returned no JSON' } }
   const limits = { five_hour: window(j.five_hour), seven_day: window(j.seven_day), extra_usage: extraUsageFrom(j) }

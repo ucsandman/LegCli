@@ -46,7 +46,39 @@ export function readUsage(agent, account = 'default') {
 }
 
 function emptyUsage(agent, account) {
-  return { agent, account, five_hour: null, seven_day: null, limited_until: null, limited_reason: null, limited_at: null, source: null, observed_at: null, available_at: null, updated_at: null, buckets: [], walls: {}, history: {}, extra_usage: null, facts: null }
+  return { agent, account, five_hour: null, seven_day: null, limited_until: null, limited_reason: null, limited_at: null, source: null, observed_at: null, available_at: null, updated_at: null, buckets: [], walls: {}, history: {}, extra_usage: null, facts: null, error: null, error_since: null }
+}
+
+// The READING's health, which is not the login's health: a 429 from the usage
+// endpoint says nothing about how much of the plan is left, so it never touches
+// the windows, the buckets or a wall. It is written once — `error_since` keeps
+// the moment it started — and cleared by the first reading that works, so the
+// board can say "unavailable since 9:03 AM" instead of one line per failed
+// poll (src/usage-poll.mjs).
+// → { error, error_since, changed } — `changed` is the transition only, which
+// is what decides whether a session event is worth writing.
+export function noteUsageError(agent, account, error, { at = new Date().toISOString() } = {}) {
+  let changed = false
+  const value = mutate(agent, account, (u) => {
+    if (!error) {
+      if (!u.error && !u.error_since) return false
+      u.error = null
+      u.error_since = null
+      changed = true
+      return u
+    }
+    const why = String(error).slice(0, 300)
+    if (u.error) {
+      if (u.error === why) return false
+      u.error = why
+      return u
+    }
+    u.error = why
+    u.error_since = at
+    changed = true
+    return u
+  })
+  return { error: value.error ?? null, error_since: value.error_since ?? null, changed }
 }
 
 // The ring key for a bucket: the kind alone when it is account-wide, the kind

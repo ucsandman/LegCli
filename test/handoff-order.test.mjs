@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
-import { mkdtempSync, writeFileSync, readdirSync, readFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readdirSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { makeHome, testEnv, initRepo, batonSpawn, sleep } from './helpers.mjs'
@@ -107,12 +107,77 @@ test('a bare handoff_order migrates to a ladder that walks it identically, and t
   assert.equal(preferences.validHandoffOrder(ladder.handoff_order), true)
   assert.equal(preferences.readPreferences().handoff_ladder.length, 4)
   assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'claude', model: 'fable' }, { agent: 'claude', model: 'fable' }] }), /twice/)
-  assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'codex', model: 'gpt-9' }] }), /no model/)
+  // A rung's model is validated by SHAPE for every agent and by MEMBERSHIP for
+  // claude alone. claude's four words are a closed set of aliases Claude Code
+  // resolves itself, so a fifth is a typo and saying so is help. codex, agy and
+  // grok take service-side ids from catalogs that move between Leg releases
+  // (src/models.mjs reads each CLI's own), and a list frozen in this repo would
+  // refuse next month's model while the CLI beside it ran it. This assertion
+  // used to read `{agent: 'codex', model: 'gpt-9'}` -> /no model/, which is the
+  // contract that changed when the board gained a model picker.
+  assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'claude', model: 'gpt-9' }] }), /no model/)
+  // what survives for every agent: a model that is a flag, or that is not one
+  // token, never reaches an argv
+  assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'codex', model: '--model' }] }), /must be a model id/)
+  assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'codex', model: 'gpt 5' }] }), /must be a model id/)
+  // and a real codex id round-trips through the file
+  preferences.writePreferences({ handoff_ladder: [{ agent: 'codex', account: 'default', model: 'gpt-5.6-luna' }] })
+  assert.deepEqual(preferences.readPreferences().handoff_ladder.map((r) => `${r.agent}/${r.model}`), ['codex/gpt-5.6-luna'])
   assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'claude', model: 'opus', when: 'soon' }] }), /always, below:N or walled-only/)
   assert.throws(() => preferences.writePreferences({ climb_back: 'when-quiet' }), /climb_back must be/)
   assert.throws(() => preferences.writePreferences({ reserve: { claude: 140 } }), /between 1 and 100/)
   // and the machine goes back to what the rest of this file expects
   preferences.writePreferences({ handoff_order: ['claude', 'codex', 'agy'] })
+})
+
+// Finding 2: docs/configuration.md shows preferences.json as a hand-editable
+// block. One mistyped claude alias used to throw the whole ladder away without
+// a word, and the next unrelated board save wrote the substitute over the file.
+test('one bad rung is dropped and the good ones are kept; an unrelated save never rewrites the ladder', () => {
+  const file = preferences.preferencesFile()
+  const before = existsSync(file) ? readFileSync(file, 'utf8') : null
+  const handEdited = {
+    handoff_order: ['claude', 'codex', 'agy'],
+    handoff_ladder: [
+      { agent: 'claude', account: 'default', model: 'fable', when: 'always', cost: 'plan' },
+      { agent: 'claude', account: 'default', model: 'opus-4', when: 'always', cost: 'plan' },
+      { agent: 'claude', account: 'default', model: 'sonnet', when: 'always', cost: 'plan' },
+      { agent: 'codex', account: 'default', model: 'gpt-5.6-luna', when: 'always', cost: 'plan' },
+    ],
+    climb_back: 'next-handoff',
+    may_spend: false,
+  }
+  try {
+    writeFileSync(file, JSON.stringify(handEdited, null, 2))
+    const read = preferences.readPreferences()
+    assert.deepEqual(read.handoff_ladder.map((r) => `${r.agent}/${r.model ?? ''}`), ['claude/fable', 'claude/sonnet', 'codex/gpt-5.6-luna'],
+      'a typo in one rung took the whole ladder with it')
+    assert.deepEqual(read.handoff_order, ['claude', 'codex', 'agy'])
+    // the rung that was refused says why, for anything that wants to show it
+    const { dropped } = preferences.salvageHandoffLadder(handEdited.handoff_ladder)
+    assert.equal(dropped.length, 1)
+    assert.match(dropped[0].why, /claude has no model "opus-4"/)
+
+    // a save about something else leaves the human's file exactly as it was
+    preferences.writePreferences({ may_spend: true })
+    const after = JSON.parse(readFileSync(file, 'utf8'))
+    assert.equal(after.may_spend, true, 'the save did not happen')
+    assert.deepEqual(after.handoff_ladder, handEdited.handoff_ladder, 'toggling may_spend rewrote the ladder on disk')
+
+    // a ladder the board really sends is still validated as a whole, and a
+    // save that IS about the ladder replaces what is there
+    assert.throws(() => preferences.writePreferences({ handoff_ladder: [{ agent: 'claude', model: 'opus-4' }] }), /no model/)
+    preferences.writePreferences({ handoff_ladder: [{ agent: 'claude', account: 'default', model: 'opus' }] })
+    assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).handoff_ladder.map((r) => r.model), ['opus'])
+
+    // and a ladder with nothing readable left in it still falls back to the order
+    writeFileSync(file, JSON.stringify({ handoff_order: ['codex', 'claude', 'agy'], handoff_ladder: [{ agent: 'nope' }] }, null, 2))
+    assert.deepEqual(preferences.readPreferences().handoff_ladder.map((r) => r.agent), ['codex', 'claude', 'agy'])
+  } finally {
+    // the rest of this file expects the machine's own default order
+    if (before === null) rmSync(file, { force: true }); else writeFileSync(file, before)
+    preferences.writePreferences({ handoff_order: ['claude', 'codex', 'agy'] })
+  }
 })
 
 test('server validates order, enforces ownership and lifecycle, and rejects legacy wrappers', async () => {

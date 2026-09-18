@@ -1,0 +1,6 @@
+# a comment
+model = "gpt-6-astra"
+model_reasoning_effort = "xhigh"
+
+[profiles.cheap]
+model = "gpt-5.5"

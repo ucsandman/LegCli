@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { mountSharedScripts } from './helpers.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const BOARD_JS = readFileSync(join(ROOT, 'src/board/board.js'), 'utf8')
@@ -15,7 +16,10 @@ const FLOOR_JS = readFileSync(join(ROOT, 'src/board/floor.js'), 'utf8')
 
 function load(src) {
   const mod = { exports: {} }
-  new Function('module', 'document', src)(mod, { addEventListener() {} })
+  const doc = { addEventListener() {} }
+  // board.js reads the two shared scripts off the window at load (the entry
+  // row, the capacity strip), exactly as the <script> tags above it do
+  new Function('module', 'document', 'window', src)(mod, doc, mountSharedScripts(doc))
   return mod.exports
 }
 
@@ -76,7 +80,8 @@ function loadBehavior(src, names, fetchImpl) {
   const mod = { exports: {} }
   const exports = names.join(', ')
   const transformed = src.replace(/module\.exports = \{[^}]+\}/, `module.exports = { ${exports} }`)
-  new Function('module', 'document', 'fetch', 'EventSource', 'localStorage', 'location', 'history', 'window', 'confirm', 'setTimeout', 'setInterval', transformed)(mod, doc, fetchImpl, EventSource, localStorage, { href: 'http://board/' }, { replaceState() {} }, { dispatchEvent() {} }, () => true, () => 0, () => 0)
+  const win = mountSharedScripts(doc, localStorage)
+  new Function('module', 'document', 'fetch', 'EventSource', 'localStorage', 'location', 'history', 'window', 'confirm', 'setTimeout', 'setInterval', transformed)(mod, doc, fetchImpl, EventSource, localStorage, { href: 'http://board/' }, { replaceState() {} }, win, () => true, () => 0, () => 0)
   return { ...mod.exports, els, streams }
 }
 
@@ -152,11 +157,19 @@ test('the floor link back to the board carries a ?token= from the current URL', 
 
 test('a 401/403 from the floor APIs stops the polling and renders a way back (source-level)', () => {
   assert.match(fnBody(FLOOR_JS, 'async function api(path, opts = {})'), /err\.status = res\.status/)
-  for (const name of ['async function refreshFloor', 'async function refreshTrunk']) {
+  // the endpoints the page cannot exist without. /api/trunk is NOT one of them:
+  // an operator may use the cards and the floor and is refused only the machine
+  // map, so that 403 stands one table down (standDownTrunk) instead of
+  // replacing the floor with "Floor unavailable".
+  for (const name of ['async function refreshFloor', 'async function refreshCards']) {
     const body = fnBody(FLOOR_JS, name)
     assert.match(body, /err\.status === 401 \|\| err\.status === 403/, `${name} should recognise an auth failure`)
     assert.match(body, /lockOut\(/, `${name} should lock the page out`)
   }
+  const trunk = fnBody(FLOOR_JS, 'async function refreshTrunk')
+  assert.match(trunk, /err\.status === 401 \|\| err\.status === 403/, 'refreshTrunk should recognise an auth failure')
+  assert.match(trunk, /standDownTrunk\(/, 'and take its own table off the page')
+  assert.doesNotMatch(trunk, /lockOut\(/, 'one 403 on the trunk lane is not the whole floor')
   const lock = fnBody(FLOOR_JS, 'function lockOut')
   assert.match(lock, /clearInterval\(/)
   assert.match(lock, /boardHref\(/)
@@ -229,11 +242,14 @@ test('a later floor refresh wins over an older deferred response', async () => {
   const app = loadBehavior(FLOOR_JS, ['state', 'refreshFloor'], async () => { const wait = deferred(); waits.push(wait); return wait.promise })
   const first = app.refreshFloor()
   const second = app.refreshFloor()
-  waits[1].resolve(jsonResponse({ running: [], waiting: [], queued: [], leases: [], repos: [], scheduler: {}, counts: { running: 2, queued: 0, waiting: 0, done: 0 } }))
+  // the station counts are counted off the rows now (renderStation), so what
+  // this reads back is the header line /api/floor still owns: the repos the
+  // scheduler knows about
+  waits[1].resolve(jsonResponse({ running: [], waiting: [], queued: [], leases: [], repos: ['C:/work/second'], scheduler: {}, counts: { running: 2, queued: 0, waiting: 0, done: 0 } }))
   await second
-  waits[0].resolve(jsonResponse({ running: [], waiting: [], queued: [], leases: [], repos: [], scheduler: {}, counts: { running: 1, queued: 0, waiting: 0, done: 0 } }))
+  waits[0].resolve(jsonResponse({ running: [], waiting: [], queued: [], leases: [], repos: ['C:/work/first'], scheduler: {}, counts: { running: 1, queued: 0, waiting: 0, done: 0 } }))
   await first
-  assert.equal(app.els.get('count-running').textContent, '2')
+  assert.equal(app.els.get('repos-list').textContent, 'second')
 })
 
 // The API token field: a board nothing but this machine can reach has no use

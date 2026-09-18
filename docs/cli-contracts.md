@@ -602,6 +602,48 @@ Board routes: `PATCH /api/settings` (owner only) also accepts
 `POST /api/sessions/:id/handoff` accepts `target.model` alongside
 `target.agent` and `target.account` (source: src/server.mjs).
 
+### GET /api/models
+
+The models this machine can start each agent on, so a rung and a card can name
+one. Owner and operator only; a guest gets the same 403 `/api/adapters` and
+`/api/presets` give, because picking a model is spending the owner's plan
+(source: src/server.mjs, src/models.mjs).
+
+```json
+{
+  "models": {
+    "claude": [{ "id": "fable", "label": "Claude Fable", "default": false }],
+    "codex":  [{ "id": "gpt-6-astra", "label": "GPT-6-Astra", "default": true }],
+    "agy":    [{ "id": "gemini-3.8-flash-high", "label": "Gemini 3.8 Flash (High)", "default": false }],
+    "grok":   [{ "id": "grok-4.6", "label": "grok-4.6", "default": true }]
+  },
+  "observed_at": "2026-09-18T14:37:01.577Z"
+}
+```
+
+Where each list comes from, all observed live on 2026-09-18 and captured under
+`fixtures/models/`:
+
+| agent | source | today's ids | default |
+|-------|--------|-------------|---------|
+| claude | `MODEL_ALIASES.claude` in src/buckets.mjs; four aliases Claude Code resolves itself, not service-side ids | `fable`, `opus`, `sonnet`, `haiku` | none: a bare `claude` picks for itself, and naming one would be Leg making a choice nobody made |
+| codex | `<CODEX_HOME>/models_cache.json`, `models[]` where `visibility` is `"list"` (`"hide"` covers `gpt-reserve` and `codex-auto-review`) | `gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5` | the top-level `model = "..."` in `<CODEX_HOME>/config.toml`, never a `[profiles.x]` one |
+| agy | `agy models`, one `id<TAB>label` per line after a `Fetching available models...` line | 14, from `gemini-3.8-flash-high` to `gpt-oss-120b-medium`, including `claude-opus-4-6-thinking` | agy publishes none |
+| grok | `grok models`, `  * id (default)` / `  - id` bullets under a `Default model: X` line; it lists them even when it is not logged in | `grok-4.6`, `grok-4.5` | `grok-4.6` |
+
+`agy` and `grok` each cost a process, so their answers are cached in
+`<LEG_HOME>/models/<agent>.json` for an hour with a 20s probe timeout. A request
+never waits on one: the cached list is served and the refresh runs behind the
+answer. A probe that fails leaves the cache exactly as it was.
+
+An id from any of these lists may go on a ladder rung's `model` and on a card's
+chain entry, and reaches the CLI through `modelFlagFor` in src/buckets.mjs
+(`claude --model`, `agy --model`, `codex -m`, `grok -m`). Rung validation is by
+SHAPE for every agent (`/^[a-z0-9][a-z0-9._:-]{0,63}$/`, so a flag or a path can
+never become an argv element) and by MEMBERSHIP for claude alone, whose list is
+closed; the other three catalogs are live and the CLI itself is the authority on
+its own.
+
 ### History index
 
 `<LEG_HOME>/history/index.json` is the one file `leg history` writes: per

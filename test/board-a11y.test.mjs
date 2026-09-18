@@ -190,6 +190,28 @@ function checkHtmlFile(t, html, name) {
 test('index.html: every control has an accessible name', (t) => checkHtmlFile(t, INDEX_HTML, 'index.html'))
 test('floor.html: every control has an accessible name', (t) => checkHtmlFile(t, FLOOR_HTML, 'floor.html'))
 
+// The other direction, which the sweep above cannot see: a <label> that names
+// no control. Clicking it focuses nothing, which is the one thing a reader
+// expects of a label, and it is invalid HTML. A heading for a GROUP of controls
+// is a span with aria-labelledby, not a label.
+function orphanLabels(html) {
+  const out = []
+  for (const m of html.matchAll(/<label\b([^>]*)>([\s\S]*?)<\/label>/g)) {
+    if (/\bfor="[^"]+"/.test(m[1])) continue
+    if (/<(input|select|textarea)\b/.test(m[2])) continue
+    out.push(m[0].replace(/\s+/g, ' ').slice(0, 80))
+  }
+  return out
+}
+
+test('index.html: no <label> names a control that does not exist', () => {
+  assert.deepEqual(orphanLabels(INDEX_HTML), [])
+})
+
+test('floor.html: no <label> names a control that does not exist', () => {
+  assert.deepEqual(orphanLabels(FLOOR_HTML), [])
+})
+
 // ---- (b) controls created by board.js / floor.js ----
 function extractElCalls(src, tags) {
   const out = []
@@ -316,14 +338,20 @@ test('every class the board puts in the DOM has a rule in board.css', () => {
   assert.deepEqual(missing, [], `these classes reach the DOM with no rule in board.css: ${missing.join(', ')}`)
 })
 
-// scheduler.mjs writes `blocked by <holder> on <lease> (against <lease>)` as the
-// event summary, and the floor's column is already headed "Blocked by". Adding
-// a second prefix printed `blocked by blocked by card "X" on src/**`, which sat
-// in docs/screenshots/floor-landing.png for four days before anyone read it.
+// scheduler.mjs writes `blocked by <holder> on <lease> (against <lease>)` as
+// the event summary. Prefixing it again printed `blocked by blocked by card
+// "X" on src/**`, which sat in docs/screenshots/floor-landing.png for four
+// days before anyone read it. The floor's tables are stations now and the
+// summary is printed by waitingFor(), under a queued row that says its own
+// position in the queue.
 test('the floor does not re-prefix a blocked_by summary that already says it', () => {
-  const cell = FLOOR_JS.split('\n').find((l) => l.includes("'data-label': 'Blocked by'"))
-  assert.ok(cell, "expected the floor's Blocked by cell in floor.js")
-  assert.doesNotMatch(cell, /blocked by \$\{/, 'the summary already opens with "blocked by"')
+  const lines = FLOOR_JS.split('\n')
+  const read = lines.find((l) => l.includes('state.blockers.get(card.card_id)'))
+  assert.ok(read, "expected waitingFor() to read the scheduler's own summary in floor.js")
+  assert.doesNotMatch(read, /blocked by \$\{/, 'the summary already opens with "blocked by"')
+  const note = lines.filter((l) => l.includes('in the queue'))
+  assert.ok(note.length, "expected the queued row's position note in floor.js")
+  for (const l of note) assert.doesNotMatch(l, /blocked by \$\{/, 'the queue note prints the summary as it comes')
 })
 
 // D14: the keyboard map is the list of bindings, and every binding CLICKS a

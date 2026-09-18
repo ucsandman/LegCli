@@ -12,7 +12,7 @@ import { canonPath } from '../src/fsx.mjs'
 const HOME = makeHome()
 process.env.BATON_HOME = HOME
 process.env.BATON_QUIET = '1'
-const { createBoardServer, columnsFor, columnOf } = await import('../src/server.mjs')
+const { createBoardServer, columnsFor, columnOf, usageAgentsFor } = await import('../src/server.mjs')
 const usage = await import('../src/usage.mjs')
 
 let srv
@@ -77,6 +77,13 @@ test('idle Codex quota polling is opt-in, injected, and single-flight at startup
       reads += 1
       return { ok: true, available: true, observed_at: new Date().toISOString(), limits: { five_hour: null, seven_day: { pct: 25, resets_at: 2_000_000_000, window_minutes: 10080 } } }
     },
+    // the board polls one endpoint per login now (src/usage-poll.mjs), so the
+    // other two agents are stubbed here as well: a test must never ask a real
+    // usage endpoint about this machine's real logins
+    usageFetchers: {
+      claude: async () => ({ ok: false, limits: null, error: 'no claude.ai login in the test home' }),
+      grok: async () => ({ ok: false, limits: null, error: 'no grok login in the test home' }),
+    },
   })
   try {
     await polling.start()
@@ -85,6 +92,51 @@ test('idle Codex quota polling is opt-in, injected, and single-flight at startup
     assert.equal(usage.readUsage('codex', 'default').seven_day.pct, 25)
   } finally {
     await polling.stop()
+  }
+})
+
+// Finding 1: LEG_CLAUDE_BIN / LEG_GROK_BIN are documented as "where the binary
+// lives" (docs/configuration.md). Gating the poller on them meant a user who
+// moved their claude got no percentages, no 5h/7d numbers and no usage_error on
+// any card, with nothing on the board to say why.
+test('a moved claude or grok binary does not switch its usage polling off; LEG_NO_USAGE_POLL does', async () => {
+  const moved = { LEG_CLAUDE_BIN: 'C:/custom/claude.exe', LEG_GROK_BIN: 'C:/custom/grok.exe' }
+  assert.deepEqual(usageAgentsFor({ env: moved, injected: {} }), ['claude', 'codex', 'grok'])
+  assert.deepEqual(usageAgentsFor({ env: { BATON_CLAUDE_BIN: 'x', BATON_GROK_BIN: 'y' }, injected: {} }), ['claude', 'codex', 'grok'])
+  // codex is the one the poller spawns to ask, so a stub there really cannot answer
+  assert.deepEqual(usageAgentsFor({ env: { ...moved, LEG_CODEX_BIN: 'x' }, injected: {} }), ['claude', 'grok'])
+  assert.deepEqual(usageAgentsFor({ env: { ...moved, LEG_CODEX_BIN: 'x' }, injected: { codex: true } }), ['claude', 'codex', 'grok'])
+  // and the one variable that does mean "ask nothing", which the suites set
+  assert.deepEqual(usageAgentsFor({ env: { LEG_NO_USAGE_POLL: '1' }, injected: {} }), [])
+  assert.deepEqual(usageAgentsFor({ env: { BATON_NO_USAGE_POLL: '1' }, injected: { claude: true } }), ['claude'])
+
+  // L1: the same board, really started, really reads both logins. The config
+  // dirs are empty, so each reader answers from disk and no endpoint is asked
+  // about this machine's real logins.
+  const keep = { c: process.env.LEG_CLAUDE_BIN, g: process.env.LEG_GROK_BIN, cd: process.env.CLAUDE_CONFIG_DIR, gh: process.env.GROK_HOME }
+  process.env.LEG_CLAUDE_BIN = 'C:/custom/claude.exe'
+  process.env.LEG_GROK_BIN = 'C:/custom/grok.exe'
+  process.env.CLAUDE_CONFIG_DIR = join(HOME, 'empty-claude')
+  process.env.GROK_HOME = join(HOME, 'empty-grok')
+  // the record starts clean, so what is read below is this board's own reading
+  usage.noteUsageError('claude', 'default', null)
+  usage.noteUsageError('grok', 'default', null)
+  const polling = createBoardServer({
+    bind: '127.0.0.1', port: 0, token: '', scheduler: false, usagePolling: true,
+    usageReader: async () => ({ ok: false, error: 'no codex app server in the test home' }),
+  })
+  try {
+    await polling.start()
+    for (let i = 0; i < 60 && !(usage.readUsage('claude', 'default').error && usage.readUsage('grok', 'default').error); i++) await sleep(50)
+    assert.match(usage.readUsage('claude', 'default').error ?? '', /no claude\.ai login found/, 'the board never asked the claude login')
+    assert.match(usage.readUsage('grok', 'default').error ?? '', /no grok login found/, 'the board never asked the grok login')
+  } finally {
+    await polling.stop()
+    usage.noteUsageError('claude', 'default', null)
+    usage.noteUsageError('grok', 'default', null)
+    for (const [k, v] of [['LEG_CLAUDE_BIN', keep.c], ['LEG_GROK_BIN', keep.g], ['CLAUDE_CONFIG_DIR', keep.cd], ['GROK_HOME', keep.gh]]) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v
+    }
   }
 })
 

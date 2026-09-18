@@ -38,6 +38,14 @@
   let trunkOpen = false
   let finishedOpen = false
   let pendingConfirm = null
+  // The order the terminals were last drawn in, and when that order first
+  // stopped matching the sort. A reader with a terminal expanded is reading a
+  // region whose position on the page is decided by the rows above it: a row
+  // crossing the needs-you partition moved the whole expansion 205px down the
+  // screen mid-sentence, with scrollY unchanged, so no scroll-hold probe could
+  // see it. See listOrder/holdsOrder below and scripts/board-jump-probe.mjs.
+  let heldOrder = []
+  let orderDivergedAt = 0
   const sessionEditors = new Map()
   const alsoOpen = new Set()
   const actionNotes = new Map()
@@ -279,20 +287,24 @@
   // active, else the highest percentage it reported, else the legacy hottest of
   // the two windows, which is all an older record or a guest payload carries.
   // Mirrors binding() in src/usage.mjs; the board cannot import from it.
-  const BUCKET_WORD = { weekly_scoped: 'week', weekly_all: 'week', session: 'session', spend: 'spend', seven_day: '7d', five_hour: '5h' }
-  function bindingOf(a) {
-    const buckets = Array.isArray(a && a.buckets) ? a.buckets.filter((b) => b && Number.isFinite(b.percent)) : []
-    const top = (l) => (l.length ? [...l].sort((x, y) => y.percent - x.percent)[0] : null)
-    const b = top(buckets.filter((x) => x.is_active)) || top(buckets)
-    if (b) return { kind: b.kind, model: b.model || null, percent: b.percent, resets_at: Number.isFinite(b.resets_at) ? b.resets_at : null, scope: b.model ? 'model' : 'account' }
-    const w = worstWindow(a)
-    if (!w || !Number.isFinite(w.pct)) return null
-    return { kind: a && a.seven_day === w ? 'seven_day' : 'five_hour', model: null, percent: w.pct, resets_at: Number.isFinite(w.resets_at) ? w.resets_at : null, scope: 'account' }
+  //
+  // src/board/strip.js OWNS this grammar and the capacity strip that prints it,
+  // because /floor prints the same tokens from the same payload: two pages
+  // computing a binding bucket their own way is the defect the strip was built
+  // to end. The names here are this file's callers and its test seam; the
+  // answers come from that one file, which is loaded before this one and is
+  // handed this file's primitives (use(), at the bottom).
+  const strip = () => window.legStrip
+  // strip.js is a plain script like this one, so it is handed this file's
+  // primitives instead of growing a second copy of the time grammar or the
+  // login labels. Every name below is a function declaration above, so the
+  // reference is live however late strip.js calls it.
+  if (typeof window !== 'undefined' && window.legStrip) {
+    window.legStrip.use({ el, accountLabel, idOf, acctState, worstWindow, until, clockAt, spoken })
   }
-  // the token's two words: `fable week`, `week`, `session`, `5h`
-  function bucketWord(b) { const word = BUCKET_WORD[b.kind] || b.kind; return b.model ? `${b.model} ${word}` : word }
+  const bindingOf = (a) => strip().bindingOf(a)
   // the same bucket inside a sentence: "63% of its week"
-  function windowPhrase(b) { return b.kind === 'session' ? 'its session' : b.kind === 'five_hour' ? 'its 5 hours' : 'its week' }
+  const windowPhrase = (b) => strip().windowPhrase(b)
   // the account's own window, ignoring any model bucket: what a same-login
   // model rung still has to spend, and what an account wall would take away
   function accountBucket(a) {
@@ -303,20 +315,12 @@
     return legacy && !legacy.model ? legacy : null
   }
   const Model = (m) => (m ? String(m).charAt(0).toUpperCase() + String(m).slice(1) : '')
-  // every model this login has published anything about. A model named by
-  // neither a bucket nor a wall is one Leg has never seen, and it is never
-  // guessed at.
-  function knownModels(a) {
-    const out = []
-    for (const b of (a && a.buckets) || []) if (b && b.model && !out.includes(b.model)) out.push(b.model)
-    for (const m of Object.keys((a && a.walls) || {})) if (!out.includes(m)) out.push(m)
-    return out
-  }
-  function wallFor(a, model) {
-    const w = a && a.walls ? a.walls[model] : null
-    return w && Number.isFinite(w.limited_until) && w.limited_until * 1000 > Date.now() ? w : null
-  }
-  function walledModels(a) { return knownModels(a).filter((m) => wallFor(a, m)) }
+  // every model this login has published anything about, and which of them are
+  // out. Owned by strip.js with the rest of the bucket grammar; named here for
+  // the model rail and the verdict that read them.
+  const knownModels = (a) => strip().knownModels(a)
+  const wallFor = (a, model) => strip().wallFor(a, model)
+  const walledModels = (a) => strip().walledModels(a)
   function openModels(a) { return knownModels(a).filter((m) => !wallFor(a, m)) }
   function modelBucket(a, model) {
     return (Array.isArray(a && a.buckets) ? a.buckets : []).find((b) => b && b.model === model && Number.isFinite(b.percent)) || null
@@ -458,78 +462,14 @@
   // are not rewritten, they move behind the disclosure at the end of the strip.
   // The token prints the BINDING bucket, because the board printing 47% for a
   // login whose active bucket is at 63% is the defect this strip exists for.
-  function capFigure(a, b) {
-    // the same two refusals the gauge prints, in the strip's shorter grammar
-    if (a.shared === false) return 'not shared'
-    if (a.loading) return 'reading'
-    if (acctState(a) === 'walled') return Number.isFinite(a.limited_until) ? `back ${until(a.limited_until)}` : 'back when it resets'
-    // agy publishes no percentage, ever; a login that has one and has not
-    // reported it yet is a different fact and says so.
-    if (!b) return a.agent === 'agy' ? 'no figure' : 'no reading'
-    const observed = Date.parse(a.observed_at || a.updated_at || '')
-    // a reading older than the window it describes prints the clock it was
-    // taken at instead of a bucket word: it is a measurement, not a reading now
-    if (a.stale && a.agent !== 'agy' && Number.isFinite(observed)) return `${Math.round(b.percent)}% ${clockAt(observed)}`
-    return `${Math.round(b.percent)}% ${bucketWord(b)}`
-  }
-  // the spoken sentence carries what the visible token cannot: the reset, the
-  // source, the wall and the age of the reading, exactly as the gauges do.
-  function capValueText(a, b) {
-    const parts = []
-    if (a.shared === false) parts.push(`Usage for ${accountLabel(a)} is not shared with guests.`)
-    else if (!b) {
-      parts.push(a.agent === 'agy'
-        ? 'agy publishes no usage percentage, ever. Leg sees the wall when agy hits it.'
-        : `No reading has come back from ${accountLabel(a)} yet.`)
-    } else {
-      parts.push(`${Math.round(b.percent)} percent of ${b.model ? `the ${b.model} ${BUCKET_WORD[b.kind] || b.kind}` : windowPhrase(b)} used.`)
-      if (Number.isFinite(b.resets_at)) parts.push(`Resets at ${until(b.resets_at)}, in ${spoken(b.resets_at * 1000 - Date.now())}.`)
-    }
-    if (acctState(a) === 'walled') parts.push(`${accountLabel(a)} is at its wall until ${until(a.limited_until)}, in ${spoken(a.limited_until * 1000 - Date.now())}.`)
-    for (const m of walledModels(a)) parts.push(`${m} is out until ${until(wallFor(a, m).limited_until)}.`)
-    if (a.source) parts.push(`Source: ${a.source}.`)
-    const observed = Date.parse(a.observed_at || a.updated_at || '')
-    if (a.stale && a.agent !== 'agy' && Number.isFinite(observed)) parts.push(`Read at ${clockAt(observed)}, ${spoken(Date.now() - observed)} ago, stale.`)
-    return parts.join(' ')
-  }
-  function capToken(a) {
-    const id = idOf(a.agent)
-    const b = bindingOf(a)
-    const walled = acctState(a) === 'walled'
-    const pct = b ? Math.max(0, Math.min(100, Math.round(b.percent))) : null
-    const token = el('span', { class: 'cap-token' }, [
-      el('span', { class: `dot id-${id}`, 'aria-hidden': 'true' }),
-      el('span', { class: `cap-name id-${id}` }, [accountLabel(a)]),
-    ])
-    // no number, no instrument. A track with nothing in it is a reading of zero
-    // to anyone glancing at it, which is exactly what agy does not have.
-    if (pct !== null || walled) {
-      const stop = pct !== null && pct > 85 ? `${((85 / pct) * 100).toFixed(2)}%` : null
-      const fill = el('span', {
-        class: 'cap-fill',
-        style: walled ? 'width:100%;background:var(--danger)'
-          : stop ? `width:${pct}%;background:linear-gradient(to right,var(--id-${id}) 0 ${stop},var(--danger) ${stop} 100%)`
-            : `width:${pct}%;background:var(--id-${id})`,
-      })
-      // a walled login with no percentage is not a meter: 100 would be a number
-      // nobody measured. It keeps the track and carries the sentence instead.
-      const semantics = pct === null
-        ? { role: 'img', 'aria-label': `${accountLabel(a)} capacity. ${capValueText(a, b)}` }
-        : { role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': `${accountLabel(a)} capacity`, 'aria-valuetext': capValueText(a, b) }
-      token.appendChild(el('span', { class: 'cap-track', ...semantics }, [fill]))
-    }
-    // with no track the figure carries the whole sentence itself, the way the
-    // gauge's readout does when a window has never been read
-    const quiet = pct === null && !walled ? { role: 'img', 'aria-label': `${accountLabel(a)} capacity. ${capValueText(a, b)}` } : {}
-    token.appendChild(el('span', { class: `cap-figure${walled ? ' is-out' : ''}${pct === null && !walled ? ' cap-figure--none' : ''}`, ...quiet }, [capFigure(a, b)]))
-    return token
-  }
-  function capacityStrip(list) {
-    const box = document.getElementById('capacity-tokens')
-    if (!box) return
-    box.textContent = ''
-    for (const a of list) box.appendChild(capToken(a))
-  }
+  //
+  // src/board/strip.js DRAWS IT, for this page and for /floor, from the same
+  // /api/sessions accounts payload. These three names are what this file's
+  // callers and test/board-verdict.test.mjs reach for; there is one token
+  // builder behind them.
+  const capFigure = (a, b) => strip().capFigure(a, b)
+  const capToken = (a) => strip().capToken(a)
+  const capacityStrip = (list) => strip().capacityStrip(list)
 
   // The model rail, on the panel head inside the drawer: one chip per model
   // this login has published a bucket or a wall for. A walled model says when
@@ -922,25 +862,12 @@
   }
 
   // The login panels are behind one disclosure now, and whether it is open is
-  // the reader's decision, kept across reloads. localStorage throws in a
-  // private window and on a board opened from a file, so it is never load
-  // bearing: the strip and the panels both render either way.
-  const CAP_KEY = 'legCapacityOpen'
-  let capacityOpen = (() => { try { return localStorage.getItem(CAP_KEY) === '1' } catch { return false } })()
-  function renderCapacityToggle() {
-    const btn = document.getElementById('capacity-toggle')
-    const drawer = document.getElementById('capacity-drawer')
-    if (btn) {
-      btn.setAttribute('aria-expanded', capacityOpen ? 'true' : 'false')
-      btn.textContent = capacityOpen ? 'Hide capacity and models' : 'Capacity and models >'
-    }
-    if (drawer) drawer.hidden = !capacityOpen
-  }
-  function toggleCapacity() {
-    capacityOpen = !capacityOpen
-    try { localStorage.setItem(CAP_KEY, capacityOpen ? '1' : '0') } catch { /* private window: the drawer still opens, it just does not remember */ }
-    renderCapacityToggle()
-  }
+  // the reader's decision, kept across reloads and shared with /floor, which
+  // puts the same panels behind the same button. strip.js owns the state and
+  // the key; these two names are what this file's init and its click binding
+  // reach for.
+  const renderCapacityToggle = () => strip().renderCapacityToggle()
+  const toggleCapacity = () => strip().toggleCapacity()
 
   // 6.1.5, all eight states. The walled state is an ADDITIONAL state of the
   // rail, never a replacement for it: both percentages, both reset times and
@@ -1256,6 +1183,20 @@
     const at = (ladder || []).findIndex((r) => rungKey(r) === rungKey(rung))
     return at < 0 ? null : `${rungLabel(rung)} is already rung ${at + 1}.`
   }
+
+  // The models this MACHINE publishes for an agent, from /api/models
+  // (src/models.mjs), which board.js fetches once and parks on `state.models`.
+  // MODEL_ALIASES is the fallback and stays the truth for claude, whose four
+  // words are aliases Claude Code resolves rather than service-side ids; codex,
+  // agy and grok have no entry there at all, so the rung editor could offer
+  // them `default` and nothing else and a reader could not put gpt-5.6-luna on
+  // a rung from this page.
+  function catalogModels(agent) {
+    const board = typeof window !== 'undefined' && window.legBoard ? window.legBoard : null
+    const live = board && board.models ? board.models[agent] : null
+    if (Array.isArray(live) && live.length) return live
+    return (MODEL_ALIASES[agent] || []).map((id) => ({ id, label: id }))
+  }
   function addRungRow(ladder, onChange, scope, onRefuse) {
     const row = el('div', { class: 'ladder-add' })
     const agentId = `ladder-add-agent-${scope}`
@@ -1267,7 +1208,7 @@
     const fillModels = () => {
       model.textContent = ''
       model.appendChild(el('option', { value: '' }, ['default']))
-      for (const m of MODEL_ALIASES[agent.value] || []) model.appendChild(el('option', { value: m }, [m]))
+      for (const m of catalogModels(agent.value)) model.appendChild(el('option', { value: m.id }, [m.label || m.id]))
       model.value = ''
     }
     fillModels()
@@ -1323,11 +1264,102 @@
   // A rebuild clears any selection that spans it, so the timed re-sort stands
   // down while the reader is selecting a path or a sentence out of a panel. A
   // real data push still redraws: the words on screen win over the drag.
-  function selectionInsideGrid() {
+  function selectionInside(box) {
     const sel = typeof document.getSelection === 'function' ? document.getSelection() : null
     if (!sel || sel.isCollapsed || !String(sel).trim()) return false
+    return Boolean(box && sel.anchorNode && typeof box.contains === 'function' && box.contains(sel.anchorNode))
+  }
+  function selectionInsideGrid() { return selectionInside(document.getElementById('session-grid')) }
+
+  // How long the expanded region may refuse to redraw itself. The grid's order
+  // hold and this one answer different questions -- one is about rows moving
+  // under the reader, the other about the region going stale -- so they have
+  // their own bounds: a held selection may freeze the ORDER for as long as the
+  // drag lasts, but it may not hide finished turns for more than twenty
+  // seconds. See the paragraph in renderDrawer.
+  const DRAWER_HOLD_MS = 20000
+  let drawerHeldAt = 0
+  function drawerStandsDown({ timed, selecting, confirming, heldForMs }) {
+    // a redraw the reader asked for (show 40 more, Resume updates, a rung
+    // moved) is never a surprise; only the poll's own redraw stands down
+    if (!timed) return false
+    if (confirming) return true
+    if (!selecting) return false
+    return heldForMs < DRAWER_HOLD_MS
+  }
+
+  // ---- the list holds still while the reader is inside it ------------------
+  // Reported 2026-09-18: "the page is hard to interact with while a terminal is
+  // running and the details are expanded, it keeps jumping around and knocking
+  // me out of what I'm doing." Every push re-sorts (needs-you first), so a row
+  // crossing that partition moves every row after it, and the expansion hanging
+  // under one of them goes with it. The sort is right; running it under the
+  // reader's cursor is not. While they are demonstrably inside the list the
+  // previous order is held, and the new one is applied on the first render
+  // after they come out.
+  //
+  // Two of the four reasons are unbounded and two are not. An expansion and a
+  // live selection are the reader in the middle of something, and both end with
+  // one click of theirs. A pointer resting on a row and a button still holding
+  // focus after a click are states that last until the machine is touched
+  // again, and an unbounded hold on either would freeze the needs-you sort for
+  // the rest of the day, which is a worse bug than the one this fixes.
+  //
+  // 2026-09-18, second pass: an expansion is not one of the bounded two. A
+  // reader leaves one open and walks away -- that IS the resting state of a
+  // dashboard -- and while it was open the needs-you sort never ran again. A
+  // terminal that hit a permission prompt went urgent, the tab badge counted
+  // it, and the row it was on stayed at the bottom of the list for as long as
+  // the expansion lived. Waiting hours to be shown a terminal that is waiting
+  // on you is a worse bug than a row moving. So `expanded` takes the same
+  // ORDER_HOLD_MS release hovering and focus have: the reader gets 30 seconds
+  // of stillness from each push, and then the sort is allowed to run.
+  //
+  // The expanded row itself is not pinned to its slot, and deliberately so:
+  // the row the reader is waiting on is usually BELOW the expansion (that is
+  // the reported case), so a pin would leave it exactly where it was buried.
+  // The expansion moving down the LIST does not move it on the SCREEN --
+  // holdAnchor puts its viewport offset back after the rebuild, which is the
+  // thing the reader actually perceives, and the probe asserts both halves.
+  //
+  // A live selection keeps its unbounded hold. A drag really does die on a
+  // rebuild, and it ends the moment the reader lets go.
+  const ORDER_HOLD_MS = 30000
+  function holdsOrder({ expanded, selecting, hovering, focusInside, divergedForMs }) {
+    if (selecting) return true
+    if (!expanded && !hovering && !focusInside) return false
+    return !(divergedForMs >= ORDER_HOLD_MS)
+  }
+
+  // The ids to draw, in order: the sort, or the order they had when the reader
+  // went in. A terminal that started while the order was held joins at the end,
+  // where it cannot move anything on screen; one that left simply drops out.
+  function listOrder(natural, held, hold) {
+    if (!hold || !held || !held.length) return natural
+    const at = new Map(held.map((id, i) => [id, i]))
+    const known = natural.filter((id) => at.has(id)).sort((a, b) => at.get(a) - at.get(b))
+    return known.concat(natural.filter((id) => !at.has(id)))
+  }
+
+  function readerIsInTheList() {
     const grid = document.getElementById('session-grid')
-    return Boolean(grid && sel.anchorNode && grid.contains(sel.anchorNode))
+    const region = detailRegion()
+    // a region that is hidden is one the reader has just closed: the focus
+    // still sitting on its Close button is not a reason to hold the order
+    const open = region && !region.hidden ? region : null
+    const node = document.activeElement
+    const has = (box) => Boolean(box && node && node !== document.body && typeof box.contains === 'function' && box.contains(node))
+    let hovering = false
+    // :hover is the pointer's own position, which no event listener has to be
+    // kept in sync with. A DOM that cannot answer it holds nothing.
+    try { hovering = Boolean(document.querySelector('#session-grid .term:hover, #session-drawer:hover')) } catch { hovering = false }
+    return holdsOrder({
+      expanded: Boolean(drawer.id),
+      selecting: selectionInside(grid) || selectionInside(open),
+      hovering,
+      focusInside: has(grid) || has(open),
+      divergedForMs: orderDivergedAt ? Date.now() - orderDivergedAt : 0,
+    })
   }
 
   // Absolute priority, not a rotation: the saved list decides, minus the agent
@@ -2008,7 +2040,7 @@
     // rebuilding a <select> under an open option list closes it, so a list that
     // takes longer than three seconds to read could not be read at all. The
     // pick itself survives the rebuild by rung (pickIndex above).
-    drawer.timer = setInterval(() => { if (!drawer.paused && !document.hidden && !pickHasFocus()) loadDrawer() }, 3000)
+    drawer.timer = setInterval(() => { if (!drawer.paused && !document.hidden && !pickHasFocus()) loadDrawer({ timed: true }) }, 3000)
     document.getElementById('session-drawer-close')?.focus()
   }
 
@@ -2026,7 +2058,7 @@
     if (id) putFocus(document, { key: `${from === 'details' ? 'details' : 'prompt'}:${id}` })
   }
 
-  async function loadDrawer() {
+  async function loadDrawer({ timed = false } = {}) {
     if (!drawer.id) return
     const id = drawer.id
     try {
@@ -2038,7 +2070,7 @@
       if (drawer.id !== id) return
       drawer.error = err.message
     }
-    renderDrawer()
+    renderDrawer({ timed })
   }
 
   function paintDiff(pre, d) {
@@ -2135,6 +2167,41 @@
     }
   }
 
+  // The page's own scroll anchor. A box the reader is reading keeps its offset
+  // in the VIEWPORT, not its offset in the document: everything above it is
+  // rebuilt on a timer and may change height or order, and the browser's native
+  // scroll anchoring does not survive a subtree being wiped and refilled. These
+  // two are the page-level twin of takeScroll/putScroll, and they only ever run
+  // for a region that is open and on screen.
+  function anchorTop(box) {
+    if (!box || box.hidden || typeof box.getBoundingClientRect !== 'function') return null
+    if (typeof window.scrollBy !== 'function') return null
+    return box.getBoundingClientRect().top
+  }
+  function holdAnchor(box, was) {
+    if (was === null || was === undefined) return
+    const now = anchorTop(box)
+    if (now === null) return
+    const moved = now - was
+    // sub-pixel reflow is not a jump; a row that crossed the needs-you
+    // partition above the reader is 200px of one
+    if (Math.abs(moved) < 1) return
+    window.scrollBy(0, moved)
+  }
+  // ...and only for a region that already HAD a position the reader gave it.
+  // #session-drawer lives at the end of <body> until renderSessions moves it
+  // under the panel it expands, and it is parked back there every time it
+  // closes. On the render that opens an expansion, anchorTop therefore reads a
+  // viewport top several hundred pixels below where the region is about to
+  // land, and holdAnchor "restores" it by yanking the whole window up: a reader
+  // scrolled to 400 was thrown to 0 and then dragged back to 803 by the focus
+  // on Close, 403px of movement on the most common click on the board. A region
+  // that is not in the list yet has nothing to put back.
+  function anchorFor(region, grid) {
+    if (!region || !grid || region.parentNode !== grid) return null
+    return anchorTop(region)
+  }
+
   // Whether .baton/RESUME.md still describes the repository a reader would find.
   // The server recomputes this from git on every poll, so the line is a verdict
   // about right now, not a timestamp the file remembered about itself.
@@ -2215,6 +2282,53 @@
     return box
   }
 
+  // ---- the timeline ---------------------------------------------------------
+  // A usage poll that says the same sentence every ten seconds is one fact, not
+  // forty lines, and forty lines of it push everything that actually happened
+  // off the top of a region the reader is trying to read. A run of events of
+  // the same type whose summary repeats the previous one word for word, each
+  // within a minute of the one before it, becomes one line carrying ×N. Only a
+  // RUN collapses: two identical lines with something else between them are two
+  // things that happened and are printed as two.
+  const REPEAT_MS = 60000
+  function collapseEvents(events) {
+    const out = []
+    for (const e of events || []) {
+      const last = out[out.length - 1]
+      const gap = last ? Date.parse(e.ts) - Date.parse(last.last_ts) : NaN
+      if (last && last.type === e.type && (last.summary || '') === (e.summary || '') && gap >= 0 && gap < REPEAT_MS) {
+        last.count += 1
+        last.last_ts = e.ts
+        continue
+      }
+      out.push({ ...e, count: 1, last_ts: e.ts })
+    }
+    return out
+  }
+
+  // The timeline is newest first, so a new event arrives ABOVE everything the
+  // reader is looking at and carrying its scrollTop across the rebuild moves
+  // them down a line every time one lands. The line at the top edge of the box
+  // is the anchor instead: it stays where it was and the new one appears above.
+  function takeTimelineAnchor(box) {
+    const node = box && typeof box.querySelector === 'function' ? box.querySelector('[data-scroll-key="timeline"]') : null
+    if (!node || !node.scrollTop) return null
+    for (const item of node.querySelectorAll('[data-event-key]')) {
+      if (item.offsetTop >= node.scrollTop) return { key: item.getAttribute('data-event-key'), from: item.offsetTop - node.scrollTop }
+    }
+    return null
+  }
+  function putTimelineAnchor(box, at) {
+    if (!at) return
+    const node = box && typeof box.querySelector === 'function' ? box.querySelector('[data-scroll-key="timeline"]') : null
+    if (!node) return
+    const key = at.key.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    let item = null
+    try { item = node.querySelector(`[data-event-key="${key}"]`) } catch { return }
+    if (!item) return
+    node.scrollTop = Math.max(0, item.offsetTop - at.from)
+  }
+
   function section(title, note, body) {
     const s = el('section', { class: 'detail-section' }, [
       el('h3', { class: 'detail-heading' }, [title, note ? el('span', { class: 'detail-sub' }, [note]) : null]),
@@ -2237,10 +2351,42 @@
     return line
   }
 
-  function renderDrawer() {
+  function renderDrawer({ timed = false } = {}) {
     const box = document.getElementById('session-drawer-content')
     if (!box) return
+    // A rebuild destroys any selection that spans it, and this one runs every
+    // three seconds: a reader dragging across a path, a session id or a
+    // timeline sentence lost it before they reached the end of the word, every
+    // time. The region stands down until they let go, the same contract the
+    // grid already keeps for its own timed re-sort, and one click anywhere
+    // resumes it. A confirm row is a question the reader is answering right
+    // now: rebuilding the picker under it drops the click that answers it.
+    // `timed` is the poll's redraw and nobody else's: a redraw the reader asked
+    // for (show 40 more, Resume updates, a rung moved) is never a surprise and
+    // is the default, so a new caller cannot silently inherit the stand-down.
+    //
+    // 2026-09-18, second pass: "until they let go" was not a bound. A
+    // double-click leaves an uncollapsed selection behind, which is exactly the
+    // gesture the paragraph above is written for, and a reader who picks a path
+    // out of the region and keeps reading never lets go of anything. Twelve
+    // turns finished and not one of them was drawn in sixty seconds, with
+    // nothing on screen saying the region was stale. The stand-down is capped:
+    // twenty seconds is longer than any drag and shorter than a reader's
+    // patience for "what is it doing now". That redraw does cost the selection,
+    // which is the price of being told the truth about the terminal.
+    //
+    // The confirm row half is narrowed to THIS terminal's question. A confirm
+    // row on an unrelated row used to freeze this region too.
+    const selecting = selectionInside(box)
+    drawerHeldAt = selecting ? (drawerHeldAt || Date.now()) : 0
+    if (drawerStandsDown({
+      timed,
+      selecting,
+      confirming: Boolean(pendingConfirm && pendingConfirm.id === drawer.id),
+      heldForMs: drawerHeldAt ? Date.now() - drawerHeldAt : 0,
+    })) return
     const inner = takeScroll(box)
+    const onLine = takeTimelineAnchor(box)
     const focus = takeFocus(box)
     const s = drawerSession()
     const d = drawer.detail
@@ -2302,20 +2448,27 @@
 
     const timeline = el('div', { class: 'drawer-timeline', 'data-scroll-key': 'timeline' })
     const events = (d && d.events) || []
-    for (const e of events.slice(-40).reverse()) {
+    const lines = collapseEvents(events)
+    const shownLines = lines.slice(-40).reverse()
+    for (const e of shownLines) {
       // clockAt, not a slice of the ISO string: that printed UTC, in 24-hour
       // with seconds, under a page that says `Times are local.` and beside a
       // header on the same panel printing the same instant as 11:04 PM. The
       // summary is a block, as board.js:754 builds the same row, or the kind
       // word and the sentence render glued: `lostrunner pid 999002 is gone`.
-      timeline.appendChild(el('div', { class: 'turn timeline-item' }, [
-        el('span', { class: 'mono turn-when' }, [clockAt(Date.parse(e.ts))]),
+      // data-event-key is the anchor the timeline's own scroll is held by when
+      // a new line arrives above the one the reader is reading.
+      timeline.appendChild(el('div', { class: 'turn timeline-item', 'data-event-key': `${e.ts}|${e.type}` }, [
+        el('span', { class: 'mono turn-when' }, [clockAt(Date.parse(e.last_ts || e.ts))]),
         el('span', { class: 'turn-role' }, [e.type]),
-        el('p', { class: 'timeline-summary' }, [e.summary || '']),
+        el('p', { class: 'timeline-summary' }, [e.summary || '', e.count > 1 ? el('span', { class: 'timeline-count', title: `this line was recorded ${e.count} times in a row` }, [`×${e.count}`]) : null]),
       ]))
     }
     if (!events.length) timeline.appendChild(el('p', { class: 'sentence tone-muted' }, [d ? 'nothing recorded yet' : 'reading the timeline']))
-    const shownEvents = Math.min(events.length, 40)
+    // G14: the cap names the volume, and the volume is EVENTS, not lines: a
+    // collapsed line stands for every repeat it swallowed, so the two numbers
+    // still add up against `events.length`.
+    const shownEvents = shownLines.reduce((n, e) => n + (e.count || 1), 0)
     const timelineBody = el('div', { class: 'detail-section' }, [timeline])
     if (events.length > shownEvents) timelineBody.appendChild(capLine(shownEvents, events.length, 'events', null))
     box.appendChild(section('Timeline', 'this terminal, newest first', timelineBody))
@@ -2328,6 +2481,9 @@
     const harness = harnessSection(s, d)
     if (harness) box.appendChild(section('Harness', 'the working environment this leg was given', harness))
     putScroll(box, inner)
+    // after putScroll, never instead of it: putScroll puts the box back where
+    // it was and this corrects for the lines that arrived above the reader
+    putTimelineAnchor(box, onLine)
     putFocus(box, focus)
   }
 
@@ -2654,23 +2810,36 @@
     const focus = takeFocus(document)
     const grid = document.getElementById('session-grid')
     if (!grid) return
-    // park the expanded region back on the body before the list is wiped, so it
-    // is never orphaned by the rebuild and never loses its own content.
-    // Detaching a subtree resets scrollTop on every scrollable box inside it,
-    // so a reader half way down a 200-line diff was returned to the top by a
-    // rebuild of the list around them. The offsets are read before the move and
-    // written back after it, the same contract renderDrawer keeps.
+    // The expanded region is a child of this grid, so a rebuild of the list can
+    // orphan it, reset every scrollable box inside it and clear any selection
+    // spanning it. It is left in place where it can be (see `keep` below), and
+    // when it does have to move -- to the ledger, or into the list for the
+    // first time -- its scroll offsets are read here and written back after,
+    // the same contract renderDrawer keeps.
     const region = detailRegion()
     const parked = region ? takeScroll(region) : null
-    if (region && region.parentNode === grid) document.body.appendChild(region)
-    grid.textContent = ''
+    // where the expansion sat in the viewport before any of this. Rows above it
+    // are rebuilt from scratch and can change height as well as order, and the
+    // browser has no anchor of its own across a wipe, so the offset is measured
+    // here and restored at the end. A full in-place diff of every row is the
+    // real answer to "rows that did not change keep their DOM nodes"; this is
+    // the narrower one, and it holds the one thing the reader is looking at
+    // still whatever the rows above it do.
+    const wasAt = anchorFor(region, grid)
     const list = [...v.sessions]
     const notesOf = new Map(list.map((s) => [s.session_id, rankedNotes(s)]))
     const urgent = (s) => needsYou(s, notesOf.get(s.session_id) || [])
-    // needs-you first, then started_at ascending. The re-sort every 15 seconds
-    // only moves the needs-you partition, so a panel never slides under the
-    // cursor for a reason the reader cannot see.
+    // needs-you first, then started_at ascending.
     list.sort((a, b) => (urgent(a) === urgent(b) ? Date.parse(a.started_at) - Date.parse(b.started_at) : urgent(a) ? -1 : 1))
+    // and then held still if the reader is inside the list: the sort is what
+    // the order WILL be, heldOrder is what it is on screen until they come out
+    const natural = list.map((s) => s.session_id)
+    const order = listOrder(natural, heldOrder, readerIsInTheList())
+    const rank = new Map(order.map((id, i) => [id, i]))
+    list.sort((a, b) => rank.get(a.session_id) - rank.get(b.session_id))
+    heldOrder = order
+    const same = order.length === natural.length && order.every((id, i) => id === natural[i])
+    orderDivergedAt = same ? 0 : (orderDivergedAt || Date.now())
     const empty = document.querySelector('.region-terminals .empty-line')
     if (empty) empty.hidden = list.some((s) => s.active || needsYou(s, notesOf.get(s.session_id) || []))
 
@@ -2689,10 +2858,26 @@
     // computed over the rows that are actually drawn: a sentence shared only by
     // terminals collapsed into the ledger is not on screen to be deduped
     hoistShared(live, notesOf)
+    // The expansion stays exactly where it is whenever it can. Taking a subtree
+    // out of the document and putting it back clears any text selection inside
+    // it, and this runs on every push: a reader dragging across a path in the
+    // expansion lost the drag every time a row anywhere on the board changed.
+    // The rows around it are removed and rebuilt; it is not touched, so the
+    // selection, and the scroll offsets inside it, are never disturbed.
+    const keep = region && region.parentNode === grid && live.some((s) => s.session_id === drawer.id) ? region : null
+    if (region && !keep && region.parentNode === grid) document.body.appendChild(region)
+    for (const node of [...grid.childNodes]) if (node !== keep) grid.removeChild(node)
+    let past = false
     for (const s of live) {
       const panel = renderSession(s)
-      grid.appendChild(panel)
-      if (drawer.id === s.session_id && region) panel.after(region)
+      // rows up to and including the expanded one go in above it, the rest
+      // after it, which keeps the region under the panel it belongs to
+      if (keep && !past) grid.insertBefore(panel, keep)
+      else grid.appendChild(panel)
+      if (drawer.id === s.session_id) {
+        past = true
+        if (!keep && region) panel.after(region)
+      }
     }
     // the per-row copies exist only now, so the pass that hides the ones the
     // region already says runs after the rows are in the document
@@ -2707,6 +2892,9 @@
     // the control they were on, at the offset they had scrolled to
     if (region && parked) putScroll(region, parked)
     putFocus(document, focus)
+    // the rows above the expansion are new elements of their own height and in
+    // their own order now: put the expansion back where the reader left it
+    holdAnchor(region, wasAt)
     // the rows are new elements: the ring is a class, so it is repainted onto
     // the terminal the reader left it on rather than stealing focus again. This
     // list was just re-sorted, so painting by position would move it.
@@ -2794,7 +2982,7 @@
     renderTrunk(v)
     // the panel behind the expansion just changed: status, turns and what is
     // next live in the session view, so redraw the region from it
-    if (drawer.id) { if (drawerSession()) renderDrawer(); else closeSessionDrawer() }
+    if (drawer.id) { if (drawerSession()) renderDrawer({ timed: true }); else closeSessionDrawer() }
   }
 
   async function refresh() {
@@ -2820,6 +3008,16 @@
       // browser with storage blocked has to render, and that cannot be asserted
       // from the source text.
       paintRing, ringSession: () => ringId, getToken, announceWaiting, readerIsWatching,
+      // 2026-09-18 "it keeps jumping around": the order the list holds while the
+      // reader is inside it, and the run of identical status lines that used to
+      // fill the timeline. Both are pure, so test/board-jump.test.mjs drives
+      // them directly; the render that calls them is proved by
+      // scripts/board-jump-probe.mjs in a real browser.
+      listOrder, holdsOrder, collapseEvents, readerIsInTheList, ORDER_HOLD_MS,
+      // ...and the two bounds the second pass put on that hold: which regions
+      // have a scroll anchor worth restoring, and how long the region may
+      // refuse to redraw itself under a selection the reader has forgotten.
+      anchorFor, drawerStandsDown, DRAWER_HOLD_MS,
       // B.6: the pick that survives the poll, the rule box and the refusal the
       // Add button prints are all pure and are asserted without a DOM
       pickKey, pickIndex, whenFromBox, whenFlag, duplicateRung,

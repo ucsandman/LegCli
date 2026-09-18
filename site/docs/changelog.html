@@ -54,8 +54,76 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#0120-2026-09-17">0.12.0 (2026-09-17)</a></li><li><a href="#0110-2026-09-17">0.11.0 (2026-09-17)</a></li><li><a href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#0130-2026-09-18">0.13.0 (2026-09-18)</a></li><li><a href="#0120-2026-09-17">0.12.0 (2026-09-17)</a></li><li><a href="#0110-2026-09-17">0.11.0 (2026-09-17)</a></li><li><a href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
 <h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
+<h2 id="0130-2026-09-18"><a class="anchor" href="#0130-2026-09-18">0.13.0 (2026-09-18)</a></h2>
+<p>The first day on 0.12.0 with three real terminals found five things. Usage
+polling moves out of the terminals into the board, so the endpoint stops
+answering 429 and the timeline stops repeating it. Every rung of a ladder can
+now name a model from a catalog Leg reads off the installed CLIs, and the new
+card form is rebuilt around that. The board holds still under a reader with a
+row expanded. The floor is a page you can start work from. And a page whose
+files are newer than the process serving them says so.</p>
+<ul>
+<li><strong>One usage poll per login, in the board.</strong> Every claude terminal used to
+ask Claude&#39;s usage endpoint once a minute on its own; three terminals plus
+Claude Code&#39;s own polling meant a 429 every other minute, and the terminal&#39;s
+timeline logged <code>claude usage unavailable: usage endpoint 429: {...}</code> each
+time the answer flipped. The board process now polls each login once per
+<code>LEG_USAGE_POLL_MS</code> (60s), backs off to ten minutes on any refusal and snaps
+back on the first good answer, and writes the two windows onto every active
+session of that login. A refusal is recorded once on the usage record
+(<code>error</code>, <code>error_since</code>, owner only) with one status line, <code>claude usage unavailable since 9:03 AM: usage endpoint 429: rate_limit_error</code>, and one
+<code>claude usage is back</code>; it never erases the measured buckets. Terminals
+poll nothing, so a terminal started before this release keeps its old
+minute-by-minute poll until it is restarted.</li>
+<li><strong>A model catalog, read from the CLIs you have.</strong> <code>GET /api/models</code> lists
+what each provider can run today: claude&#39;s aliases (fable, opus, sonnet,
+haiku); codex&#39;s <code>models_cache.json</code> entries with <code>visibility: list</code> plus the
+default from <code>config.toml</code> (gpt-6-astra, gpt-5.6-sol, gpt-5.6-terra,
+gpt-5.6-luna, gpt-5.5 on the machine this shipped from); <code>agy models</code> and
+<code>grok models</code>, each run at most once an hour behind the answer and cached
+under <code>&lt;LEG_HOME&gt;/models/</code>. A rung&#39;s model is validated by shape for every
+provider and by membership for claude only, so next month&#39;s codex model is
+not refused and a saved ladder is never silently reset to the default.</li>
+<li><strong>The new card form, rebuilt.</strong> Task first, then the repository as a picker
+of known repos or a typed path, the branch to cut from, and <strong>Who runs it</strong>:
+one row per rung with provider, model, permissions, ask before start and max
+turns, reorderable, prefilled from your ladder, with <strong>Save as my default
+ladder</strong> writing it back to Settings. Advanced holds the workflow, scripted
+first agent, leases, merge method, test command and title. The dialog posts
+its chain as one object per rung, so <code>claude/fable</code> then <code>claude/opus</code> is
+finally two legs and not one. Two columns at 900px, one below; it scrolls on
+a short window instead of hiding Create card below the fold.</li>
+<li><strong>The one-line entry row is never empty.</strong> It derives its rungs from
+<code>handoff_order</code> when a preferences file predates ladders, the ladder noun
+opens both the rung and the model selects, and with only metered providers
+and spending off it says so instead of &quot;no agent is configured&quot;.</li>
+<li><strong>The board holds still.</strong> With a row expanded, a text selection live, the
+pointer on a row or focus in the list, the needs-you re-sort is computed but
+not drawn until you come out (hover and focus release after 30s on their
+own). The expansion is never detached from the document, so its selection,
+scroll offsets and open confirm row survive every 3-second poll; the
+region&#39;s top is anchored against rows above it changing height; the
+timeline appends new lines above you without moving what you read, and a
+status line repeated word for word within a minute folds into one with
+<code>×N</code>. <code>scripts/board-jump-probe.mjs</code> is the regression harness: it printed a
+205px drift on 0.12.0 and 0px now.</li>
+<li><strong>The floor is a page you start work from.</strong> The four login panels move
+behind the same <strong>Capacity and models</strong> disclosure as on the board, under
+the same one-line strip; the <strong>Run in the background</strong> entry sits under it
+and posts exactly what the board&#39;s does; Running, Waiting on you, Queued,
+Backlog and Done today are Background-style rows with counts in their
+headings, a queued row says its position and what it waits for, and j/k and
+Enter work as on the board. <code>More settings</code> carries the typed task to the
+board&#39;s dialog through <code>/#new-card=</code>. The strip and the entry row live once,
+in <code>src/board/strip.js</code> and <code>src/board/entry.js</code>, loaded by both pages.</li>
+<li><strong>A page newer than its process says so.</strong> <code>/api/health</code> answers with the
+process version; the page files carry theirs. When they differ the board and
+the floor print <code>This board process runs leg 0.10.0 and the page files are 0.13.0. Restart it to match: leg down &amp;&amp; leg up</code>, which is the state a board
+left running across an <code>npm i -g</code> lands in, and the state that hid every
+0.12.0 feature on the first morning.</li>
+</ul>
 <h2 id="0120-2026-09-17"><a class="anchor" href="#0120-2026-09-17">0.12.0 (2026-09-17)</a></h2>
 <p>The board is rebuilt around the two questions you actually open it to answer:
 which terminal needs you, and which model is about to run out. Usage stops

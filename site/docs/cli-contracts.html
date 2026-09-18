@@ -769,6 +769,68 @@ remove the last rung left; <code>leg ladder spend on|off</code> flips <code>may_
 <code>{handoff_order}</code> or <code>{handoff_ladder}</code> and rewrites both on the session.
 <code>POST /api/sessions/:id/handoff</code> accepts <code>target.model</code> alongside
 <code>target.agent</code> and <code>target.account</code> (source: src/server.mjs).</p>
+<h3 id="get-apimodels"><a class="anchor" href="#get-apimodels">GET /api/models</a></h3>
+<p>The models this machine can start each agent on, so a rung and a card can name
+one. Owner and operator only; a guest gets the same 403 <code>/api/adapters</code> and
+<code>/api/presets</code> give, because picking a model is spending the owner&#39;s plan
+(source: src/server.mjs, src/models.mjs).</p>
+<pre><code class="language-json">{
+  &quot;models&quot;: {
+    &quot;claude&quot;: [{ &quot;id&quot;: &quot;fable&quot;, &quot;label&quot;: &quot;Claude Fable&quot;, &quot;default&quot;: false }],
+    &quot;codex&quot;:  [{ &quot;id&quot;: &quot;gpt-6-astra&quot;, &quot;label&quot;: &quot;GPT-6-Astra&quot;, &quot;default&quot;: true }],
+    &quot;agy&quot;:    [{ &quot;id&quot;: &quot;gemini-3.8-flash-high&quot;, &quot;label&quot;: &quot;Gemini 3.8 Flash (High)&quot;, &quot;default&quot;: false }],
+    &quot;grok&quot;:   [{ &quot;id&quot;: &quot;grok-4.6&quot;, &quot;label&quot;: &quot;grok-4.6&quot;, &quot;default&quot;: true }]
+  },
+  &quot;observed_at&quot;: &quot;2026-09-18T14:37:01.577Z&quot;
+}
+</code></pre>
+<p>Where each list comes from, all observed live on 2026-09-18 and captured under
+<code>fixtures/models/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>agent</th>
+<th>source</th>
+<th>today&#39;s ids</th>
+<th>default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>claude</td>
+<td><code>MODEL_ALIASES.claude</code> in src/buckets.mjs; four aliases Claude Code resolves itself, not service-side ids</td>
+<td><code>fable</code>, <code>opus</code>, <code>sonnet</code>, <code>haiku</code></td>
+<td>none: a bare <code>claude</code> picks for itself, and naming one would be Leg making a choice nobody made</td>
+</tr>
+<tr>
+<td>codex</td>
+<td><code>&lt;CODEX_HOME&gt;/models_cache.json</code>, <code>models[]</code> where <code>visibility</code> is <code>&quot;list&quot;</code> (<code>&quot;hide&quot;</code> covers <code>gpt-reserve</code> and <code>codex-auto-review</code>)</td>
+<td><code>gpt-6-astra</code>, <code>gpt-5.6-sol</code>, <code>gpt-5.6-terra</code>, <code>gpt-5.6-luna</code>, <code>gpt-5.5</code></td>
+<td>the top-level <code>model = &quot;...&quot;</code> in <code>&lt;CODEX_HOME&gt;/config.toml</code>, never a <code>[profiles.x]</code> one</td>
+</tr>
+<tr>
+<td>agy</td>
+<td><code>agy models</code>, one <code>id&lt;TAB&gt;label</code> per line after a <code>Fetching available models...</code> line</td>
+<td>14, from <code>gemini-3.8-flash-high</code> to <code>gpt-oss-120b-medium</code>, including <code>claude-opus-4-6-thinking</code></td>
+<td>agy publishes none</td>
+</tr>
+<tr>
+<td>grok</td>
+<td><code>grok models</code>, <code>  * id (default)</code> / <code>  - id</code> bullets under a <code>Default model: X</code> line; it lists them even when it is not logged in</td>
+<td><code>grok-4.6</code>, <code>grok-4.5</code></td>
+<td><code>grok-4.6</code></td>
+</tr>
+</tbody></table>
+<p><code>agy</code> and <code>grok</code> each cost a process, so their answers are cached in
+<code>&lt;LEG_HOME&gt;/models/&lt;agent&gt;.json</code> for an hour with a 20s probe timeout. A request
+never waits on one: the cached list is served and the refresh runs behind the
+answer. A probe that fails leaves the cache exactly as it was.</p>
+<p>An id from any of these lists may go on a ladder rung&#39;s <code>model</code> and on a card&#39;s
+chain entry, and reaches the CLI through <code>modelFlagFor</code> in src/buckets.mjs
+(<code>claude --model</code>, <code>agy --model</code>, <code>codex -m</code>, <code>grok -m</code>). Rung validation is by
+SHAPE for every agent (<code>/^[a-z0-9][a-z0-9._:-]{0,63}$/</code>, so a flag or a path can
+never become an argv element) and by MEMBERSHIP for claude alone, whose list is
+closed; the other three catalogs are live and the CLI itself is the authority on
+its own.</p>
 <h3 id="history-index"><a class="anchor" href="#history-index">History index</a></h3>
 <p><code>&lt;LEG_HOME&gt;/history/index.json</code> is the one file <code>leg history</code> writes: per
 provider, per transcript, size, mtime and a small scrubbed record (source:

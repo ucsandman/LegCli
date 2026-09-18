@@ -33,11 +33,13 @@ import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs
 import { hasRecentSynthesis } from './synthesis.mjs'
 import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
-import { readUsage, recordUsage, usageIsStale, candidates, isAvailable, fmtReset, binding, evaluateLadder, rungLabel, wallActive } from './usage.mjs'
-import { readAccounts, envFor, LAYOUT } from './accounts.mjs'
+import { readUsage, usageIsStale, candidates, isAvailable, fmtReset, binding, evaluateLadder, rungLabel, wallActive } from './usage.mjs'
+import { readAccounts } from './accounts.mjs'
+import { createUsagePollers, USAGE_AGENTS } from './usage-poll.mjs'
 import { readCodexUsage, transcriptTail as codexTranscriptTail } from './taps/codex.mjs'
 import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder, ladderFor, requireHandoffLadder, requireClimbBack, requireReserve, orderFromLadder } from './preferences.mjs'
 import { isDownshift } from './buckets.mjs'
+import { listModels } from './models.mjs'
 import { listHistory, findRecord, recordDetail, refreshIndex, readIndex, providerSupport, HistoryInputError, PROVIDER_NAMES } from './history/index.mjs'
 import { listWorktrees } from './history/worktrees.mjs'
 
@@ -575,6 +577,14 @@ function scrubOwnerUsage(s) {
   return out
 }
 
+// The usage poller appends `claude usage unavailable since 9:03 AM: <reason>`
+// to every active session of a login, a guest's own terminal included
+// (src/usage-poll.mjs). That line is the owner's reading — the reason their
+// endpoint is refusing and the clock it started — so it leaves with the rest of
+// the figures scrubOwnerUsage withholds. The recovery line says nothing about
+// the login and stays.
+const isUsageFailureEvent = (e) => e?.type === 'status' && /^\w+ usage unavailable since /.test(String(e?.summary ?? ''))
+
 // A guest owns their own terminal, so its picker rows are theirs to read, but
 // a rung's reason can quote this machine's usage ("at 63%, not below 80%",
 // "past your 10% reserve"), and a percentage of this machine's login belongs to
@@ -683,7 +693,11 @@ export function sessionsView({ viewer = null, share = null } = {}) {
     // the percentages are: they say how much of this machine's login is gone.
     // The guest branch at the bottom of this function drops the slot to
     // {agent, account, live, shared}, so nothing here reaches them.
-    accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, observed_at: u.observed_at, updated_at: u.updated_at, stale: usageIsStale(u), live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length, buckets: u.buckets ?? [], walls: u.walls ?? {}, extra_usage: u.extra_usage ?? null, facts: u.facts ?? null })
+    // `error`/`error_since` are the READING's health, not the login's: they say
+    // the board could not ask, which is why a percentage is old. Owner-only for
+    // the same reason the percentages are, and dropped by the guest branch below
+    // with the rest of the slot.
+    accounts.push({ agent, account, five_hour: u.five_hour, seven_day: u.seven_day, limited_until: u.limited_until, limited_reason: u.limited_reason, source: u.source, observed_at: u.observed_at, updated_at: u.updated_at, stale: usageIsStale(u), live: sessions.filter((s) => s.active && s.agent === agent && s.account === account).length, buckets: u.buckets ?? [], walls: u.walls ?? {}, extra_usage: u.extra_usage ?? null, facts: u.facts ?? null, error: u.error ?? null, error_since: u.error_since ?? null })
   }
   const repos = new Map()
   for (const s of sessions) if (s.repo && (s.active || s.worktree) && !repos.has(canonPath(s.repo))) repos.set(canonPath(s.repo), s.repo)
@@ -903,8 +917,25 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, sessionsDebounce
   return { add, stop, broadcast, clients }
 }
 
+// Which logins this board reads usage for. LEG_CLAUDE_BIN and LEG_GROK_BIN say
+// where a CLI lives, not that its login is fake, and gating on them switched
+// every percentage, every 5h/7d number and every usage_error off for a user
+// whose claude simply lives somewhere Leg's resolver does not look — with
+// nothing on the board to say why. codex is the one agent whose binary the
+// poller really needs, because it spawns the app-server to ask it; a stub there
+// cannot answer, so codex alone is skipped on its BIN var. A suite that must
+// reach no endpoint at all says so in one variable, LEG_NO_USAGE_POLL=1
+// (test/helpers.mjs sets it for every spawned board), and an injected fetcher
+// always wins: a test that supplied a reader is asking for it to be used.
+export function usageAgentsFor({ env = process.env, injected = {} } = {}) {
+  const set = (name) => env[`LEG_${name}`] || env[`BATON_${name}`]
+  const off = set('NO_USAGE_POLL') === '1'
+  const stubbedCodex = Boolean(set('CODEX_BIN'))
+  return USAGE_AGENTS.filter((a) => injected[a] || (!off && !(a === 'codex' && stubbedCodex)))
+}
+
 // ---- the server ----
-export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN || process.env.BATON_TOKEN || '', scheduler = (process.env.LEG_NO_SCHEDULER || process.env.BATON_NO_SCHEDULER) !== '1', share, usagePolling = false, usageReader = readCodexUsage } = {}) {
+export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN || process.env.BATON_TOKEN || '', scheduler = (process.env.LEG_NO_SCHEDULER || process.env.BATON_NO_SCHEDULER) !== '1', share, usagePolling = false, usageReader = readCodexUsage, usageFetchers = {} } = {}) {
   // An explicit `share` (tests) is fixed; the real server passes none and reads
   // share.json from disk, re-reading it per request (mtime-cached) so `leg
   // share add|rotate|rm` takes effect on a live board — a new link works at
@@ -991,27 +1022,19 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
     arm()
   }
   let sched = null
-  let usageTimer = null
-  let usageController = null
-  let usageInFlight = null
-  const refreshCodexAccounts = () => {
-    if (!usagePolling || ((process.env.LEG_CODEX_BIN || process.env.BATON_CODEX_BIN) && usageReader === readCodexUsage) || usageInFlight) return usageInFlight
-    usageController = new AbortController()
-    const signal = usageController.signal
-    usageInFlight = Promise.all((readAccounts().codex ?? ['default']).map(async (account) => {
-      const codexHome = envFor('codex', account).CODEX_HOME || LAYOUT.codex.home()
-      const r = await usageReader({ codexHome, timeoutMs: 8000, signal })
-      if (!r.ok) return false
-      recordUsage('codex', account, r.limits, 'codex app-server account/rateLimits/read', { observed_at: r.observed_at, available: r.available })
-      return true
-    })).then((changed) => {
-      if (changed.some(Boolean)) sse.broadcast('sessions', (viewer) => viewFor(viewer))
-    }).catch((err) => log(`codex usage refresh: ${err.message}`)).finally(() => {
-      usageInFlight = null
-      usageController = null
-    })
-    return usageInFlight
-  }
+  // ---- usage polling: one poller per LOGIN, not one per terminal ----
+  // The terminals used to ask their agent's endpoint once a minute each, so a
+  // login with three of them drew three times the requests and three copies of
+  // every 429 (src/usage-poll.mjs). The board asks once per login, backs off on
+  // a failure, and pushes what it read onto that login's active sessions.
+  const usageFetchersFor = { codex: usageReader, ...usageFetchers }
+  const injectedUsage = { codex: usageReader !== readCodexUsage, claude: Boolean(usageFetchers.claude), grok: Boolean(usageFetchers.grok) }
+  const usagePollers = createUsagePollers({
+    agents: usageAgentsFor({ injected: injectedUsage }),
+    fetchers: usageFetchersFor,
+    onChange: () => sse.broadcast('sessions', (viewer) => viewFor(viewer)),
+    onLog: (msg) => log(msg),
+  })
 
   async function handle(req, res) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
@@ -1054,7 +1077,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
     const canMachine = !shared || mayUseMachine(viewer.role)
     const ownsSession = (s) => !shared || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
     const parts = path.split('/').filter(Boolean) // ['api', ...]
-    if (!canCards && ['cards', 'floor', 'presets', 'adapters', 'leases'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner and the operators of this machine' })
+    if (!canCards && ['cards', 'floor', 'presets', 'adapters', 'leases', 'models'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner and the operators of this machine' })
     if (!canMachine && ['trunk', 'history', 'worktrees', 'audit'].includes(parts[1])) return send(res, 403, { error: 'this is the map of the machine itself: every repository path and every conversation on it. It belongs to the owner of this machine.' })
     try {
       if (req.method === 'GET' && path === '/api/health') {
@@ -1065,6 +1088,13 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
       }
       if (req.method === 'GET' && path === '/api/adapters') return send(res, 200, { adapters: await adaptersInfo() })
       if (req.method === 'GET' && path === '/api/presets') return send(res, 200, { presets: PRESETS })
+      // Which models this machine can start each agent on (src/models.mjs).
+      // Sits beside /api/adapters because it answers the second half of the
+      // same question — an adapter says WHO can run, this says WHAT it runs as
+      // — and it is guarded the same way: a guest picking a model is a guest
+      // spending the owner's plan. Never waits on a child process: agy's and
+      // grok's lists come off an hourly cache and refresh behind the answer.
+      if (req.method === 'GET' && path === '/api/models') return send(res, 200, listModels())
       if (req.method === 'GET' && path === '/api/cards') {
         const cards = listCards()
         return send(res, 200, { columns: columnsFor(cards), cards: cards.map((c) => summarize(c)) })
@@ -1165,11 +1195,32 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           sse.broadcast('sessions', (v) => viewFor(v))
           return send(res, 200, { ok: true, request: hit })
         }
-        if (req.method === 'GET' && parts.length === 3) return send(res, 200, { session: sess, events: readSessionEvents(id), requests: readRequests(id) })
+        // A guest owns their own terminal, so this route hands them the record
+        // verbatim — including the two window percentages, the reading source
+        // and the poller's usage_error, every one of which the LIST route
+        // scrubs (`scrubOwnerUsage`, sessionsView). One GET of their own
+        // session id was the whole share boundary walked around. The same scrub
+        // runs here, and the poller's failure line is kept off their timeline:
+        // it names the owner's reason and the clock it started.
+        if (req.method === 'GET' && parts.length === 3) {
+          const asGuest = shared && viewer.role !== 'owner'
+          const events = readSessionEvents(id)
+          return send(res, 200, {
+            session: asGuest ? scrubOwnerUsage(sess) : sess,
+            events: asGuest ? events.filter((e) => !isUsageFailureEvent(e)) : events,
+            requests: readRequests(id),
+          })
+        }
         // the card's drawer: what the agent last said, what it changed, what it
         // has done. Only ever this viewer's own terminal; the guard above sent
         // anyone else away before we read a transcript.
-        if (req.method === 'GET' && parts[3] === 'detail') return send(res, 200, sessionDetail(sess))
+        if (req.method === 'GET' && parts[3] === 'detail') {
+          const detail = sessionDetail(sess)
+          // the drawer of a guest's OWN terminal is theirs; the poller's line
+          // about the owner's login is not (the same event the route above drops)
+          if (shared && viewer.role !== 'owner') detail.events = detail.events.filter((e) => !isUsageFailureEvent(e))
+          return send(res, 200, detail)
+        }
         if (req.method === 'GET' && parts[3] === 'diff') {
           try {
             return send(res, 200, sessionDiff(sess, url.searchParams.get('file') ?? ''))
@@ -1596,9 +1647,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
             sched.run().catch((err) => log(`scheduler crashed: ${err.message}`))
           }
           if (usagePolling) {
-            refreshCodexAccounts()
-            usageTimer = setInterval(refreshCodexAccounts, 60000)
-            usageTimer.unref?.()
+            usagePollers.start().catch((err) => log(`usage polling: ${err.message}`))
           }
           if (loopbackCompanion) {
             loopbackCompanion.on('error', (err) => log(`loopback companion: ${err.message}`))
@@ -1609,8 +1658,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
       })
     },
     async stop() {
-      if (usageTimer) { clearInterval(usageTimer); usageTimer = null }
-      usageController?.abort()
+      usagePollers.stop()
       for (const t of enqueueTimers.values()) clearTimeout(t)
       enqueueTimers.clear()
       sse.stop()

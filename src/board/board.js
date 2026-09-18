@@ -63,6 +63,12 @@
   }
   const AGENT_IDS = ['claude', 'codex', 'agy', 'grok']
   const DEFAULT_BIND = '127.0.0.1:4747'
+  // The version these page files shipped with. The server answers /api/health
+  // with the version of the PROCESS, and the two drift apart the moment a
+  // release lands on disk under a board that was started before it: the page
+  // then draws controls the process has no routes for (an empty agent select,
+  // no buckets). test/files-version.test.mjs pins this to package.json.
+  const FILES_VERSION = '0.13.0'
   const TIMELINE_CAP = 12
   // mirrors LOOPBACK in src/auth.mjs; state.bind is "<host>:<port>" and an IPv6
   // host arrives bracketed
@@ -112,6 +118,11 @@
     // one entry per repo with a live terminal: { repo, repo_name, branch }
     repoTrunks: [],
     preferences: null,
+    // { claude: [{id, label, default}], codex: [...], agy: [...], grok: [...] }
+    // from /api/models. null until it answers; an agent missing from it offers
+    // its provider default and nothing else, which is what a bare `leg <agent>`
+    // already does.
+    models: null,
   }
   // a card push while an agent writes its log only moves these two
   const VOLATILE_CARD_FIELDS = ['last_event', 'elapsed_ms']
@@ -420,6 +431,7 @@
       state.isOwner = !(data.you && data.you.role && data.you.role !== 'owner')
       state.healthKnown = true
       renderBoardFacts(data)
+      versionSkew(data.version)
       renderTokenMeta()
       // a guest is told who they are by health, which is open to them
       if (data.you && data.you.role && data.you.role !== 'owner') { guestMode(); return false }
@@ -1214,190 +1226,70 @@
   }
 
   // ---- 6.15 step 6: the one-line background entry (C.2) ----
-  // Always visible to the owner, one row above or below the Background panel.
-  // Its three nouns (repo, ladder, workflow) are inferred and are buttons that
-  // swap for a select in place; nothing here persists past a page reload.
-  let entryState = { task: '', repo: null, ladderStart: 0, pipeline: 'build', editing: null }
-  const PIPELINE_WORDS = { build: 'build only', 'build-land': 'build and land', factory: 'plan, build, review and land' }
+  // src/board/entry.js OWNS THE ROW. It is on this page and on /floor, and one
+  // sentence that starts work has to post one body from both, so the row lives
+  // in a file both pages load and this file keeps only the names its own code
+  // and its test seams call. `state` is handed over live: the row reads
+  // sessions, cards, preferences, adapters and models on every render, never a
+  // copy taken at mount.
+  const entryUi = window.legEntry.create({
+    el,
+    api,
+    toast,
+    host: state,
+    boxId: 'card-entry',
+    isGuest,
+    onCreated: (card) => upsertCard(card),
+    // this page has the dialog markup, so More settings opens it in place
+    onMoreSettings: () => openNewCardDialog(),
+    // C.2: the row sits under the Background panel, and under Terminals when
+    // there are no live cards to sit under
+    moveUnder: { whenLive: 'background', whenEmpty: '.region-terminals' },
+  })
+  const entryState = entryUi.entryState
+  const knownRepos = () => entryUi.knownRepos()
+  const entryRepo = () => entryUi.entryRepo()
+  const realAdapters = () => entryUi.realAdapters()
+  const ladderAgents = () => entryUi.ladderAgents()
+  const asRung = (agent, model) => entryUi.asRung(agent, model)
+  const ladderLabel = (r) => entryUi.ladderLabel(r)
+  const modelSelect = (agent, model, label, onPick) => entryUi.modelSelect(agent, model, label, onPick)
+  const entryChain = () => entryUi.entryChain()
+  const entryTrunk = (repo) => entryUi.entryTrunk(repo)
+  const renderEntryLine = () => entryUi.renderEntryLine()
+  const placeEntryLine = (hasLive) => entryUi.placeEntryLine(hasLive)
 
-  // Only a terminal that carries a `repo` is offered: /api/cards refuses a path
-  // that is not a git repository root, so a terminal whose cwd is a plain
-  // folder would put a value in this field that Start can only ever reject.
-  function knownRepos() {
-    const seen = new Map()
-    for (const s of state.sessions || []) if (s.repo && !seen.has(s.repo)) seen.set(s.repo, s.repo_name || s.repo)
-    for (const c of state.cards.values()) if (c.repo && !seen.has(c.repo)) seen.set(c.repo, c.repo_name || c.repo)
-    return [...seen].map(([path, name]) => ({ path, name }))
-  }
-
-  // C.2: the most recently focused terminal's repo, else the last card's, else
-  // the first terminal's.
-  function inferRepo() {
-    const sessions = (state.sessions || []).filter((s) => s.repo)
-    const byFocus = sessions.length ? [...sessions].sort((a, b) => (Date.parse(b.last_activity) || 0) - (Date.parse(a.last_activity) || 0))[0] : null
-    if (byFocus) return { path: byFocus.repo, name: byFocus.repo_name || byFocus.repo }
-    const cards = [...state.cards.values()].sort((a, b) => (Date.parse(b.updated_at) || 0) - (Date.parse(a.updated_at) || 0))
-    if (cards[0] && cards[0].repo) return { path: cards[0].repo, name: cards[0].repo_name || cards[0].repo }
-    if (sessions[0]) return { path: sessions[0].repo, name: sessions[0].repo_name || sessions[0].repo }
-    return null
-  }
-
-  function entryRepo() { return entryState.repo || inferRepo() }
-
-  // the saved ladder, skipping a credits/metered rung while may_spend is off:
-  // a card never starts on a rung that bills without asking (-p mode does)
-  function ladderRungs() {
-    const prefs = state.preferences
-    if (!prefs || !Array.isArray(prefs.handoff_ladder)) return []
-    const maySpend = !!prefs.may_spend
-    return prefs.handoff_ladder.filter((r) => maySpend || !['credits', 'metered'].includes(r.cost))
-  }
-
-  function ladderLabel(r) { return r.model ? `${r.agent}/${r.model}` : r.agent }
-  function ladderSentence(rungs) { return rungs.length ? rungs.map(ladderLabel).join(' then ') : 'no agent is configured' }
-
-  // Exactly what Start posts: one chain entry per rung, carrying that rung's
-  // model, from the rung the reader picked downward. De-duplicated by
-  // (adapter, model) and not by adapter, because `claude/fable` then
-  // `claude/opus` are two real legs and a hand-off between them is the whole
-  // point; two rungs that name the same adapter AND the same model are one leg
-  // twice, and a hand-off from a leg to its own twin buys nothing.
-  function entryChain() {
-    const seen = new Set()
-    const out = []
-    for (const r of ladderRungs().slice(entryState.ladderStart || 0)) {
-      const key = `${r.agent}/${r.model || ''}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      out.push(r)
-    }
-    return out
-  }
-
-  // The branch a card in this repo should be cut from. The sessions payload
-  // carries the repo's own default branch (the server reads origin/HEAD, then
-  // main/master/trunk, then the current branch) and each terminal's branch, so
-  // neither the sentence nor the body has to assume `main` in a repo whose
-  // default is `master` or `develop`: Start could only ever fail there.
-  function entryTrunk(repo) {
-    if (!repo) return null
-    const known = (state.repoTrunks || []).find((t) => t.repo === repo.path || t.repo_name === repo.name)
-    if (known && known.branch) return known.branch
-    for (const s of state.sessions || []) {
-      if (s.repo !== repo.path) continue
-      const b = (s.worktree && s.worktree.base) || (!s.worktree && s.branch)
-      if (b) return b
-    }
-    return null
-  }
-
-  async function submitEntry() {
-    const repo = entryRepo()
-    const task = (entryState.task || '').trim()
-    if (!task || !repo) return
-    const rungs = entryChain()
-    const trunk = entryTrunk(repo)
-    const body = {
-      repo: repo.path, task,
-      chain: rungs.map((r) => ({ adapter: r.agent, ...(r.model ? { model: r.model } : {}) })),
-      ...(trunk ? { trunk } : {}),
-      pipeline: entryState.pipeline, queue: true,
-    }
-    try {
-      const data = await api('/api/cards', { method: 'POST', body })
-      entryState.task = ''
-      entryState.editing = null
-      upsertCard(data.card)
-    } catch (err) { toast(err.message) }
-  }
-
-  function nounSelect(options, current, onPick) {
-    const select = el('select', { 'aria-label': 'Change' })
-    for (const o of options) select.appendChild(el('option', { value: o.value }, [o.label]))
-    select.value = current
-    select.addEventListener('change', () => { onPick(select.value); entryState.editing = null; renderEntryLine() })
-    return select
-  }
-
-  function nounButton(text, key) {
-    return el('button', { type: 'button', class: 'btn btn-text', onclick: () => { entryState.editing = key; renderEntryLine() } }, [text])
-  }
-
-  function renderEntryLine() {
-    const box = document.getElementById('card-entry')
-    if (!box) return
-    if (isGuest()) { box.hidden = true; return }
-    box.hidden = false
-    box.textContent = ''
-    const repo = entryRepo()
-    const task = el('input', { type: 'text', placeholder: 'Describe the task', 'aria-label': 'Task to run in the background', value: entryState.task })
-    const reason = el('span', { class: 'field-help' }, ['Describe the task to start it.'])
-    reason.hidden = Boolean(entryState.task.trim())
-    const start = el('button', { type: 'button', class: 'btn btn-primary', disabled: entryState.task.trim() ? null : '' }, ['Start'])
-    task.addEventListener('input', () => { entryState.task = task.value; start.disabled = !task.value.trim(); reason.hidden = Boolean(task.value.trim()) })
-    start.addEventListener('click', () => submitEntry())
-    // `.confirm-row` is the board's existing sentence-plus-controls strip: a
-    // flex row with a gap on the raised surface, which is exactly this line.
-    box.appendChild(el('div', { class: 'confirm-row' }, [el('span', {}, ['Run in the background:']), task, start, reason]))
-
-    const line = el('p', { class: 'field-help' })
-    line.appendChild(document.createTextNode('in '))
-    if (entryState.editing === 'repo') {
-      line.appendChild(nounSelect(knownRepos().map((r) => ({ value: r.path, label: r.name })), repo ? repo.path : '', (v) => { entryState.repo = knownRepos().find((r) => r.path === v) || null }))
-    } else {
-      line.appendChild(nounButton(repo ? repo.name : 'no repo', 'repo'))
-    }
-    line.appendChild(document.createTextNode(` on ${entryTrunk(repo) || 'main'}, with `))
-    const rungs = ladderRungs()
-    if (entryState.editing === 'ladder') {
-      line.appendChild(nounSelect(rungs.map((r, i) => ({ value: String(i), label: ladderLabel(r) })), String(entryState.ladderStart || 0), (v) => { entryState.ladderStart = Number(v) }))
-    } else {
-      // the sentence names the legs Start posts, models and all
-      line.appendChild(nounButton(ladderSentence(entryChain()), 'ladder'))
-    }
-    line.appendChild(document.createTextNode(', '))
-    if (entryState.editing === 'pipeline') {
-      line.appendChild(nounSelect(Object.keys(PIPELINE_WORDS).map((v) => ({ value: v, label: PIPELINE_WORDS[v] })), entryState.pipeline, (v) => { entryState.pipeline = v }))
-    } else {
-      line.appendChild(nounButton(PIPELINE_WORDS[entryState.pipeline] || 'build only', 'pipeline'))
-    }
-    line.appendChild(document.createTextNode('.  '))
-    line.appendChild(el('button', { type: 'button', class: 'btn btn-text', onclick: () => openNewCardDialog() }, ['More settings']))
-    box.appendChild(line)
-  }
-
-  // C.2: always visible under the Background panel; when there are no live
-  // cards the panel is hidden, so the entry moves to sit under Terminals
-  // instead. The fake DOM in the tests has no after(), so this is a no-op
-  // there and a real move in the browser.
-  function placeEntryLine(hasLive) {
-    const entry = document.getElementById('card-entry')
-    if (!entry) return
-    if (hasLive) {
-      const bg = document.getElementById('background')
-      if (bg && typeof bg.appendChild === 'function') bg.appendChild(entry)
-    } else {
-      const terms = document.querySelector('.region-terminals')
-      if (terms && typeof terms.after === 'function') terms.after(entry)
-    }
+  // sessions.js draws the ladder editor in Settings and needs the same model
+  // catalog, but the two files share no module scope (both are plain scripts
+  // served to the browser), so the one fetch is published here and read there.
+  // Narrow on purpose: the catalog and nothing else of this file's state.
+  function publishModels() {
+    if (typeof window === 'undefined') return
+    window.legBoard = { models: state.models }
   }
 
   // ---- new card dialog ----
+  // Two questions, side by side: WHAT the work is (task, repo, branch) and WHO
+  // runs it. "Who runs it" is the same ladder the one-line entry row walks,
+  // one row per rung and a model select on each, prefilled from preferences so
+  // the dialog opens showing exactly what pressing Start on that row would
+  // have done. Every other field the dialog ever had is under Advanced, and
+  // every one of them still posts.
   function newCardDialogEls() {
     return {
       dialog: document.getElementById('new-card-dialog'),
       form: document.getElementById('new-card-form'),
       error: document.getElementById('new-card-error'),
       repo: document.getElementById('nc-repo'),
+      repoKnown: document.getElementById('nc-repo-known'),
       task: document.getElementById('nc-task'),
-      firstAgent: document.getElementById('nc-first-agent'),
-      firstControls: document.getElementById('nc-first-controls'),
       testAdapter: document.getElementById('nc-test-adapter'),
       fallbackSummary: document.getElementById('nc-fallback-summary'),
       pipeline: document.getElementById('nc-pipeline'),
       customPipeline: document.getElementById('nc-custom-pipeline'),
       chainRows: document.getElementById('nc-chain-rows'),
       addRowBtn: document.getElementById('nc-add-row'),
+      saveLadder: document.getElementById('nc-save-ladder'),
       leases: document.getElementById('nc-leases'),
       trunk: document.getElementById('nc-trunk'),
       landMode: document.getElementById('nc-land-mode'),
@@ -1410,139 +1302,266 @@
 
   function adapterLabel(adapter) { return adapter.fake ? `${adapter.name} (test/demo)` : adapter.name }
 
-  // the agents already named in this dialog: the first agent and every fallback
-  // row already added. A fallback set to one of these can never fire.
-  function chosenAdapters(ui) {
-    const used = [ui.testAdapter.value || ui.firstAgent.value]
-    for (const row of ui.chainRows.children) if (row.fields) used.push(row.fields.adapterSelect.value)
-    return used.filter(Boolean)
+  // The rows as DATA. The DOM used to be the record: a row's values were read
+  // back off its own inputs, which works until rows can move, because moving a
+  // row means rebuilding it and a rebuilt input is empty. Reorder, remove and
+  // renumber are all list operations here, and the DOM is redrawn from the list.
+  let ncRows = []
+
+  function ncAdapter(name) { return (state.adapters || []).find((a) => a.name === name) || null }
+
+  function ncRow(agent, model) {
+    const adapter = ncAdapter(agent)
+    return {
+      agent: adapter ? adapter.name : agent,
+      model: model || '',
+      mode: adapter && adapter.modes ? (adapter.modes.default || '') : '',
+      approve: false, turns: '', fake: '',
+    }
   }
 
-  function addChainRow(ui, { adapter: preferred = null, first = false } = {}) {
-    const adapterSelect = el('select', { 'aria-label': 'Chain adapter' })
-    const adapters = [...(state.adapters || [])].sort((a, b) => Number(a.fake) - Number(b.fake))
-    for (const a of adapters) adapterSelect.appendChild(el('option', { value: a.name }, [adapterLabel(a)]))
-    // Add fallback agent used to default to the first option in the list, which
-    // is normally the agent already chosen as First agent: the summary line then
-    // read "Leg tries claude, then agy, then claude", a fallback that cannot
-    // fire. rebuildDefaultFallbacks already applies this filter.
-    if (!preferred && !first) {
-      const used = chosenAdapters(ui)
-      preferred = adapters.filter((a) => !a.fake).map((a) => a.name).find((name) => !used.includes(name)) || null
-    }
-    if (preferred && adapters.some((a) => a.name === preferred)) adapterSelect.value = preferred
-    const modeSelect = el('select', { 'aria-label': 'Chain mode' })
-    const approveCheckbox = el('input', { type: 'checkbox', 'aria-label': 'Approve before this leg' })
-    const approveLabel = el('label', {}, [approveCheckbox, ' approval before start'])
-    const turnsInput = el('input', { type: 'number', min: '0', 'aria-label': 'Max turns', placeholder: 'max turns' })
-    const fakeInput = el('input', { type: 'text', 'aria-label': 'Scripted test behavior', placeholder: 'test behavior' })
-    const removeBtn = first ? null : el('button', { type: 'button', class: 'btn btn-danger', 'aria-label': 'Remove fallback agent' }, ['Remove'])
-    const title = el('span', { class: 'fallback-row-title' }, [first ? `First: ${preferred}` : `Fallback ${ui.chainRows.children.length + 1}`])
-    const row = el('div', { class: `chain-row${first ? '' : ' fallback-row'}` }, [title, adapterSelect, modeSelect, approveLabel, turnsInput, fakeInput, removeBtn])
-    if (first) adapterSelect.hidden = true
-    if (removeBtn) removeBtn.addEventListener('click', () => { row.remove(); refreshFallbackSummary(ui) })
-
-    function populateModes() {
-      modeSelect.textContent = ''
-      const adapter = (state.adapters || []).find((a) => a.name === adapterSelect.value)
-      const allowed = adapter ? adapter.modes.allowed : []
-      for (const m of allowed) modeSelect.appendChild(el('option', { value: m }, [MODE_LABELS[m] ? `${MODE_LABELS[m]} (${m})` : m]))
-      if (adapter && adapter.modes.default) modeSelect.value = adapter.modes.default
-      fakeInput.hidden = !(adapter && adapter.fake)
-    }
-    adapterSelect.addEventListener('change', populateModes)
-    // the summary sentence names the fallback agents by row, so it has to
-    // follow a row whose agent the reader changed after it was added
-    if (!first) adapterSelect.addEventListener('change', () => refreshFallbackSummary(ui))
-    populateModes()
-
-    row.fields = { adapterSelect, modeSelect, approveCheckbox, turnsInput, fakeInput }
-    ;(first ? ui.firstControls : ui.chainRows).appendChild(row)
-    refreshFallbackSummary(ui)
-    return row
+  // the first installed agent no row already names: a fallback that repeats the
+  // row above it can never fire
+  function ncNextAgent() {
+    const used = ncRows.map((r) => r.agent)
+    const real = realAdapters()
+    return real.find((a) => !used.includes(a)) || real[0] || ((state.adapters || [])[0] || {}).name || 'claude'
   }
+
+  const ncLeg = (r) => (r.model ? `${r.agent}/${r.model}` : r.agent)
 
   function refreshFallbackSummary(ui) {
-    const names = [...ui.chainRows.children].filter((row) => row.fields).map((row) => row.fields.adapterSelect.value)
-    ui.fallbackSummary.textContent = names.length
-      ? `If the first agent cannot continue, Leg tries ${names.join(', then ')} in this order.`
-      : 'No fallback agent is set. Add one under Advanced options if another agent should take over.'
+    const legs = ncRows.map(ncLeg)
+    ui.fallbackSummary.textContent = legs.length > 1
+      ? `Leg starts on ${legs[0]}, and tries ${legs.slice(1).join(', then ')} only when the row before it cannot continue.`
+      : legs.length === 1
+        ? `Leg runs ${legs[0]} and stops there. Add a fallback to hand the work on when it cannot continue.`
+        : 'No agent is set. Add a row, or this card has nothing to run it.'
   }
 
-  function rebuildFirstControls(ui) {
-    ui.firstControls.textContent = ''
-    addChainRow(ui, { adapter: ui.testAdapter.value || ui.firstAgent.value, first: true })
-  }
-
-  function rebuildDefaultFallbacks(ui) {
+  // `focusKey` is the control the reader should still be on after the redraw.
+  // Every row is destroyed and rebuilt here, so the button a keyboard user just
+  // pressed Enter on is gone and focus falls to <body>: pressing Up twice meant
+  // tabbing back through every control above it. Same idea as sessions.js's
+  // takeFocus/putFocus pair (data-focus-key), but the intent is passed in rather
+  // than read off document.activeElement, because the moved row's key is known
+  // at the press and the row it lands on is a different index.
+  function renderChainRows(ui, focusKey) {
     ui.chainRows.textContent = ''
-    const first = ui.firstAgent.value
-    const real = (state.adapters || []).filter((a) => !a.fake).map((a) => a.name)
-    const preferred = AGENT_IDS.filter((name) => real.includes(name) && name !== first)
-    for (const adapter of preferred) addChainRow(ui, { adapter })
+    const keyed = new Map()
+    ncRows.forEach((row, index) => {
+      // every control on the row is named for the step it belongs to, so a
+      // screen reader hears "Model for fallback 2" and not "Chain adapter"
+      const step = index === 0 ? 'the first agent' : `fallback ${index}`
+      const adapter = ncAdapter(row.agent)
+      const box = el('div', { class: 'chain-row' })
+      box.appendChild(el('span', { class: 'chain-num' }, [`${index + 1}.`]))
+
+      const who = el('select', { 'aria-label': `Provider for ${step}` })
+      for (const a of [...(state.adapters || [])].sort((x, y) => Number(x.fake) - Number(y.fake))) who.appendChild(el('option', { value: a.name }, [adapterLabel(a)]))
+      who.value = row.agent
+      who.addEventListener('change', () => {
+        row.agent = who.value
+        // a model belongs to one provider: carrying gpt-5.6-luna over to claude
+        // would post a model that CLI has never heard of
+        row.model = ''
+        const next = ncAdapter(row.agent)
+        row.mode = next && next.modes ? (next.modes.default || '') : ''
+        renderChainRows(ui)
+      })
+      box.appendChild(who)
+
+      box.appendChild(modelSelect(row.agent, row.model, `Model for ${step}`, (v) => { row.model = v; refreshFallbackSummary(ui) }))
+
+      const mode = el('select', { 'aria-label': `Permissions for ${step}` })
+      for (const m of (adapter && adapter.modes ? adapter.modes.allowed : [])) mode.appendChild(el('option', { value: m }, [MODE_LABELS[m] ? `${MODE_LABELS[m]} (${m})` : m]))
+      mode.value = row.mode || (adapter && adapter.modes ? adapter.modes.default : '')
+      mode.addEventListener('change', () => { row.mode = mode.value })
+      box.appendChild(mode)
+
+      const approve = el('input', { type: 'checkbox', 'aria-label': `Ask before ${step} starts` })
+      approve.checked = row.approve
+      approve.addEventListener('change', () => { row.approve = approve.checked })
+      box.appendChild(el('label', { class: 'chain-toggle' }, [approve, ' ask before start']))
+
+      const turns = el('input', { type: 'number', min: '1', class: 'chain-turns', 'aria-label': `Max turns for ${step}`, placeholder: 'max turns', value: row.turns })
+      turns.addEventListener('input', () => { row.turns = turns.value })
+      box.appendChild(turns)
+
+      if (adapter && adapter.fake) {
+        const fake = el('input', { type: 'text', class: 'chain-fake', 'aria-label': `Scripted behaviour for ${step}`, placeholder: 'test behavior', value: row.fake })
+        fake.addEventListener('input', () => { row.fake = fake.value })
+        box.appendChild(fake)
+      }
+
+      const up = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-label': `Move ${step} earlier`, 'data-focus-key': `chain:${index}:up`, disabled: index === 0 ? '' : null }, ['Up'])
+      const down = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-label': `Move ${step} later`, 'data-focus-key': `chain:${index}:down`, disabled: index === ncRows.length - 1 ? '' : null }, ['Down'])
+      const drop = el('button', { type: 'button', class: 'btn btn-danger', 'aria-label': `Remove ${step}`, 'data-focus-key': `chain:${index}:remove`, disabled: ncRows.length < 2 ? '' : null }, ['Remove'])
+      // the key names where the row LANDS, not where it was pressed
+      up.addEventListener('click', () => { ncRows.splice(index - 1, 0, ncRows.splice(index, 1)[0]); renderChainRows(ui, `chain:${index - 1}:up`) })
+      down.addEventListener('click', () => { ncRows.splice(index + 1, 0, ncRows.splice(index, 1)[0]); renderChainRows(ui, `chain:${index + 1}:down`) })
+      drop.addEventListener('click', () => { ncRows.splice(index, 1); renderChainRows(ui, `chain:${Math.min(index, ncRows.length - 1)}:remove`) })
+      box.append(up, down, drop)
+      keyed.set(`chain:${index}:up`, up)
+      keyed.set(`chain:${index}:down`, down)
+      keyed.set(`chain:${index}:remove`, drop)
+
+      ui.chainRows.appendChild(box)
+    })
     refreshFallbackSummary(ui)
+    if (focusKey) restoreChainFocus(ui, keyed, focusKey)
+  }
+
+  // A row moved to either end loses the button that moved it, and the last row
+  // standing cannot be removed, so the focus goes to the nearest live control on
+  // that row and, when the row itself is gone, to Add a fallback.
+  function restoreChainFocus(ui, keyed, focusKey) {
+    const at = focusKey.split(':')[1]
+    let target = keyed.get(focusKey) || null
+    if (!target || target.disabled) {
+      target = [`chain:${at}:up`, `chain:${at}:down`, `chain:${at}:remove`]
+        .map((k) => keyed.get(k))
+        .find((node) => node && !node.disabled) || ui.addRowBtn || null
+    }
+    if (target && typeof target.focus === 'function') target.focus({ preventScroll: true })
+  }
+
+  // "Save as my default ladder": the rows become preferences.handoff_ladder,
+  // which the entry row and every new terminal read. A scripted test adapter is
+  // never a rung and the server refuses one, so it is dropped here with a
+  // sentence rather than sent and refused; two rows naming the same agent and
+  // model are one rung, for the same reason.
+  async function saveLadderFromRows(rows) {
+    const real = realAdapters()
+    // and of those, the agents a SAVED ladder may name. A custom adapter added
+    // with `leg adapter add` is a real agent and runs a card, but preferences
+    // takes a closed list and refuses the whole array over one rung it does not
+    // know, so the claude rung beside a custom one was never written either.
+    const saveable = ladderAgents()
+    const dropped = []
+    const seen = new Set()
+    const ladder = []
+    for (const r of rows) {
+      if (!real.includes(r.agent)) continue
+      if (!saveable.includes(r.agent)) { if (!dropped.includes(r.agent)) dropped.push(r.agent); continue }
+      const key = `${r.agent}/${r.model || ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      ladder.push(asRung(r.agent, r.model || null))
+    }
+    const left = dropped.length ? ` ${dropped.join(', ')} ${dropped.length > 1 ? 'were' : 'was'} left off: the default ladder keeps only the agents Settings can express (${saveable.join(', ')}).` : ''
+    if (!ladder.length) {
+      toast(dropped.length
+        ? `The default ladder was left alone: it would keep no rung at all.${left}`
+        : 'The default ladder was left alone: a scripted test agent cannot be a rung.')
+      return
+    }
+    try {
+      const data = await api('/api/settings', { method: 'PATCH', body: { handoff_ladder: ladder } })
+      state.preferences = data.preferences || state.preferences
+      entryState.ladderStart = 0
+      entryState.model = undefined
+      renderEntryLine()
+      toast(`Saved as your default ladder: ${ladder.map(ladderLabel).join(' then ')}.${left}`)
+    } catch (err) {
+      toast(`The card was created. The default ladder was not saved: ${err.message}`)
+    }
   }
 
   async function openNewCardDialog() {
     if (!state.adapters) {
       try { state.adapters = (await api('/api/adapters')).adapters } catch (err) { toast(err.message); return }
     }
+    // neither of these stops the dialog opening: without a catalog every model
+    // select offers the provider default, and without preferences the rows fall
+    // back to the agents that are installed
+    if (!state.models) { try { state.models = (await api('/api/models')).models; publishModels() } catch { /* provider default only */ } }
+    if (!state.preferences) { try { state.preferences = (await api('/api/settings')).preferences || null } catch { /* installed adapters only */ } }
+
     const ui = newCardDialogEls()
     ui.form.reset()
     ui.error.hidden = true
     ui.error.textContent = ''
+    // More settings is the same sentence with more fields, so the sentence
+    // comes with it: on this page from the row above, and from /floor through
+    // the #new-card hash, which is how that page reaches this dialog without a
+    // second copy of its markup.
+    if (entryState.task && entryState.task.trim()) ui.task.value = entryState.task
+    // the workflow is one of the row's three nouns and it went the same way the
+    // task does. form.reset() above puts the select back to the option marked
+    // selected in the markup (build), so this has to run after it.
+    if (entryState.pipeline) ui.pipeline.value = entryState.pipeline
     ui.customPipeline.hidden = ui.pipeline.value !== 'custom'
-    const real = (state.adapters || []).filter((a) => !a.fake)
-    ui.firstAgent.textContent = ''
-    for (const adapter of real) ui.firstAgent.appendChild(el('option', { value: adapter.name }, [adapter.name]))
-    if (real.some((a) => a.name === 'claude')) ui.firstAgent.value = 'claude'
+
+    // the repo and branch the entry row would have used, and every repo this
+    // board has seen, so the commonest case is already filled in
+    const repo = entryRepo()
+    ui.repoKnown.textContent = ''
+    for (const r of knownRepos()) ui.repoKnown.appendChild(el('option', { value: r.path }, [r.name]))
+    ui.repoKnown.appendChild(el('option', { value: '' }, ['Another path, typed below']))
+    ui.repoKnown.value = repo ? repo.path : ''
+    ui.repo.value = repo ? repo.path : ''
+    ui.trunk.value = entryTrunk(repo) || 'main'
+
     ui.testAdapter.textContent = ''
-    ui.testAdapter.appendChild(el('option', { value: '' }, ['Use the real first agent above']))
+    ui.testAdapter.appendChild(el('option', { value: '' }, ['Use the real first row above']))
     for (const adapter of (state.adapters || []).filter((a) => a.fake)) ui.testAdapter.appendChild(el('option', { value: adapter.name }, [adapterLabel(adapter)]))
-    ui.firstControls.textContent = ''
-    ui.chainRows.textContent = ''
-    rebuildFirstControls(ui)
-    rebuildDefaultFallbacks(ui)
+
+    const rungs = entryChain()
+    ncRows = rungs.length ? rungs.map((r) => ncRow(r.agent, r.model || '')) : []
+    if (!ncRows.length && (state.adapters || []).length) ncRows = [ncRow(ncNextAgent(), '')]
+    ui.saveLadder.checked = false
+    renderChainRows(ui)
     ui.dialog.showModal()
   }
 
   async function submitNewCard(e) {
     e.preventDefault()
     const ui = newCardDialogEls()
-    const rows = [...ui.firstControls.children, ...ui.chainRows.children]
-      .filter((row) => row.fields)
-      .map((row) => ({
-        adapter: row.fields.adapterSelect.value,
-        mode: row.fields.modeSelect.value,
-        approve: row.fields.approveCheckbox.checked,
-        turns: row.fields.turnsInput.value.trim(),
-        fake: row.fields.fakeInput.hidden ? '' : row.fields.fakeInput.value.trim(),
-      }))
-      .filter((r) => r.adapter)
+    const fail = (msg) => { ui.error.hidden = false; ui.error.textContent = msg }
+    const rows = ncRows.filter((r) => r.agent)
+    if (!rows.length) return fail('Add at least one row under Who runs it: a card needs an agent to run it.')
+    if (!ui.repo.value.trim()) return fail('Name the repository this card works in.')
+    // One object per row, not a comma list plus four adapter-keyed strings.
+    // The keyed form could only ever carry one mode, one turn limit and one
+    // model PER ADAPTER, so a chain of claude/fable then claude/opus lost the
+    // difference between its own two rows. src/pipeline.mjs normalizeChainEntry
+    // takes every one of these fields per entry.
+    const chain = rows.map((r) => ({
+      adapter: r.agent,
+      ...(r.model ? { model: r.model } : {}),
+      ...(r.mode ? { mode: r.mode } : {}),
+      ...(String(r.turns).trim() ? { maxTurns: Number(String(r.turns).trim()) } : {}),
+      ...(r.approve ? { approve: true } : {}),
+      ...(String(r.fake).trim() ? { fakeMode: String(r.fake).trim() } : {}),
+    }))
 
     const body = {
       repo: ui.repo.value.trim(),
       task: ui.task.value.trim(),
-      chain: rows.map((r) => r.adapter).join(','),
+      chain,
       pipeline: ui.pipeline.value === 'custom' ? ui.customPipeline.value.trim() : ui.pipeline.value,
       leases: ui.leases.value.trim(),
       trunk: ui.trunk.value.trim() || 'main',
       land_mode: ui.landMode.value,
       test_command: ui.testCommand.value.trim(),
       title: ui.title.value.trim(),
-      mode: rows.filter((r) => r.mode).map((r) => `${r.adapter}=${r.mode}`).join(','),
-      approve: rows.filter((r) => r.approve).map((r) => r.adapter).join(','),
-      maxTurns: rows.filter((r) => r.turns).map((r) => `${r.adapter}=${r.turns}`).join(','),
-      fake_mode: rows.filter((r) => r.fake).map((r) => `${r.adapter}=${r.fake}`).join(','),
       queue: ui.queue.checked,
     }
     try {
       const data = await api('/api/cards', { method: 'POST', body })
+      // the card exists now: a ladder that will not save is a toast, never a
+      // reason to leave the dialog open over a card that was already created
+      if (ui.saveLadder.checked) await saveLadderFromRows(rows)
       ui.dialog.close()
+      // the sentence was sent, so the row that carried it here is spent: a row
+      // left armed makes the next Start post the same card a second time.
+      // upsertCard redraws the row, so there is no render call to add.
+      entryState.task = ''
+      entryState.editing = null
       upsertCard(data.card)
     } catch (err) {
-      ui.error.hidden = false
-      ui.error.textContent = err.message
+      fail(err.message)
     }
   }
 
@@ -1551,9 +1570,24 @@
     ui.form.addEventListener('submit', submitNewCard)
     ui.cancel.addEventListener('click', () => ui.dialog.close())
     ui.pipeline.addEventListener('change', () => { ui.customPipeline.hidden = ui.pipeline.value !== 'custom' })
-    ui.firstAgent.addEventListener('change', () => { ui.testAdapter.value = ''; rebuildFirstControls(ui); rebuildDefaultFallbacks(ui) })
-    ui.testAdapter.addEventListener('change', () => rebuildFirstControls(ui))
-    ui.addRowBtn.addEventListener('click', () => addChainRow(ui))
+    // the picker fills the path field rather than replacing it: the path is
+    // what gets posted, and a reader who wants a repo the board has never seen
+    // types it in the same box
+    ui.repoKnown.addEventListener('change', () => {
+      if (!ui.repoKnown.value) { ui.repo.focus(); return }
+      ui.repo.value = ui.repoKnown.value
+      const known = knownRepos().find((r) => r.path === ui.repoKnown.value) || { path: ui.repoKnown.value, name: ui.repoKnown.value }
+      ui.trunk.value = entryTrunk(known) || 'main'
+    })
+    // unchanged meaning: the scripted adapter replaces the agent on the first
+    // row, and clearing it puts the first real agent back
+    ui.testAdapter.addEventListener('change', () => {
+      if (!ncRows.length) ncRows = [ncRow(ncNextAgent(), '')]
+      const real = realAdapters()
+      ncRows[0] = ncRow(ui.testAdapter.value || real[0] || ncRows[0].agent, '')
+      renderChainRows(ui)
+    })
+    ui.addRowBtn.addEventListener('click', () => { ncRows.push(ncRow(ncNextAgent(), '')); renderChainRows(ui) })
   }
 
   // ---- 6.10 settings: the last region of the page, in flow ----
@@ -1605,6 +1639,15 @@
     if (meta) meta.textContent = panel.meta
   }
 
+  // The process behind the page is older or newer than the page itself. Said
+  // once, as an error that stays until dismissed, because everything the reader
+  // sees from here on is drawn by files the process does not know about.
+  function versionSkew(processVersion) {
+    if (!processVersion || processVersion === FILES_VERSION) return false
+    toast(`This board process runs leg ${processVersion} and the page files are ${FILES_VERSION}. Restart it to match: leg down && leg up`)
+    return true
+  }
+
   function renderBoardFacts(health) {
     const box = document.querySelector('.region-settings .board-facts')
     if (!box) return
@@ -1612,8 +1655,9 @@
     const you = health.you || {}
     const share = you.share || { on: false, people: 0 }
     const sched = health.scheduler
+    const skew = health.version && health.version !== FILES_VERSION ? `, page files ${FILES_VERSION}` : ''
     const lines = [
-      `leg ${health.version}, bound to ${state.bind}`,
+      `leg ${health.version}${skew}, bound to ${state.bind}`,
       `signed in as ${you.name || 'local'}, ${you.role || 'owner'}`,
       share.on ? `share on, ${share.people === 1 ? '1 person' : `${share.people} people`}` : 'share off, nobody invited',
     ]
@@ -1662,6 +1706,39 @@
     renderTokenMeta()
   }
 
+  // ---- what /floor sends over in the address bar ----
+  // The floor starts cards from its own copy of the entry row, but the New card
+  // dialog's markup exists once, on this page, so the floor's More settings and
+  // its card titles are links here. `#new-card` opens the dialog, `#new-card=<task>`
+  // opens it with the sentence the reader had already typed, and `#card=<id>`
+  // expands that card's detail region. The hash is cleared once it is acted on:
+  // a reload should not reopen a dialog the reader closed.
+  async function openFromHash() {
+    const hash = decodeURIComponent(String((location && location.hash) || '').replace(/^#/, ''))
+    if (!hash) return
+    const clear = () => { try { history.replaceState(null, '', location.pathname + location.search) } catch { /* a browser that refuses is still on the right page */ } }
+    if (hash.startsWith('new-card')) {
+      // `#new-card=<task>&pipeline=<p>` or `#new-card?pipeline=<p>`: the floor's
+      // entry row sends both, and the dialog opens on what the reader chose
+      const rest = hash.slice('new-card'.length)
+      const m = rest.match(/[&?]pipeline=([a-z_-]+)$/)
+      const task = rest.replace(/[&?]pipeline=[a-z_-]+$/, '').replace(/^=/, '')
+      if (task) entryState.task = task
+      // an unknown word is harmless: the dialog's select ignores a value it has no option for
+      if (m) entryState.pipeline = m[1]
+      if (task || m) renderEntryLine()
+      clear()
+      await openNewCardDialog()
+      return
+    }
+    if (hash.startsWith('card=')) {
+      const id = hash.slice('card='.length)
+      clear()
+      if (!state.cards.has(id)) await fetchCards()
+      if (state.cards.has(id)) expandRow(id)
+    }
+  }
+
   // ---- init ----
   async function init() {
     initSettings()
@@ -1682,8 +1759,19 @@
     // C.2: the ladder sentence on the entry line reads this; a guest never
     // sees the entry line, so there is nothing to fetch it for
     if (owner) {
-      try { state.preferences = (await api('/api/settings')).preferences || null } catch { /* entry line falls back to "no agent is configured" */ }
+      // three independent reads, so they go out together: the ladder the entry
+      // line names, the adapters that are actually installed (the fallback when
+      // there is no ladder at all), and the model catalog both selects use
+      await Promise.all([
+        api('/api/settings').then((d) => { state.preferences = d.preferences || null }).catch(() => {}),
+        api('/api/adapters').then((d) => { state.adapters = d.adapters || null }).catch(() => {}),
+        api('/api/models').then((d) => { state.models = d.models || null }).catch(() => {}),
+      ])
+      publishModels()
       renderEntryLine()
+      // last, so the dialog opens over a page that already knows its ladder,
+      // its repos and its cards
+      await openFromHash()
     }
   }
 
