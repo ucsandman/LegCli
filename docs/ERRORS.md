@@ -3,6 +3,19 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-18: 0.14.0 pushed, CI green everywhere, and npm still served 0.13.1
+
+**Fixed by putting the `repository` block back into the lockfile root
+(`packages[""]`) and pushing again.** `scripts/npm-publish-gate.mjs` requires
+`package-lock.json`'s root `repository.url` to equal the trusted-publisher
+binding, and npm 10.9 (the local install) does not write that block; npm 11
+does, which is where the 0.13.1 lockfile got it. `npm version 0.14.0` on npm
+10 rewrote the lockfile without it, the test matrix and the site deploy passed,
+and only the `publish-npm` job failed, on the gate, before publishing anything.
+The lesson: a lockfile touched by a different npm major is a release change,
+and "CI green" after a push means the run, not the publish; `npm view
+@ucsandman/legcli version` is the check.
+
 ## 2026-09-18: `vercel --prod --yes` from `site/` failed the deploy and created a stray Vercel project
 
 **Fixed by deploying from the repo root with a root `.vercelignore` and
