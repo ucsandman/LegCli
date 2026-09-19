@@ -72,10 +72,16 @@ test('a *_BIN override is never cached: the suite points that at a stub and must
   const prevBin = process.env.LEG_CLAUDE_BIN
   process.env.LEG_HOME = home
   process.env.LEG_CLAUDE_BIN = stub
+  // the other agents may be bare names on this machine (they are on CI, where
+  // none is installed) and are cached as designed; the claim here is only
+  // that the override is not. A seeded entry makes the check real on a box
+  // where every other agent resolves to a path and nothing else gets written.
+  writeFileSync(join(home, 'installed.json'), JSON.stringify({ codex: { installed: false, bin: 'codex', at: Date.now() } }))
   try {
     const map = await installedAgents()
     assert.equal(map.claude, true, 'an override that exists on disk is installed')
-    assert.ok(!existsSync(join(home, 'installed.json')), 'and nothing about it was written to the cache')
+    const cache = JSON.parse(readFileSync(join(home, 'installed.json'), 'utf8'))
+    assert.ok(!('claude' in cache), `nothing about the override was written to the cache; got ${Object.keys(cache).join(',')}`)
   } finally {
     if (prev === undefined) delete process.env.LEG_HOME; else process.env.LEG_HOME = prev
     if (prevBin === undefined) delete process.env.LEG_CLAUDE_BIN; else process.env.LEG_CLAUDE_BIN = prevBin
