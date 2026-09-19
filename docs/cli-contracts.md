@@ -337,7 +337,7 @@ variable and `LEG_SESSION` (source: src/attach.mjs, src/env.mjs).
   through `--settings`, and again through a project
   `.claude/settings.local.json`, was not run at all when it was tried; an
   `echo` command at both levels left the built-in status line in place while
-  hooks from the same `--settings` file fired (re-checked 2026-09-19 on
+  hooks from the same `--settings` file fired (probed again 2026-09-19 on
   2.1.278 with a screenshot of two haiku sessions, not kept; 0 of 87 session
   hook logs on this machine hold a statusline entry; note in the
   src/taps/claude-usage.mjs header, 2026-09-11). Leg still writes the
