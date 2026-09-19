@@ -107,8 +107,11 @@ the hook contract test and can be driven end to end with
 <code>src/hook.mjs</code>.</li>
 <li><strong>Why not the status line.</strong> Leg writes a <code>statusLine</code> entry into the same
 settings file that would record <code>rate_limits.five_hour.used_percentage</code> and
-<code>resets_at</code>, and chains your own <code>statusLine</code> command first. Claude Code
-2.1.268 did not run it when it was tried on this machine: an <code>echo</code> command
+<code>resets_at</code>, and runs your own <code>statusLine</code> command first, its rows above
+Leg&#39;s one (since 0.15.1; before that your command was read and never run,
+so a build that honours the key showed Leg&#39;s row instead of yours). Claude
+Code 2.1.268 and 2.1.278 did not run it when it was tried on this machine
+(2026-09-11, 2026-09-19): an <code>echo</code> command
 passed through <code>--settings</code> and again through a project
 <code>.claude/settings.local.json</code> left the built-in status line in place, while
 hooks from the same <code>--settings</code> file fired. No artifact of that check was

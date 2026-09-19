@@ -439,10 +439,16 @@ variable and <code>LEG_SESSION</code> (source: src/attach.mjs, src/env.mjs).</p>
 <li>Attach: <code>claude &lt;args&gt; -n &quot;leg#&lt;short id&gt; &lt;repo&gt;/&lt;branch&gt;&quot; --settings &lt;LEG_HOME&gt;/sessions/&lt;id&gt;/claude-settings.json</code>
 (source: src/attach.mjs <code>spawnSpec</code>; src/taps/claude.mjs <code>writeSettings</code>).
 Hooks in a <code>--settings</code> file merge with the user&#39;s rather than replacing
-them; <code>statusLine</code> is the one key that replaces, so Leg runs the user&#39;s own
-command first (source: code.claude.com/docs/en/settings;
-src/taps/claude.mjs <code>userStatusLine</code>). observed-live 2026-09-11: a Leg
-session ran with every user hook still firing.</li>
+them; <code>statusLine</code> is the one key that replaces, so Leg keeps the user&#39;s own
+command on the session record (<code>user_statusline</code>) and its status-line hook
+runs that command with the same stdin JSON, printing its rows above Leg&#39;s
+one (source: code.claude.com/docs/en/settings, docs/en/statusline &quot;Display
+multiple lines&quot;; src/taps/claude.mjs <code>userStatusLine</code>, <code>userStatusLineText</code>;
+src/hook.mjs). Before 0.15.1 the user&#39;s command was read only for its
+<code>padding</code> and never run, so a build that honours a <code>--settings</code> status line
+showed Leg&#39;s row in place of the user&#39;s (reported by a baton user,
+2026-09-19). observed-live 2026-09-11: a Leg session ran with every user
+hook still firing.</li>
 <li>Terminal title: <code>-n, --name &lt;name&gt;</code> &quot;Set a display name for this session
 (shown in the prompt box, /resume picker, and terminal title)&quot; —
 fixtures/help/claude.txt line 132. It sits in the general Options block, not
@@ -520,11 +526,13 @@ at 07:46:37Z and is kept, scrubbed, as
 path can also be run live with <code>leg sessions simulate-limit</code> (the same
 payload through <code>src/hook.mjs</code>, marked <code>leg_simulated</code>, never kept as
 evidence).</li>
-<li>Status line, not usable on 2.1.268: a custom <code>statusLine</code> command passed
+<li>Status line, not usable on 2.1.268 or 2.1.278: a custom <code>statusLine</code> command passed
 through <code>--settings</code>, and again through a project
 <code>.claude/settings.local.json</code>, was not run at all when it was tried; an
 <code>echo</code> command at both levels left the built-in status line in place while
-hooks from the same <code>--settings</code> file fired (no artifact kept; note in the
+hooks from the same <code>--settings</code> file fired (re-checked 2026-09-19 on
+2.1.278 with a screenshot of two haiku sessions, not kept; 0 of 87 session
+hook logs on this machine hold a statusline entry; note in the
 src/taps/claude-usage.mjs header, 2026-09-11). Leg still writes the
 <code>statusLine</code> entry, which records the
 same <code>rate_limits.five_hour</code> / <code>seven_day</code> fields

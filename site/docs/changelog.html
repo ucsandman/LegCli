@@ -54,8 +54,22 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#0150-2026-09-18">0.15.0 (2026-09-18)</a></li><li><a href="#0140-2026-09-18">0.14.0 (2026-09-18)</a></li><li><a href="#0131-2026-09-18">0.13.1 (2026-09-18)</a></li><li><a href="#0130-2026-09-18">0.13.0 (2026-09-18)</a></li><li><a href="#0120-2026-09-17">0.12.0 (2026-09-17)</a></li><li><a href="#0110-2026-09-17">0.11.0 (2026-09-17)</a></li><li><a href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#0151-2026-09-19">0.15.1 (2026-09-19)</a></li><li><a href="#0150-2026-09-18">0.15.0 (2026-09-18)</a></li><li><a href="#0140-2026-09-18">0.14.0 (2026-09-18)</a></li><li><a href="#0131-2026-09-18">0.13.1 (2026-09-18)</a></li><li><a href="#0130-2026-09-18">0.13.0 (2026-09-18)</a></li><li><a href="#0120-2026-09-17">0.12.0 (2026-09-17)</a></li><li><a href="#0110-2026-09-17">0.11.0 (2026-09-17)</a></li><li><a href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
 <h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
+<h2 id="0151-2026-09-19"><a class="anchor" href="#0151-2026-09-19">0.15.1 (2026-09-19)</a></h2>
+<p>Your own Claude Code status line comes back.</p>
+<ul>
+<li><strong>Your status line runs first.</strong> <code>leg claude</code> passes a <code>statusLine</code> through
+<code>--settings</code>, and that key replaces yours rather than merging. Leg has
+always read your <code>statusLine</code> command, but it only ever used its <code>padding</code>;
+the command itself never ran, so on a build that honours a <code>--settings</code>
+status line you saw Leg&#39;s row instead of your own. The command is now kept
+on the session record and Leg&#39;s status-line hook runs it with the same JSON
+Claude Code sends, printing its rows above Leg&#39;s one line. Reported by a
+baton user on Discord. Claude Code 2.1.278 on Windows still shows its
+built-in status line in place of any custom one passed this way, so the 5h
+and 7d numbers keep coming from the usage endpoint (docs/faq.md).</li>
+</ul>
 <h2 id="0150-2026-09-18"><a class="anchor" href="#0150-2026-09-18">0.15.0 (2026-09-18)</a></h2>
 <p>A second login keeps the conversation, and the runtime does less work per
 minute.</p>
