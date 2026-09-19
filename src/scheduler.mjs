@@ -4,14 +4,14 @@
 // blocked_by event per blocker change. Cards run inside this process via
 // orchestrator.runCard (async, non-blocking).
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
 import { conflicts } from './leases.mjs'
 import { canonPath } from './fsx.mjs'
 import { runCard, orphanedRun, unsettledRun, driverAlive } from './orchestrator.mjs'
-import { listCards, ledgerAppend, ledgerLog, home, sleep } from './store.mjs'
+import { listCards, ledgerAppend, ledgerLog, sleep } from './store.mjs'
 import { readSession, isActive } from './sessions.mjs'
+import { pidfile, schedulerStatus, MAX_CONCURRENT } from './scheduler-status.mjs'
 
-export const MAX_CONCURRENT = Math.max(1, parseInt((process.env.LEG_MAX_CONCURRENT || process.env.BATON_MAX_CONCURRENT) || '2', 10) || 2)
+export { pidfile, schedulerStatus, MAX_CONCURRENT }
 const ACTIVE = ['running', 'handing_off']
 
 // Two cards on one repo compare by the canonical path, so two spellings of a
@@ -59,8 +59,6 @@ export function heldByLiveTerminal(card) {
     return s && isActive(s) ? from : null
   } catch { return null }
 }
-
-export function pidfile() { return join(home(), 'scheduler.pid') }
 
 export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor = { type: 'leg' } } = {}) {
   const state = { blockedKeys: new Map(), inflight: new Map(), stopped: false, ticks: 0 }
@@ -129,13 +127,4 @@ export function createScheduler({ max = MAX_CONCURRENT, intervalMs = 1000, actor
   function stop() { state.stopped = true }
 
   return { tick, run, stop, state }
-}
-
-export function schedulerStatus() {
-  const f = pidfile()
-  if (!existsSync(f)) return { running: false, pid: null }
-  const pid = parseInt(readFileSync(f, 'utf8').trim(), 10)
-  let alive = false
-  try { process.kill(pid, 0); alive = true } catch {}
-  return { running: alive, pid, stale: !alive }
 }

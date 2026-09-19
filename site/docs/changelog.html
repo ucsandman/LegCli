@@ -54,8 +54,105 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#0140-2026-09-18">0.14.0 (2026-09-18)</a></li><li><a href="#0131-2026-09-18">0.13.1 (2026-09-18)</a></li><li><a href="#0130-2026-09-18">0.13.0 (2026-09-18)</a></li><li><a href="#0120-2026-09-17">0.12.0 (2026-09-17)</a></li><li><a href="#0110-2026-09-17">0.11.0 (2026-09-17)</a></li><li><a href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#0150-2026-09-18">0.15.0 (2026-09-18)</a></li><li><a href="#0140-2026-09-18">0.14.0 (2026-09-18)</a></li><li><a href="#0131-2026-09-18">0.13.1 (2026-09-18)</a></li><li><a href="#0130-2026-09-18">0.13.0 (2026-09-18)</a></li><li><a href="#0120-2026-09-17">0.12.0 (2026-09-17)</a></li><li><a href="#0110-2026-09-17">0.11.0 (2026-09-17)</a></li><li><a href="#0100-2026-09-17">0.10.0 (2026-09-17)</a></li><li><a href="#090-2026-09-16">0.9.0 (2026-09-16)</a></li><li><a href="#081-2026-09-16">0.8.1 (2026-09-16)</a></li><li><a href="#080-2026-09-16">0.8.0 (2026-09-16)</a></li><li><a href="#070-2026-09-15">0.7.0 (2026-09-15)</a></li><li><a href="#061-2026-09-15">0.6.1 (2026-09-15)</a></li><li><a href="#060-2026-09-15">0.6.0 (2026-09-15)</a></li><li><a href="#051-2026-09-15">0.5.1 (2026-09-15)</a></li><li><a href="#050-2026-09-15">0.5.0 (2026-09-15)</a></li><li><a href="#043-2026-09-14">0.4.3 (2026-09-14)</a></li><li><a href="#042-2026-09-14">0.4.2 (2026-09-14)</a></li><li><a href="#041-2026-09-14">0.4.1 (2026-09-14)</a></li><li><a href="#040-2026-09-11">0.4.0 (2026-09-11)</a></li><li><a href="#032-2026-09-11">0.3.2 (2026-09-11)</a></li><li><a href="#031-2026-09-11">0.3.1 (2026-09-11)</a></li><li><a href="#030-2026-09-11">0.3.0 (2026-09-11)</a></li><li><a href="#020-2026-09-11">0.2.0 (2026-09-11)</a></li><li><a href="#010-2026-09-10">0.1.0 (2026-09-10)</a></li></ul></nav>
 <h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
+<h2 id="0150-2026-09-18"><a class="anchor" href="#0150-2026-09-18">0.15.0 (2026-09-18)</a></h2>
+<p>A second login keeps the conversation, and the runtime does less work per
+minute.</p>
+<ul>
+<li><strong>A hand-off to your other claude login keeps the conversation.</strong> <code>leg accounts add claude &lt;name&gt;</code> now junctions Claude Code&#39;s <code>projects</code> store
+into the account beside the harness directories, so the second login sees
+the same conversations and the same auto-memory as the first. At a weekly
+or Fable wall the terminal moves to that login with <code>claude --resume &lt;id&gt;</code>
+under its <code>CLAUDE_CONFIG_DIR</code> and no bundle prompt, and the timeline says
+<code>claude/fable → claude/work (kept the conversation)</code>. One rule decides it
+for the terminal and for the board&#39;s picker (<code>keepsConversation</code> in
+<code>src/usage.mjs</code>): a same-login downshift, or another login whose home can
+see the transcript file, checked at the switch. An account made by an
+older Leg gets the junction the next time it starts. <code>leg history</code> lists a
+junctioned store once. codex still takes the bundle across logins.</li>
+<li><strong><code>leg digest</code>: what happened while you were away.</strong> The default window is
+8 hours (<code>--since 2d</code>, <code>--since 30m</code>, an ISO time; <code>--json</code>; <code>GET /api/digest?since=</code> on the board, owner only). The first line is the volume
+it was read from, then what needs you (a live terminal waiting on a
+question, a card parked for a human, a failed card, a lost terminal, in
+that order), then one block per repository with every terminal, card and
+landing that moved and the events worth a line, and last the walls
+standing now. Read only, over the records already on disk; a window with
+nothing in it says so with its counts.</li>
+<li><strong>The runtime does less work per minute, measured before and after.</strong> A
+profiler (<code>fs</code> and <code>child_process</code> counters plus <code>--cpu-prof</code>) sat on every
+path first; the numbers are medians on one Windows 11 box, Node 24, with a
+fake agent, an isolated <code>LEG_HOME</code> and a board on 4800–4899, and every
+change carries a test that was seen failing without it.<ul>
+<li><code>leg --version</code> and every other command loaded 68 modules before <code>main()</code>
+ran. <code>bin/leg.mjs</code> now imports each command group inside its own branch,
+<code>src/limits.mjs</code> loads its fixture tree on first use, and the launcher
+asks a new leaf (<code>src/scheduler-status.mjs</code>) whether the scheduler runs
+instead of pulling in the orchestrator. <code>leg --version</code>: 127 → 52 ms
+wall, 79 → 0 ms CPU after Node&#39;s own boot, 254 → 4 fs calls, 68 → 1
+project module; <code>leg sessions ls</code> 116 → 75 ms; <code>leg card ls</code> 117 → 70 ms
+(<code>test/cli-lazy.test.mjs</code>).</li>
+<li>An idle terminal spawned 59.5 git processes a minute (six per poll round)
+and blocked its own event loop 4.4–10.3 s of every minute doing it. One
+<code>git status --porcelain=v2 --branch</code> (<code>src/git.mjs</code>) now carries the
+head, the branch, the dirty list and the upstream&#39;s own ahead count:
+10.9 git processes a minute, 2.1 s of git wall time, terminal CPU 1.7 →
+0.1 s a minute (<code>test/git-status.test.mjs</code>, <code>test/attach-perf.test.mjs</code>).</li>
+<li>The first <code>leg &lt;agent&gt;</code> of the day waited for the board it had just
+started (polling <code>/api/health</code> for about a second) before the agent got
+its first instruction. The agent starts at once and the wait runs behind
+it; a session that exits within a second still claims the board&#39;s
+pidfile before it goes. Time to the agent on that launch: 1,220 → 261 ms.</li>
+<li>The two-minute bundle checkpoint ran the python CLI synchronously inside
+the poll tick, freezing limit detection and every board button for as
+long as it took (up to its 120 s timeout). It runs beside the tick now,
+one at a time, and the hand-off save waits for a checkpoint still
+writing.</li>
+<li><code>installedAgents()</code> ran <code>&lt;agent&gt; --version</code> for every agent on <code>PATH</code> at
+every launch (an 8 s budget each); the answer is kept for a day in
+<code>$LEG_HOME/installed.json</code>, keyed by the resolved bin. A <code>LEG_&lt;AGENT&gt;_BIN</code>
+override is never cached.</li>
+<li>An idle board with 43 terminals and one page open rebuilt the whole
+sessions view every 10 s whether or not a byte had changed: 7,294 fs
+calls, 8 git processes and 1.1 CPU seconds a minute for nothing. The
+health tick now asks the same stat fingerprint the watcher asks, runs the
+liveness pass itself (a runner that died moves no file), and pushes only
+when the answer changed; a card that starts or stops waiting on a human
+forces the one push the fingerprint cannot see. Idle: 7,294 → 4,824 fs
+calls, 8.2 → 0 git processes, 1.14 → 0.54 CPU seconds and 6 → 0 sessions
+pushes a minute (what remains is the liveness pass and the scheduler&#39;s
+own tick). One
+sessions view also read the usage files 143 times (once per rung per
+terminal, then again for capacity and the accounts panel) and probed three
+paths per terminal for a synthesis file; one reader per view and one
+<code>readdir</code> per checkout: <code>/api/sessions</code> 53 → 34 ms, 511 → 212 fs calls per
+answer, and each row drops seven runner-bookkeeping fields nothing on the
+board read (8% off every push; <code>GET /api/sessions/&lt;id&gt;</code> keeps the whole
+record).</li>
+<li>A cold <code>/api/worktrees</code> ran up to forty git processes on the board&#39;s one
+event loop: 9–25 s in which no stylesheet, click or SSE frame was served.
+The list is gathered through <code>execFile</code>, four at a time, one refresh per
+query, and a caller that arrives while a refresh runs gets the last list.
+Worst <code>/api/health</code> during a cold call: 11.8 → 3.2 s; the rest is the
+history index&#39;s synchronous <code>listHistory</code>, still open. <code>/api/trunk</code>
+(polled every 2 s by the floor) is cached 15 s and cleared by any card
+change or landing: 27.5 → 0.5 ms. A terminal&#39;s detail drawer ran one <code>git ls-files</code> per file it touched every 3 s; one process for the list: 1,247 →
+305 ms.</li>
+<li><code>updateSession</code> takes the lock budget <code>run.json</code> already had (250 tries, a
+10 s steal) instead of running unlocked after 1.2 s; <code>control.json</code> is
+cleared under its lock at exit; <code>src/handoff.mjs</code> takes <code>scrub</code> from
+<code>src/redact.mjs</code> instead of the card runner; the 12-leg stop names the
+bundle and <code>leg resume</code> instead of promising a hand-off a fresh launch
+never performed.</li>
+</ul>
+</li>
+<li><strong>The README&#39;s hand-off step 3 said one bundle per leg.</strong> The code has
+written one bundle per session, updated in place, since 0.2.0; the sentence
+now says so. <code>docs/concepts.md</code> and the <code>src/sessions.mjs</code> header also said
+the runner was the only writer of <code>session.json</code>; the usage poller, the
+claude hooks and a board action patch it too, under one lock, and both now
+say that.</li>
+</ul>
 <h2 id="0140-2026-09-18"><a class="anchor" href="#0140-2026-09-18">0.14.0 (2026-09-18)</a></h2>
 <p>The 14-day trial is back.</p>
 <ul>

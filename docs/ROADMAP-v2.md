@@ -86,7 +86,18 @@ event names its actor, a board that reads only the ledger, and an auth/bind seam
    The same probe shape applies to naming the terminal tab: whether codex, agy
    and grok leave an OSC 2 title alone once the child starts drawing is
    assumed, not known, which is why the tab title is the browser's and not the
-   terminal's.
+   terminal's. 0.15.0 made the claude half of this real across logins too (a
+   second login shares the conversation store, so a login switch keeps the
+   conversation): the codex probe now also covers a second `CODEX_HOME` with
+   its `sessions` store shared the same way.
+7. **`stalled` and `repeating` on the row.** Two derived states from data the
+   record already holds: no turn, file write or commit for N minutes while not
+   waiting on a human; the same test red across two legs of one card. Printed
+   only, never acted on; a `looping` state waits for a false-positive study on
+   real transcripts. Design in `docs/review-2026-09-18.md`.
+8. **The digest on the board.** `leg digest` and `/api/digest` shipped in
+   0.15.0; the panel above Terminals on the first load of the day is the
+   human surface it still lacks. Same review doc.
 
 Also on the list: per-station prompt templates editable from the board, lease
 suggestions from the diff of the previous leg, and a floor view that shows

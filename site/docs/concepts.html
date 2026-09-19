@@ -54,7 +54,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#sessions">Sessions</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#usage-windows">Usage windows</a></li><li><a href="#handoff-interactive">Handoff (interactive)</a></li><li><a href="#the-portable-harness">The portable harness</a></li><li><a href="#the-resume-pointer">The resume pointer</a></li><li><a href="#share-more-than-one-human">Share (more than one human)</a></li><li><a href="#cards-stations-and-pipelines">Cards, stations and pipelines</a></li><li><a href="#chains-and-legs">Chains and legs</a></li><li><a href="#adapters-and-modes">Adapters and modes</a></li><li><a href="#the-done-marker-contract">The DONE marker contract</a></li><li><a href="#outcomes-and-the-classifier">Outcomes and the classifier</a></li><li><a href="#handoff-bundles">Handoff bundles</a></li><li><a href="#worktrees">Worktrees</a></li><li><a href="#leases-and-the-scheduler">Leases and the scheduler</a></li><li><a href="#the-land-station">The land station</a></li><li><a href="#the-ledger-and-actors">The ledger and actors</a></li><li><a href="#card-status-state-diagram">Card status state diagram</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#sessions">Sessions</a></li><li><a href="#accounts">Accounts</a></li><li><a href="#usage-windows">Usage windows</a></li><li><a href="#handoff-interactive">Handoff (interactive)</a></li><li><a href="#the-portable-harness">The portable harness</a></li><li><a href="#the-resume-pointer">The resume pointer</a></li><li><a href="#share-more-than-one-human">Share (more than one human)</a></li><li><a href="#the-digest">The digest</a></li><li><a href="#cards-stations-and-pipelines">Cards, stations and pipelines</a></li><li><a href="#chains-and-legs">Chains and legs</a></li><li><a href="#adapters-and-modes">Adapters and modes</a></li><li><a href="#the-done-marker-contract">The DONE marker contract</a></li><li><a href="#outcomes-and-the-classifier">Outcomes and the classifier</a></li><li><a href="#handoff-bundles">Handoff bundles</a></li><li><a href="#worktrees">Worktrees</a></li><li><a href="#leases-and-the-scheduler">Leases and the scheduler</a></li><li><a href="#the-land-station">The land station</a></li><li><a href="#the-ledger-and-actors">The ledger and actors</a></li><li><a href="#card-status-state-diagram">Card status state diagram</a></li><li><a href="#see-also">See also</a></li></ul></nav>
 <h1 id="concepts"><a class="anchor" href="#concepts">Concepts</a></h1>
 <p>Two halves. The first four sections are the 0.2 way in: <code>leg claude</code> runs an
 interactive agent and Leg watches it. The rest is the v0.1 pipeline, which
@@ -78,7 +78,7 @@ unchanged.</p>
 </thead>
 <tbody><tr>
 <td><code>session.json</code></td>
-<td>the live record the board renders; the runner is its only writer, and every write is one atomic replace</td>
+<td>the live record the board renders. The runner owns it, and the board&#39;s usage poller, Claude Code&#39;s hooks and a board action patch fields on it too; every write is one atomic replace under <code>.session.lock</code> (<code>updateSession</code>), so no writer can lose another&#39;s field</td>
 </tr>
 <tr>
 <td><code>events.jsonl</code></td>
@@ -144,12 +144,17 @@ override, so agy stays one account.</p>
 <p>Your harness is shared into an extra account, never copied into a fork that
 drifts: the directories are junctions back to the real home (claude: <code>hooks</code>,
 <code>skills</code>, <code>agents</code>, <code>commands</code>, <code>plugins</code>, <code>rules</code>, <code>scripts</code>,
-<code>output-styles</code>, <code>tools</code>; codex: <code>skills</code>, <code>prompts</code>, <code>rules</code>, <code>plugins</code>,
-<code>agents</code>, <code>hooks</code>, <code>memories</code>, <code>superpowers</code>), and the settings files are
-copied fresh before every launch (claude: <code>settings.json</code>,
+<code>output-styles</code>, <code>tools</code>, <code>projects</code>; codex: <code>skills</code>, <code>prompts</code>, <code>rules</code>,
+<code>plugins</code>, <code>agents</code>, <code>hooks</code>, <code>memories</code>, <code>superpowers</code>), and the settings
+files are copied fresh before every launch (claude: <code>settings.json</code>,
 <code>settings.local.json</code>, <code>CLAUDE.md</code>, <code>keybindings.json</code>, <code>statusline.ps1</code>,
 <code>statusline-combined.ps1</code>; codex: <code>config.toml</code>, <code>AGENTS.md</code>). Only the login
-itself lives in the account directory.</p>
+itself lives in the account directory. claude&#39;s <code>projects</code> is its
+conversation store, shared so that a hand-off to the second login can
+<code>--resume</code> the transcript the first one was writing (see Handoff, step 3) and
+so the same human&#39;s auto-memory follows them; <code>refreshAccount()</code> adds a
+junction an older account is missing before every launch, and the history
+index skips a junctioned store so a conversation is listed once.</p>
 <p><code>leg accounts add &lt;claude|codex&gt; &lt;name&gt;</code> creates one and prints the single
 line to paste to log in. <code>leg accounts rm</code> removes the junctions as links,
 never following them, and deletes the directory. <code>leg accounts terms</code> prints
@@ -224,7 +229,10 @@ edited this session, recent commits and why it stopped. The CLI is called as
 <code>context-handoff-bundle save --repo-local --slug leg-&lt;session id&gt;</code>, with
 <code>--update &lt;slug&gt;</code> after the first time, so one bundle per session is updated
 in place. A checkpoint runs about every two minutes while the session has
-turns, and at every warning, limit and hand-off.</li>
+turns, and at every warning, limit and hand-off. The periodic checkpoint runs
+beside the terminal&#39;s poll rather than inside it, one at a time, so a slow
+save never stops the terminal noticing a limit or a board button; a warning,
+a limit and a hand-off save are still finished before the next leg starts.</li>
 <li><strong>Choose.</strong> <code>candidates()</code> lists the other accounts of the same agent first,
 then walks the ladder, and after each rung, the other accounts of that
 rung&#39;s agent. <code>evaluateLadder()</code> walks that list top to bottom and takes the
@@ -252,14 +260,22 @@ named in the session&#39;s ledger with its reason, one line each, for example
 ladder for an active terminal; the wrapper reads it again at the transition
 and during all-out waiting. Machine Settings is copied only when a new
 terminal starts.</li>
-<li><strong>Switch.</strong> The agent process is stopped and the terminal restored. A
-same-login move to a weaker claude model (a downshift, by the
-<code>fable, opus, sonnet, haiku</code> order) with the agent&#39;s own session id on the
-record keeps the conversation instead: Leg runs
-<code>claude --resume &lt;agent_session_id&gt; --model &lt;alias&gt;</code>, no bundle is written
-into a prompt, and the ledger says so. Every other rung, including an
-upshift back to a stronger model, a different account, or a different
-agent, takes the bundle: the <code>context-handoff-bundle load &lt;id&gt;</code> output
+<li><strong>Switch.</strong> The agent process is stopped and the terminal restored. Two
+claude moves keep the conversation instead of taking the bundle, decided by
+one rule both the terminal and the board&#39;s picker read
+(<code>keepsConversation()</code> in <code>src/usage.mjs</code>): a same-login move to a weaker
+model (a downshift, by the <code>fable, opus, sonnet, haiku</code> order), which runs
+<code>claude --resume &lt;agent_session_id&gt; --model &lt;alias&gt;</code>; and a move to another
+claude login whose home can see the transcript through its <code>projects</code>
+junction, which runs <code>claude --resume &lt;agent_session_id&gt;</code> under that
+login&#39;s <code>CLAUDE_CONFIG_DIR</code> (with <code>--model</code> only when the rung names one).
+Both need the agent&#39;s own session id on the record; the second also needs
+the transcript file to exist under the destination home, checked at the
+switch, so a login made before the junction existed takes the bundle until
+its next launch adds it. No bundle is written into a prompt, and the
+ledger says <code>kept the conversation</code>. Every other rung, including a
+same-login upshift back to a stronger model or a different agent, takes
+the bundle: the <code>context-handoff-bundle load &lt;id&gt;</code> output
 (with the <code>## Synthesis</code> section prepended if
 <code>.leg/SYNTHESIS-&lt;session-id&gt;.md</code> is present) is written to
 <code>.leg/RESUME-&lt;session-id&gt;.md</code> and copied to <code>.leg/RESUME.md</code>, and the next
@@ -381,6 +397,26 @@ who it was for.</li>
 </ul>
 <p><code>leg share off</code> puts the board back on <code>127.0.0.1</code> and every link stops
 working; <code>leg share rotate &lt;name&gt;</code> replaces one.</p>
+<h2 id="the-digest"><a class="anchor" href="#the-digest">The digest</a></h2>
+<p><code>leg digest [--since 8h|2d|&lt;iso&gt;] [--json]</code> and <code>GET /api/digest?since=</code>
+(owner only) answer the question a person asks after eight hours away
+(<code>src/digest.mjs</code>). It reads the session records, their <code>events.jsonl</code>, the
+cards&#39; ledgers, <code>landings.jsonl</code> and the usage records, and writes nothing.
+The record is <code>{ since, until, volume, attention, repos, walls }</code>: <code>volume</code>
+is what was read (terminals, cards, landings and events in the window, and
+the sessions and cards on disk), printed on the first line so a quiet night
+and an empty home cannot read the same; <code>attention</code> is what needs a person,
+ranked (a live terminal waiting on a question, a card in <code>waiting_human</code>,
+<code>needs_approval</code> or <code>paused</code>, a card that failed in the window, a terminal
+that was lost in the window); <code>repos</code> groups every terminal that moved or is
+live, every card that moved or is live, and every landing, by repository;
+<code>walls</code> is every login and every model that is out right now, soonest reset
+first. A terminal counts when it moved in the window or is live now, and its
+entry carries the events worth a line (<code>limit</code>, <code>handoff</code>, <code>all_out</code>,
+<code>lost</code>, <code>ended</code>, <code>landed</code>, <code>bounced</code>, <code>continued</code>, <code>harness_blocked</code>), never
+the running commentary. The audit trail (<a href="#share-more-than-one-human">Share</a>)
+is the same data as a flat list of actors; the digest is the same data
+grouped by what to do about it.</p>
 <h2 id="cards-stations-and-pipelines"><a class="anchor" href="#cards-stations-and-pipelines">Cards, stations and pipelines</a></h2>
 <p>A <strong>card is a terminal you are not sitting at.</strong> It has the same register
 (state, where, model), the same one sentence, the same buttons, the same

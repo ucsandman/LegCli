@@ -1,7 +1,7 @@
 // synthesis — the agent-maintained judgment record included in the handoff bundle.
 // Spec: Leg Handoff Synthesis Layer — build spec v1
 // File: .leg/SYNTHESIS-<session-id>.md
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const MAX_SYNTHESIS_BYTES = 4096
@@ -145,14 +145,33 @@ export function formatSynthesisSection(rawText, { sessionId = null } = {}) {
   return `## Synthesis\n\n${content.trim()}`
 }
 
+// Every per-session file one checkout keeps, name → path, `.leg` winning over
+// the legacy `.baton` for a name both hold (the same order synthesisFile
+// probes in). One readdir per directory answers the question for every
+// terminal in that checkout at once, where a path-by-path probe cost three
+// existsSync per terminal — 172 of the 512 fs calls in one sessions view, for
+// files that mostly are not there. `cache` is per view: a Map the caller owns,
+// so nothing here outlives the request that asked.
+export function sessionFileIndex(cwd, cache = null) {
+  if (cache && cache.has(cwd)) return cache.get(cwd)
+  const names = new Map()
+  for (const dir of ['.leg', '.baton']) {
+    let entries
+    try { entries = readdirSync(join(cwd, dir)) } catch { continue }
+    for (const n of entries) if (!names.has(n)) names.set(n, join(cwd, dir, n))
+  }
+  cache?.set(cwd, names)
+  return names
+}
+
 // True if .leg/SYNTHESIS-<session-id>.md exists, is non-empty, and was modified within the last 3 checkpoints
-export function hasRecentSynthesis(session) {
+export function hasRecentSynthesis(session, { index = null } = {}) {
   if (!session) return false
   const root = session.worktree?.path ?? session.repo ?? session.cwd ?? null
   if (!root || !session.session_id) return false
-  const file = synthesisFile(root, session.session_id)
+  const file = sessionFileIndex(root, index).get(`SYNTHESIS-${session.session_id}.md`)
+  if (!file) return false
   try {
-    if (!existsSync(file)) return false
     const st = statSync(file)
     if (!st.isFile() || st.size === 0) return false
     const checkpoints = session.checkpoints ?? []

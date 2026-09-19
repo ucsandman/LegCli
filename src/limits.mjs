@@ -29,7 +29,25 @@ function loadSignals() {
   return out
 }
 
-export const SIGNALS = loadSignals()
+// The fixture tree (24 files, one RegExp compile each) loads on first use,
+// not at import: a command that pulls in this module (via runner.mjs,
+// transitively via the scheduler or orchestrator) but never calls classify()
+// never pays for it. `SIGNALS` stays a plain array to every reader (test/
+// and scripts/limits-table.mjs both use SIGNALS.length/.filter/.map at their
+// own top level, with no loader to call first) via a Proxy whose `get` trap
+// loads and memoises on first property access.
+let cachedSignals = null
+function ensureSignals() {
+  if (!cachedSignals) cachedSignals = loadSignals()
+  return cachedSignals
+}
+
+export const SIGNALS = new Proxy([], {
+  get(_target, prop) { return Reflect.get(ensureSignals(), prop) },
+  has(_target, prop) { return Reflect.has(ensureSignals(), prop) },
+  ownKeys() { return Reflect.ownKeys(ensureSignals()) },
+  getOwnPropertyDescriptor(_target, prop) { return Reflect.getOwnPropertyDescriptor(ensureSignals(), prop) },
+})
 
 const AUTH_SOURCE_RE = /another auth source is set/i
 

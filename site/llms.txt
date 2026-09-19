@@ -55,7 +55,7 @@ Off by default. `leg harness enable` makes a handoff carry the working environme
 
 ## Verified
 
-Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 926 tests.
+Live on 2026-09-11 against Claude Code 2.1.268, codex-cli 0.153.4 and agy 1.2.0. 955 tests.
 
 ## Docs
 

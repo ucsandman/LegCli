@@ -67,6 +67,26 @@ function isTracked(root, rel) {
   return typeof out === 'string' && out.trim().length > 0
 }
 
+// The same question for a whole list, in one git process instead of one per
+// file. The drawer polls every 3 seconds while it is open, and a terminal that
+// touched six files spent six `git ls-files` there — seven subprocesses per
+// poll, on the board's one event loop. `ls-files` lists the tracked paths among
+// the ones it is given, so a path missing from the output is untracked; a path
+// that names a directory is answered the way --error-unmatch answered it, by
+// the tracked files underneath it.
+function trackedAmong(root, rels) {
+  if (!rels.length) return new Set()
+  const out = git(root, ['ls-files', '-z', '--', ...rels])
+  if (typeof out !== 'string') return new Set()
+  const listed = out.split('\0').filter(Boolean)
+  const tracked = new Set(listed)
+  for (const rel of rels) {
+    if (tracked.has(rel)) continue
+    if (listed.some((p) => p.startsWith(rel + '/'))) tracked.add(rel)
+  }
+  return tracked
+}
+
 export function sessionFiles(session) {
   const root = workRoot(session)
   if (!root) return []
@@ -78,9 +98,12 @@ export function sessionFiles(session) {
     const i = insideRoot(root, f)
     if (!i || files.has(i.rel)) continue
     const c = counts.get(i.rel) ?? null
-    const state = c ? 'modified' : (isTracked(root, i.rel) ? 'committed' : 'new')
-    files.set(i.rel, { path: i.rel, adds: c?.adds ?? null, dels: c?.dels ?? null, dirty: dirty.has(i.rel), state })
+    files.set(i.rel, { path: i.rel, adds: c?.adds ?? null, dels: c?.dels ?? null, dirty: dirty.has(i.rel), state: c ? 'modified' : null })
   }
+  // one git process for every file whose state is still open, rather than one each
+  const unknown = [...files.values()].filter((f) => f.state === null).map((f) => f.path)
+  const tracked = trackedAmong(root, unknown)
+  for (const rel of unknown) files.get(rel).state = tracked.has(rel) ? 'committed' : 'new'
   return [...files.values()].sort((a, b) => a.path.localeCompare(b.path))
 }
 

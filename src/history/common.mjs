@@ -4,7 +4,7 @@
 // for one title) and forgiving (a torn last line, a BOM, a directory where a
 // file was expected, all come back as "nothing", never as a throw that would
 // take the other providers down with it).
-import { existsSync, openSync, readSync, closeSync, fstatSync, statSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, openSync, readSync, closeSync, fstatSync, statSync, lstatSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve, isAbsolute } from 'node:path'
 import { redact } from '../redact.mjs'
 import { canonPath } from '../fsx.mjs'
@@ -16,6 +16,8 @@ export const PROMPT_MAX = 300
 
 export function safeStat(p) { try { return statSync(p) } catch { return null } }
 export function safeList(dir) { try { return readdirSync(dir, { withFileTypes: true }) } catch { return [] } }
+// a symlink or, on Windows, a junction: lstat reports both as a link
+export function isLink(p) { try { return lstatSync(p).isSymbolicLink() } catch { return false } }
 export function safeRead(p) { try { return readFileSync(p, 'utf8') } catch { return null } }
 
 // The first `bytes` of a file as text. A BOM is dropped; a partial trailing

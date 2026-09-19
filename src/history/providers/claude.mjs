@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { LAYOUT } from '../../accounts.mjs'
 import { pidAlive } from '../../sessions.mjs'
 import { messagesFromLines } from '../../taps/claude.mjs'
-import { readHead, readTail, jsonLines, line, isoOrNull, isoFromMs, safeList, safeStat, safeRead, PROMPT_MAX } from '../common.mjs'
+import { readHead, readTail, jsonLines, line, isoOrNull, isoFromMs, safeList, safeStat, safeRead, isLink, PROMPT_MAX } from '../common.mjs'
 
 export const name = 'claude'
 export const label = 'Claude Code'
@@ -113,6 +113,10 @@ export function scan({ home, prev = {} }) {
   const entries = {}
   let scanned = 0; let parsed = 0
   const before = prev.entries ?? {}
+  // an extra account's `projects` is a junction back to the real home's
+  // (src/accounts.mjs LAYOUT.claude.share), so the same transcripts are
+  // already listed under `default`: a shared store is indexed once, there
+  if (isLink(projects)) return { entries, aux: { prompts: promptIndex(home, prev.aux?.prompts) }, scanned, parsed, shared: true }
   for (const dir of safeList(projects)) {
     if (!dir.isDirectory()) continue // a junction or symlink is never followed
     const pdir = join(projects, dir.name)

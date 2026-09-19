@@ -10,29 +10,30 @@
 import http from 'node:http'
 import net from 'node:net'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, dirname, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sanitizeEnv } from './env.mjs'
+import { git, status as gitStatus } from './git.mjs'
 import { home, readCard, listCards } from './store.mjs'
 import { loadResume } from './handoff.mjs'
 import { worktreePath } from './worktree.mjs'
 import { get as getAdapter } from './adapters/index.mjs'
-import { SUPERVISED_AGENTS, HANDOFF_ORDER_CAPABILITY, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
+import { SUPERVISED_AGENTS, HANDOFF_ORDER_CAPABILITY, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, clearControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
 import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.mjs'
-import { canonPath, realPath } from './fsx.mjs'
+import { canonPath, realPath, writeJsonAtomic } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
-import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, usageIsStale, isAvailable, wallActive, rungLabel, skipLine } from './usage.mjs'
+import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, usageIsStale, isAvailable, wallActive, rungLabel, skipLine, keepsConversation as keepsConversationRule } from './usage.mjs'
 import { entitlement, allows, describe as describeLicense } from './license.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail, modelAlias, modelFromTranscript, printable } from './taps/claude.mjs'
-import { modelFlagFor, isDownshift } from './buckets.mjs'
+import { modelFlagFor } from './buckets.mjs'
 import { ensureTrust, trustLine } from './trust.mjs'
 import { findRollout, createTail, parseLines, readCodexUsage, transcriptTail as codexTail } from './taps/codex.mjs'
 import { fetchClaudeUsage } from './taps/claude-usage.mjs'
 import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
 import { fetchGrokUsage, scanLog as scanGrokLog, promptsSince as grokPromptsSince } from './taps/grok.mjs'
-import { saveSessionBundle, resumePrompt, sessionCommitDelta } from './bundle.mjs'
+import { saveSessionBundle, saveSessionBundleAsync, resumePrompt, sessionCommitDelta } from './bundle.mjs'
 import { endSessionPointer } from './resume.mjs'
 import { openBoard, pidfile } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
@@ -76,7 +77,11 @@ export function isCurrentLeg(session, { pid, agent, account }) {
 }
 
 // ---- board ----
-function health(port, host = '127.0.0.1') {
+// `unref`: the socket is not a reason for this process to stay alive. The
+// board wait runs in the background now, and a pending health probe would
+// otherwise keep a terminal whose agent has already exited on the loop for up
+// to the four-second timeout.
+function health(port, host = '127.0.0.1', { unref = false } = {}) {
   return new Promise((res) => {
     const req = http.get({ host, port, path: '/api/health', timeout: 4000 }, (r) => {
       let d = ''
@@ -87,6 +92,7 @@ function health(port, host = '127.0.0.1') {
         try { res(r.statusCode === 200 ? JSON.parse(d) : null) } catch { res(null) }
       })
     })
+    if (unref) req.on('socket', (s) => s.unref())
     req.on('error', () => res(null)); req.on('timeout', () => { req.destroy(); res(null) })
   })
 }
@@ -104,7 +110,7 @@ function portTaken(port, host = '127.0.0.1') {
   })
 }
 
-export async function ensureBoard({ open = true } = {}) {
+export async function ensureBoard({ open = true, wait = true } = {}) {
   // with share on the board lives on the shared address, not loopback
   const share = readShare()
   const shared = shareIsOn(share)
@@ -130,38 +136,79 @@ export async function ensureBoard({ open = true } = {}) {
   const logFd = (await import('node:fs')).openSync(join(home(), 'board.log'), 'a')
   const child = spawn(process.execPath, [SERVER], { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd], env: { ...process.env, LEG_PORT: String(port), LEG_BIND: host, LEG_QUIET: '0', BATON_PORT: String(port), BATON_BIND: host, BATON_QUIET: '0' } })
   child.unref()
+  // The agent starts NOW. This used to poll /api/health every 200 ms for up to
+  // fifteen seconds before the human's agent got its first instruction, and a
+  // board takes about 1.1 s to answer: 487 ms to the agent became 1280 ms on
+  // the one terminal of the day that has to start a board (profile 2026-09-18,
+  // §2, top-10 item 10). `settled` is how the caller can still make sure the
+  // board it started got claimed before it exits.
+  const settled = awaitBoard({ child, port, host, url, open, unref: !wait })
+  // a caller that spawns a board and then exits (leg share on|off) must have the
+  // pidfile before it returns, or `leg down` has nothing to stop
+  if (wait) { const r = await settled; return { url, started: r.claimed, ...(r.failed ? { failed: true } : {}) } }
+  return { url, started: true, settled }
+}
+
+// The old blocking poll, moved behind the agent. Same 15 s budget, same give-up
+// line, same pidfile. `unref`: for the terminal, the timer and the socket are
+// not reasons to stay alive once the agent is gone — but a caller AWAITING this
+// has nothing else on the loop, and an unref'd wait would let the process exit
+// before the answer arrived.
+function awaitBoard({ child, port, host, url, open, unref = false, budgetMs = 15000 }) {
   const t0 = Date.now()
-  while (Date.now() - t0 < 15000) {
-    const h = await health(port, host)
-    if (h) {
-      // only claim the pidfile for a child we actually started: under a race,
-      // another `leg` won the port and ours died on EADDRINUSE — writing our
-      // dead pid would make `leg down` kill nothing and report "not running"
-      const ours = h.pid ? h.pid === child.pid : (child.exitCode === null && Boolean(child.pid))
-      if (ours) writeFileSync(pidfile(), JSON.stringify({ pid: child.pid, port, bind: host, children: [child.pid], detached: true, started_by: 'attach', started_at: new Date().toISOString() }, null, 2) + '\n')
-      if (open) openBoard(url)
-      return { url, started: ours }
+  return new Promise((res) => {
+    const tick = async () => {
+      const h = await health(port, host, { unref })
+      if (h) {
+        // only claim the pidfile for a child we actually started: under a race,
+        // another `leg` won the port and ours died on EADDRINUSE — writing our
+        // dead pid would make `leg down` kill nothing and report "not running"
+        const ours = h.pid ? h.pid === child.pid : (child.exitCode === null && Boolean(child.pid))
+        if (ours) writeFileSync(pidfile(), JSON.stringify({ pid: child.pid, port, bind: host, children: [child.pid], detached: true, started_by: 'attach', started_at: new Date().toISOString() }, null, 2) + '\n')
+        if (open) openBoard(url)
+        return res({ claimed: ours })
+      }
+      if (Date.now() - t0 >= budgetMs) {
+        say(`board did not come up on ${url} (see ${join(home(), 'board.log')}); continuing without it`)
+        return res({ claimed: false, failed: true })
+      }
+      const t = setTimeout(() => { tick().catch(() => res({ claimed: false })) }, 200)
+      if (unref) t.unref?.()
     }
-    await new Promise((r) => setTimeout(r, 200))
-  }
-  say(`board did not come up on ${url} (see ${join(home(), 'board.log')}); continuing without it`)
-  return { url, started: false, failed: true }
+    tick().catch(() => res({ claimed: false }))
+  })
+}
+
+// A terminal whose agent exits in the first second — `leg claude --help`, a
+// stub in the suite — would otherwise leave the board it just started with no
+// pidfile, so `leg down` could not stop it. Bounded: the claim usually landed
+// long ago, and an exit must never hang on a board that is not coming.
+async function claimBoardBeforeExit(settled, ms = 2000) {
+  if (!settled) return
+  let t = null
+  try { await Promise.race([settled, new Promise((r) => { t = setTimeout(r, ms) })]) } catch {} finally { if (t) clearTimeout(t) }
 }
 
 // ---- git ----
-function git(cwd, args) {
-  const r = spawnSync('git', args, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
-  // trimEnd only: a porcelain line starts with a space (" M README.md")
-  return r.status === 0 ? r.stdout.trimEnd() : null
-}
+// src/git.mjs owns the subprocess and the porcelain. Everything below is the
+// shape the rest of Leg was written against.
+
+// A repo with no commits has no HEAD, so `rev-parse --abbrev-ref HEAD` failed
+// there and the branch stayed null; isolate() reads that as "nothing to cut a
+// worktree from". status() knows the name, so the null is kept on purpose.
+const branchOf = (st) => (st && st.head ? st.branch : null)
+
 export function gitInfo(cwd) {
   const repo = git(cwd, ['rev-parse', '--show-toplevel'])
   if (!repo) return { repo: null, branch: null, head: null, dirty: [] }
+  // one `status --porcelain=v2 --branch` in place of --abbrev-ref HEAD,
+  // rev-parse HEAD and --porcelain: three fewer processes per call
+  const st = gitStatus(cwd)
   return {
     repo: repo.replace(/\//g, process.platform === 'win32' ? '\\' : '/'),
-    branch: git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']),
-    head: git(cwd, ['rev-parse', 'HEAD']),
-    dirty: (git(cwd, ['status', '--porcelain']) ?? '').split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')).filter((f) => !/^(\.leg|\.baton|\.context-handoffs|\.dashclaw-local)\//.test(f)),
+    branch: branchOf(st),
+    head: st?.head ?? null,
+    dirty: st?.dirty ?? [],
   }
 }
 
@@ -177,6 +224,24 @@ export function aheadCount(cwd, fallbackBase = null) {
   const n = git(cwd, ['rev-list', '--count', `${base}..HEAD`])
   const parsed = parseInt(String(n ?? '').trim(), 10)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+// The same count off a status() answer already in hand, which is where the poll
+// gets it: `# branch.ab +N` when the checkout tracks an upstream that exists,
+// else a rev-list from the commit HEAD was at when the session began. Two of the
+// six git processes per poll round were this question; now it is usually none.
+// `cache` is one { head, ahead } pair: a terminal whose HEAD has not moved
+// cannot have changed its count, and a HEAD still at the start is exactly zero.
+export function aheadFromStatus(cwd, st, fallbackBase = null, cache = null) {
+  if (st?.upstream && Number.isFinite(st.ahead)) return st.ahead
+  if (!fallbackBase || !st?.head) return null
+  if (st.head === fallbackBase) return 0
+  if (cache && cache.head === st.head) return cache.ahead
+  const n = git(cwd, ['rev-list', '--count', `${fallbackBase}..${st.head}`])
+  const parsed = parseInt(String(n ?? '').trim(), 10)
+  const ahead = Number.isFinite(parsed) ? parsed : null
+  if (cache) { cache.head = st.head; cache.ahead = ahead }
+  return ahead
 }
 
 // ---- collisions ----
@@ -206,8 +271,34 @@ async function loadAdapter(name) {
   return getAdapter(name)
 }
 
+// A resolved absolute path is one existsSync and needs no cache. A bare name on
+// PATH is a subprocess with an 8 s timeout budget, per agent, on every launch —
+// that is the answer worth keeping, and it is kept for a day in
+// $LEG_HOME/installed.json keyed by the bin it resolved to.
+const INSTALLED_TTL_MS = 24 * 60 * 60 * 1000
+const installedFile = () => join(home(), 'installed.json')
+
+function probeVersion(target) {
+  const r = spawnSync(target, ['--version'], { windowsHide: true, encoding: 'utf8', timeout: 8000 })
+  return !r.error && r.status === 0
+}
+
+// `probe`, `now` and `ttlMs` are injected by test/attach-perf.test.mjs, which is
+// the only thing that can prove a cache hit spawned nothing.
+export function cachedVersionProbe(name, target, { probe = probeVersion, now = Date.now(), ttlMs = INSTALLED_TTL_MS } = {}) {
+  const file = installedFile()
+  let disk = {}
+  try { const j = JSON.parse(readFileSync(file, 'utf8')); if (j && typeof j === 'object') disk = j } catch {}
+  const hit = disk[name]
+  // a different resolved bin is a different question, so it is a miss
+  if (hit && hit.bin === target && Number.isFinite(hit.at) && now - hit.at >= 0 && now - hit.at < ttlMs) return Boolean(hit.installed)
+  const installed = probe(target)
+  try { mkdirSync(home(), { recursive: true }); writeJsonAtomic(file, { ...disk, [name]: { installed, bin: target, at: now } }) } catch {}
+  return installed
+}
+
 let installedCache = null
-async function installedAgents() {
+export async function installedAgents() {
   if (installedCache) return installedCache
   const out = {}
   for (const name of SUPERVISED_AGENTS) {
@@ -215,7 +306,10 @@ async function installedAgents() {
       const { bin, viaNode, entry } = (await loadAdapter(name)).resolve()
       const target = viaNode ? (entry ?? bin) : bin
       if (/[\\/]/.test(target)) out[name] = existsSync(target)
-      else { const r = spawnSync(target, ['--version'], { windowsHide: true, encoding: 'utf8', timeout: 8000 }); out[name] = !r.error && r.status === 0 }
+      // a *_BIN override is somebody pointing this at a stub on purpose: ask,
+      // and remember nothing about it
+      else if (process.env[`LEG_${name.toUpperCase()}_BIN`] || process.env[`BATON_${name.toUpperCase()}_BIN`]) out[name] = probeVersion(target)
+      else out[name] = cachedVersionProbe(name, target)
     } catch { out[name] = false }
   }
   installedCache = out
@@ -412,6 +506,22 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
   return { bin: viaNode ? process.execPath : bin, args: argv, env, cwd }
 }
 
+// One bundle checkpoint at a time. The save shells out to the python CLI, so
+// it is off the poll tick now (src/bundle.mjs saveSessionBundleAsync) and can
+// outlive its own interval; two of them against a session's single bundle slug
+// is the one thing that was impossible while it blocked. `idle()` is how the
+// hand-off save makes sure no checkpoint is still writing.
+export function checkpointGate() {
+  let pending = null
+  const gate = (run) => {
+    if (pending) return false
+    pending = Promise.resolve().then(run).catch(() => {}).finally(() => { pending = null })
+    return true
+  }
+  gate.idle = () => pending ?? Promise.resolve()
+  return gate
+}
+
 // ---- one agent leg ----
 // Returns { reason: 'exit'|'limit'|'handoff', code, target } — `target` is the
 // destination a human picked on the board ("Hand off now to codex"), carried
@@ -466,6 +576,10 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
     tail = createTail(rollout.path, { from: logSize(rollout.path) })
   }
   let polls = 0; let warned = false; let stoodDown = false
+  // one { head, ahead } pair: a HEAD that has not moved cannot have changed its
+  // commit count, so the poll spawns nothing for it
+  const aheadCache = { head: null, ahead: null }
+  const checkpoint = checkpointGate()
   let stop = null
   const done = new Promise((res) => { stop = res })
   child.on('error', (err) => { appendEvent(sid, { type: 'error', summary: `${agent} spawn error: ${err.message}` }); stop({ reason: 'exit', code: 127 }) })
@@ -548,10 +662,15 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
       if (!s) return
       polls += 1
       const patch = {}
-      // git: which files this session is touching, where trunk is
+      // git: which files this session is touching, where trunk is. ONE process:
+      // `status --porcelain=v2 --branch` carries the head, the branch, the dirty
+      // list and the upstream's own ahead count, and a non-answer is the "not a
+      // repository" gate `rev-parse --show-toplevel` used to be. This poll ran
+      // six git processes every six seconds and blocked the terminal's own event
+      // loop 4.4-10.3 s a minute (profile 2026-09-18, §3, top-10 item 2).
       if (polls % GIT_EVERY === 1) {
-        const g = gitInfo(s.cwd)
-        if (g.repo) { patch.files_dirty = g.dirty; patch.head = g.head; patch.branch = g.branch; patch.ahead = aheadCount(s.cwd, s.head_at_start) }
+        const st = gitStatus(s.cwd)
+        if (st) { patch.files_dirty = st.dirty; patch.head = st.head; patch.branch = branchOf(st); patch.ahead = aheadFromStatus(s.cwd, st, s.head_at_start, aheadCache) }
       }
       // codex: find + tail the rollout
       if (agent === 'codex') {
@@ -633,9 +752,16 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
           process.stderr.write('\x07')
         }
       }
-      // periodic checkpoint of the bundle (every ~2 min while active)
+      // periodic checkpoint of the bundle (every ~2 min while active), off this
+      // tick: the save is a python subprocess with a 120 s timeout, and taking
+      // it synchronously froze limit detection, the board's End and Hand off
+      // buttons and every tap for its whole run. Failures still land on the
+      // session's timeline, exactly as they did.
       if (polls % Math.max(1, Math.round(120000 / POLL_MS)) === 0 && (s.turns ?? 0) > 0) {
-        try { saveSessionBundle({ ...s, ...patch }, { messages: messagesFor(agent, { ...s, ...patch }), why: 'checkpoint' }) } catch (err) { appendEvent(sid, { type: 'error', summary: `bundle checkpoint failed: ${err.message.slice(0, 160)}` }) }
+        const at = { ...s, ...patch }
+        checkpoint(async () => {
+          try { await saveSessionBundleAsync(at, { messages: messagesFor(agent, at), why: 'checkpoint' }) } catch (err) { appendEvent(sid, { type: 'error', summary: `bundle checkpoint failed: ${err.message.slice(0, 160)}` }) }
+        })
       }
       const next = Object.keys(patch).length ? updateSession(sid, patch) : s
       const ctl = takeControl(sid)
@@ -672,6 +798,9 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   clearInterval(timer)
   if (usageTimer) clearInterval(usageTimer)
   if (fallbackTimer) clearInterval(fallbackTimer)
+  // the hand-off save runs next, against the same bundle slug: a checkpoint
+  // still writing would be two chb processes on one bundle
+  await checkpoint.idle()
   return result
 }
 
@@ -845,7 +974,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   }
   const autoApprove = resolveAutoApprove({ cliFlag: autoApproveCli })
   const cwd = card ? realPath(cardWorkRoot(card)) : (cwdOpt ? realPath(cwdOpt) : process.cwd())
-  const board = await ensureBoard({ open })
+  const board = await ensureBoard({ open, wait: false })
   let accounts = readAccounts()
   const installed = await installedAgents()
   // The machine's preferences are copied into this terminal at start: the
@@ -1007,7 +1136,10 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     // bound the number of hand-offs in one terminal so a chain that limits
     // instantly can never loop forever; stopping is explicit, not a silent exit 0
     if (leg >= 11) {
-      say(`reached the 12-leg hand-off limit for one session; stopping. Run leg again in this directory to continue from the bundle.`)
+      // Nothing reloads a bundle on a fresh `leg <agent>`, so this used to
+      // promise a hand-off that never happened. The path and the reader are the
+      // true part.
+      say(`reached the 12-leg hand-off limit for one session; stopping.${bundle?.path ? ` The bundle is at ${bundle.path}; \`leg resume\` prints the hand-off it describes. A fresh \`leg <agent>\` here is a new session and does not load it: point that agent at the file.` : ' No bundle was saved for this hand-off.'}`)
       updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: 3 }, { event: { type: 'ended', summary: 'reached the 12-leg hand-off limit; stopped (exit 3)' } })
       exit = 3
       break
@@ -1022,15 +1154,16 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       say(line)
       appendEvent(sid, { type: 'status', summary: line })
     }
-    // The one hand-off that keeps the conversation: a claude downshift with the
-    // agent's own session id on the record. `--resume <id> --model <alias>`
-    // starts the next leg inside the same conversation, so the bundle is not
-    // written into a prompt and nothing is re-explained. Every other rung takes
-    // the bundle: an upshift back to fable (which would re-read the whole
-    // context at fable's rate), a second account, and codex, whose `resume`
-    // subcommand exists but has never been seen composing with `-m` here.
+    // The hand-offs that keep the conversation (src/usage.mjs keepsConversation):
+    // a claude downshift on the same login, or another claude login that can
+    // see this transcript. `--resume <id>` starts the next leg inside the same
+    // conversation, so the bundle is not written into a prompt and nothing is
+    // re-explained. Every other rung takes the bundle. The destination account
+    // is refreshed first so a login made by an older Leg gets its `projects`
+    // junction before the rule looks for the transcript through it.
     const fromRung = { agent, account, model: cur.model ?? null }
-    const keepsConversation = Boolean(next.agent === 'claude' && isDownshift(fromRung, next) && cur.agent_session_id)
+    if (next.account !== 'default') refreshAccount(next.agent, next.account)
+    const keepsConversation = keepsConversationRule({ from: fromRung, to: next, session: cur })
     appendEvent(sid, { type: 'handoff', summary: `${rungLabel(fromRung)} → ${rungLabel(next)}${keepsConversation ? ' (kept the conversation)' : bundle ? ` (bundle ${bundle.id})` : ''}` })
     if (keepsConversation) {
       prompt = null
@@ -1062,7 +1195,10 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   // must stop describing it as live — Leg owns that file, and leaving the last
   // hand-off sitting there is exactly the lie this rewrite exists to stop.
   try { endSessionPointer(readSession(sid)) } catch (err) { appendEvent(sid, { type: 'error', summary: `resume pointer not rewritten: ${err.message.slice(0, 160)}` }) }
-  try { rmSync(join(sessionDir(sid), 'control.json'), { force: true }) } catch {}
+  try { clearControl(sid) } catch {}
+  // the board this terminal started may still be coming up: claim it before we
+  // go, or `leg down` has nothing to stop
+  await claimBoardBeforeExit(board.settled)
   return exit
 }
 

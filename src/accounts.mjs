@@ -6,8 +6,8 @@
 // back into it with directory junctions, and the settings file is refreshed
 // from the real home before every launch. Only the login lives in the
 // account dir. agy 1.2.0 has no config-dir override, so it stays one account.
-import { existsSync, mkdirSync, readFileSync, copyFileSync, readdirSync, lstatSync, symlinkSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, copyFileSync, readdirSync, lstatSync, symlinkSync, rmSync, realpathSync } from 'node:fs'
+import { join, relative, dirname, basename, resolve, isAbsolute } from 'node:path'
 import { homedir } from 'node:os'
 import { home } from './store.mjs'
 import { writeJsonAtomic } from './fsx.mjs'
@@ -19,7 +19,12 @@ export const LAYOUT = {
   claude: {
     env: 'CLAUDE_CONFIG_DIR',
     home: () => process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'),
-    share: ['hooks', 'skills', 'agents', 'commands', 'plugins', 'rules', 'scripts', 'output-styles', 'tools'],
+    // `projects` is the conversation store (projects/<encoded cwd>/<id>.jsonl,
+    // and the auto-memory beside it). Shared, not copied, so a hand-off to the
+    // second login can run `claude --resume <id>` on the transcript the first
+    // login was writing, and the same human's memory follows them. Claude Code
+    // does the writing; Leg reads that directory and never writes it.
+    share: ['hooks', 'skills', 'agents', 'commands', 'plugins', 'rules', 'scripts', 'output-styles', 'tools', 'projects'],
     copy: ['settings.json', 'settings.local.json', 'CLAUDE.md', 'keybindings.json', 'statusline.ps1', 'statusline-combined.ps1'],
     login: (dir) => `$env:CLAUDE_CONFIG_DIR='${dir}'; claude auth login`,
   },
@@ -73,11 +78,66 @@ export function envFor(agent, account) {
   return { [l.env]: accountDir(agent, account) }
 }
 
+// The config directory a login runs from: the CLI's own home for `default`,
+// the account directory for anything else. Null for an agent Leg does not know.
+export function homeFor(agent, account = 'default') {
+  const l = LAYOUT[agent]
+  if (!l) return null
+  return account === 'default' ? l.home() : accountDir(agent, account)
+}
+
+// Whether the conversation file one login was writing is visible to another
+// login of the same agent: the transcript's path relative to the source home
+// must exist under the destination home. True through the `projects` junction
+// an account carries; false for an account made before that junction existed
+// (until its next launch adds it), for a transcript outside the source home,
+// and for an agent with no per-account home at all. A false answer means the
+// bundle, never a `--resume` that would open an empty conversation.
+export function transcriptReachable(agent, transcriptPath, { from = 'default', to = 'default' } = {}) {
+  if (!transcriptPath || from === to || !LAYOUT[agent]?.env) return false
+  const dst = homeFor(agent, to)
+  if (!dst) return false
+  const where = realDir(dirname(transcriptPath))
+  // the transcript's place inside whichever home really holds it: the source
+  // login's, the destination's, or the CLI's own. A path a CLI reported through
+  // an account's junction resolves to the real home, and a record that kept
+  // the first login's path while the terminal moved on is still one file.
+  for (const account of new Set([from, to, 'default'])) {
+    const h = homeFor(agent, account)
+    if (!h) continue
+    const rel = relative(realDir(h), where)
+    if (rel.startsWith('..') || isAbsolute(rel)) continue
+    return existsSync(join(dst, rel, basename(transcriptPath)))
+  }
+  return false
+}
+
+// A directory's real path, for comparing a transcript's location against a
+// home that may itself be reached through a junction; the path as given when
+// it does not exist.
+function realDir(p) { try { return realpathSync.native(p) } catch { return resolve(p) } }
+
 function junction(target, link) {
   if (existsSync(link)) return false
   if (!existsSync(target)) return false
   symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir')
   return true
+}
+
+// The shared directories, junctioned into the account dir when they are not
+// there yet. Runs at creation and before every launch, so an account made by
+// an older Leg picks up a directory added to `share` since (the `projects`
+// store, for one) the next time it starts.
+export function ensureShared(agent, name) {
+  if (name === 'default') return []
+  const l = LAYOUT[agent]
+  if (!l?.env) return []
+  const dir = accountDir(agent, name)
+  if (!existsSync(dir)) return []
+  const src = l.home()
+  const shared = []
+  for (const d of l.share) if (junction(join(src, d), join(dir, d))) shared.push(d)
+  return shared
 }
 
 // Create the account dir, junction the shared harness in, copy the settings.
@@ -88,9 +148,7 @@ export function addAccount(agent, name) {
   if (!l.env) throw new Error(`${agent} has no config-dir override in the installed version; extra accounts are not possible`)
   const dir = accountDir(agent, name)
   mkdirSync(dir, { recursive: true })
-  const src = l.home()
-  const shared = []
-  for (const d of l.share) if (junction(join(src, d), join(dir, d))) shared.push(d)
+  const shared = ensureShared(agent, name)
   refreshAccount(agent, name)
   const acc = readAccounts()
   if (!acc[agent]) acc[agent] = ['default']
@@ -98,11 +156,13 @@ export function addAccount(agent, name) {
   return { dir, shared, login: l.login(dir), env: l.env }
 }
 
-// Before each launch: bring the copied files up to date with the real home.
+// Before each launch: bring the copied files up to date with the real home,
+// and add any shared directory the account is still missing.
 export function refreshAccount(agent, name) {
   if (name === 'default') return []
   const l = LAYOUT[agent]
   const dir = accountDir(agent, name)
+  ensureShared(agent, name)
   const copied = []
   for (const f of l.copy) {
     const s = join(l.home(), f)

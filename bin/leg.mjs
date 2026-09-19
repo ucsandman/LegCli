@@ -5,32 +5,15 @@
 //   leg card ls [--json] | show <id> | run <id> | rm <id> [--delete-branch] | events <id>
 //   leg card <pause|resume|kill|approve|handoff-now|rerun> <id> | reassign <id> --adapter a [--mode m]
 //   leg scheduler start [--ticks N] [--interval-ms N] | status | stop
+//
+// Startup cost matters here: every command, `--version` included, paid for
+// loading the whole module graph (orchestrator, scheduler, board, attach…)
+// before main() even ran. Each command group below imports only what it
+// needs, inside its own branch, so `leg --version` and friends stay cheap.
 import { rmSync, appendFileSync, readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { PRESET_NAMES } from '../src/presets.mjs'
-import { readCard, listCards, readEvents, readRuns, cardDir } from '../src/store.mjs'
-import { runCard, humanAction } from '../src/orchestrator.mjs'
-import { createCard, CardInputError } from '../src/cards.mjs'
-import { remove as removeWorktree } from '../src/worktree.mjs'
-import { pruneSessionWorktree } from '../src/land.mjs'
-import { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } from '../src/scheduler.mjs'
-import { availableActions } from '../src/chain.mjs'
-import { up, down, stopBoard, status, openBoard } from '../src/launcher.mjs'
-import { attach, ensureBoard } from '../src/attach.mjs'
-import { readShare, addPerson, removePerson, rotate as rotateToken, turnOn, turnOff, linkFor, personNamed, scheme, tlsConfigured, ROLES } from '../src/share.mjs'
-import { normalizeHandoffOrder, ladderFor, readPreferences, writePreferences } from '../src/preferences.mjs'
-import { MODEL_ALIASES } from '../src/buckets.mjs'
-import { SUPERVISED_AGENTS, listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, isActive, readLand, sessionDir, appendEvent } from '../src/sessions.mjs'
-import { addAccount, removeAccount, listAccountRows, readAccounts, LAYOUT } from '../src/accounts.mjs'
-import { listUsage, fmtReset, readUsage, isAvailable, candidates, binding, wallActive, evaluateLadder, rungLabel } from '../src/usage.mjs'
-import { home } from '../src/store.mjs'
-import { entitlement, allows, describe as describeLicense, activate as activateLicense, deactivate as deactivateLicense, refresh as refreshLicense, licensePath, BUY_URL } from '../src/license.mjs'
-import { resumeVerdict, bodyOf, ago } from '../src/resume.mjs'
-import { harnessCommand } from '../src/harness/cli.mjs'
-import { adapterCommand } from '../src/adapters/cli.mjs'
-import { historyCommand, worktreesCommand } from '../src/history/cli.mjs'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 // one source of truth for the version, so the help text cannot drift from the package
@@ -52,6 +35,7 @@ function parseArgs(argv) {
 }
 
 async function cardAdd(args) {
+  const { createCard, CardInputError } = await import('../src/cards.mjs')
   try {
     const card = await createCard({
       repo: args.repo, task: args.task, chain: args.chain, pipeline: args.pipeline,
@@ -74,7 +58,10 @@ async function cardAdd(args) {
 // start the next option in the same terminal. The payload is marked
 // simulated: it is never kept as live evidence, and the wall it records
 // clears after two minutes. codex has no Leg-owned input, so it is refused.
-function simulateLimit(s, { message = null } = {}) {
+// `sessionsApi` is the already-imported src/sessions.mjs namespace: the
+// `sessions` command group loads it once and passes it through.
+function simulateLimit(sessionsApi, s, { message = null } = {}) {
+  const { isActive, sessionDir, appendEvent, readSession } = sessionsApi
   if (!isActive(s)) die(3, `session ${s.session_id} is not active`)
   if (['limit', 'handing_off'].includes(s.status)) die(3, `session ${s.session_id} is already ${s.status}`)
   if (s.agent === 'claude') {
@@ -105,13 +92,16 @@ function simulateLimit(s, { message = null } = {}) {
 // unambiguous. Two are not, so the second is read as an account when that
 // account exists and as a model when the agent has one by that name; a word
 // that is neither is refused by name rather than guessed at.
-export function parseTarget(value, { die: fail = (code, msg) => { throw new Error(msg) } } = {}) {
+// Async so the agent/account lookups (buckets.mjs, accounts.mjs) load only
+// when a two-part target is actually given, not on every CLI invocation.
+export async function parseTarget(value, { die: fail = (code, msg) => { throw new Error(msg) } } = {}) {
   const parts = String(value).split('/').filter(Boolean)
   const agent = parts[0]
   if (!agent) fail(2, 'usage: --to <agent>[/<account>[/<model>]]')
-  const models = MODEL_ALIASES[agent] ?? []
   if (parts.length >= 3) return { agent, account: parts[1], model: parts[2].toLowerCase() }
   if (parts.length === 2) {
+    const [{ MODEL_ALIASES }, { readAccounts }] = await Promise.all([import('../src/buckets.mjs'), import('../src/accounts.mjs')])
+    const models = MODEL_ALIASES[agent] ?? []
     const second = parts[1]
     const accounts = readAccounts()[agent] ?? ['default']
     if (accounts.includes(second)) return { agent, account: second, model: null }
@@ -124,25 +114,28 @@ export function parseTarget(value, { die: fail = (code, msg) => { throw new Erro
 // What a rung is doing right now, in the words the board uses: the wall and its
 // clock, else the percentage of the bucket that binds it, else "no figure".
 // Never a guess: an agent that publishes no number says so.
-function rungState(rung) {
-  const u = readUsage(rung.agent, rung.account)
+// `usage` is the already-imported src/usage.mjs namespace.
+function rungState(rung, usage) {
+  const u = usage.readUsage(rung.agent, rung.account)
   const wall = rung.model ? u.walls?.[rung.model] : null
-  if (wall && wallActive(wall)) return `${rung.model} out until ${fmtReset(wall.limited_until)}`
-  if (!isAvailable(u)) return `at its limit until ${fmtReset(u.limited_until)}`
-  const b = binding(u, rung.model ?? null)
+  if (wall && usage.wallActive(wall)) return `${rung.model} out until ${usage.fmtReset(wall.limited_until)}`
+  if (!usage.isAvailable(u)) return `at its limit until ${usage.fmtReset(u.limited_until)}`
+  const b = usage.binding(u, rung.model ?? null)
   if (b && Number.isFinite(b.percent)) return `${Math.round(b.percent)}% of the ${b.model ? b.model + ' ' : ''}${b.kind === 'session' || b.kind === 'five_hour' ? '5h' : 'week'} window`
   return 'no figure'
 }
 
-function printLadder() {
-  const prefs = readPreferences()
+// `prefsApi`/`usage` are the already-imported src/preferences.mjs and
+// src/usage.mjs namespaces (the `ladder` command group loads them once).
+function printLadder(prefsApi, usage) {
+  const prefs = prefsApi.readPreferences()
   const ladder = prefs.handoff_ladder
-  const rows = evaluateLadder({ from: null, list: ladder, maySpend: prefs.may_spend, reserve: prefs.reserve, automatic: true, climbBack: prefs.climb_back, ladder })
+  const rows = usage.evaluateLadder({ from: null, list: ladder, maySpend: prefs.may_spend, reserve: prefs.reserve, automatic: true, climbBack: prefs.climb_back, ladder })
   out('The ladder a terminal falls down when its login stops. Rung 1 first, every time.')
   ladder.forEach((rung, i) => {
     const r = rows[i]
     const when = rung.when === 'always' ? '' : `  when ${rung.when}`
-    out(`  ${String(i + 1).padEnd(2)} ${rungLabel(rung).padEnd(20)} ${rungState(rung).padEnd(34)} ${r.ok ? 'ready' : r.reason}${when}`)
+    out(`  ${String(i + 1).padEnd(2)} ${usage.rungLabel(rung).padEnd(20)} ${rungState(rung, usage).padEnd(34)} ${r.ok ? 'ready' : r.reason}${when}`)
   })
   out('')
   out(`spending: ${prefs.may_spend ? 'on (a credits or metered rung may be taken unattended)' : 'off (a credits or metered rung is skipped unattended)'} · leg ladder spend on|off`)
@@ -152,38 +145,39 @@ function printLadder() {
   out(`order (what older readers see): ${prefs.handoff_order.join(' → ')}`)
 }
 
-function ladderCommand(cmd, args) {
-  if (!cmd || cmd === 'ls' || cmd === 'show') return printLadder()
-  const prefs = readPreferences()
+async function ladderCommand(cmd, args) {
+  const [prefsApi, usage] = await Promise.all([import('../src/preferences.mjs'), import('../src/usage.mjs')])
+  if (!cmd || cmd === 'ls' || cmd === 'show') return printLadder(prefsApi, usage)
+  const prefs = prefsApi.readPreferences()
   const ladder = prefs.handoff_ladder.map((r) => ({ ...r }))
   if (cmd === 'set') {
     const [nRaw, target] = args._
     const n = parseInt(nRaw, 10)
     if (!Number.isFinite(n) || n < 1) die(2, 'usage: leg ladder set <n> <agent>[/<account>[/<model>]] [--when always|below:N|walled-only]')
     if (!target) die(2, 'usage: leg ladder set <n> <agent>[/<account>[/<model>]] [--when always|below:N|walled-only]')
-    const want = parseTarget(target, { die })
+    const want = await parseTarget(target, { die })
     const rung = { ...want, when: typeof args.when === 'string' ? args.when : 'always' }
     const at = Math.min(n, ladder.length + 1) - 1
     ladder[at] = rung
     try {
-      const saved = writePreferences({ handoff_ladder: ladder })
-      out(`rung ${at + 1} is ${rungLabel(saved.handoff_ladder[at])}${rung.when !== 'always' ? `, when ${rung.when}` : ''}`)
+      const saved = prefsApi.writePreferences({ handoff_ladder: ladder })
+      out(`rung ${at + 1} is ${usage.rungLabel(saved.handoff_ladder[at])}${rung.when !== 'always' ? `, when ${rung.when}` : ''}`)
     } catch (err) { die(2, err.message) }
-    return printLadder()
+    return printLadder(prefsApi, usage)
   }
   if (cmd === 'rm') {
     const n = parseInt(args._[0], 10)
     if (!Number.isFinite(n) || n < 1 || n > ladder.length) die(2, `usage: leg ladder rm <n> (1..${ladder.length})`)
     if (ladder.length === 1) die(2, 'that is the only rung left: a ladder with no rungs has nowhere to hand off to')
     const [gone] = ladder.splice(n - 1, 1)
-    try { writePreferences({ handoff_ladder: ladder }) } catch (err) { die(2, err.message) }
-    out(`removed rung ${n}: ${rungLabel(gone)}`)
-    return printLadder()
+    try { prefsApi.writePreferences({ handoff_ladder: ladder }) } catch (err) { die(2, err.message) }
+    out(`removed rung ${n}: ${usage.rungLabel(gone)}`)
+    return printLadder(prefsApi, usage)
   }
   if (cmd === 'spend') {
     const v = args._[0]
     if (!['on', 'off'].includes(v)) die(2, 'usage: leg ladder spend on|off')
-    const saved = writePreferences({ may_spend: v === 'on' })
+    const saved = prefsApi.writePreferences({ may_spend: v === 'on' })
     return out(saved.may_spend
       ? 'spending is ON: an unattended hand-off may take a rung that bills credits.'
       : 'spending is OFF: an unattended hand-off skips any rung that bills credits, and says so in the ledger.')
@@ -238,13 +232,10 @@ async function main() {
     out('\nPassing the leg to the next runner when limits hit.')
     return
   }
-  if (SUPERVISED_AGENTS.includes(group)) {
-    // leg claude|codex|agy|grok [agent args...]: everything after the agent name
-    // goes straight through.
-    const code = await attach(group, [cmd, ...rest].filter((x) => x !== undefined), { open: (process.env.LEG_NO_OPEN || process.env.BATON_NO_OPEN) !== '1' })
-    process.exit(code)
-  }
   if (group === 'sessions') {
+    const sessionsApi = await import('../src/sessions.mjs')
+    const { listSessions, readSession, isActive, removeSession, readLand, requestControl } = sessionsApi
+    const readSessionEvents = sessionsApi.readEvents
     const list = listSessions()
     if (cmd === 'ls' || !cmd) {
       if (args.json) return out(JSON.stringify(list, null, 2))
@@ -263,17 +254,20 @@ async function main() {
       // is not a destination, is not installed, or is at its wall must be
       // refused now, not silently turn into "whatever is next".
       if (typeof args.to === 'string') {
-        const want = parseTarget(args.to, { die })
+        const [{ normalizeHandoffOrder, ladderFor }, usage, { readAccounts }] = await Promise.all([
+          import('../src/preferences.mjs'), import('../src/usage.mjs'), import('../src/accounts.mjs'),
+        ])
+        const want = await parseTarget(args.to, { die })
         const order = normalizeHandoffOrder(s.handoff_order)
         const ladder = ladderFor(s)
-        const chain = candidates({ agent: s.agent, account: s.account, model: s.model ?? null, accounts: readAccounts(), order, ladder })
+        const chain = usage.candidates({ agent: s.agent, account: s.account, model: s.model ?? null, accounts: readAccounts(), order, ladder })
         const hit = chain.find((c) => c.agent === want.agent && c.account === want.account && (want.model ? (c.model ?? null) === want.model : true))
-        const label = rungLabel(want)
-        if (!hit) die(2, `${label} is not a destination for this terminal (${chain.map((c) => rungLabel(c)).join(', ') || 'none'})`)
+        const label = usage.rungLabel(want)
+        if (!hit) die(2, `${label} is not a destination for this terminal (${chain.map((c) => usage.rungLabel(c)).join(', ') || 'none'})`)
         if (s.installed && s.installed[want.agent] === false) die(3, `${label} is not installed on this machine`)
-        const u = readUsage(want.agent, want.account)
-        if (!isAvailable(u)) die(3, `${label} is at its usage limit until ${fmtReset(u.limited_until)}; pick another, or drop --to to take the next option in the order`)
-        if (hit.model && wallActive(u.walls?.[hit.model])) die(3, `${label} is out until ${fmtReset(u.walls[hit.model].limited_until)}; pick another rung, or drop --to to take the next open one`)
+        const u = usage.readUsage(want.agent, want.account)
+        if (!usage.isAvailable(u)) die(3, `${label} is at its usage limit until ${usage.fmtReset(u.limited_until)}; pick another, or drop --to to take the next option in the order`)
+        if (hit.model && usage.wallActive(u.walls?.[hit.model])) die(3, `${label} is out until ${usage.fmtReset(u.walls[hit.model].limited_until)}; pick another rung, or drop --to to take the next open one`)
         const target = { agent: hit.agent, account: hit.account, ...(hit.model ? { model: hit.model } : {}) }
         requestControl(id, { handoff: true, target })
         return out(`handoff to ${label} requested for ${id}`)
@@ -291,6 +285,7 @@ async function main() {
       // the CLI twin never orphans a worktree the board can no longer reach
       if (s.worktree) {
         try {
+          const { pruneSessionWorktree } = await import('../src/land.mjs')
           const r = pruneSessionWorktree(s)
           out(r.removed
             ? `removed worktree ${s.worktree.path}${r.branchDeleted ? ` and branch ${s.worktree.branch}` : `; kept branch ${s.worktree.branch}`}`
@@ -303,7 +298,7 @@ async function main() {
     // is the only way to reach a per-model wall without waiting for one:
     // --message "You've reached your Fable limit." walls fable and leaves the
     // rest of the login open (src/buckets.mjs).
-    if (cmd === 'simulate-limit') return simulateLimit(s, { message: typeof args.message === 'string' ? args.message : null })
+    if (cmd === 'simulate-limit') return simulateLimit(sessionsApi, s, { message: typeof args.message === 'string' ? args.message : null })
     die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm|simulate-limit)`)
   }
   if (group === 'ladder') {
@@ -311,10 +306,21 @@ async function main() {
     // state and the same skip reasons the board's picker shows.
     return ladderCommand(cmd, args)
   }
+  if (group === 'digest') {
+    // What happened while you were away: terminals, cards, landings and walls
+    // in a window, grouped by repository, what needs you first. Read only.
+    // Loaded here and not at the top: a command most sessions never run.
+    const a = parseArgs([cmd, ...rest].filter((x) => x !== undefined))
+    const { buildDigest, renderDigest, DEFAULT_SINCE } = await import('../src/digest.mjs')
+    let d
+    try { d = buildDigest({ since: typeof a.since === 'string' ? a.since : DEFAULT_SINCE }) } catch (err) { die(2, err.message) }
+    return out(a.json ? JSON.stringify(d, null, 2) : renderDigest(d))
+  }
   if (group === 'resume') {
     // The read side of the pointer. Freshness is never read out of the file:
     // it is recomputed from git here, now, so a resume file cannot describe a
     // picture that is no longer true to whoever is standing in the repo.
+    const { resumeVerdict, bodyOf, ago } = await import('../src/resume.mjs')
     const a = parseArgs([cmd, ...rest].filter((x) => x !== undefined))
     const where = typeof a.path === 'string' ? resolve(a.path) : process.cwd()
     const v = resumeVerdict(where)
@@ -345,6 +351,9 @@ async function main() {
   if (group === 'share') {
     // Multiplayer, off by default: the board binds a shared address only once
     // at least one person has a token, and every human has their own.
+    const { readShare, addPerson, removePerson, rotate: rotateToken, turnOn, turnOff, linkFor, personNamed, scheme, tlsConfigured, ROLES } = await import('../src/share.mjs')
+    const { stopBoard } = await import('../src/launcher.mjs')
+    const { ensureBoard } = await import('../src/attach.mjs')
     const share = readShare()
     // only the listener moves: the agents running under it are not part of who
     // may look at the board
@@ -374,6 +383,7 @@ async function main() {
     if (cmd === 'on') {
       const a = parseArgs(rest)
       // more than one human is the Team plan
+      const { entitlement, allows, describe: describeLicense, BUY_URL } = await import('../src/license.mjs')
       const ent = entitlement()
       if (!allows(ent, 'share')) die(2, ent.ok ? `leg share is part of the Team plan (per seat); this machine has a ${ent.plan} license. ${BUY_URL}` : describeLicense(ent))
       try {
@@ -428,6 +438,7 @@ async function main() {
     die(2, `unknown share command "${cmd}" (status|on|add|rotate|rm|off)`)
   }
   if (group === 'accounts') {
+    const { addAccount, removeAccount, listAccountRows, LAYOUT } = await import('../src/accounts.mjs')
     if (cmd === 'add') {
       const [agent, name] = args._
       if (!agent || !name) die(2, 'usage: leg accounts add <claude|codex> <name>')
@@ -451,6 +462,7 @@ async function main() {
       return out(`removed ${agent} account "${name}" (your real ${LAYOUT[agent]?.home() ?? 'home'} was not touched)`)
     }
     if (cmd === 'ls' || !cmd) {
+      const { listUsage, fmtReset } = await import('../src/usage.mjs')
       const usage = Object.fromEntries(listUsage().map((u) => [`${u.agent}--${u.account}`, u]))
       for (const r of listAccountRows()) {
         const u = usage[`${r.agent}--${r.name}`]
@@ -465,12 +477,14 @@ async function main() {
   if (group === 'harness') {
     // The portable harness: the working environment a hand-off carries with
     // the task. Off until `leg harness enable` (src/harness/index.mjs).
+    const { harnessCommand } = await import('../src/harness/cli.mjs')
     const code = await harnessCommand(cmd, args, { out, die })
     process.exit(code)
   }
   if (group === 'adapter' || group === 'adapters') {
     // Custom adapters: any CLI as a card agent, from a JSON spec on disk
     // (src/adapters/custom.mjs). The built-ins need none of this.
+    const { adapterCommand } = await import('../src/adapters/cli.mjs')
     const code = await adapterCommand(cmd, args, { out, die })
     process.exit(code)
   }
@@ -479,6 +493,7 @@ async function main() {
     // stores hold: a read-only index (src/history/index.mjs). `continue`
     // starts a normal supervised leg on one of them. `leg history --json` is
     // `leg history ls --json`: a leading flag names no verb.
+    const { historyCommand, worktreesCommand } = await import('../src/history/cli.mjs')
     const isHelp = cmd === '--help' || cmd === '-h' || cmd === 'help' || args.help || args.h
     const bare = typeof cmd === 'string' && cmd.startsWith('--')
     const verb = isHelp ? 'help' : (bare ? 'ls' : cmd)
@@ -492,6 +507,7 @@ async function main() {
   if (group === 'license') {
     // The paid gate. Keys verify offline against the public key in
     // src/license.mjs; nothing here talks to the network except refresh.
+    const { entitlement, describe: describeLicense, activate: activateLicense, deactivate: deactivateLicense, refresh: refreshLicense, licensePath, BUY_URL } = await import('../src/license.mjs')
     if (!cmd || cmd === 'status') {
       // looking does not start the trial clock; the first session does
       const ent = entitlement({ startTrial: false })
@@ -519,18 +535,22 @@ async function main() {
   if (group === 'uninstall') {
     // Leg never edits ~/.claude or ~/.codex; everything it added lives under
     // $LEG_HOME (sessions, usage, extra-account dirs, cards).
+    const { home } = await import('../src/store.mjs')
     const dir = home()
     if (!args.yes) {
       out(`leg uninstall removes ${dir} (sessions, usage, extra-account dirs, cards, board pidfile) and nothing else.`)
       out('Your real ~/.claude, ~/.codex and agy homes are never touched. Re-run with --yes to do it.')
       return
     }
+    const { listAccountRows, removeAccount } = await import('../src/accounts.mjs')
+    const { down } = await import('../src/launcher.mjs')
     for (const r of listAccountRows()) if (r.name !== 'default') removeAccount(r.agent, r.name)
     await down()
     rmSync(dir, { recursive: true, force: true })
     return out(`removed ${dir}; now: npm rm -g @ucsandman/legcli`)
   }
   if (group === 'card') {
+    const { readCard, listCards, readEvents, readRuns, cardDir } = await import('../src/store.mjs')
     if (cmd === 'add') return cardAdd(args)
     if (cmd === 'ls') {
       const cards = listCards()
@@ -543,6 +563,7 @@ async function main() {
     const card = readCard(id) || die(3, `card not found: ${id}`)
     if (cmd === 'show') {
       if (args.json) return out(JSON.stringify({ card, runs: readRuns(id) }, null, 2))
+      const { availableActions } = await import('../src/chain.mjs')
       out(fmtCard(card))
       out(`  repo: ${card.repo}`)
       out(`  worktree: ${card.worktree ?? '(none yet)'}`)
@@ -557,12 +578,14 @@ async function main() {
       return
     }
     if (cmd === 'run') {
+      const { runCard } = await import('../src/orchestrator.mjs')
       const final = await runCard(id)
       out(`${final.card_id} ${final.status} at ${final.station}`)
       process.exit(final.status === 'done' ? 0 : 1)
     }
     if (cmd === 'rm') {
       try {
+        const { remove: removeWorktree } = await import('../src/worktree.mjs')
         const r = removeWorktree(card.repo, id, { deleteBranch: Boolean(args['delete-branch']), force: Boolean(args.force) })
         if (args['delete-branch'] && r.branchUnmerged && !r.branchDeleted) out(`kept branch leg/${id}: it has commits not on its base (rerun with --force to discard them)`)
       } catch (err) { die(3, `worktree: ${err.message}`) }
@@ -571,6 +594,7 @@ async function main() {
     }
     const human = { queue: 'enqueue', pause: 'pause', resume: 'resume', kill: 'kill', approve: 'approve', 'handoff-now': 'handoff_now', rerun: 'rerun', reassign: 'reassign' }[cmd]
     if (human) {
+      const { humanAction } = await import('../src/orchestrator.mjs')
       const payload = human === 'reassign' ? { adapter: args.adapter || die(2, 'reassign needs --adapter'), mode: args.mode } : {}
       const next = humanAction(id, human, payload, { type: 'human', id: args.actor || 'local' })
       return out(`${next.card_id} ${next.status} at ${next.station} leg ${next.leg}`)
@@ -578,6 +602,7 @@ async function main() {
     die(2, `unknown card command "${cmd}" (add|ls|show|run|rm|events|queue|pause|resume|kill|approve|handoff-now|rerun|reassign)`)
   }
   if (group === 'scheduler') {
+    const { createScheduler, schedulerStatus, pidfile, MAX_CONCURRENT } = await import('../src/scheduler.mjs')
     if (cmd === 'start') {
       const ticks = args.ticks ? parseInt(args.ticks, 10) : Infinity
       const running = schedulerStatus()
@@ -603,19 +628,34 @@ async function main() {
     die(2, `unknown scheduler command "${cmd}" (start|status|stop)`)
   }
   if (group === 'up') {
+    const { up } = await import('../src/launcher.mjs')
     const a = parseArgs([cmd, ...rest].filter((x) => x !== undefined))
     const code = await up({ dry: Boolean(a.dry), open: !a['no-open'], port: a.port !== undefined ? parseInt(a.port, 10) : undefined, bind: a.bind })
     process.exit(code)
   }
-  if (group === 'down') process.exit(await down())
-  if (group === 'status') process.exit(await status())
+  if (group === 'down') { const { down } = await import('../src/launcher.mjs'); process.exit(await down()) }
+  if (group === 'status') { const { status } = await import('../src/launcher.mjs'); process.exit(await status()) }
   if (group === 'open') {
+    const { openBoard } = await import('../src/launcher.mjs')
     const port = (process.env.LEG_PORT || process.env.BATON_PORT) || 4747
     const url = `http://127.0.0.1:${port}`
     out(openBoard(url) ? `opened ${url}` : `could not open a browser; visit ${url}`)
     return
   }
-  if (group && group !== '--help' && group !== 'help') die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|ladder|history|worktrees|resume|accounts|harness|license|share|up|down|status|open|card|scheduler|uninstall)`)
+  // Everything above is a named command group. What is left is either a
+  // supervised agent (`leg claude|codex|agy|grok [args...]`, everything after
+  // the agent name goes straight through) or unknown. SUPERVISED_AGENTS and
+  // attach() are loaded here, last, so no other command pays for them.
+  if (group && group !== '--help' && group !== 'help') {
+    const { SUPERVISED_AGENTS } = await import('../src/sessions.mjs')
+    if (SUPERVISED_AGENTS.includes(group)) {
+      const { attach } = await import('../src/attach.mjs')
+      const code = await attach(group, [cmd, ...rest].filter((x) => x !== undefined), { open: (process.env.LEG_NO_OPEN || process.env.BATON_NO_OPEN) !== '1' })
+      process.exit(code)
+    }
+    die(2, `unknown command "${group}" (claude|codex|agy|grok|sessions|ladder|history|worktrees|digest|resume|accounts|harness|license|share|up|down|status|open|card|scheduler|uninstall)`)
+  }
+  const { PRESET_NAMES } = await import('../src/presets.mjs')
   out(`leg ${VERSION}, your coding agents, with a board alongside and a handoff when one hits its limit
   claude|codex|agy|grok [args...]   the normal interactive agent in this terminal; args pass straight through
                                 the board opens once, the session shows as a card, usage is tracked, a limit hands off
@@ -634,6 +674,8 @@ async function main() {
   history show|continue <id> | refresh | providers
                                 one conversation, or start leg <agent> on it where the agent can resume by id
   worktrees [--repo r] [--json]  every checkout Leg can see: git's, its own, the ones conversations worked in
+  digest [--since 8h|2d|<iso>] [--json]        what happened while you were away: what needs you, then every
+                                terminal, card, landing and wall in the window, grouped by repository
   resume [--check] [--json] [--path <dir>]      the hand-off waiting in this checkout, and whether it is still true
                                freshness is recomputed from git at read time; --check prints only the verdict
                                exit 0 current, 1 stale or unstamped, 3 no pointer here

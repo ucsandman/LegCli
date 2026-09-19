@@ -35,7 +35,7 @@ These apply to `leg claude|codex|agy|grok`.
 | `LEG_WAIT_TICK_MS` | `1000` | how often the all-out countdown redraws and re-checks Ctrl-C / End while waiting for the first reset | `src/attach.mjs` |
 | `LEG_USAGE_POLL_MS` | `60000` | how often the board asks each login's usage source (one poller per login, not one per terminal); Claude uses its usage endpoint, Codex read-only app-server rate limits, Grok its billing proxy | `src/usage-poll.mjs` |
 | `LEG_USAGE_POLL_MAX_MS` | `600000` | the longest the board waits between readings for one login: a refusal (429, timeout, no login) doubles the wait up to this, and the first good reading puts it back to `LEG_USAGE_POLL_MS` | `src/usage-poll.mjs` |
-| `LEG_ATTACH_POLL_MS` | `2000` | how often the session loop re-reads the taps; git is re-read every third poll | `src/attach.mjs` |
+| `LEG_ATTACH_POLL_MS` | `2000` | how often the session loop re-reads the taps; git is re-read every third poll, as one `git status --porcelain=v2 --branch` (`src/git.mjs`) that carries the head, the branch, the dirty list and the upstream's own ahead count | `src/attach.mjs` |
 | `LEG_CLAUDE_USAGE_URL` | `https://api.anthropic.com/api/oauth/usage` | the usage endpoint, for a test double | `src/taps/claude-usage.mjs` |
 | `LEG_CLAUDE_ARGS`, `LEG_CODEX_ARGS`, `LEG_AGY_ARGS` | (none) | space-separated extra arguments for a leg Leg starts on its own after a hand-off (your own `leg <agent> …` args never apply to the next agent); e.g. `LEG_CODEX_ARGS="-m gpt-5.3-codex-spark"` keeps a test chain on cheap models | `src/attach.mjs` |
 | `LEG_LIVE_DIR` | `fixtures/live/` in a dev clone, else `~/.leg/live/` | where the first real limit payload per agent and signal is kept, secrets scrubbed (`src/live-capture.mjs`); a `leg sessions simulate-limit` payload is never kept | `src/live-capture.mjs`, `scripts/live-limits.mjs` |
@@ -133,7 +133,7 @@ permission, so it is always on.
 
 | variable | default | meaning | read in |
 |----------|---------|---------|---------|
-| `LEG_HOME` | `~/.leg` | where sessions, usage, accounts, cards, runs and the pidfiles live | `src/store.mjs`, `src/ledger.mjs`, `src/runner.mjs`, `src/worktree.mjs`, `src/cards.mjs`, `src/sessions.mjs`, `src/usage.mjs`, `src/accounts.mjs` |
+| `LEG_HOME` | `~/.leg` | where sessions, usage, accounts, cards, runs, the pidfiles and `installed.json` (which agent CLIs answered `--version`, remembered for a day per resolved bin) live | `src/store.mjs`, `src/ledger.mjs`, `src/runner.mjs`, `src/worktree.mjs`, `src/cards.mjs`, `src/sessions.mjs`, `src/usage.mjs`, `src/accounts.mjs` |
 | `LEG_PORT` | `4747` | board server port | `src/server.mjs`, `src/launcher.mjs`, `bin/leg.mjs` (`open`) |
 | `LEG_BIND` | `127.0.0.1` | board server bind address | `src/server.mjs`, `src/launcher.mjs` |
 | `LEG_TOKEN` | (none) | bearer token required for `/api/*` and the event stream once set | `src/server.mjs`, `src/auth.mjs` |
@@ -205,7 +205,9 @@ home. `src/accounts.mjs` `LAYOUT` is the whole definition.
   accounts.json                     the named accounts per agent
   accounts/claude/<name>/
     hooks/ skills/ agents/ commands/ plugins/ rules/ scripts/
-    output-styles/ tools/           junctions back to ~/.claude
+    output-styles/ tools/ projects/ junctions back to ~/.claude (projects is
+                                    the conversation store: a hand-off to this
+                                    login can --resume the same transcript)
     settings.json settings.local.json CLAUDE.md keybindings.json
     statusline.ps1 statusline-combined.ps1
                                     copies, refreshed before every launch

@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { checkBind, authorize, remoteAddress, presentedToken, isLoopback, isLoopbackRequest, tokenMatches } from './auth.mjs'
 import { readShare, isOn as shareIsOn, sharePath, identify, personNamed, mayUseCards, mayUseMachine, readTls } from './share.mjs'
 import { auditTrail, ACTOR_KINDS } from './audit.mjs'
+import { buildDigest, DEFAULT_SINCE } from './digest.mjs'
 import { createLimiter } from './ratelimit.mjs'
 import { realPath, canonPath } from './fsx.mjs'
 import { listCards, readCard, readRuns, readEvents, cardDir, home, ledgerAppend, ledgerUpdate } from './store.mjs'
@@ -33,15 +34,17 @@ import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs
 import { hasRecentSynthesis } from './synthesis.mjs'
 import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
-import { readUsage, usageIsStale, candidates, isAvailable, fmtReset, binding, evaluateLadder, rungLabel, wallActive } from './usage.mjs'
+import { readUsage, usageIsStale, candidates, isAvailable, fmtReset, binding, evaluateLadder, rungLabel, wallActive, keepsConversation } from './usage.mjs'
 import { readAccounts } from './accounts.mjs'
 import { createUsagePollers, USAGE_AGENTS } from './usage-poll.mjs'
 import { readCodexUsage, transcriptTail as codexTranscriptTail } from './taps/codex.mjs'
 import { readPreferences, writePreferences, normalizeHandoffOrder, requireHandoffOrder, ladderFor, requireHandoffLadder, requireClimbBack, requireReserve, orderFromLadder } from './preferences.mjs'
-import { isDownshift } from './buckets.mjs'
 import { listModels } from './models.mjs'
 import { listHistory, findRecord, recordDetail, refreshIndex, readIndex, providerSupport, HistoryInputError, PROVIDER_NAMES } from './history/index.mjs'
-import { listWorktrees } from './history/worktrees.mjs'
+// the async variant: a cold worktree list is forty git processes, and run on
+// this process's stack that is seconds of a board that answers nothing.
+// `leg worktrees` keeps the synchronous one.
+import { listWorktreesAsync } from './history/worktrees.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 export function resolveBoardDir() {
@@ -62,11 +65,6 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=
 const log = (msg) => { const q = process.env.LEG_QUIET ?? process.env.BATON_QUIET; if (q !== '1') process.stdout.write(`[board] ${new Date().toISOString()} ${msg}\n`) }
 
 // ---- read models ----
-function lastEventOf(id) {
-  const evs = readEvents(id)
-  return evs.length ? evs[evs.length - 1] : null
-}
-
 export function columnsFor(cards) {
   const names = new Set()
   for (const c of cards) for (const s of c.pipeline ?? []) names.add(s.name)
@@ -246,6 +244,9 @@ function cardsWaiting() {
   cardsWaitingCache = { at: Date.now(), data }
   return data
 }
+// A card that just started or stopped waiting on a human makes that answer
+// stale at once, and the sessions push it triggers is the reader's only cue.
+function forgetCardsWaiting() { cardsWaitingCache = { at: 0, data: null } }
 
 // `events` is the card's ledger, already read by the caller. readEvents() does
 // a readdir, a full readFileSync, a JSON.parse per line and a sort every call,
@@ -348,13 +349,19 @@ function logTail(id, run, tail = 200) {
 }
 
 function floor(cards) {
+  // One ledger read per card in this answer, however many parts of it ask:
+  // readEvents is a readdir, a whole readFileSync and a JSON.parse per line,
+  // and the floor page polls this every two seconds.
+  const events = new Map()
+  const eventsOf = (id) => { if (!events.has(id)) events.set(id, readEvents(id)); return events.get(id) }
   const running = cards.filter((c) => ['running', 'handing_off'].includes(c.status)).map((c) => {
-    const s = summarize(c)
+    const s = summarize(c, eventsOf(c.card_id))
     return { card_id: c.card_id, title: c.title, station: c.station, status: c.status, adapter: s.active_adapter, leg: c.leg, leases: c.leases?.length ? c.leases : ['**'], last_event: s.last_event, since: s.active_run?.started_at ?? c.updated_at, elapsed_ms: s.elapsed_ms, repo_name: s.repo_name }
   })
   const waiting = cards.filter((c) => ['waiting_human', 'needs_approval', 'paused'].includes(c.status)).map((c) => ({ card_id: c.card_id, title: c.title, station: c.station, status: c.status, since: c.updated_at, actions: availableActions(c) }))
   const queued = cards.filter((c) => c.status === 'queued').map((c) => {
-    const last = lastEventOf(c.card_id)
+    const evs = eventsOf(c.card_id)
+    const last = evs.length ? evs[evs.length - 1] : null
     return { card_id: c.card_id, title: c.title, station: c.station, leases: c.leases?.length ? c.leases : ['**'], blocked_by: last?.type === 'blocked_by' ? last.summary : null }
   })
   return {
@@ -384,6 +391,23 @@ function parseSince(s) {
   const m = /^(\d+)(m|h|d)$/.exec(String(s ?? '1h'))
   if (!m) return 3600000
   return parseInt(m[1], 10) * { m: 60000, h: 3600000, d: 86400000 }[m[2]]
+}
+
+// The floor page polls /api/trunk every two seconds, and one answer reads every
+// card's whole ledger to find the `landed` events inside the window. Cached for
+// the same beat trunkFor uses, keyed by the window asked for; a landing clears
+// it, because a landing is the one thing this list exists to show.
+const TRUNK_VIEW_TTL = 15000
+const trunkViewCache = new Map()
+function trunkView(sinceMs) {
+  const hit = trunkViewCache.get(sinceMs)
+  if (hit && Date.now() - hit.at < TRUNK_VIEW_TTL) return hit.data
+  const data = trunk(listCards(), sinceMs)
+  // `since` comes off the query string, so the key space is the caller's: keep
+  // it a cache rather than a leak
+  if (trunkViewCache.size > 50) trunkViewCache.clear()
+  trunkViewCache.set(sinceMs, { at: Date.now(), data })
+  return data
 }
 
 let toolsCache = null
@@ -440,13 +464,30 @@ function backgroundHistoryRefresh() {
     execFile(process.execPath, [LEG_BIN, 'history', 'refresh', '--json'], { env: process.env, windowsHide: true, timeout: 120000 }, () => { historyRefreshing = false })
   } catch { historyRefreshing = false }
 }
-function worktreesFor({ repo = null, dirty = true } = {}) {
+// One refresh at a time per query, and never on this stack. The list is up to
+// twenty `git worktree list` calls plus twenty `git status` calls at about half
+// a second each; synchronously that was measured at 9-25 s in which the board
+// served no stylesheet, no click and no SSE frame. listWorktreesAsync runs them
+// four at a time through execFile, so the loop keeps turning, and while a
+// refresh is in flight every other caller is answered from the list already in
+// hand rather than starting a second fan-out — a page that polls this must
+// never be able to queue them.
+const worktreesInflight = new Map()
+async function worktreesFor({ repo = null, dirty = true } = {}) {
   const key = `${repo ?? ''}|${dirty}`
   const hit = worktreesCache.get(key)
   if (hit && Date.now() - hit.at < WORKTREES_TTL) return hit.data
-  const data = listWorktrees({ repo, dirty, dirtyLimit: 20, repoLimit: 20 })
-  worktreesCache.set(key, { at: Date.now(), data })
-  return data
+  let refresh = worktreesInflight.get(key)
+  if (!refresh) {
+    refresh = listWorktreesAsync({ repo, dirty, dirtyLimit: 20, repoLimit: 20 })
+      .then((data) => { worktreesCache.set(key, { at: Date.now(), data }); return data })
+      .finally(() => { worktreesInflight.delete(key) })
+    worktreesInflight.set(key, refresh)
+  }
+  // the very first caller has nothing to answer from and waits for git; every
+  // caller after it reads the last list while the refresh finishes behind it
+  if (hit) { refresh.catch(() => {}); return hit.data }
+  return refresh
 }
 
 // canLand shells out to git several times for one worktree, and the view runs
@@ -601,7 +642,19 @@ function visibleSessionFile(file) {
   return !value.includes('*** Begin Patch') && !value.includes('*** End Patch')
 }
 
-export function sessionsView({ viewer = null, share = null } = {}) {
+// What every row carries that nothing on the board reads. One row per terminal
+// ships in every SSE push and in every /api/sessions answer, so a field no
+// board file and no test reads off a row is paid for on every push: `argv` is
+// the command line, `files_touched` is already merged into `files` beside
+// `files_dirty`, `runtime_capabilities` is summarised by
+// `can_edit_handoff_order`, and the other four are the runner's own bookkeeping.
+// The record on disk keeps all of them, and so does GET /api/sessions/<id>,
+// which is the route that hands over the whole record.
+const ROW_DROPPED = ['argv', 'runner_pid', 'head_at_start', 'checkpoints', 'agent_sessions', 'runtime_capabilities', 'files_touched']
+
+// `read` is the usage reader, one per view (see the memo below). A test counts
+// through it; nothing else passes it.
+export function sessionsView({ viewer = null, share = null, read = readUsage } = {}) {
   const shared = Boolean(share && shareIsOn(share))
   // Decided before the map below, because the per-session payload has to know
   // it: a guest owns their own terminal and may hand it off, so they get its
@@ -613,6 +666,22 @@ export function sessionsView({ viewer = null, share = null } = {}) {
   const configuredAccounts = readAccounts()
   // the spending rules the picker has to print, read once for the whole view
   const prefs = readPreferences()
+  // Four files on disk were read 143 times per answer: evaluateLadder memoises
+  // inside one call, and this view makes one call per terminal, then reads the
+  // same login again for `capacity` and again for the accounts payload. One
+  // reader for the whole view, so a login is read at most once however many
+  // terminals stand on it — and every part of the answer is then built from the
+  // same reading, which is also the only way `capacity` and a picker row can
+  // never disagree.
+  const usageOf = new Map()
+  const readUsageOnce = (agent, account = 'default') => {
+    const key = `${agent}--${account}`
+    if (!usageOf.has(key)) usageOf.set(key, read(agent, account))
+    return usageOf.get(key)
+  }
+  // one readdir per checkout for the whole view instead of three existsSync per
+  // terminal (src/synthesis.mjs sessionFileIndex)
+  const synthesisIndex = new Map()
   const sessions = list.map((s) => {
     const land = readLand(s.session_id)
     const handoffOrder = normalizeHandoffOrder(s.handoff_order)
@@ -626,12 +695,14 @@ export function sessionsView({ viewer = null, share = null } = {}) {
     // and the rung an automatic hand-off would take can never disagree. The
     // picker is a human pressing a button, so the reserve is a note here, not
     // a refusal (B.3).
-    const rungs = evaluateLadder({ from, list: chain, installed: availabilityKnown ? s.installed : null, maySpend: prefs.may_spend, reserve: prefs.reserve, automatic: false, climbBack: prefs.climb_back, ladder: handoffLadder })
+    const rungs = evaluateLadder({ from, list: chain, installed: availabilityKnown ? s.installed : null, maySpend: prefs.may_spend, reserve: prefs.reserve, automatic: false, climbBack: prefs.climb_back, ladder: handoffLadder, read: readUsageOnce })
     const open = availabilityKnown ? rungs.find((r) => r.ok) : null
     const eligibleNext = open ? { agent: open.agent, account: open.account, ...(open.model ? { model: open.model } : {}) } : null
     const can = s.worktree ? canLandFor(s) : { ok: false, blockers: [{ code: 'no_worktree', message: 'this terminal works in the checkout itself: there is no branch of its own to land', fix: null }] }
+    const row = { ...s }
+    for (const k of ROW_DROPPED) delete row[k]
     return {
-      ...s,
+      ...row,
       handoff_order: handoffOrder,
       chain,
       preferred_next: preferredNext,
@@ -653,10 +724,11 @@ export function sessionsView({ viewer = null, share = null } = {}) {
         // A row that is blocked keeps a reason a guest may read.
         reason: guest ? (r.ok ? null : guestReason(r.reason)) : r.reason,
         resets_at: !guest ? (r.resets_at ?? null) : null,
-        // the probe in fixtures/live/claude/resume-model-probe.json: a claude
-        // downshift resumes the same conversation; everything else is primed
-        // from the bundle, codex included until its own resume is observed
-        keeps_conversation: Boolean(isDownshift(from, r) && r.agent === 'claude' && s.agent_session_id),
+        // the same rule the terminal applies at the switch (src/usage.mjs
+        // keepsConversation): a claude downshift, or another claude login that
+        // can see this transcript, resumes the conversation; everything else
+        // is primed from the bundle, codex included until its resume is observed
+        keeps_conversation: keepsConversation({ from, to: r, session: s }),
         // the cost word is not static: `credits` on a claude/fable rung means
         // this machine's login has usage credits switched on (preferences.mjs
         // rungCost reads extra_usage.enabled), which is a fact about the
@@ -670,10 +742,10 @@ export function sessionsView({ viewer = null, share = null } = {}) {
       // and never persisted: it depends on the model the row is running, and
       // the record only knows the login. A guest never gets it: it is a
       // percentage of this machine's usage (.design/BOARD-DESIGN.md 6.13).
-      ...(guest ? {} : { capacity: binding(readUsage(s.agent, s.account), s.model ?? null) }),
+      ...(guest ? {} : { capacity: binding(readUsageOnce(s.agent, s.account), s.model ?? null) }),
       can_edit_handoff_order: s.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY) ?? false,
       active: isActive(s),
-      has_synthesis: hasRecentSynthesis(s),
+      has_synthesis: hasRecentSynthesis(s, { index: synthesisIndex }),
       overlap: ov.get(s.session_id) ?? [],
       elapsed_ms: Date.now() - Date.parse(s.started_at),
       // Older attached Codex processes can retain one parser mistake where an
@@ -688,7 +760,7 @@ export function sessionsView({ viewer = null, share = null } = {}) {
   })
   const accounts = []
   for (const agent of Object.keys(configuredAccounts)) for (const account of configuredAccounts[agent]) {
-    const u = readUsage(agent, account)
+    const u = readUsageOnce(agent, account)
     // buckets, walls, extra_usage and facts are owner-only for the same reason
     // the percentages are: they say how much of this machine's login is gone.
     // The guest branch at the bottom of this function drops the slot to
@@ -783,15 +855,41 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, sessionsDebounce
       try { c.res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`) } catch {}
     }
   }
+  // The terminals verdict says "card 3e1c has waited on you for 12 minutes",
+  // and it reads `cards_waiting` off the sessions payload (sessionsView). A card
+  // entering or leaving a human-waiting status changes that payload with nothing
+  // in the sessions tree behind it, so the stat fingerprint cannot see it and
+  // the health tick no longer rebuilds the view regardless. The card watcher
+  // says so instead — the only card change that reaches the terminals page, and
+  // it costs nothing on a board where no card moves.
+  const waitingCards = new Set()
+  const noteWaiting = (id, status) => {
+    const waiting = WAITING_STATUSES.includes(status)
+    if (waiting === waitingCards.has(id)) return false
+    if (waiting) waitingCards.add(id)
+    else waitingCards.delete(id)
+    forgetCardsWaiting()
+    return true
+  }
   // Re-read and re-emit exactly one card's files — never the whole ledger. Each
   // client carries its own high-water mark, so a second client connecting never
   // resets the count the first is reading from.
   const refreshCard = (id) => {
+    // /api/trunk is built from the card ledgers, and one of them just changed:
+    // the floor polls that list every two seconds and a `landed` row must not
+    // wait out the cache behind it
+    trunkViewCache.clear()
     const card = readCard(id)
     // pipeline cards and their events belong to the people who may run them:
     // the owner and any operator. A guest never gets them.
     const forOwner = (payload) => (viewer) => (viewer && !mayUseCards(viewer.role) ? null : payload)
-    if (!card) { for (const c of clients) c.sig.delete(id); broadcast('removed', forOwner({ card_id: id })); return }
+    if (!card) {
+      for (const c of clients) c.sig.delete(id)
+      if (noteWaiting(id, null)) scheduleSessionsPush({ force: true })
+      broadcast('removed', forOwner({ card_id: id }))
+      return
+    }
+    if (noteWaiting(id, card.status)) scheduleSessionsPush({ force: true })
     const events = readEvents(id)
     // broadcast() refreshes each client's viewer (and drops revoked ones) first
     broadcast('card', forOwner(summarize(card, events)))
@@ -816,11 +914,11 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, sessionsDebounce
   let sessionsTimer = null
   let lastSessionsPush = 0
   const pushSessions = () => {
-    sessionsTimer = null
     try { broadcast('sessions', (viewer) => viewFor(viewer)) } catch (err) { log(`sessions view: ${err.message}`) }
     lastSessionsPush = Date.now()
-    // the health tick pushes on its own schedule: record what it sent, so the
-    // next watcher hint is measured against the page's real contents
+    // the health tick and a card that changed hands push on their own schedule:
+    // record what was sent, so the next watcher hint is measured against the
+    // page's real contents
     lastFingerprint = sessionsFingerprint()
   }
   // One live agent rewrites its record about every six seconds and takes a
@@ -854,16 +952,30 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, sessionsDebounce
     return sig
   }
   let lastFingerprint = null
+  // Has anything the view is built from moved since the last push? Asked by the
+  // watcher's debounce and by the health tick, and it is the reason neither
+  // rebuilds a view that would come out identical to the one the page has.
+  const sessionsChanged = () => {
+    const sig = sessionsFingerprint()
+    if (sig === lastFingerprint) return false
+    lastFingerprint = sig
+    return true
+  }
+  let forcePush = false
   const pushIfChanged = () => {
     sessionsTimer = null
-    const sig = sessionsFingerprint()
+    const forced = forcePush
+    forcePush = false
+    const changed = sessionsChanged()
     // the hint was noise: the view would rebuild to exactly what the page
     // already has, so nothing is rebuilt and nothing is sent
-    if (sig === lastFingerprint) return
-    lastFingerprint = sig
+    if (!changed && !forced) return
     pushSessions()
   }
-  const scheduleSessionsPush = () => {
+  // `force` is for a change the sessions tree cannot show (a card that started
+  // waiting on the human): the debounce and the minimum interval still apply.
+  const scheduleSessionsPush = ({ force = false } = {}) => {
+    if (force) forcePush = true
     if (sessionsTimer) return
     const wait = Math.max(sessionsDebounceMs, sessionsMinIntervalMs - (Date.now() - lastSessionsPush))
     sessionsTimer = setTimeout(pushIfChanged, wait)
@@ -895,7 +1007,20 @@ function createSse({ healthIntervalMs = 10000, debounceMs = 30, sessionsDebounce
     healthTimer = setInterval(() => {
       const ts = new Date().toISOString()
       broadcast('health', (viewer) => (viewer && viewer.role !== 'owner' ? { ok: true, ts } : { ok: true, scheduler: { ...schedulerStatus(), max_concurrent: MAX_CONCURRENT }, ts }))
-      pushSessions()
+      // This used to push the whole sessions view unconditionally, six times a
+      // minute per client, which is the ~512 fs calls and the git subprocesses
+      // of a full rebuild whether or not one byte had changed: an idle board
+      // with 43 terminals measured 7,294 fs calls, 8 git processes and 1.14 CPU
+      // seconds a minute for nothing. The page's elapsed clocks tick
+      // client-side, the usage poller pushes what it reads, and a card that
+      // starts waiting on a human forces a push of its own, so the tick asks
+      // the same question a watcher hint asks and stays quiet when the answer
+      // is no. One thing moves no file: a runner that died (a closed window, a
+      // crash) — the unconditional rebuild used to catch it through reapLost
+      // inside the view, so the liveness pass runs here on its own, and the
+      // record it marks lost is the write that moves the fingerprint.
+      try { reapLost(listSessions()) } catch (err) { log(`reap: ${err.message}`) }
+      if (sessionsChanged()) pushSessions()
     }, healthIntervalMs)
   }
   const stopWatch = () => {
@@ -1078,7 +1203,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
     const ownsSession = (s) => !shared || viewer.role === 'owner' || (s.owner ?? share.owner) === viewer.name
     const parts = path.split('/').filter(Boolean) // ['api', ...]
     if (!canCards && ['cards', 'floor', 'presets', 'adapters', 'leases', 'models'].includes(parts[1])) return send(res, 403, { error: 'the pipeline board belongs to the owner and the operators of this machine' })
-    if (!canMachine && ['trunk', 'history', 'worktrees', 'audit'].includes(parts[1])) return send(res, 403, { error: 'this is the map of the machine itself: every repository path and every conversation on it. It belongs to the owner of this machine.' })
+    if (!canMachine && ['trunk', 'history', 'worktrees', 'audit', 'digest'].includes(parts[1])) return send(res, 403, { error: 'this is the map of the machine itself: every repository path and every conversation on it. It belongs to the owner of this machine.' })
     try {
       if (req.method === 'GET' && path === '/api/health') {
         const you = { ...viewer, share: { on: shared, people: shared ? share.people.length : 0 } }
@@ -1287,8 +1412,9 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           landSession(sess, { by: actor.id, autoCommit: true })
             .catch((err) => log(`land ${id}: ${err.message}`))
             // a landing moves the branch under every worktree cut from it, so
-            // the cached land-ability goes with the cached trunk
-            .finally(() => { trunkCache.clear(); canLandCache.clear(); try { sse.broadcast('sessions', (v) => viewFor(v)) } catch {} })
+            // the cached land-ability goes with the cached trunk — and the
+            // landed commit is exactly what /api/trunk is asked for
+            .finally(() => { trunkCache.clear(); trunkViewCache.clear(); canLandCache.clear(); try { sse.broadcast('sessions', (v) => viewFor(v)) } catch {} })
           log(`land requested for ${id} by ${actor.id}`)
           return send(res, 202, { ok: true, requested: 'land' })
         }
@@ -1495,7 +1621,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
       }
       if (req.method === 'GET' && path === '/api/worktrees') {
         const q = url.searchParams
-        return send(res, 200, worktreesFor({ repo: q.get('repo') || null, dirty: q.get('dirty') !== '0' }))
+        return send(res, 200, await worktreesFor({ repo: q.get('repo') || null, dirty: q.get('dirty') !== '0' }))
       }
       if (req.method === 'GET' && path === '/api/audit') {
         const q = url.searchParams
@@ -1509,8 +1635,15 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           kind,
         }))
       }
+      if (req.method === 'GET' && path === '/api/digest') {
+        // what happened while the owner was away (src/digest.mjs); owner only,
+        // gated with the audit trail above: it names repositories and prompts
+        let d
+        try { d = buildDigest({ since: url.searchParams.get('since') ?? DEFAULT_SINCE }) } catch (err) { return send(res, 400, { error: err.message }) }
+        return send(res, 200, d)
+      }
       if (req.method === 'GET' && path === '/api/floor') return send(res, 200, floor(listCards()))
-      if (req.method === 'GET' && path === '/api/trunk') return send(res, 200, trunk(listCards(), parseSince(url.searchParams.get('since'))))
+      if (req.method === 'GET' && path === '/api/trunk') return send(res, 200, trunkView(parseSince(url.searchParams.get('since'))))
       if (req.method === 'GET' && path === '/api/leases') return send(res, 200, { leases: held(listCards()) })
       if (parts[1] === 'cards' && parts[2]) {
         const id = parts[2]

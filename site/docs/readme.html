@@ -265,12 +265,19 @@ reported (or the soonest known window reset).</li>
 <li><strong>Bundle.</strong> Leg writes structured notes (task, the last messages from the
 transcript, <code>git diff --stat</code>, dirty files, files edited this session, recent
 commits, why it stopped) and runs <code>context-handoff-bundle save --repo-local</code>
-with one slug per leg; each save writes its own timestamped bundle next to
-the last one. A checkpoint of the same bundle is taken every two minutes
-while the session is active. If the session maintained <code>.leg/SYNTHESIS-&lt;session-id&gt;.md</code>,
+with one slug per session, updated in place (<code>--update &lt;slug&gt;</code>) at every
+checkpoint, about every two minutes while the session is active, and at
+every warning, limit and hand-off. If the session maintained <code>.leg/SYNTHESIS-&lt;session-id&gt;.md</code>,
 Leg inlines it into the resume file as a <code>## Synthesis</code> section ahead of the raw dump.</li>
-<li><strong>Switch.</strong> The agent process is stopped, the terminal is restored, and the
-next option starts in the same terminal with a short pointer prompt:
+<li><strong>Switch.</strong> The agent process is stopped and the terminal is restored. Two
+claude destinations keep the conversation itself instead of the bundle: a
+weaker model on the same login (<code>claude --resume &lt;id&gt; --model &lt;alias&gt;</code>),
+and another claude login you added with <code>leg accounts add</code>, which sees the
+same transcript through the <code>projects</code> junction the account carries
+(<code>claude --resume &lt;id&gt;</code> under that login&#39;s <code>CLAUDE_CONFIG_DIR</code>). A weekly
+or Fable wall on one login then continues on the other with the
+conversation it already had, and the timeline says <code>kept the conversation</code>. Every other rung starts in the same terminal with a short
+pointer prompt:
 read <code>.leg/RESUME-&lt;session-id&gt;.md</code> (the <code>context-handoff-bundle load</code>
 output, the <code>## Synthesis</code> section if present, and the reason for the switch),
 check <code>git status</code> and <code>git diff</code>, continue, do not ask the human to restate
@@ -420,6 +427,19 @@ the person or agent that did it, the repo and the time. Filter by person or by
 kind. It reads what the ledger already recorded, so nothing new is stored, and
 it prints how much it read beside the answer (<code>14 terminals and 3 cards, 812 events read</code>) so an empty trail cannot be mistaken for a quiet week. Owner
 only: the trail names repositories and people.</p>
+<h3 id="what-happened-while-you-were-away"><a class="anchor" href="#what-happened-while-you-were-away">What happened while you were away</a></h3>
+<p><code>leg digest</code> (default window 8 hours; <code>--since 2d</code>, <code>--since 30m</code>, or an ISO
+time; <code>--json</code> for the record; <code>GET /api/digest?since=</code> on the board, owner
+only) is the trail read the other way round: grouped by repository, what
+needs you first. The first line is the volume it was read from (<code>3 terminals, 2 cards, 1 landing, 412 events read (66 sessions and 9 cards on disk)</code>), then <code>needs you</code>: a live terminal waiting on a question, a card
+parked for a human, a card that failed, a terminal that was lost, in that
+order and each with how long ago. Then one block per repository: every
+terminal that moved in the window with its login and model, state, turns,
+files, commits ahead and the events worth a line (a wall, a hand-off and
+whether it kept the conversation, an all-out wait, the end), every card with
+its last event, every landing with who pressed Land, and last the walls
+standing right now with their reset times. Nothing new is recorded; a window
+with nothing in it says so with its counts.</p>
 <h2 id="the-board"><a class="anchor" href="#the-board">The board</a></h2>
 <p><code>leg &lt;agent&gt;</code> opens it; <code>leg open</code> reopens it; <code>leg down</code> stops it.</p>
 <ul>
@@ -489,16 +509,26 @@ matrix (which agents list, show messages, continue) and every file read are in
 <h2 id="second-accounts-and-what-the-terms-say"><a class="anchor" href="#second-accounts-and-what-the-terms-say">Second accounts, and what the terms say</a></h2>
 <p>Optional. <code>leg accounts add claude work</code> creates
 <code>~/.leg/accounts/claude/work</code>, junctions your <code>hooks</code>, <code>skills</code>, <code>agents</code>,
-<code>commands</code>, <code>plugins</code>, <code>rules</code>, <code>scripts</code>, <code>output-styles</code> and <code>tools</code> into it,
-copies <code>settings.json</code>, <code>CLAUDE.md</code> and the status-line scripts (refreshed from
-your real <code>~/.claude</code> before every launch), and prints one line to paste:</p>
+<code>commands</code>, <code>plugins</code>, <code>rules</code>, <code>scripts</code>, <code>output-styles</code>, <code>tools</code> and
+<code>projects</code> into it, copies <code>settings.json</code>, <code>CLAUDE.md</code> and the status-line
+scripts (refreshed from your real <code>~/.claude</code> before every launch), and prints
+one line to paste:</p>
 <pre><code>$env:CLAUDE_CONFIG_DIR=&#39;C:\Users\you\.leg\accounts\claude\work&#39;; claude auth login
 </code></pre>
+<p><code>projects</code> is Claude Code&#39;s conversation store, so the second login sees the
+same conversations and the same auto-memory as the first, and a hand-off from
+one login to the other keeps the conversation: the terminal moves to <code>work</code>
+with <code>claude --resume &lt;id&gt;</code> and no bundle prompt. That is the whole point of a
+second 20x login when the Fable or the weekly window on the first one is out.
+An account made by an older Leg gets the junction the next time it starts.
+Claude Code writes that directory; Leg only reads it.</p>
 <p>Same for codex (<code>CODEX_HOME</code>; <code>config.toml</code>, <code>AGENTS.md</code>, <code>skills</code>, <code>prompts</code>,
-<code>rules</code>, <code>plugins</code>, <code>agents</code>, <code>hooks</code>, <code>memories</code> shared). agy 1.2.0 has no
-config-directory override, so it stays one account. Only the login lives in
-the account directory; <code>leg accounts rm</code> removes the junctions and the
-directory and never touches your real home.</p>
+<code>rules</code>, <code>plugins</code>, <code>agents</code>, <code>hooks</code>, <code>memories</code> shared; a codex hand-off
+still takes the bundle, because <code>codex resume</code> under a second <code>CODEX_HOME</code>
+has not been observed). agy 1.2.0 has no config-directory override, so it
+stays one account. Only the login lives in the account directory;
+<code>leg accounts rm</code> removes the junctions and the directory and never touches
+your real home.</p>
 <p>The terms, as published (effective dates below):</p>
 <ul>
 <li>Anthropic Consumer Terms (effective 2025-10-08): &quot;You may not share your
@@ -574,6 +604,8 @@ leg history [ls] [--provider p] [--repo r] [--search q] [--managed|--external] [
                                      every conversation on this machine, Leg&#39;s own and the agents&#39; own (read only)
 leg history show &lt;id&gt; [--messages n] [--json] | continue &lt;id&gt; [agent args…] | refresh [--full] | providers
 leg worktrees [--repo &lt;path&gt;] [--no-dirty] [--json]   every checkout: git&#39;s, Leg&#39;s, the conversations&#39; (read only)
+leg digest [--since 8h|2d|&lt;iso&gt;] [--json]   what happened while you were away: needs-you first, then every
+                                     terminal, card, landing and wall in the window, by repository (read only)
 leg accounts ls                      logins and their 5h/7d usage
 leg accounts add &lt;claude|codex|grok&gt; &lt;name&gt; | rm &lt;agent&gt; &lt;name&gt; | terms
 leg harness status|inspect|check|explain|history [--json]   the portable harness, read-only
@@ -777,7 +809,7 @@ and the fixtures store home paths as <code>~</code>.</p>
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.14.0; see
+and remain available. The version in this source tree is 0.15.0; see
 <a href="https://www.npmjs.com/package/legcli">npm</a> for published versions and
 <a href="/docs/changelog">CHANGELOG.md</a> for release notes.</p>
 <p>The first 14 days are a <strong>free trial</strong>: install it, type <code>leg claude</code>, and

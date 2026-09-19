@@ -10,7 +10,7 @@ import { makeHome, initRepo, git } from './helpers.mjs'
 const HOME = makeHome()
 process.env.LEG_HOME = HOME
 process.env.BATON_HOME = HOME
-const { listWorktrees } = await import('../src/history/worktrees.mjs')
+const { listWorktrees, listWorktreesAsync } = await import('../src/history/worktrees.mjs')
 const { canonPath } = await import('../src/fsx.mjs')
 
 const same = (a, b) => canonPath(a) === canonPath(b)
@@ -87,6 +87,36 @@ test('every checkout has a repo, an owner, its conversations and a verdict; noth
   assert.equal(listWorktrees({ sessions, cards, records, dirtyLimit: 1 }).dirty_checked, 1)
   // the repo filter
   assert.equal(listWorktrees({ sessions, cards, records, repo: 'C:\\not-a-repo', dirty: false }).worktrees.length, 0)
+})
+
+// A cold list is up to forty `git worktree list` calls plus forty `git status`
+// calls at about half a second each. Run on the board's own stack that was
+// measured at 9-25 seconds in which it served no stylesheet, no click and no
+// SSE frame, so the board takes the async variant; `leg worktrees` keeps the
+// synchronous one. Both must answer with the same list.
+test('the async list is the same list, and it lets the event loop turn while git runs', async () => {
+  const repo = initRepo('uwt-async-')
+  const wt = join(repo, '.leg-worktrees', 's-uwt-async')
+  git(repo, ['worktree', 'add', '-q', '-b', 'leg/s-uwt-async', wt, 'main'])
+  const sessions = [{ session_id: 's-uwt-async', agent: 'claude', status: 'running', repo, cwd: wt, worktree: { path: wt, branch: 'leg/s-uwt-async', base: 'main' }, updated_at: '2026-09-17T00:00:00.000Z' }]
+  const now = Date.parse('2026-09-18T00:00:00.000Z')
+  const args = { sessions, cards: [], records: [], now }
+
+  // the same instrument on both paths, which is what makes the second number
+  // mean anything: a 5 ms timer cannot fire inside a synchronous fan-out
+  let syncTicks = 0
+  const a = setInterval(() => { syncTicks++ }, 5)
+  const sync = listWorktrees(args)
+  clearInterval(a)
+  let asyncTicks = 0
+  const b = setInterval(() => { asyncTicks++ }, 5)
+  const asynced = await listWorktreesAsync(args)
+  clearInterval(b)
+
+  assert.deepEqual(asynced, sync, 'the async list must be the same payload as the synchronous one')
+  assert.equal(sync.dirty_checked, 2, `both checkouts get a git status; got ${sync.dirty_checked}`)
+  assert.equal(syncTicks, 0, `the synchronous list blocks the loop for the whole fan-out, which is why the board does not use it; got ${syncTicks} tick(s)`)
+  assert.ok(asyncTicks > 0, `the async list must let the loop turn while ${sync.repos + sync.dirty_checked} git processes run; got ${asyncTicks} tick(s)`)
 })
 
 test('a repository that is gone or is not a repository any more lists nothing and prints nothing', () => {

@@ -1,5 +1,104 @@
 # Changelog
 
+## 0.15.0 (2026-09-18)
+
+A second login keeps the conversation, and the runtime does less work per
+minute.
+
+- **A hand-off to your other claude login keeps the conversation.** `leg
+  accounts add claude <name>` now junctions Claude Code's `projects` store
+  into the account beside the harness directories, so the second login sees
+  the same conversations and the same auto-memory as the first. At a weekly
+  or Fable wall the terminal moves to that login with `claude --resume <id>`
+  under its `CLAUDE_CONFIG_DIR` and no bundle prompt, and the timeline says
+  `claude/fable → claude/work (kept the conversation)`. One rule decides it
+  for the terminal and for the board's picker (`keepsConversation` in
+  `src/usage.mjs`): a same-login downshift, or another login whose home can
+  see the transcript file, checked at the switch. An account made by an
+  older Leg gets the junction the next time it starts. `leg history` lists a
+  junctioned store once. codex still takes the bundle across logins.
+- **`leg digest`: what happened while you were away.** The default window is
+  8 hours (`--since 2d`, `--since 30m`, an ISO time; `--json`; `GET
+  /api/digest?since=` on the board, owner only). The first line is the volume
+  it was read from, then what needs you (a live terminal waiting on a
+  question, a card parked for a human, a failed card, a lost terminal, in
+  that order), then one block per repository with every terminal, card and
+  landing that moved and the events worth a line, and last the walls
+  standing now. Read only, over the records already on disk; a window with
+  nothing in it says so with its counts.
+- **The runtime does less work per minute, measured before and after.** A
+  profiler (`fs` and `child_process` counters plus `--cpu-prof`) sat on every
+  path first; the numbers are medians on one Windows 11 box, Node 24, with a
+  fake agent, an isolated `LEG_HOME` and a board on 4800–4899, and every
+  change carries a test that was seen failing without it.
+  - `leg --version` and every other command loaded 68 modules before `main()`
+    ran. `bin/leg.mjs` now imports each command group inside its own branch,
+    `src/limits.mjs` loads its fixture tree on first use, and the launcher
+    asks a new leaf (`src/scheduler-status.mjs`) whether the scheduler runs
+    instead of pulling in the orchestrator. `leg --version`: 127 → 52 ms
+    wall, 79 → 0 ms CPU after Node's own boot, 254 → 4 fs calls, 68 → 1
+    project module; `leg sessions ls` 116 → 75 ms; `leg card ls` 117 → 70 ms
+    (`test/cli-lazy.test.mjs`).
+  - An idle terminal spawned 59.5 git processes a minute (six per poll round)
+    and blocked its own event loop 4.4–10.3 s of every minute doing it. One
+    `git status --porcelain=v2 --branch` (`src/git.mjs`) now carries the
+    head, the branch, the dirty list and the upstream's own ahead count:
+    10.9 git processes a minute, 2.1 s of git wall time, terminal CPU 1.7 →
+    0.1 s a minute (`test/git-status.test.mjs`, `test/attach-perf.test.mjs`).
+  - The first `leg <agent>` of the day waited for the board it had just
+    started (polling `/api/health` for about a second) before the agent got
+    its first instruction. The agent starts at once and the wait runs behind
+    it; a session that exits within a second still claims the board's
+    pidfile before it goes. Time to the agent on that launch: 1,220 → 261 ms.
+  - The two-minute bundle checkpoint ran the python CLI synchronously inside
+    the poll tick, freezing limit detection and every board button for as
+    long as it took (up to its 120 s timeout). It runs beside the tick now,
+    one at a time, and the hand-off save waits for a checkpoint still
+    writing.
+  - `installedAgents()` ran `<agent> --version` for every agent on `PATH` at
+    every launch (an 8 s budget each); the answer is kept for a day in
+    `$LEG_HOME/installed.json`, keyed by the resolved bin. A `LEG_<AGENT>_BIN`
+    override is never cached.
+  - An idle board with 43 terminals and one page open rebuilt the whole
+    sessions view every 10 s whether or not a byte had changed: 7,294 fs
+    calls, 8 git processes and 1.1 CPU seconds a minute for nothing. The
+    health tick now asks the same stat fingerprint the watcher asks, runs the
+    liveness pass itself (a runner that died moves no file), and pushes only
+    when the answer changed; a card that starts or stops waiting on a human
+    forces the one push the fingerprint cannot see. Idle: 7,294 → 4,824 fs
+    calls, 8.2 → 0 git processes, 1.14 → 0.54 CPU seconds and 6 → 0 sessions
+    pushes a minute (what remains is the liveness pass and the scheduler's
+    own tick). One
+    sessions view also read the usage files 143 times (once per rung per
+    terminal, then again for capacity and the accounts panel) and probed three
+    paths per terminal for a synthesis file; one reader per view and one
+    `readdir` per checkout: `/api/sessions` 53 → 34 ms, 511 → 212 fs calls per
+    answer, and each row drops seven runner-bookkeeping fields nothing on the
+    board read (8% off every push; `GET /api/sessions/<id>` keeps the whole
+    record).
+  - A cold `/api/worktrees` ran up to forty git processes on the board's one
+    event loop: 9–25 s in which no stylesheet, click or SSE frame was served.
+    The list is gathered through `execFile`, four at a time, one refresh per
+    query, and a caller that arrives while a refresh runs gets the last list.
+    Worst `/api/health` during a cold call: 11.8 → 3.2 s; the rest is the
+    history index's synchronous `listHistory`, still open. `/api/trunk`
+    (polled every 2 s by the floor) is cached 15 s and cleared by any card
+    change or landing: 27.5 → 0.5 ms. A terminal's detail drawer ran one `git
+    ls-files` per file it touched every 3 s; one process for the list: 1,247 →
+    305 ms.
+  - `updateSession` takes the lock budget `run.json` already had (250 tries, a
+    10 s steal) instead of running unlocked after 1.2 s; `control.json` is
+    cleared under its lock at exit; `src/handoff.mjs` takes `scrub` from
+    `src/redact.mjs` instead of the card runner; the 12-leg stop names the
+    bundle and `leg resume` instead of promising a hand-off a fresh launch
+    never performed.
+- **The README's hand-off step 3 said one bundle per leg.** The code has
+  written one bundle per session, updated in place, since 0.2.0; the sentence
+  now says so. `docs/concepts.md` and the `src/sessions.mjs` header also said
+  the runner was the only writer of `session.json`; the usage poller, the
+  claude hooks and a board action patch it too, under one lock, and both now
+  say that.
+
 ## 0.14.0 (2026-09-18)
 
 The 14-day trial is back.

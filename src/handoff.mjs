@@ -2,10 +2,10 @@
 // bundle format: it writes a structured notes file, calls the CLI as an argv
 // subprocess (`save --repo-local` inside the worktree so the next agent finds
 // the bundle in its cwd), validates the bundle, and later `load`s the resume.
-import { spawnSync } from 'node:child_process'
+import { spawnSync, execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { scrub } from './runner.mjs'
+import { scrub } from './redact.mjs'
 
 const MIN_VERSION = [0, 4, 0]
 
@@ -40,6 +40,24 @@ export function chb(args, { cwd, timeout = 120000 } = {}) {
   const r = spawnSync(bin, [...prefix, ...args], { cwd, windowsHide: true, encoding: 'utf8', timeout, env: process.env })
   if (r.error) throw new Error(`context-handoff-bundle ${args[0]} failed to start: ${r.error.message}`)
   return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }
+}
+
+// The same call off the caller's event loop: same argv, same env, same timeout.
+// Used by the periodic bundle checkpoint only (src/bundle.mjs
+// saveSessionBundleAsync) - a synchronous save inside the terminal's poll tick
+// froze limit detection and every board control for as long as the python CLI
+// took, up to its whole 120 s timeout. Same answer shape as chb(), and the same
+// throw when the CLI could not be started at all.
+export function chbAsync(args, { cwd, timeout = 120000 } = {}) {
+  const { bin, prefix } = resolveChb()
+  return new Promise((res, rej) => {
+    execFile(bin, [...prefix, ...args], { cwd, windowsHide: true, encoding: 'utf8', timeout, maxBuffer: 32 * 1024 * 1024, env: process.env }, (err, stdout, stderr) => {
+      // a numeric code is an exit status (the CLI ran and refused); anything
+      // else - ENOENT, a kill on timeout - is a failure to start
+      if (err && typeof err.code !== 'number') return rej(new Error(`context-handoff-bundle ${args[0]} failed to start: ${err.message}`))
+      res({ status: err ? err.code : 0, stdout: stdout ?? '', stderr: stderr ?? '' })
+    })
+  })
 }
 
 // Version from package metadata (works on releases without --version).

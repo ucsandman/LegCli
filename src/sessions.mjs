@@ -3,8 +3,10 @@
 //   session.json   the live record the board renders (atomic writes)
 //   events.jsonl   timeline (started, turn, warning, limit, handoff, ended)
 //   control.json   board → runner requests ({ handoff: true })
-// The runner (src/attach.mjs) is the only writer of session.json; hooks and
-// taps go through recordFromTap() so every write is one atomic replace.
+// The runner (src/attach.mjs) owns session.json; the board's usage poller,
+// Claude Code's hooks (src/taps/claude.mjs) and a board action patch fields on
+// it too, all through updateSession(), so every write is one atomic replace
+// under .session.lock and no writer loses another's field.
 import { existsSync, mkdirSync, readdirSync, readFileSync, appendFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -95,6 +97,12 @@ export function createSession({ id, agent, account = 'default', cwd, repo = null
 // processes cannot lose an accumulated field (files_touched, turns) to a
 // last-writer-wins race. Callers that only set fixed values pass a plain object.
 export function updateSession(id, patch, { event } = {}) {
+  // run.json's lock budget (250 tries, a 10 s steal), not withFileLock's
+  // default: past 1.2 s the default runs the read-modify-write UNLOCKED, and
+  // this file has the most writers in Leg — the terminal's poll, the claude
+  // hook, the board's usage poller, the board's order editor and every
+  // `leg` command. One of them losing its patch is the race the lock exists
+  // for, and the terminal is never the one that must not block.
   return withFileLock(join(sessionDir(id), '.session.lock'), () => {
     const cur = readSession(id)
     if (!cur) return null
@@ -113,7 +121,7 @@ export function updateSession(id, patch, { event } = {}) {
     writeJsonAtomic(join(sessionDir(id), 'session.json'), next)
     if (event) appendEvent(id, event)
     return next
-  })
+  }, { retries: 250, staleMs: 10000 })
 }
 
 export function appendEvent(id, ev) {
@@ -151,6 +159,13 @@ export function takeControl(id) {
     rmSync(f, { force: true })
     return req
   })
+}
+// The last thing a leg does: the terminal is gone, so a request nobody will
+// read is removed. Under the same lock requestControl writes it with — a bare
+// unlink from this side could delete a board request mid-write.
+export function clearControl(id) {
+  const f = join(sessionDir(id), 'control.json')
+  return withFileLock(join(sessionDir(id), '.control.lock'), () => { rmSync(f, { force: true }) })
 }
 
 export function removeSession(id) { rmSync(sessionDir(id), { recursive: true, force: true }) }

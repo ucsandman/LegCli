@@ -148,7 +148,7 @@ variables yourself in that case.</p>
 <tr>
 <td><code>LEG_ATTACH_POLL_MS</code></td>
 <td><code>2000</code></td>
-<td>how often the session loop re-reads the taps; git is re-read every third poll</td>
+<td>how often the session loop re-reads the taps; git is re-read every third poll, as one <code>git status --porcelain=v2 --branch</code> (<code>src/git.mjs</code>) that carries the head, the branch, the dirty list and the upstream&#39;s own ahead count</td>
 <td><code>src/attach.mjs</code></td>
 </tr>
 <tr>
@@ -292,7 +292,7 @@ permission, so it is always on.</p>
 <tbody><tr>
 <td><code>LEG_HOME</code></td>
 <td><code>~/.leg</code></td>
-<td>where sessions, usage, accounts, cards, runs and the pidfiles live</td>
+<td>where sessions, usage, accounts, cards, runs, the pidfiles and <code>installed.json</code> (which agent CLIs answered <code>--version</code>, remembered for a day per resolved bin) live</td>
 <td><code>src/store.mjs</code>, <code>src/ledger.mjs</code>, <code>src/runner.mjs</code>, <code>src/worktree.mjs</code>, <code>src/cards.mjs</code>, <code>src/sessions.mjs</code>, <code>src/usage.mjs</code>, <code>src/accounts.mjs</code></td>
 </tr>
 <tr>
@@ -530,7 +530,9 @@ home. <code>src/accounts.mjs</code> <code>LAYOUT</code> is the whole definition.
   accounts.json                     the named accounts per agent
   accounts/claude/&lt;name&gt;/
     hooks/ skills/ agents/ commands/ plugins/ rules/ scripts/
-    output-styles/ tools/           junctions back to ~/.claude
+    output-styles/ tools/ projects/ junctions back to ~/.claude (projects is
+                                    the conversation store: a hand-off to this
+                                    login can --resume the same transcript)
     settings.json settings.local.json CLAUDE.md keybindings.json
     statusline.ps1 statusline-combined.ps1
                                     copies, refreshed before every launch

@@ -12,7 +12,7 @@ import { redact } from './redact.mjs'
 import { home, listCards, readRuns } from './store.mjs'
 import { names as adapterNames, get as getAdapter, isFake } from './adapters/index.mjs'
 import { resolveChb, chbVersion } from './handoff.mjs'
-import { schedulerStatus, MAX_CONCURRENT } from './scheduler.mjs'
+import { schedulerStatus, MAX_CONCURRENT } from './scheduler-status.mjs'
 import { enabledSyncs } from './sync/index.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))

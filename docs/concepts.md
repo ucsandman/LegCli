@@ -19,7 +19,7 @@ Each session gets a directory under `$LEG_HOME/sessions/<id>/`
 
 | file | what it holds |
 |------|---------------|
-| `session.json` | the live record the board renders; the runner is its only writer, and every write is one atomic replace |
+| `session.json` | the live record the board renders. The runner owns it, and the board's usage poller, Claude Code's hooks and a board action patch fields on it too; every write is one atomic replace under `.session.lock` (`updateSession`), so no writer can lose another's field |
 | `events.jsonl` | the timeline (see [VOCABULARY.md](VOCABULARY.md#session-event-types)) |
 | `control.json` | requests from the board to the runner, for example `{ handoff: true }` |
 | `hook.log` | what Claude Code's hooks sent, claude sessions only |
@@ -70,12 +70,17 @@ override, so agy stays one account.
 Your harness is shared into an extra account, never copied into a fork that
 drifts: the directories are junctions back to the real home (claude: `hooks`,
 `skills`, `agents`, `commands`, `plugins`, `rules`, `scripts`,
-`output-styles`, `tools`; codex: `skills`, `prompts`, `rules`, `plugins`,
-`agents`, `hooks`, `memories`, `superpowers`), and the settings files are
-copied fresh before every launch (claude: `settings.json`,
+`output-styles`, `tools`, `projects`; codex: `skills`, `prompts`, `rules`,
+`plugins`, `agents`, `hooks`, `memories`, `superpowers`), and the settings
+files are copied fresh before every launch (claude: `settings.json`,
 `settings.local.json`, `CLAUDE.md`, `keybindings.json`, `statusline.ps1`,
 `statusline-combined.ps1`; codex: `config.toml`, `AGENTS.md`). Only the login
-itself lives in the account directory.
+itself lives in the account directory. claude's `projects` is its
+conversation store, shared so that a hand-off to the second login can
+`--resume` the transcript the first one was writing (see Handoff, step 3) and
+so the same human's auto-memory follows them; `refreshAccount()` adds a
+junction an older account is missing before every launch, and the history
+index skips a junctioned store so a conversation is listed once.
 
 `leg accounts add <claude|codex> <name>` creates one and prints the single
 line to paste to log in. `leg accounts rm` removes the junctions as links,
@@ -161,7 +166,10 @@ in that picker ("the next option in the order") is still a press of the button.
    `context-handoff-bundle save --repo-local --slug leg-<session id>`, with
    `--update <slug>` after the first time, so one bundle per session is updated
    in place. A checkpoint runs about every two minutes while the session has
-   turns, and at every warning, limit and hand-off.
+   turns, and at every warning, limit and hand-off. The periodic checkpoint runs
+   beside the terminal's poll rather than inside it, one at a time, so a slow
+   save never stops the terminal noticing a limit or a board button; a warning,
+   a limit and a hand-off save are still finished before the next leg starts.
 2. **Choose.** `candidates()` lists the other accounts of the same agent first,
    then walks the ladder, and after each rung, the other accounts of that
    rung's agent. `evaluateLadder()` walks that list top to bottom and takes the
@@ -191,14 +199,22 @@ in that picker ("the next option in the order") is still a press of the button.
    ladder for an active terminal; the wrapper reads it again at the transition
    and during all-out waiting. Machine Settings is copied only when a new
    terminal starts.
-3. **Switch.** The agent process is stopped and the terminal restored. A
-   same-login move to a weaker claude model (a downshift, by the
-   `fable, opus, sonnet, haiku` order) with the agent's own session id on the
-   record keeps the conversation instead: Leg runs
-   `claude --resume <agent_session_id> --model <alias>`, no bundle is written
-   into a prompt, and the ledger says so. Every other rung, including an
-   upshift back to a stronger model, a different account, or a different
-   agent, takes the bundle: the `context-handoff-bundle load <id>` output
+3. **Switch.** The agent process is stopped and the terminal restored. Two
+   claude moves keep the conversation instead of taking the bundle, decided by
+   one rule both the terminal and the board's picker read
+   (`keepsConversation()` in `src/usage.mjs`): a same-login move to a weaker
+   model (a downshift, by the `fable, opus, sonnet, haiku` order), which runs
+   `claude --resume <agent_session_id> --model <alias>`; and a move to another
+   claude login whose home can see the transcript through its `projects`
+   junction, which runs `claude --resume <agent_session_id>` under that
+   login's `CLAUDE_CONFIG_DIR` (with `--model` only when the rung names one).
+   Both need the agent's own session id on the record; the second also needs
+   the transcript file to exist under the destination home, checked at the
+   switch, so a login made before the junction existed takes the bundle until
+   its next launch adds it. No bundle is written into a prompt, and the
+   ledger says `kept the conversation`. Every other rung, including a
+   same-login upshift back to a stronger model or a different agent, takes
+   the bundle: the `context-handoff-bundle load <id>` output
    (with the `## Synthesis` section prepended if
    `.leg/SYNTHESIS-<session-id>.md` is present) is written to
    `.leg/RESUME-<session-id>.md` and copied to `.leg/RESUME.md`, and the next
@@ -313,6 +329,28 @@ on:
 
 `leg share off` puts the board back on `127.0.0.1` and every link stops
 working; `leg share rotate <name>` replaces one.
+
+## The digest
+
+`leg digest [--since 8h|2d|<iso>] [--json]` and `GET /api/digest?since=`
+(owner only) answer the question a person asks after eight hours away
+(`src/digest.mjs`). It reads the session records, their `events.jsonl`, the
+cards' ledgers, `landings.jsonl` and the usage records, and writes nothing.
+The record is `{ since, until, volume, attention, repos, walls }`: `volume`
+is what was read (terminals, cards, landings and events in the window, and
+the sessions and cards on disk), printed on the first line so a quiet night
+and an empty home cannot read the same; `attention` is what needs a person,
+ranked (a live terminal waiting on a question, a card in `waiting_human`,
+`needs_approval` or `paused`, a card that failed in the window, a terminal
+that was lost in the window); `repos` groups every terminal that moved or is
+live, every card that moved or is live, and every landing, by repository;
+`walls` is every login and every model that is out right now, soonest reset
+first. A terminal counts when it moved in the window or is live now, and its
+entry carries the events worth a line (`limit`, `handoff`, `all_out`,
+`lost`, `ended`, `landed`, `bounced`, `continued`, `harness_blocked`), never
+the running commentary. The audit trail ([Share](#share-more-than-one-human))
+is the same data as a flat list of actors; the digest is the same data
+grouped by what to do about it.
 
 ## Cards, stations and pipelines
 

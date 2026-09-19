@@ -93,6 +93,30 @@ test('the owner lists a page, filters, and opens one conversation whose messages
   assert.equal(w.json.worktrees.find((x) => x.main).conversations.count, 3)
 })
 
+// The list is up to forty git processes. It runs off this process's stack now
+// (listWorktreesAsync), and one refresh answers every caller waiting on it: a
+// page that polls this must never be able to queue a second fan-out behind the
+// first, and inside the 20 s window it is not recomputed at all.
+test('/api/worktrees runs one fan-out for every caller waiting on it, and answers from the cache after', async () => {
+  const t0 = Date.now()
+  const [a, b, c] = await Promise.all([request(openBase, '/api/worktrees'), request(openBase, '/api/worktrees'), request(openBase, '/api/worktrees')])
+  const coldMs = Date.now() - t0
+  for (const r of [a, b, c]) assert.equal(r.status, 200)
+  // L2: the verdict carries the volume it processed, or three empty lists would
+  // agree with each other for nothing
+  assert.ok(a.json.repos >= 1 && a.json.worktrees.length >= 1 && a.json.dirty_checked >= 1,
+    `the list must have real git work in it: ${a.json.repos} repo(s), ${a.json.worktrees.length} checkout(s), ${a.json.dirty_checked} status call(s) in ${coldMs} ms`)
+  assert.equal(b.json.ts, a.json.ts, 'a second caller during the fan-out started a fan-out of its own')
+  assert.equal(c.json.ts, a.json.ts, 'a third caller during the fan-out started a fan-out of its own')
+  assert.deepEqual(b.json, a.json)
+
+  const t1 = Date.now()
+  const warm = await request(openBase, '/api/worktrees')
+  const warmMs = Date.now() - t1
+  assert.equal(warm.json.ts, a.json.ts, 'inside the 20 s window the same list is handed back')
+  assert.ok(warmMs < Math.max(50, coldMs / 2), `a cached worktree list took ${warmMs} ms against ${coldMs} ms cold`)
+})
+
 test('an id is never a path: traversal shapes get 400 or 404 and nothing from disk', async () => {
   assert.equal((await request(openBase, '/api/history/%E0%A4%A')).status, 400, 'a malformed escape is a bad request, not a 500')
   for (const p of ['/api/history/..%2f..%2fshare.json', '/api/history/%2e%2e%2f%2e%2e%2fshare.json', '/api/history/C%3A%5CWindows%5Cwin.ini', '/api/history/..%5c..%5clicense.json']) {

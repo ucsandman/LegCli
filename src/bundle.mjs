@@ -3,9 +3,9 @@
 // seam (src/handoff.mjs: chb(), resolveChb) so the CLI is still the only
 // writer of bundle files. One bundle per session (`save --update <slug>`).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import { chb, ensureExcluded } from './handoff.mjs'
+import { git as gitRun } from './git.mjs'
+import { chb, chbAsync, ensureExcluded } from './handoff.mjs'
 import { scrub } from './redact.mjs'
 import { updateSession, workRoot } from './sessions.mjs'
 import { perSessionFile, writeHandoffPointer } from './resume.mjs'
@@ -14,11 +14,7 @@ import { readSynthesis, formatSynthesisSection, synthesisDirective, SYNTHESIS_PO
 const LEG_DIRS = /^(\.leg|\.baton|\.context-handoffs|\.dashclaw-local)[\\/]/
 const bullets = (items) => items.filter(Boolean).map((x) => `- ${String(x).replace(/\r?\n/g, ' ').trim()}`)
 
-function git(cwd, args) {
-  const r = spawnSync('git', args, { cwd, windowsHide: true, encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } })
-  // trimEnd only: a porcelain line starts with a space (" M README.md")
-  return r.status === 0 ? r.stdout.trimEnd() : ''
-}
+const git = (cwd, args) => gitRun(cwd, args, { ok: true })
 
 export function slugFor(session) { return `leg-${session.session_id}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80) }
 
@@ -73,8 +69,10 @@ export function sessionNotes(session, { messages = [], why = 'handoff' } = {}) {
   return scrub(lines.join('\n'))
 }
 
-// Save (or refresh) the session's bundle. Returns { bundle_id, path } or throws.
-export function saveSessionBundle(session, { messages = [], why = 'checkpoint' } = {}) {
+// Everything a save does before the CLI runs. The notes file is written here,
+// synchronously, so the context is on disk even when chb is missing and the
+// save throws.
+function prepareSave(session, { messages, why }) {
   // a session in its own worktree keeps its bundle and RESUME.md there, where the next agent starts
   const cwd = workRoot(session)
   const legDir = join(cwd, '.leg')
@@ -85,8 +83,11 @@ export function saveSessionBundle(session, { messages = [], why = 'checkpoint' }
   const slug = slugFor(session)
   const title = `leg ${session.agent} session ${session.session_id}`
   const base = ['save', '--repo-local', '--title', title, '--slug', slug, '--notes', notesPath, '--tag', 'leg', '--tag', session.agent]
-  let r = session.bundle?.id ? chb([...base, '--update', slug], { cwd }) : { status: 1 }
-  if (r.status !== 0) r = chb(base, { cwd })
+  return { cwd, notesPath, slug, base }
+}
+
+// Everything a save does with the CLI's answer.
+function finishSave(session, r, { cwd, notesPath, why }) {
   if (r.status !== 0) throw new Error(`context-handoff-bundle save failed (exit ${r.status}): ${scrub(r.stderr || r.stdout).slice(0, 400)}`)
   let out
   try { out = JSON.parse(r.stdout) } catch { throw new Error(`context-handoff-bundle save printed no JSON: ${scrub(r.stdout).slice(0, 200)}`) }
@@ -103,6 +104,27 @@ export function saveSessionBundle(session, { messages = [], why = 'checkpoint' }
     updateSession(session.session_id, { bundle })
   }
   return bundle
+}
+
+// Save (or refresh) the session's bundle. Returns { bundle_id, path } or throws.
+export function saveSessionBundle(session, { messages = [], why = 'checkpoint' } = {}) {
+  const { cwd, notesPath, slug, base } = prepareSave(session, { messages, why })
+  let r = session.bundle?.id ? chb([...base, '--update', slug], { cwd }) : { status: 1 }
+  if (r.status !== 0) r = chb(base, { cwd })
+  return finishSave(session, r, { cwd, notesPath, why })
+}
+
+// The same save with the CLI off the caller's event loop. Used by the periodic
+// checkpoint in src/attach.mjs runLeg and nowhere else: a hand-off, a limit and
+// a warning save must be finished before the next leg starts, so those stay
+// synchronous. The checkpoint had no such reason to block, and blocking it froze
+// limit detection and every board control for the length of a python
+// subprocess with a 120 s timeout (profile 2026-09-18, §3).
+export async function saveSessionBundleAsync(session, { messages = [], why = 'checkpoint' } = {}) {
+  const { cwd, notesPath, slug, base } = prepareSave(session, { messages, why })
+  let r = session.bundle?.id ? await chbAsync([...base, '--update', slug], { cwd }) : { status: 1 }
+  if (r.status !== 0) r = await chbAsync(base, { cwd })
+  return finishSave(session, r, { cwd, notesPath, why })
 }
 
 // The resume text for the next agent: chb load into .baton/RESUME.md, plus a

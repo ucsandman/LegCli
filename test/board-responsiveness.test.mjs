@@ -9,6 +9,7 @@ import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import net from 'node:net'
+import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,14 +22,18 @@ const HOME = makeHome()
 process.env.BATON_HOME = HOME
 process.env.LEG_HOME = HOME
 process.env.BATON_QUIET = '1'
-const { createBoardServer } = await import('../src/server.mjs')
+const { createBoardServer, sessionsView } = await import('../src/server.mjs')
+const { readUsage } = await import('../src/usage.mjs')
+const { HANDOFF_ORDER_CAPABILITY } = await import('../src/sessions.mjs')
 
 const SID = 's-20260101-010101-claude-aaaa'
+const SID2 = 's-20260101-010102-claude-bbbb'
 const sessionDir = join(HOME, 'sessions', SID)
 
-function writeRecord(extra = {}) {
-  writeFileSync(join(sessionDir, 'session.json'), JSON.stringify({
-    session_id: SID, agent: 'claude', account: 'default', cwd: ROOT, repo: null, branch: null,
+function writeRecord(extra = {}, id = SID) {
+  mkdirSync(join(HOME, 'sessions', id), { recursive: true })
+  writeFileSync(join(HOME, 'sessions', id, 'session.json'), JSON.stringify({
+    session_id: id, agent: 'claude', account: 'default', cwd: ROOT, repo: null, branch: null,
     argv: [], worktree: null, owner: 'tester', repo_name: null, status: 'ended',
     runner_pid: 999999, pid: null,
     started_at: '2026-01-01T01:01:01.000Z', updated_at: new Date().toISOString(),
@@ -88,8 +93,8 @@ test('the sessions watcher ignores lock and atomic-write temp files', async () =
     rmSync(tmp, { force: true })
     await sleep(40)
   }
-  // well past the 300 ms debounce and the 2 s floor, still short of the 10 s
-  // health tick that pushes on its own
+  // well past the 300 ms debounce and the 2 s floor; the 10 s health tick asks
+  // this same fingerprint before it pushes, so it cannot rescue a noise hint
   await sleep(2500)
   stop()
 
@@ -111,6 +116,110 @@ test('a real record change still pushes, and the rebuild is floored to one per i
   const pushes = frames.filter((f) => f === 'sessions').length - before
   assert.ok(pushes >= 1, 'a change to session.json must reach the page')
   assert.ok(pushes <= 3, `ten writes in one second must coalesce; got ${pushes} sessions frames`)
+})
+
+// The 10 s health tick used to push the whole sessions view as well, with no
+// check of any kind: on a board with 43 terminals that is a ~512-fs-call rebuild
+// and a round of git subprocesses six times a minute, per client, for a payload
+// byte-identical to the one the page already holds — 7,294 fs calls, 8 git
+// processes and 1.14 CPU seconds a minute on a board where nothing at all was
+// happening. The tick now asks the same stat fingerprint a watcher hint asks.
+test('an idle board pushes no sessions view across two health ticks, and a real change still arrives', async () => {
+  const { frames, stop } = listen()
+  // let the hello frame and anything left pending by the test above settle
+  await sleep(2600)
+  const before = frames.filter((f) => f === 'sessions').length
+  const healthBefore = frames.filter((f) => f === 'health').length
+
+  await sleep(12000)
+  const idlePushes = frames.filter((f) => f === 'sessions').length - before
+  const ticks = frames.filter((f) => f === 'health').length - healthBefore
+  // L2: the verdict carries the volume. A tick that never fired would make the
+  // line below pass on no work at all.
+  assert.ok(ticks >= 1, `the health tick must keep ticking; got ${ticks} health frame(s) in 12 s`)
+  assert.equal(idlePushes, 0, `an idle board must rebuild nothing; got ${idlePushes} sessions frame(s) across ${ticks} health tick(s)`)
+
+  // and the tick's silence is not deafness
+  const t0 = Date.now()
+  writeRecord({ turns: 99 })
+  let waited = 0
+  while (frames.filter((f) => f === 'sessions').length === before && waited < 3000) { await sleep(25); waited = Date.now() - t0 }
+  const after = frames.filter((f) => f === 'sessions').length - before
+  stop()
+  assert.ok(after >= 1, `a session.json change must reach the page within 3 s; waited ${waited} ms and got ${after} frame(s)`)
+})
+
+// The one change that moves no file: a runner that dies. The unconditional
+// tick used to catch it because every rebuild ran reapLost; a tick that only
+// rebuilds on a fingerprint change must run the liveness pass itself, or the
+// board shows a dead terminal as live until something else happens to write.
+test('a runner that dies without writing is marked lost by the health tick', async () => {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true })
+  const { frames, stop } = listen()
+  await sleep(300)
+  writeRecord({ status: 'running', runner_pid: child.pid, ended_at: null }, SID2)
+  // the write itself reaches the page through the watcher; wait that push out
+  let waited = 0
+  while (!frames.includes('sessions') && waited < 3000) { await sleep(25); waited += 25 }
+  assert.ok(frames.includes('sessions'), 'the new record must reach the page before the runner is killed')
+  assert.equal(JSON.parse(readFileSync(join(HOME, 'sessions', SID2, 'session.json'), 'utf8')).status, 'running')
+  const pushesBefore = frames.filter((f) => f === 'sessions').length
+  child.kill()
+  await new Promise((r) => child.once('exit', r))
+  // no file has changed; only the tick can notice
+  const t0 = Date.now()
+  let record = null
+  while (Date.now() - t0 < 12000) {
+    record = JSON.parse(readFileSync(join(HOME, 'sessions', SID2, 'session.json'), 'utf8'))
+    if (record.status === 'lost' && frames.filter((f) => f === 'sessions').length > pushesBefore) break
+    await sleep(100)
+  }
+  stop()
+  const pushes = frames.filter((f) => f === 'sessions').length - pushesBefore
+  assert.equal(record.status, 'lost', `the record must say lost after its runner died; still ${record.status} after ${Date.now() - t0} ms`)
+  assert.ok(pushes >= 1, `the lost terminal must reach the page; got ${pushes} sessions frame(s) after the kill`)
+})
+
+// Four usage files on disk were read 143 times per answer: evaluateLadder
+// memoises inside one call, this view makes one call per terminal, and then
+// reads the same login again for `capacity` and again for the accounts payload.
+test('one sessions view reads a login once, however many terminals stand on it', () => {
+  writeRecord({ turns: 1 }, SID2)
+  const counts = new Map()
+  const read = (agent, account = 'default') => {
+    const key = `${agent}--${account}`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+    return readUsage(agent, account)
+  }
+  const view = sessionsView({ read })
+  const mine = view.sessions.filter((s) => [SID, SID2].includes(s.session_id))
+  assert.equal(mine.length, 2, `both terminals must be in the view; got ${mine.length}`)
+  assert.ok(counts.size >= 1, `the view must actually read a login; it read ${counts.size}`)
+  const worst = Math.max(...counts.values())
+  assert.ok(worst <= 2, `a login was read ${worst} times in one view: ${JSON.stringify([...counts])}`)
+  assert.equal(counts.get('claude--default'), 1, `the login both terminals run on was read ${counts.get('claude--default')} time(s), across ${counts.size} login(s)`)
+})
+
+// Every row ships in every push and in every /api/sessions answer, so a field
+// nothing on the board reads is paid for on every push.
+test('a session row carries what the board renders, not the runner bookkeeping', async () => {
+  writeRecord({ agent_sessions: { claude: 'cs-1' }, checkpoints: ['2026-01-01T01:01:30.000Z'], runtime_capabilities: [HANDOFF_ORDER_CAPABILITY] })
+  const view = await (await fetch(base + '/api/sessions')).json()
+  const row = view.sessions.find((s) => s.session_id === SID)
+  assert.ok(row, 'the view carries the terminal')
+  // what the page does read stays: the merged list the grid prints, the dirty
+  // list it counts (src/board/sessions.js), and the one capability summary
+  assert.deepEqual(row.files, [])
+  assert.ok('files_dirty' in row, 'src/board/sessions.js counts files_dirty')
+  assert.equal(row.can_edit_handoff_order, true, 'the summary of runtime_capabilities stays, and is true for a record that has it')
+  for (const field of ['argv', 'runner_pid', 'head_at_start', 'checkpoints', 'agent_sessions', 'runtime_capabilities', 'files_touched']) {
+    assert.equal(field in row, false, `every row in every push carries ${field}, which no board file and no test reads off a row`)
+  }
+  // and the whole record is still one GET away
+  const full = await (await fetch(`${base}/api/sessions/${SID}`)).json()
+  for (const field of ['argv', 'runner_pid', 'head_at_start', 'checkpoints', 'agent_sessions', 'runtime_capabilities', 'files_touched']) {
+    assert.ok(field in full.session, `GET /api/sessions/<id> is the whole record and must still carry ${field}`)
+  }
 })
 
 // A standing guard rather than a proof: one session in a throwaway home is

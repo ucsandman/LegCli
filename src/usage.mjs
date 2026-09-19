@@ -21,8 +21,9 @@ import { join } from 'node:path'
 import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { AGENTS } from './sessions.mjs'
-import { ACCOUNT_NAME_RE } from './accounts.mjs'
+import { ACCOUNT_NAME_RE, transcriptReachable } from './accounts.mjs'
 import { rungCost, staticCost } from './preferences.mjs'
+import { isDownshift } from './buckets.mjs'
 
 export const WARN_PCT = Number((process.env.LEG_WARN_PCT || process.env.BATON_WARN_PCT) || 85)
 // A limit hit with no reset time from the agent: assume the 5-hour window.
@@ -462,6 +463,31 @@ export function candidates({ agent, account = 'default', accounts, order = AGENT
 export function rungLabel(r) {
   if (!r) return 'nothing'
   return `${r.agent}${r.account && r.account !== 'default' ? '/' + r.account : ''}${r.model ? '/' + r.model : ''}`
+}
+
+// The hand-off that keeps the conversation instead of taking the bundle: the
+// next leg starts `claude --resume <id>` inside the same transcript, so nothing
+// is re-explained. Two cases, one rule, read by the terminal (src/attach.mjs)
+// and by the board's picker (src/server.mjs) so the row and the switch agree:
+//   1. a downshift on the same login (fixtures/live/claude/resume-model-probe.json:
+//      the conversation survives and only the new model answers; an upshift
+//      would re-read the whole context at the stronger model's price, so it
+//      takes the bundle);
+//   2. another login of the same agent whose home can see the transcript
+//      (the `projects` junction src/accounts.mjs cuts for every account). A
+//      weekly or Fable wall on one 20x login then moves the terminal to the
+//      other login with the conversation it already had, at whatever model the
+//      rung names or the destination's own default.
+// codex has a `resume` subcommand too, but composing it with `-m` and with a
+// second CODEX_HOME is unobserved, so codex never claims to keep anything.
+export function keepsConversation({ from, to, session }) {
+  if (!session?.agent_session_id || !from || !to) return false
+  if (from.agent !== 'claude' || to.agent !== 'claude') return false
+  if (isDownshift(from, to)) return true
+  const a = from.account ?? 'default'
+  const b = to.account ?? 'default'
+  if (a === b) return false
+  return transcriptReachable('claude', session.transcript_path, { from: a, to: b })
 }
 
 // One ledger line for a rung that was passed over. Exact wording matters: this

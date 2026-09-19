@@ -179,12 +179,20 @@ presenting it as current.
 3. **Bundle.** Leg writes structured notes (task, the last messages from the
    transcript, `git diff --stat`, dirty files, files edited this session, recent
    commits, why it stopped) and runs `context-handoff-bundle save --repo-local`
-   with one slug per leg; each save writes its own timestamped bundle next to
-   the last one. A checkpoint of the same bundle is taken every two minutes
-   while the session is active. If the session maintained `.leg/SYNTHESIS-<session-id>.md`,
+   with one slug per session, updated in place (`--update <slug>`) at every
+   checkpoint, about every two minutes while the session is active, and at
+   every warning, limit and hand-off. If the session maintained `.leg/SYNTHESIS-<session-id>.md`,
    Leg inlines it into the resume file as a `## Synthesis` section ahead of the raw dump.
-4. **Switch.** The agent process is stopped, the terminal is restored, and the
-   next option starts in the same terminal with a short pointer prompt:
+4. **Switch.** The agent process is stopped and the terminal is restored. Two
+   claude destinations keep the conversation itself instead of the bundle: a
+   weaker model on the same login (`claude --resume <id> --model <alias>`),
+   and another claude login you added with `leg accounts add`, which sees the
+   same transcript through the `projects` junction the account carries
+   (`claude --resume <id>` under that login's `CLAUDE_CONFIG_DIR`). A weekly
+   or Fable wall on one login then continues on the other with the
+   conversation it already had, and the timeline says `kept the
+   conversation`. Every other rung starts in the same terminal with a short
+   pointer prompt:
    read `.leg/RESUME-<session-id>.md` (the `context-handoff-bundle load`
    output, the `## Synthesis` section if present, and the reason for the switch),
    check `git status` and `git diff`, continue, do not ask the human to restate
@@ -361,6 +369,23 @@ it prints how much it read beside the answer (`14 terminals and 3 cards, 812
 events read`) so an empty trail cannot be mistaken for a quiet week. Owner
 only: the trail names repositories and people.
 
+### What happened while you were away
+
+`leg digest` (default window 8 hours; `--since 2d`, `--since 30m`, or an ISO
+time; `--json` for the record; `GET /api/digest?since=` on the board, owner
+only) is the trail read the other way round: grouped by repository, what
+needs you first. The first line is the volume it was read from (`3
+terminals, 2 cards, 1 landing, 412 events read (66 sessions and 9 cards on
+disk)`), then `needs you`: a live terminal waiting on a question, a card
+parked for a human, a card that failed, a terminal that was lost, in that
+order and each with how long ago. Then one block per repository: every
+terminal that moved in the window with its login and model, state, turns,
+files, commits ahead and the events worth a line (a wall, a hand-off and
+whether it kept the conversation, an all-out wait, the end), every card with
+its last event, every landing with who pressed Land, and last the walls
+standing right now with their reset times. Nothing new is recorded; a window
+with nothing in it says so with its counts.
+
 ## The board
 
 `leg <agent>` opens it; `leg open` reopens it; `leg down` stops it.
@@ -445,19 +470,30 @@ matrix (which agents list, show messages, continue) and every file read are in
 
 Optional. `leg accounts add claude work` creates
 `~/.leg/accounts/claude/work`, junctions your `hooks`, `skills`, `agents`,
-`commands`, `plugins`, `rules`, `scripts`, `output-styles` and `tools` into it,
-copies `settings.json`, `CLAUDE.md` and the status-line scripts (refreshed from
-your real `~/.claude` before every launch), and prints one line to paste:
+`commands`, `plugins`, `rules`, `scripts`, `output-styles`, `tools` and
+`projects` into it, copies `settings.json`, `CLAUDE.md` and the status-line
+scripts (refreshed from your real `~/.claude` before every launch), and prints
+one line to paste:
 
 ```
 $env:CLAUDE_CONFIG_DIR='C:\Users\you\.leg\accounts\claude\work'; claude auth login
 ```
 
+`projects` is Claude Code's conversation store, so the second login sees the
+same conversations and the same auto-memory as the first, and a hand-off from
+one login to the other keeps the conversation: the terminal moves to `work`
+with `claude --resume <id>` and no bundle prompt. That is the whole point of a
+second 20x login when the Fable or the weekly window on the first one is out.
+An account made by an older Leg gets the junction the next time it starts.
+Claude Code writes that directory; Leg only reads it.
+
 Same for codex (`CODEX_HOME`; `config.toml`, `AGENTS.md`, `skills`, `prompts`,
-`rules`, `plugins`, `agents`, `hooks`, `memories` shared). agy 1.2.0 has no
-config-directory override, so it stays one account. Only the login lives in
-the account directory; `leg accounts rm` removes the junctions and the
-directory and never touches your real home.
+`rules`, `plugins`, `agents`, `hooks`, `memories` shared; a codex hand-off
+still takes the bundle, because `codex resume` under a second `CODEX_HOME`
+has not been observed). agy 1.2.0 has no config-directory override, so it
+stays one account. Only the login lives in the account directory;
+`leg accounts rm` removes the junctions and the directory and never touches
+your real home.
 
 The terms, as published (effective dates below):
 
@@ -537,6 +573,8 @@ leg history [ls] [--provider p] [--repo r] [--search q] [--managed|--external] [
                                      every conversation on this machine, Leg's own and the agents' own (read only)
 leg history show <id> [--messages n] [--json] | continue <id> [agent args…] | refresh [--full] | providers
 leg worktrees [--repo <path>] [--no-dirty] [--json]   every checkout: git's, Leg's, the conversations' (read only)
+leg digest [--since 8h|2d|<iso>] [--json]   what happened while you were away: needs-you first, then every
+                                     terminal, card, landing and wall in the window, by repository (read only)
 leg accounts ls                      logins and their 5h/7d usage
 leg accounts add <claude|codex|grok> <name> | rm <agent> <name> | terms
 leg harness status|inspect|check|explain|history [--json]   the portable harness, read-only
@@ -714,7 +752,7 @@ Leg is commercial software under the [Leg License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.14.0; see
+and remain available. The version in this source tree is 0.15.0; see
 [npm](https://www.npmjs.com/package/legcli) for published versions and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
 
