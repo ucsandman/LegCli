@@ -6,7 +6,8 @@
 //   node hook.mjs claude-hook --session <id>
 //   node hook.mjs claude-statusline --session <id>
 // The status line entry records rate_limits when a Claude Code build runs it
-// (2.1.268 does not; see src/taps/claude-usage.mjs) and prints one Leg line.
+// (2.1.268 and 2.1.278 did not on this machine; see src/taps/claude-usage.mjs),
+// prints the user's own status line first, then one Leg line.
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { handleHook, handleStatusline, terminalSequenceFor } from './taps/claude.mjs'
@@ -47,9 +48,9 @@ try {
     const seq = terminalSequenceFor(payload)
     if (seq) process.stdout.write(JSON.stringify({ terminalSequence: seq }) + '\n')
   } else if (kind === 'claude-statusline') {
-    const { text } = handleStatusline(sessionId, payload)
-    try { appendFileSync(join(sessionDir(sessionId), 'hook.log'), `${new Date().toISOString()} statusline rate_limits=${JSON.stringify(payload.rate_limits ?? null)}\n`) } catch {}
-    process.stdout.write(text + '\n')
+    const { text, user } = handleStatusline(sessionId, payload, raw)
+    try { appendFileSync(join(sessionDir(sessionId), 'hook.log'), `${new Date().toISOString()} statusline rate_limits=${JSON.stringify(payload.rate_limits ?? null)} user_rows=${user ? user.split('\n').length : 0}\n`) } catch {}
+    process.stdout.write((user ? user + '\n' : '') + text + '\n')
   }
 } catch {}
 process.exit(0)

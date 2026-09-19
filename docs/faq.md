@@ -20,14 +20,15 @@ launch, and does not count as a usage limit.
 
 **Why does Leg poll an endpoint for claude's usage instead of reading the
 status line?**
-Because Claude Code 2.1.268 did not run a custom status line from a settings
-file Leg controls when this was tried on 2026-09-11 (recorded in
+Because Claude Code 2.1.268 and 2.1.278 did not run a custom status line from a settings
+file Leg controls when this was tried on 2026-09-11 and 2026-09-19 (recorded in
 [DEVIATIONS.md](DEVIATIONS.md)); hooks from the same `--settings` file did
 fire. So the numbers come from
 `GET api.anthropic.com/api/oauth/usage` with the login Claude Code already
 stored, which is the same data `/usage` shows. Leg still writes the
 `statusLine` entry, so the endpoint poll becomes a fallback the moment a build
-honours it, and your own status-line command is chained first either way. See
+honours it, and your own status-line command runs first, its rows above
+Leg's one, either way (since 0.15.1). See
 [adapters.md](adapters.md#claude) and `src/taps/claude-usage.mjs`.
 
 **Why does codex get no hook when claude does?**

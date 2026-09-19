@@ -1,9 +1,10 @@
 // claude usage — the 5h / 7d percentages for a Claude Code login, from the
 // same endpoint Claude Code's own /usage and built-in status line read.
-// Why not the status line: Claude Code 2.1.268 renders its built-in status
-// line and does not run a custom `statusLine` command passed via --settings
-// or a project settings file (verified 2026-09-11 with an `echo` command at
-// both levels; hooks from the same --settings file do run). So Leg asks the
+// Why not the status line: Claude Code 2.1.268 and 2.1.278 render their
+// built-in status line and do not run a custom `statusLine` command passed
+// via --settings or a project settings file (verified 2026-09-11 and
+// 2026-09-19 with an `echo` command at both levels; hooks from the same
+// --settings file do run). So Leg asks the
 // usage endpoint directly with the OAuth token Claude Code stored at login.
 // The token is read by this process only, sent only to api.anthropic.com,
 // and never written anywhere (the ledger scrubs bearer tokens regardless).

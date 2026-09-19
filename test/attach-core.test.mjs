@@ -122,6 +122,22 @@ test('claude tap: settings shape, hook handling, statusline limits', () => {
   assert.equal(sessions.readEvents('s-c-claude').filter((e) => e.type === 'error').length, 1)
 })
 
+test('claude tap: the user status line is kept on the session and printed above the leg row', () => {
+  const s = sessions.createSession({ id: 's-c-sl', agent: 'claude', cwd, repo: cwd })
+  claudeTap.writeSettings(s.session_id, { statusLine: { type: 'command', command: 'echo USERLINE', padding: 1 } })
+  const r = sessions.readSession('s-c-sl')
+  assert.equal(r.user_statusline.command, 'echo USERLINE')
+  assert.equal(claudeTap.userStatusLineText(r, '{}'), 'USERLINE')
+  assert.equal(claudeTap.userStatusLineText({ user_statusline: null }, '{}'), '')
+  const sl = claudeTap.handleStatusline('s-c-sl', { rate_limits: { five_hour: { used_percentage: 5, resets_at: 1 } } }, '{}')
+  assert.equal(sl.user, 'USERLINE')
+  assert.match(sl.text, /^leg · 5h 5%/)
+  // a session with no user status line runs nothing and prepends nothing
+  const t = sessions.createSession({ id: 's-c-sl2', agent: 'claude', cwd, repo: cwd })
+  claudeTap.writeSettings(t.session_id, {})
+  assert.equal(claudeTap.handleStatusline('s-c-sl2', {}, '{}').user, '')
+})
+
 test('claude tap: transcript tail skips sidechains and tag-only messages', () => {
   const t = join(cwd, 'transcript.jsonl')
   writeFileSync(t, [

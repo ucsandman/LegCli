@@ -246,10 +246,16 @@ variable and `LEG_SESSION` (source: src/attach.mjs, src/env.mjs).
 - Attach: `claude <args> -n "leg#<short id> <repo>/<branch>" --settings <LEG_HOME>/sessions/<id>/claude-settings.json`
   (source: src/attach.mjs `spawnSpec`; src/taps/claude.mjs `writeSettings`).
   Hooks in a `--settings` file merge with the user's rather than replacing
-  them; `statusLine` is the one key that replaces, so Leg runs the user's own
-  command first (source: code.claude.com/docs/en/settings;
-  src/taps/claude.mjs `userStatusLine`). observed-live 2026-09-11: a Leg
-  session ran with every user hook still firing.
+  them; `statusLine` is the one key that replaces, so Leg keeps the user's own
+  command on the session record (`user_statusline`) and its status-line hook
+  runs that command with the same stdin JSON, printing its rows above Leg's
+  one (source: code.claude.com/docs/en/settings, docs/en/statusline "Display
+  multiple lines"; src/taps/claude.mjs `userStatusLine`, `userStatusLineText`;
+  src/hook.mjs). Before 0.15.1 the user's command was read only for its
+  `padding` and never run, so a build that honours a `--settings` status line
+  showed Leg's row in place of the user's (reported by a baton user,
+  2026-09-19). observed-live 2026-09-11: a Leg session ran with every user
+  hook still firing.
 - Terminal title: `-n, --name <name>` "Set a display name for this session
   (shown in the prompt box, /resume picker, and terminal title)" —
   fixtures/help/claude.txt line 132. It sits in the general Options block, not
@@ -327,11 +333,13 @@ variable and `LEG_SESSION` (source: src/attach.mjs, src/env.mjs).
   path can also be run live with `leg sessions simulate-limit` (the same
   payload through `src/hook.mjs`, marked `leg_simulated`, never kept as
   evidence).
-- Status line, not usable on 2.1.268: a custom `statusLine` command passed
+- Status line, not usable on 2.1.268 or 2.1.278: a custom `statusLine` command passed
   through `--settings`, and again through a project
   `.claude/settings.local.json`, was not run at all when it was tried; an
   `echo` command at both levels left the built-in status line in place while
-  hooks from the same `--settings` file fired (no artifact kept; note in the
+  hooks from the same `--settings` file fired (re-checked 2026-09-19 on
+  2.1.278 with a screenshot of two haiku sessions, not kept; 0 of 87 session
+  hook logs on this machine hold a statusline entry; note in the
   src/taps/claude-usage.mjs header, 2026-09-11). Leg still writes the
   `statusLine` entry, which records the
   same `rate_limits.five_hour` / `seven_day` fields

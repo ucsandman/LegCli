@@ -55,8 +55,11 @@ documentation say docs-only.
   `src/hook.mjs`.
 - **Why not the status line.** Leg writes a `statusLine` entry into the same
   settings file that would record `rate_limits.five_hour.used_percentage` and
-  `resets_at`, and chains your own `statusLine` command first. Claude Code
-  2.1.268 did not run it when it was tried on this machine: an `echo` command
+  `resets_at`, and runs your own `statusLine` command first, its rows above
+  Leg's one (since 0.15.1; before that your command was read and never run,
+  so a build that honours the key showed Leg's row instead of yours). Claude
+  Code 2.1.268 and 2.1.278 did not run it when it was tried on this machine
+  (2026-09-11, 2026-09-19): an `echo` command
   passed through `--settings` and again through a project
   `.claude/settings.local.json` left the built-in status line in place, while
   hooks from the same `--settings` file fired. No artifact of that check was

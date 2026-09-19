@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.15.1 (2026-09-19)
+
+Your own Claude Code status line comes back.
+
+- **Your status line runs first.** `leg claude` passes a `statusLine` through
+  `--settings`, and that key replaces yours rather than merging. Leg has
+  always read your `statusLine` command, but it only ever used its `padding`;
+  the command itself never ran, so on a build that honours a `--settings`
+  status line you saw Leg's row instead of your own. The command is now kept
+  on the session record and Leg's status-line hook runs it with the same JSON
+  Claude Code sends, printing its rows above Leg's one line. Reported by a
+  baton user on Discord. Claude Code 2.1.278 on Windows still shows its
+  built-in status line in place of any custom one passed this way, so the 5h
+  and 7d numbers keep coming from the usage endpoint (docs/faq.md).
+
 ## 0.15.0 (2026-09-18)
 
 A second login keeps the conversation, and the runtime does less work per

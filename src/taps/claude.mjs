@@ -1,11 +1,13 @@
 // claude tap — how `leg claude` sees inside a normal interactive Claude Code.
 // Nothing in ~/.claude is edited: the session gets one extra settings file via
 // `--settings` (hooks merge with the user's; statusLine is the only key that
-// replaces, so Leg's status line runs the user's own command first).
+// replaces, so Leg's status-line hook runs the user's own command with the
+// same stdin and prints its rows above Leg's one line).
 // Sources: code.claude.com/docs/en/hooks (StopFailure `error: rate_limit`),
 // docs/en/statusline (rate_limits.five_hour/seven_day used_percentage,
 // resets_at), docs/en/settings (`--settings` sits above user settings).
 import { existsSync, readFileSync, openSync, closeSync, fstatSync, readSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sessionDir, updateSession, appendEvent, readSession, workRoot } from '../sessions.mjs'
@@ -64,10 +66,35 @@ export function settingsFor(sessionId, { statusLine = null } = {}) {
   return settings
 }
 
-export function writeSettings(sessionId, opts) {
+export function writeSettings(sessionId, opts = {}) {
   const file = join(sessionDir(sessionId), 'claude-settings.json')
   writeJsonAtomic(file, settingsFor(sessionId, opts))
+  // the hook process reads this back to run the user's command (see userStatusLineText)
+  if (opts.statusLine?.command) updateSession(sessionId, { user_statusline: { command: opts.statusLine.command } })
   return file
+}
+
+// The shell Claude Code itself uses for a status-line command: /bin/sh, or on
+// Windows Git Bash when installed, else PowerShell (docs/en/statusline,
+// "Windows configuration").
+function statusLineShell(command) {
+  if (process.platform !== 'win32') return { file: '/bin/sh', args: ['-c', command] }
+  const bash = process.env.CLAUDE_CODE_GIT_BASH_PATH || 'C:\\Program Files\\Git\\bin\\bash.exe'
+  if (existsSync(bash)) return { file: bash, args: ['-c', command] }
+  return { file: 'powershell', args: ['-NoProfile', '-Command', command] }
+}
+
+// The user's own status line, rendered: their command gets the same JSON on
+// stdin Claude Code handed Leg, and whatever it prints goes above Leg's row.
+// Never throws; an absent, slow (3 s) or broken command yields ''.
+export function userStatusLineText(session, raw) {
+  const command = session?.user_statusline?.command
+  if (!command) return ''
+  try {
+    const { file, args } = statusLineShell(command)
+    const r = spawnSync(file, args, { input: raw ?? '', encoding: 'utf8', timeout: 3000, windowsHide: true })
+    return String(r.stdout ?? '').replace(/\s+$/, '')
+  } catch { return '' }
 }
 
 function textOf(content) {
@@ -288,10 +315,11 @@ export function relTo(root, file) {
   return r && a.toLowerCase().startsWith(r.toLowerCase() + '/') ? a.slice(r.length + 1) : a
 }
 
-// Status line: record the limits and print. Returns the text to print.
-export function handleStatusline(sessionId, p) {
+// Status line: record the limits and print. Returns Leg's row as `text` and
+// the user's own status line (from `raw`, the stdin JSON) as `user`.
+export function handleStatusline(sessionId, p, raw = '') {
   const s = readSession(sessionId)
-  if (!s) return { text: '', limits: null }
+  if (!s) return { text: '', user: '', limits: null }
   const limits = limitsFrom(p.rate_limits)
   if (limits) recordUsage('claude', s.account, limits, 'claude statusline')
   const hot = limits ? [['5h', limits.five_hour], ['7d', limits.seven_day]].filter(([, w]) => w).sort((a, b) => b[1].pct - a[1].pct)[0] : null
@@ -312,5 +340,5 @@ export function handleStatusline(sessionId, p) {
   const next = s.chain?.[0] ? `${s.chain[0].agent}${s.chain[0].account !== 'default' ? '/' + s.chain[0].account : ''}` : 'nothing'
   const pct = limits ? ` 5h ${limits.five_hour ? Math.round(limits.five_hour.pct) + '%' : '-'} · 7d ${limits.seven_day ? Math.round(limits.seven_day.pct) + '%' : '-'}` : ''
   const text = warn ? `⚠ leg: ${hot[0]} at ${Math.round(hot[1].pct)}% → next ${next}${pct}` : `leg ·${pct || ' limits pending'} · next ${next} · board ${s.board_url ?? ''}`
-  return { text, limits, warn }
+  return { text, user: userStatusLineText(s, raw), limits, warn }
 }
