@@ -14,24 +14,23 @@ The visual system, and why it is what it is, is `DESIGN.md` at the repo root.
 ## Screenshots
 
 `docs/screenshots/` (listed here so you know what exists before you look for
-one). Nine were retaken on 2026-09-17 against this build, on a board seeded by
-`scripts/seed-wes-board.mjs` plus `scripts/seed-fake-cards.mjs --count 1
---finished 10 --live 3`; the rest are from the 2026-09-15 sweep and are noted
-below:
+one). Nine were retaken on 2026-09-19 against the polish pass (0.16.0), on a
+board seeded by `scripts/seed-wes-board.mjs`; the rest are from the 2026-09-17
+and 2026-09-15 sweeps and are noted below:
 
 ```
-terminals-1280.png        the whole board at 1280 px (2026-09-17)
-board-400px.png           the same board at 400 px (2026-09-17)
-capacity-drawer-1280.png  the strip with Capacity and models open (2026-09-17)
-board-details-open.png    a terminal row with its expansion open (2026-09-17)
-board-handoff.png         one row waiting on you, with the question (2026-09-17)
+terminals-1280.png        the whole board at 1280 px (2026-09-19)
+board-400px.png           the same board at 400 px (2026-09-19)
+capacity-drawer-1280.png  the strip with Capacity and models open (2026-09-19)
+board-details-open.png    a terminal row with its expansion open (2026-09-19)
+board-handoff.png         one row waiting on you, with the question (2026-09-19)
 background-1280.png       the Background panel and the one-line entry (2026-09-17)
-settings-ladder-1280.png  the ladder editor in Settings (2026-09-17)
-board-empty.png           no background tasks at all
+settings-ladder-1280.png  the ladder editor in Settings (2026-09-19)
+board-empty.png           the first-run panel: no terminal yet, three commands with Copy (2026-09-19)
 board-running.png         one card running its first agent (2026-09-17)
 board-drawer.png          that card expanded: where, runs, take over, timeline (2026-09-17)
 board-done.png            the card finished, on the agent that finished it
-floor.png                 /floor with nothing queued
+floor.png                 /floor with nothing queued, every station one line (2026-09-19)
 floor-landing.png         /floor with every lane full
 floor-final-1280.png      /floor after a card finished
 floor-final-400.png       the same at 400 px
@@ -42,18 +41,20 @@ demo-2-limit-hit.png       limit hit, bundle written, the row waiting on you
 demo-3-handoff-bundle.png  the row expanded: bundle path, run signal, timeline
 demo-4-codex-running.png   leg 2 running on fake-codex
 demo-5-done.png            done, both legs on the chain
+new-card-dialog.png        More settings: the task and who runs it (2026-09-19)
 ```
 
 The five `demo-*.png` are one run of the sequence in [DEMO.md](DEMO.md), all at
 1280 px.
 
-**Still stale, as of 2026-09-17:** `share-owner-1280.png`,
-`share-guest-1280.png`, `board-empty.png`, `board-done.png` and the five
-`demo-*.png` show the old top of the board (a 56px verdict over a column of
-login panels) rather than the capacity strip and its drawer, and the card shots
-among them predate the Background panel. Their terminal rows and their floor
-are still accurate. Retake them with the commands below rather than trusting
-the top band of any of those pictures.
+**Still stale, as of 2026-09-19:** `share-owner-1280.png`,
+`share-guest-1280.png`, `board-done.png`, `background-1280.png`,
+`board-running.png`, `board-drawer.png`, `floor-landing.png`, the two
+`floor-final-*.png` and the five `demo-*.png` predate the 0.16.0 polish pass:
+their rows still show the 2x2 button grid, coloured login words and the old
+mark, and the oldest of them show the pre-strip top of the board. What each
+one documents is still true. Retake them with the commands below rather than
+trusting the chrome in any of those pictures.
 
 To retake one, seed a board with the shape a real one has and drive it to the
 state the shot needs:
@@ -174,7 +175,7 @@ reset, the source, any wall and the age of the reading, the same sentence the
 gauges carry. A login with no percentage is not a `meter` at all, because
 `aria-valuenow` would have to be a number nobody measured.
 
-**`Capacity and models >`**, at the end of the strip, opens a drawer holding
+**`Capacity and models`**, the disclosure at the end of the strip, opens a drawer holding
 the login panels unchanged, plus a rail of model chips on each panel head:
 `fable 63%` for a measured bucket, `fable out until 9:14 PM` for a model at its
 wall, and a bare model name where Leg has a name but no figure. A percentage is
@@ -307,16 +308,18 @@ been at it, and what you can do about it.
   stops and fable continues from the bundle.`, or `from the conversation` when
   that rung is one a `--resume` keeps. Confirming posts the hand-off with the
   model on it; a rung that walled between the draw and the press comes back as
-  the server's own 409 sentence in the row. It is a link and not a fifth button:
-  the 2x2 grid is the shipped shape and does not reflow.
+  the server's own 409 sentence in the row. It is a link and not a fourth button:
+  the button row is the shipped shape and does not reflow.
 - **The clock**: elapsed since the session started (`4h 24m`), and the session's
   short id. The id used to print as `claude-7f3a` immediately after the word
   `claude`; the prefix is the agent name twice and it is gone.
-- **The buttons**, in a fixed 2x2 grid so every row's controls sit in the same
-  place: Land, Hand off now, Details, End. Land is the primary action only when
-  it can actually run, when it is blocked the accent moves to Hand off now,
-  because a disabled control should not wear the one accent colour in the
-  design. When Land is disabled its reason is printed, never left in a tooltip.
+- **The buttons**, one row under the clock at the right, so every row's
+  controls sit in the same place: Land, Hand off now, Details, End. Land is
+  drawn only when it can actually run, and then it is the one primary button
+  on the board; when it cannot, the row does not draw it and its reason is
+  printed once above the panel, never left in a tooltip. Hand off now, Details
+  and End are quiet controls: the accent means "this can land" and nothing
+  else.
 
 **A terminal waiting on a human says so, and the tab says it too.** Claude
 Code's Notification hook writes `waiting` on the record when it puts up a
@@ -417,7 +420,8 @@ one off.`, because two waiters on one terminal is the failure to avoid.
 ### Terminal buttons
 
 The order is fixed, Land, Hand off now, Details, End, and it never reflows by
-availability: a button that does not apply is omitted, never moved.
+availability: a button that does not apply is omitted, never moved. A Land that
+cannot run is omitted too, with its reason hoisted above the panel.
 
 | button | shown when | what it does |
 |--------|------------|--------------|
@@ -555,7 +559,7 @@ raised surface here would compete with the terminals that are live. Each is a
 heading, a line of detail and a button that opens the detail below the row.
 
 - **N finished**, the terminals that have ended or been lost, `4 lost, 2 ended,
-  in leg, costclaw, declick`. **View all N** opens them as full rows. On a real
+  in leg, costclaw, declick`. **View** opens them as full rows. On a real
   board after a day's work this is most of the list, which is exactly why it is a
   count and not the list.
 - **N landed**, what has landed on trunk across every repo the board can see,

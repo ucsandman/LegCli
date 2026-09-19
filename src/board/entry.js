@@ -234,7 +234,7 @@
     }
 
     function nounButton(text, key) {
-      return el('button', { type: 'button', class: 'btn btn-text', onclick: () => { entryState.editing = key; renderEntryLine() } }, [text])
+      return el('button', { type: 'button', class: 'btn btn-secondary btn-sm entry-noun', onclick: () => { entryState.editing = key; renderEntryLine() } }, [text])
     }
 
     function renderEntryLine() {
@@ -262,7 +262,7 @@
       // flex row with a gap on the raised surface, which is exactly this line.
       box.appendChild(el('div', { class: 'confirm-row' }, [el('span', {}, ['Run in the background:']), task, start, reason]))
 
-      const line = el('p', { class: 'field-help' })
+      const line = el('p', { class: 'field-help entry-opts' })
       line.appendChild(document.createTextNode('in '))
       if (entryState.editing === 'repo') {
         line.appendChild(nounSelect(knownRepos().map((r) => ({ value: r.path, label: r.name })), repo ? repo.path : '', (v) => { entryState.repo = knownRepos().find((r) => r.path === v) || null }))
@@ -297,13 +297,13 @@
         // the sentence names the legs Start posts, models and all
         line.appendChild(nounButton(ladderSentence(entryChain()), 'ladder'))
       }
-      line.appendChild(document.createTextNode(', '))
+      line.appendChild(document.createTextNode(' '))
       if (entryState.editing === 'pipeline') {
         line.appendChild(nounSelect(Object.keys(PIPELINE_WORDS).map((v) => ({ value: v, label: PIPELINE_WORDS[v] })), entryState.pipeline, (v) => { entryState.pipeline = v }))
       } else {
         line.appendChild(nounButton(PIPELINE_WORDS[entryState.pipeline] || 'build only', 'pipeline'))
       }
-      line.appendChild(document.createTextNode('.  '))
+      line.appendChild(document.createTextNode(' '))
       line.appendChild(el('button', { type: 'button', class: 'btn btn-text', onclick: () => onMoreSettings(entryState) }, ['More settings']))
       box.appendChild(line)
     }

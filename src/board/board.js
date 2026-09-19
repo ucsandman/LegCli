@@ -1744,7 +1744,10 @@
     initSettings()
     initNewCardDialog()
     document.getElementById('new-card-btn').addEventListener('click', () => openNewCardDialog())
-    document.getElementById('empty-new-card-btn').addEventListener('click', () => openNewCardDialog())
+    // first run: each command has a Copy, the same clipboard path the drawer uses
+    for (const b of document.querySelectorAll('#first-run [data-copy]')) {
+      b.addEventListener('click', () => { copyToClipboard(b.getAttribute('data-copy')); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy' }, 1400) })
+    }
     document.getElementById('drawer-close').addEventListener('click', () => collapseRow())
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return

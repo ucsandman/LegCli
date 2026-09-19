@@ -140,7 +140,7 @@
     const drawer = document.getElementById('capacity-drawer')
     if (btn) {
       btn.setAttribute('aria-expanded', capacityOpen ? 'true' : 'false')
-      btn.textContent = capacityOpen ? 'Hide capacity and models' : 'Capacity and models >'
+      btn.textContent = capacityOpen ? 'Hide capacity and models' : 'Capacity and models'
     }
     if (drawer) drawer.hidden = !capacityOpen
   }

@@ -50,6 +50,7 @@
   const alsoOpen = new Set()
   const actionNotes = new Map()
   const lastTone = new Map()
+  const rowShape = new Map()
   const defaultEditor = { ladder: null, climb_back: 'next-handoff', may_spend: false, reserve: {}, dirty: false, saving: false, status: '', statusClass: '' }
 
   // localStorage THROWS rather than answering null in a browser with site data
@@ -635,6 +636,19 @@
   // `card 3e1c`: the tail of the card id, which is how a card is named on its
   // own row and out loud.
   function cardName(id) { return `card ${String(id).split('-').filter(Boolean).slice(-1)[0] || id}` }
+  // the terminal the verdict is about when a human is blocked: the one that
+  // has waited longest. verdictLines prints it; verdictTarget names its row.
+  function blockedOf(live) {
+    return live
+      .filter((s) => notifyWait(s) && s.waiting.type !== 'quota_auto_resume' && Number.isFinite(Date.parse(s.waiting.since)))
+      .sort((x, y) => Date.parse(x.waiting.since) - Date.parse(y.waiting.since))[0]
+  }
+  function verdictTarget(list, sessions) {
+    const accounts = (list || []).filter((a) => a && a.agent && !a.loading)
+    if (!accounts.length) return null
+    const b = blockedOf((sessions || []).filter((s) => s.active))
+    return b ? b.session_id : null
+  }
   function verdictLines(list, sessions, cards) {
     const accounts = (list || []).filter((a) => a && a.agent && !a.loading)
     if (!accounts.length) return { line: 'Reading the logins.', sub: '' }
@@ -668,9 +682,7 @@
     // the TYPE is checked and never the presence of `since`. `quota_auto_resume`
     // is left out here too: nobody asked the human anything, Claude Code is
     // holding its own turn, and the row says so in its own sentence.
-    const blocked = live
-      .filter((s) => notifyWait(s) && s.waiting.type !== 'quota_auto_resume' && Number.isFinite(Date.parse(s.waiting.since)))
-      .sort((x, y) => Date.parse(x.waiting.since) - Date.parse(y.waiting.since))[0]
+    const blocked = blockedOf(live)
     if (blocked) {
       const who = rowName(blocked)
       const waited = spoken(Date.now() - Date.parse(blocked.waiting.since))
@@ -881,7 +893,23 @@
     const { line, sub } = verdictLines(list, view ? view.sessions : [], view ? view.cards_waiting : null)
     const h1 = document.getElementById('verdict-line')
     const p = document.getElementById('verdict-sub')
-    if (h1) h1.textContent = line
+    const target = verdictTarget(list, view ? view.sessions : [])
+    if (h1) {
+      // the sentence names a row, so the sentence is the way to that row: a
+      // button in the h1's own clothes that scrolls to the row and hands it the
+      // keyboard (the prompt is the row's first control)
+      if (target && typeof h1.replaceChildren === 'function') {
+        const link = el('button', { type: 'button', class: 'verdict-link', title: 'go to this terminal' }, [line])
+        link.addEventListener('click', () => {
+          const row = document.querySelector(`#session-grid .term[data-session-id="${target}"]`)
+          if (!row) return
+          if (typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          const first = row.querySelector('.panel-prompt, .btn')
+          if (first && typeof first.focus === 'function') first.focus({ preventScroll: true })
+        })
+        h1.replaceChildren(link)
+      } else h1.textContent = line
+    }
     if (p) p.textContent = sub
     // the strip is the only usage on screen until the reader opens the drawer
     capacityStrip(list)
@@ -1717,7 +1745,14 @@
     const urgent = needsYou(s, notes)
     // the article is named so the accessibility tree does not hand the reader
     // three identical triples of Land / Hand off now / Details / End
-    const term = el('article', { class: `term${urgent ? ' is-urgent' : ''}`, 'data-session-id': s.session_id, 'aria-label': `${s.agent} ${tail(s.session_id)}` })
+    // what the row says, in one string: when it differs from the last render
+    // the row is lit for a moment (board.css .term.is-changed), the one answer
+    // the board gives to what moved while the reader was away
+    const shape = `${s.status}|${urgent}|${notes[0] ? notes[0].cat : ''}|${promptText(s.task)}`
+    const was = rowShape.get(s.session_id)
+    rowShape.set(s.session_id, shape)
+    const changed = was !== undefined && was !== shape
+    const term = el('article', { class: `term${urgent ? ' is-urgent' : ''}${changed ? ' is-changed' : ''}`, 'data-session-id': s.session_id, 'aria-label': `${s.agent} ${tail(s.session_id)}` })
     const row = el('div', { class: 'term-row' })
     const body = el('div', { class: 'term-body' })
 
@@ -1733,7 +1768,7 @@
     // which model actually answered, and whether it has gone quiet. The model
     // token is the agent and the model it resolved to, never a default.
     for (const t of registerTokens(s)) {
-      if (t.kind === 'model') register.appendChild(el('span', { class: `term-model chip-id-${idOf(s.agent)}` }, [t.text]))
+      if (t.kind === 'model') register.appendChild(el('span', { class: `term-model chip-id-${idOf(s.agent)}` }, [el('span', { class: `dot id-${idOf(s.agent)}`, 'aria-hidden': 'true' }), t.text]))
       else register.appendChild(el('span', { class: `term-${t.kind}` }, [t.text]))
     }
     if (s.account !== 'default') register.appendChild(el('span', { class: 'chip' }, [s.account]))
@@ -1822,8 +1857,11 @@
     row.appendChild(body)
 
     // elapsed and the short id, right-aligned and small: the two facts you scan
-    // down the column rather than read
-    row.appendChild(el('div', { class: 'term-clock' }, [
+    // down the column rather than read. They sit over the actions in one side
+    // column (board.css .term-side); the narrow breakpoint dissolves it.
+    const side = el('div', { class: 'term-side' })
+    row.appendChild(side)
+    side.appendChild(el('div', { class: 'term-clock' }, [
       el('span', { class: 'term-when elapsed', 'data-elapsed-from': String(Date.parse(s.started_at) || 0), 'data-elapsed-format': 'compact', title: `started ${new Date(s.started_at).toLocaleString()}` }, [ago(s.elapsed_ms)]),
       // the tail is `codex-99ab`, printed immediately after the word `codex`:
       // the prefix is the agent name twice, and it is the half that squeezed
@@ -1859,7 +1897,7 @@
         q.addEventListener('click', () => act(s.session_id, 'request-handoff', q))
         actions.appendChild(q)
       }
-      row.appendChild(actions)
+      side.appendChild(actions)
       term.appendChild(row)
       return term
     }
@@ -1924,7 +1962,7 @@
       actions.appendChild(land)
     }
     if (s.active) {
-      const h = el('button', { type: 'button', class: `btn ${blocker ? 'btn-primary' : 'btn-secondary'}`, title: 'save the bundle, stop this agent, start the next option in the same terminal', 'data-focus-key': `handoff:${s.session_id}` }, ['Hand off now'])
+      const h = el('button', { type: 'button', class: 'btn btn-secondary', title: 'save the bundle, stop this agent, start the next option in the same terminal', 'data-focus-key': `handoff:${s.session_id}` }, ['Hand off now'])
       // the same confirm row End and the picker already use. This stops the
       // current turn of a working agent, and the `h` key presses this button:
       // an action that costs a turn asks first, whichever hand pressed it.
@@ -1961,7 +1999,7 @@
       no.addEventListener('click', () => act(s.session_id, `requests/${encodeURIComponent(r.by)}/dismiss`, no))
       actions.append(ok, no)
     }
-    row.appendChild(actions)
+    side.appendChild(actions)
     term.appendChild(row)
 
     // Why can't I land expander or fallback blocker message
@@ -2573,7 +2611,7 @@
   // favicon are the only surface a browser gives a tab nobody is looking at.
   // favicon.svg itself is never touched; the dot is a variant drawn inline.
   const FAVICON = '/favicon.svg'
-  const FAVICON_DOT = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">\u{1F9BF}</text><circle cx="78" cy="22" r="20" fill="#E64343"/></svg>')}`
+  const FAVICON_DOT = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#F3F4F7"/><path d="M8 5.5v8.5l4 4h5" stroke="#0E1012" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="19" cy="5" r="5" fill="#E64343"/></svg>')}`
   function titleBadge(n) {
     const title = n > 0 ? `(${n}) Leg` : 'Leg'
     if (document.title !== title) document.title = title
@@ -2792,7 +2830,7 @@
     const repos = [...new Set(finished.map((s) => s.repo_name).filter(Boolean))]
     if (repos.length) meta.textContent += `, in ${repos.slice(0, 3).join(', ')}${repos.length > 3 ? ` and ${repos.length - 3} more` : ''}`
     const btn = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-expanded': finishedOpen ? 'true' : 'false', 'aria-controls': 'finished-drawer', 'data-focus-key': 'finished-toggle' },
-      [finishedOpen ? `Hide the ${finished.length}` : `View all ${finished.length}`])
+      [finishedOpen ? 'Hide' : 'View'])
     btn.addEventListener('click', () => { finishedOpen = !finishedOpen; renderSessions(view) })
     slot.appendChild(btn)
     panel.hidden = !finishedOpen
@@ -2842,6 +2880,9 @@
     orderDivergedAt = same ? 0 : (orderDivergedAt || Date.now())
     const empty = document.querySelector('.region-terminals .empty-line')
     if (empty) empty.hidden = list.some((s) => s.active || needsYou(s, notesOf.get(s.session_id) || []))
+    // the first-run panel is the same fact in a lit panel (index.html #first-run)
+    const firstRun = document.getElementById('first-run')
+    if (firstRun) firstRun.hidden = list.length > 0
 
     // A terminal that has ended or been lost is history, and history does not
     // belong in the panel that shows what is live. It moves to the ledger.
@@ -2999,7 +3040,7 @@
   // depends on it. board-updates.test.mjs uses the same pattern in board.js.
   if (typeof module !== 'undefined') {
     module.exports = {
-      verdictLines, VERDICT_CH, SUB_CH, WARN_PCT, bindingOf, capFigure, capToken, shareClause, headline,
+      verdictLines, verdictTarget, VERDICT_CH, SUB_CH, WARN_PCT, bindingOf, capFigure, capToken, shareClause, headline,
       rankedNotes, needsYou, registerTokens, capacityPhrase, capacityNote, waitingNote, notifyWait, resetWait,
       KEY_BUTTONS, KEY_MOVES,
       // D14: the ring is state, not a pure function, so test/board-keyboard

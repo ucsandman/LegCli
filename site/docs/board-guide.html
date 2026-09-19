@@ -67,21 +67,21 @@ tasks, as three counts that open), then <strong>Settings</strong>. Start a sessi
 <p>The visual system, and why it is what it is, is <code>DESIGN.md</code> at the repo root.</p>
 <h2 id="screenshots"><a class="anchor" href="#screenshots">Screenshots</a></h2>
 <p><code>docs/screenshots/</code> (listed here so you know what exists before you look for
-one). Nine were retaken on 2026-09-17 against this build, on a board seeded by
-<code>scripts/seed-wes-board.mjs</code> plus <code>scripts/seed-fake-cards.mjs --count 1 --finished 10 --live 3</code>; the rest are from the 2026-09-15 sweep and are noted
-below:</p>
-<pre><code>terminals-1280.png        the whole board at 1280 px (2026-09-17)
-board-400px.png           the same board at 400 px (2026-09-17)
-capacity-drawer-1280.png  the strip with Capacity and models open (2026-09-17)
-board-details-open.png    a terminal row with its expansion open (2026-09-17)
-board-handoff.png         one row waiting on you, with the question (2026-09-17)
+one). Nine were retaken on 2026-09-19 against the polish pass (0.16.0), on a
+board seeded by <code>scripts/seed-wes-board.mjs</code>; the rest are from the 2026-09-17
+and 2026-09-15 sweeps and are noted below:</p>
+<pre><code>terminals-1280.png        the whole board at 1280 px (2026-09-19)
+board-400px.png           the same board at 400 px (2026-09-19)
+capacity-drawer-1280.png  the strip with Capacity and models open (2026-09-19)
+board-details-open.png    a terminal row with its expansion open (2026-09-19)
+board-handoff.png         one row waiting on you, with the question (2026-09-19)
 background-1280.png       the Background panel and the one-line entry (2026-09-17)
-settings-ladder-1280.png  the ladder editor in Settings (2026-09-17)
-board-empty.png           no background tasks at all
+settings-ladder-1280.png  the ladder editor in Settings (2026-09-19)
+board-empty.png           the first-run panel: no terminal yet, three commands with Copy (2026-09-19)
 board-running.png         one card running its first agent (2026-09-17)
 board-drawer.png          that card expanded: where, runs, take over, timeline (2026-09-17)
 board-done.png            the card finished, on the agent that finished it
-floor.png                 /floor with nothing queued
+floor.png                 /floor with nothing queued, every station one line (2026-09-19)
 floor-landing.png         /floor with every lane full
 floor-final-1280.png      /floor after a card finished
 floor-final-400.png       the same at 400 px
@@ -92,16 +92,18 @@ demo-2-limit-hit.png       limit hit, bundle written, the row waiting on you
 demo-3-handoff-bundle.png  the row expanded: bundle path, run signal, timeline
 demo-4-codex-running.png   leg 2 running on fake-codex
 demo-5-done.png            done, both legs on the chain
+new-card-dialog.png        More settings: the task and who runs it (2026-09-19)
 </code></pre>
 <p>The five <code>demo-*.png</code> are one run of the sequence in <a href="https://www.npmjs.com/package/@ucsandman/legcli">DEMO.md</a>, all at
 1280 px.</p>
-<p><strong>Still stale, as of 2026-09-17:</strong> <code>share-owner-1280.png</code>,
-<code>share-guest-1280.png</code>, <code>board-empty.png</code>, <code>board-done.png</code> and the five
-<code>demo-*.png</code> show the old top of the board (a 56px verdict over a column of
-login panels) rather than the capacity strip and its drawer, and the card shots
-among them predate the Background panel. Their terminal rows and their floor
-are still accurate. Retake them with the commands below rather than trusting
-the top band of any of those pictures.</p>
+<p><strong>Still stale, as of 2026-09-19:</strong> <code>share-owner-1280.png</code>,
+<code>share-guest-1280.png</code>, <code>board-done.png</code>, <code>background-1280.png</code>,
+<code>board-running.png</code>, <code>board-drawer.png</code>, <code>floor-landing.png</code>, the two
+<code>floor-final-*.png</code> and the five <code>demo-*.png</code> predate the 0.16.0 polish pass:
+their rows still show the 2x2 button grid, coloured login words and the old
+mark, and the oldest of them show the pre-strip top of the board. What each
+one documents is still true. Retake them with the commands below rather than
+trusting the chrome in any of those pictures.</p>
 <p>To retake one, seed a board with the shape a real one has and drive it to the
 state the shot needs:</p>
 <pre><code>node scripts/seed-wes-board.mjs     # 4 live terminals, 5 finished, long paths
@@ -200,7 +202,7 @@ drawn.</strong> An empty track reads as a measurement of zero.</li>
 reset, the source, any wall and the age of the reading, the same sentence the
 gauges carry. A login with no percentage is not a <code>meter</code> at all, because
 <code>aria-valuenow</code> would have to be a number nobody measured.</p>
-<p><strong><code>Capacity and models &gt;</code></strong>, at the end of the strip, opens a drawer holding
+<p><strong><code>Capacity and models</code></strong>, the disclosure at the end of the strip, opens a drawer holding
 the login panels unchanged, plus a rail of model chips on each panel head:
 <code>fable 63%</code> for a measured bucket, <code>fable out until 9:14 PM</code> for a model at its
 wall, and a bare model name where Leg has a name but no figure. A percentage is
@@ -320,16 +322,18 @@ the login, and either no bucket for it or a bucket under 100). Pressing it
 replaces the button row with one sentence, <code>Hands off now. The current turn stops and fable continues from the bundle.</code>, or <code>from the conversation</code> when
 that rung is one a <code>--resume</code> keeps. Confirming posts the hand-off with the
 model on it; a rung that walled between the draw and the press comes back as
-the server&#39;s own 409 sentence in the row. It is a link and not a fifth button:
-the 2x2 grid is the shipped shape and does not reflow.</li>
+the server&#39;s own 409 sentence in the row. It is a link and not a fourth button:
+the button row is the shipped shape and does not reflow.</li>
 <li><strong>The clock</strong>: elapsed since the session started (<code>4h 24m</code>), and the session&#39;s
 short id. The id used to print as <code>claude-7f3a</code> immediately after the word
 <code>claude</code>; the prefix is the agent name twice and it is gone.</li>
-<li><strong>The buttons</strong>, in a fixed 2x2 grid so every row&#39;s controls sit in the same
-place: Land, Hand off now, Details, End. Land is the primary action only when
-it can actually run, when it is blocked the accent moves to Hand off now,
-because a disabled control should not wear the one accent colour in the
-design. When Land is disabled its reason is printed, never left in a tooltip.</li>
+<li><strong>The buttons</strong>, one row under the clock at the right, so every row&#39;s
+controls sit in the same place: Land, Hand off now, Details, End. Land is
+drawn only when it can actually run, and then it is the one primary button
+on the board; when it cannot, the row does not draw it and its reason is
+printed once above the panel, never left in a tooltip. Hand off now, Details
+and End are quiet controls: the accent means &quot;this can land&quot; and nothing
+else.</li>
 </ul>
 <p><strong>A terminal waiting on a human says so, and the tab says it too.</strong> Claude
 Code&#39;s Notification hook writes <code>waiting</code> on the record when it puts up a
@@ -480,7 +484,8 @@ waited on, and <code>permission_prompt</code>, <code>idle_prompt</code>, <code>a
 that prints <code>Claude Code is waiting at the limit itself; Leg is not handing this one off.</code>, because two waiters on one terminal is the failure to avoid.</p>
 <h3 id="terminal-buttons"><a class="anchor" href="#terminal-buttons">Terminal buttons</a></h3>
 <p>The order is fixed, Land, Hand off now, Details, End, and it never reflows by
-availability: a button that does not apply is omitted, never moved.</p>
+availability: a button that does not apply is omitted, never moved. A Land that
+cannot run is omitted too, with its reason hoisted above the panel.</p>
 <table>
 <thead>
 <tr>
@@ -638,7 +643,7 @@ picker prints <code>past your 10% reserve</code> on that row rather than hiding 
 raised surface here would compete with the terminals that are live. Each is a
 heading, a line of detail and a button that opens the detail below the row.</p>
 <ul>
-<li><strong>N finished</strong>, the terminals that have ended or been lost, <code>4 lost, 2 ended, in leg, costclaw, declick</code>. <strong>View all N</strong> opens them as full rows. On a real
+<li><strong>N finished</strong>, the terminals that have ended or been lost, <code>4 lost, 2 ended, in leg, costclaw, declick</code>. <strong>View</strong> opens them as full rows. On a real
 board after a day&#39;s work this is most of the list, which is exactly why it is a
 count and not the list.</li>
 <li><strong>N landed</strong>, what has landed on trunk across every repo the board can see,

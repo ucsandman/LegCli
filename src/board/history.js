@@ -304,7 +304,7 @@
       ? `${byAgent}${filtered ? `; ${state.total} match the filters` : ''}${state.refreshedAt ? `; looked ${whenAgo(state.refreshedAt)}` : ''}`
       : 'Leg looks in the Claude Code, Codex, Grok, Antigravity and Copilot homes on this machine, and its own sessions.'
     const btn = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-expanded': state.open ? 'true' : 'false', 'aria-controls': 'history-drawer', 'data-focus-key': 'history-toggle' },
-      [state.open ? 'Hide conversations' : (all ? `Browse ${all}` : 'Browse')])
+      [state.open ? 'Hide' : 'Browse'])
     btn.addEventListener('click', () => { state.open = !state.open; if (state.open && state.worktrees === null) loadWorktrees(); render() })
     slot.appendChild(btn)
     panel.hidden = !state.open

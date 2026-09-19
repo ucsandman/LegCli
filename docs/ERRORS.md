@@ -709,3 +709,20 @@ it), and check whether a board was listening on 4747 at the time.
 - **The lesson that generalises.** A seeded board is safe to look at and not
   safe to click: any row that names a path that exists is a live control on
   that path. Seed paths must be realistic in shape and impossible in fact.
+
+## A width became 264px of height on every narrow row (2026-09-19)
+
+- **What happened.** `.term-row > .term-body { flex-basis: 24ch }` gave the
+  prompt column a starting width on the wide board. Under 760px the row
+  stacks (`flex-direction: column`), the same declaration became a starting
+  HEIGHT, and every terminal row carried about 264px of empty space under its
+  last line. It shipped in 0.13.0 and survived three review passes because
+  each one eyeballed the 400px screenshot instead of measuring it.
+- **Fix.** `flex-basis: auto` inside the narrow block. Narrow rows on the
+  seeded board went from 549/467/442/442 to 426/365/330/266.
+- **The lesson that generalises.** A flex-basis is axis-relative; any rule
+  that sets one on a container whose direction flips at a breakpoint needs
+  the opposite value in that breakpoint. And the shot script's per-row
+  heights found it in one run when three visual reviews had not: the polish
+  loop is `_shot.mjs` numbers first, picture second (`.design/board-v5/`,
+  local only).

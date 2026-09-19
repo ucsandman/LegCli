@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.16.0 (2026-09-19)
+
+The board reads as one product: a polish pass inside the 2026-09-15
+direction, a new mark, and a first-run screen.
+
+- **One colour rule, kept everywhere.** Login names in the capacity strip,
+  the rung in a terminal row's register and the rungs in the ladder editor are
+  text beside an identity dot; the colour no longer lands on the word. A
+  warning sentence is amber only on a row that is waiting on you. The accent
+  blue appears on Land when it can run and on Start once a task is typed, and
+  nowhere else. The capacity strip is an aligned table (dot, name, track,
+  figure) instead of a ragged sentence.
+- **Terminal rows.** The prompt is clamped to two lines (Details holds the
+  rest), the clock sits over one quiet row of buttons, a Land that cannot run
+  is not drawn (its reason is said once above the panel), and End is quiet at
+  rest. The register moved up to 15px and the scaffolding floor from 13 to
+  14px. A row whose state changed since the last render is lit for 1.4 s, the
+  one motion the rows own; rows carry a faint hover. Narrow rows lost 264px of
+  empty height each: a `flex-basis: 24ch` meant for the row direction had been
+  applied as height once the row stacked. The 420px horizontal overflow is
+  gone.
+- **One control language.** The background entry is the terminals panel's
+  footer, its choices quiet chips inside the sentence. Ledger cells share one
+  anatomy with their verbs (View, Browse, New card) on one baseline; Settings
+  is a row in the same grammar; disclosures carry a CSS chevron instead of a
+  typed `>`; the Floor and Board links are buttons.
+- **The verdict is a link.** When the sentence names a terminal, pressing it
+  scrolls to that row and focuses its prompt.
+- **First run.** A board with no terminal shows one lit panel: `leg claude`,
+  `leg codex` and `leg agy` each with a Copy, and one line on what appears
+  with the first turn.
+- **The floor.** An empty station is one line, heading beside sentence, so
+  seven empty stations are seven lines rather than seven screens.
+- **The mark.** A tile with the L cut as hip, knee and foot replaces the 🦿
+  emoji on the board, the floor, the favicon, the tab badge and the site.
+  The emoji rendered as whichever system emoji font the machine had.
+- **Docs.** Nine screenshots retaken against this build; DESIGN.md and the
+  board guide describe the new row and strip; the OG image carries the mark.
+
 ## 0.15.1 (2026-09-19)
 
 Your own Claude Code status line comes back.

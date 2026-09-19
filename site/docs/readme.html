@@ -63,7 +63,7 @@
 <a href="https://legcli.com/docs/configuration"><img src="https://img.shields.io/badge/runs-on%20your%20machine-informational.svg" alt="Local first"></a></p>
 <p><img src="https://legcli.com/img/leg-handoff.gif" alt="The Leg board mid-handoff: claude&#39;s terminal row changes to &quot;handing off&quot; and reads &quot;handing off to codex, 5h limit reached&quot;, while the codex row above it shows what it landed on main"></p>
 <p><em>Claude hits the five-hour wall. The terminal reads <code>handing off to codex</code>, and codex carries on there. Nothing is retyped. (<a href="https://legcli.com/#handoff">the full 53-second run</a>)</em></p>
-<p><img src="https://legcli.com/img/docs/terminals-1280.png" alt="The Leg board at 1280px: a headline naming the terminal that has waited on you longest; under it a capacity strip with claude at 63 percent of its fable week, codex back on Saturday, agy with no figure and grok with no reading, and a button that opens the login panels; then four terminal rows, each with its status, repo and branch, uncommitted and unpushed counts, agent and model, the prompt, the one thing worth knowing and four buttons; then a Background panel of live cards and a one-line field for starting another; then counts for finished terminals, what landed, conversations and finished cards"></p>
+<p><img src="https://legcli.com/img/docs/terminals-1280.png" alt="The Leg board at 1280px: a headline naming the terminal that has waited on you longest; under it a capacity strip with claude at 63 percent of its fable week, codex back on Saturday, agy with no figure and grok with no reading, and a button that opens the login panels; then four terminal rows, each with its status, repo and branch, uncommitted and unpushed counts, agent and model, the prompt, the one thing worth knowing and its buttons; then the one-line field for starting a background task, joined to the panel; then counts for finished terminals, what landed, conversations and finished cards"></p>
 <p>You keep using your coding agents exactly as you do today, in any terminal,
 from your own config directory: Leg adds its hooks in a separate per-session
 settings file and never edits yours (unless you turn on the <a href="/docs/harness">portable
@@ -467,8 +467,10 @@ After a Land the sentence is <code>landed on &lt;base&gt;, &lt;7-char sha&gt;, &
 first, each row with the short sha, the subject, a <code>repo@branch</code> chip, and
 when plus who. A commit a Land put there says <code>landed by &lt;agent&gt; (&lt;id tail&gt;)</code>.</li>
 <li><strong>Buttons</strong>, in a fixed order that never reflows: Land, Hand off now,
-Details, End. Once a session has ended, Remove and Remove record take End&#39;s
-place. Details opens an expansion in flow under the panel.
+Details, End, under the clock at the right of the row. Land is drawn only
+when it can run; its reason is said once above the panel. Once a session has
+ended, Remove and Remove record take End&#39;s place. Details opens an expansion
+in flow under the panel.
 <strong>Hand off now</strong> takes the first open rung of the ladder. To name the
 destination instead, open Details and use <strong>Hand off now to</strong>, which lists
 every rung with its model, whether it keeps the conversation, and the reason

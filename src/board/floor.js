@@ -443,6 +443,8 @@
     const table = body.parentElement
     const section = table && table.parentElement
     if (section) { const old = section.querySelector('.empty-line'); if (old) old.remove() }
+    // an empty station is one line (board.css .region-floor.is-empty)
+    if (section && section.classList) section.classList.toggle('is-empty', !list.length)
     const thead = table && table.querySelector('thead')
     if (!list.length) {
       if (thead) thead.hidden = true
@@ -747,6 +749,7 @@
     const count = document.getElementById(station.count)
     if (count) count.textContent = String(cards.length)
     if (section && section.querySelector) { const old = section.querySelector('.empty-line'); if (old && old.remove) old.remove() }
+    if (section && section.classList) section.classList.toggle('is-empty', !cards.length)
     if (!cards.length) {
       box.textContent = ''
       box.signature = ''

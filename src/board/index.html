@@ -18,13 +18,15 @@
 <div class="wrap">
 
   <header class="masthead">
-    <p class="brand"><span class="brand-glyph" aria-hidden="true">🦿</span> Leg</p>
+    <p class="brand"><span class="brand-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="currentColor"/><path d="M8 5.5v8.5l4 4h5" stroke="#0E1012" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span> Leg</p>
     <div class="masthead-right">
-      <div class="sse-status" role="status">
-        <span class="sse-word" id="sse-text">connecting</span>
-        <span class="sse-rule is-connecting" id="sse-dot" aria-hidden="true"></span>
+      <div class="masthead-status">
+        <div class="sse-status" role="status">
+          <span class="sse-word" id="sse-text">connecting</span>
+          <span class="sse-rule is-connecting" id="sse-dot" aria-hidden="true"></span>
+        </div>
+        <div class="sched-status" id="sched-status"></div>
       </div>
-      <div class="sched-status" id="sched-status"></div>
       <a class="floor-link" href="/floor">Floor</a>
     </div>
   </header>
@@ -46,7 +48,7 @@
   <section class="capacity" aria-label="Capacity by login">
     <div class="capacity-strip">
       <div class="cap-tokens" id="capacity-tokens"></div>
-      <button type="button" class="btn btn-secondary disclosure cap-open" id="capacity-toggle" aria-expanded="false" aria-controls="capacity-drawer">Capacity and models &gt;</button>
+      <button type="button" class="btn btn-secondary disclosure cap-open" id="capacity-toggle" aria-expanded="false" aria-controls="capacity-drawer">Capacity and models</button>
     </div>
     <div class="drawer capacity-drawer" id="capacity-drawer" hidden>
       <section class="logins" id="accounts" aria-label="Logins"></section>
@@ -67,7 +69,19 @@
       <span class="chip" id="whoami" hidden></span>
     </div>
     <div class="panel terms" id="session-grid"></div>
-    <p class="empty-line" hidden>No terminal is running. Start one in any repo: <code>leg claude</code>, <code>leg codex</code> or <code>leg agy</code>. It appears here within a second of the agent's first turn.</p>
+    <!-- first run: the board with no terminal is the first screen a new reader
+         sees, so it is a lit panel with the commands and a Copy each. sessions.js
+         hides it the moment a terminal is live; board.js wires Copy. -->
+    <div class="panel panel--lit first-run" id="first-run" hidden>
+      <h3>No terminal is running</h3>
+      <p>Start one in any repo with the same command you use today, and Leg runs it with the board alongside. It appears here within a second of the agent's first turn.</p>
+      <div class="first-run-cmds">
+        <div class="first-run-cmd"><span><span class="dot id-claude" aria-hidden="true"></span><code>leg claude</code></span><button type="button" class="btn btn-secondary btn-sm" data-copy="leg claude" aria-label="Copy leg claude">Copy</button></div>
+        <div class="first-run-cmd"><span><span class="dot id-codex" aria-hidden="true"></span><code>leg codex</code></span><button type="button" class="btn btn-secondary btn-sm" data-copy="leg codex" aria-label="Copy leg codex">Copy</button></div>
+        <div class="first-run-cmd"><span><span class="dot id-agy" aria-hidden="true"></span><code>leg agy</code></span><button type="button" class="btn btn-secondary btn-sm" data-copy="leg agy" aria-label="Copy leg agy">Copy</button></div>
+      </div>
+      <p class="first-run-note">Usage per login, the handoff ladder and the context bundle all start with the first terminal.</p>
+    </div>
   </section>
 
   <!-- C.1: a card is a terminal you are not sitting at. Live cards are rows
@@ -118,7 +132,7 @@
       <div class="ledger-actions">
         <button type="button" class="btn btn-secondary" id="new-card-btn">New card</button>
       </div>
-      <p class="empty-line" id="empty-state" hidden>A card runs an agent headless in its own worktree. <button type="button" class="btn btn-text" id="empty-new-card-btn">New card</button> queues one.</p>
+      <p class="empty-line" id="empty-state" hidden>A card runs an agent headless in its own worktree.</p>
     </div>
 
   </section>

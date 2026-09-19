@@ -11,7 +11,7 @@
 
 *Claude hits the five-hour wall. The terminal reads `handing off to codex`, and codex carries on there. Nothing is retyped. ([the full 53-second run](https://legcli.com/#handoff))*
 
-![The Leg board at 1280px: a headline naming the terminal that has waited on you longest; under it a capacity strip with claude at 63 percent of its fable week, codex back on Saturday, agy with no figure and grok with no reading, and a button that opens the login panels; then four terminal rows, each with its status, repo and branch, uncommitted and unpushed counts, agent and model, the prompt, the one thing worth knowing and four buttons; then a Background panel of live cards and a one-line field for starting another; then counts for finished terminals, what landed, conversations and finished cards](https://legcli.com/img/docs/terminals-1280.png)
+![The Leg board at 1280px: a headline naming the terminal that has waited on you longest; under it a capacity strip with claude at 63 percent of its fable week, codex back on Saturday, agy with no figure and grok with no reading, and a button that opens the login panels; then four terminal rows, each with its status, repo and branch, uncommitted and unpushed counts, agent and model, the prompt, the one thing worth knowing and its buttons; then the one-line field for starting a background task, joined to the panel; then counts for finished terminals, what landed, conversations and finished cards](https://legcli.com/img/docs/terminals-1280.png)
 
 You keep using your coding agents exactly as you do today, in any terminal,
 from your own config directory: Leg adds its hooks in a separate per-session
@@ -420,8 +420,10 @@ with nothing in it says so with its counts.
   first, each row with the short sha, the subject, a `repo@branch` chip, and
   when plus who. A commit a Land put there says `landed by <agent> (<id tail>)`.
 - **Buttons**, in a fixed order that never reflows: Land, Hand off now,
-  Details, End. Once a session has ended, Remove and Remove record take End's
-  place. Details opens an expansion in flow under the panel.
+  Details, End, under the clock at the right of the row. Land is drawn only
+  when it can run; its reason is said once above the panel. Once a session has
+  ended, Remove and Remove record take End's place. Details opens an expansion
+  in flow under the panel.
   **Hand off now** takes the first open rung of the ladder. To name the
   destination instead, open Details and use **Hand off now to**, which lists
   every rung with its model, whether it keeps the conversation, and the reason

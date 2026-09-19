@@ -8,7 +8,9 @@ One visual system for both surfaces: the board (`src/board/`) and the marketing 
 
 Three brand-voice words: quiet, lit, decided. Physical reference: a dark instrument panel where the thing that matters is the one lit surface, and everything else recedes. Scene: a developer with four terminals open, glancing at a second monitor to find out whether they can keep going. Aesthetic lane: dark product surface, the product recreated in DOM on the site in the product's own colours.
 
-Colour strategy: **one accent, spent once.** The ground is a neutral near-black. Emphasis is elevation and size, never hue. A single blue marks the action to take and appears nowhere else. Identity colours are a dot beside a printed name and a gauge fill. Severity paints inside a gauge track; it is never the colour of a word except where a word is itself the failure.
+Colour strategy: **one accent, spent once.** The ground is a neutral near-black. Emphasis is elevation and size, never hue. A single blue marks the action to take and appears nowhere else: on the board that is Land when it can run, and Start once a task is typed. Identity colours are a dot beside a printed name and a gauge fill; the name itself is text, in the strip, in a row's register and in the ladder editor alike. Severity paints inside a gauge track; it is never the colour of a word except where a word is itself the failure (a row waiting on you, a login at its wall).
+
+**The mark.** A tile with the L cut as hip, knee and foot: the letter and the leg are one shape. Inline SVG (`viewBox 0 0 24 24`, `rx 6`, stroke 3.2, round caps) in `currentColor` on the board and the floor, `#F3F4F7` on `#0E1012` as the favicon and on the site. It replaced the 🦿 emoji on 2026-09-19, which rendered as whichever system emoji font the machine had. Runner-up, kept in `.design/board-v5/marks.html`: the three-node route.
 
 Five rules that decide most questions:
 
@@ -62,7 +64,7 @@ One light source, above. A raised object carries a 1px inset highlight on its to
 
 - One family, **Atkinson Hyperlegible Next**, self-hosted as a subset in `src/board/fonts/` and `site/fonts/`. The Braille Institute's typeface, drawn so no glyph can be mistaken for another, which is the promise a board read at a glance has to keep. Two weights: 400 and 700.
 - **Azeret Mono** is demoted to true data tokens only: session ids, diffs, log output, a literal command. Never prose. Monospace prose was one of the tells of the rejected look.
-- Board scale, 13 to 52px: `--t--1` 13 (row register), `--t-0` 15 (labels, meta, controls), `--t-1` 17 (prompts, panel heads, body), `--t-2` 21 (section heads), `--t-3` 34 (gauge numeral), `--t-4` 52 (the verdict). The old board ran 13 to 21, which is why it read as a spreadsheet.
+- Board scale, 14 to 52px: `--t--1` 14 (row scaffolding: files, capacity phrase, dirty and quiet counts), `--t-0` 15 (labels, meta, controls, the row register), `--t-1` 17 (prompts, panel heads, body), `--t-2` 21 (section heads), `--t-3` 34 (gauge numeral), `--t-4` 52 (the verdict). The old board ran 13 to 21, which is why it read as a spreadsheet; the 13px floor went to 14 on 2026-09-19 because 26 elements per screen under 14px on a 1440 monitor read as a spreadsheet again.
 - Site scale keeps its marketing display sizes: hero `clamp(2.6rem, 6.4vw, 5.5rem)` weight 700, section headings `clamp(1.9rem, 3.6vw, 3.3rem)`, body 17px, max 66ch.
 - `font-variant-numeric: tabular-nums` throughout, so a ticking figure does not reflow.
 - No uppercase runs, no tracked-out labels. Headings are sentences.
@@ -72,10 +74,14 @@ One light source, above. A raised object carries a 1px inset highlight on its to
 
 - **Panel**: `--e2`, 1px `--edge`, radius 16px, padding 32, `--lift`. The unit of the design. `panel--lit` for the one that matters.
 - **Gauge**: a 16px track in `--track` with `--sink`, a fill in the login's identity colour running to 85 percent and in `--danger` past it, a 2px notch cut through the bar at 85, and the numeral at 34px right-aligned. `gauge--minor` is the same instrument at 8px with a 21px numeral, for a login's second window. A window with no reading draws no track.
-- **Terminal row**: one row inside the terminals panel, separated from its siblings by `--line`. Reading order across it: what it is doing, what it is working on, how long, what you can do about it. Register at 13px, prompt at 17px, clock and id right-aligned small, actions in a 2x2 grid so every row's buttons sit in the same place.
-- **Ledger cell**: a heading, a line of meta and a disclosure button, on the ground with no panel. Finished terminals, what landed, background tasks.
+- **Capacity strip**: one token per login as a small aligned table, dot, name, 120x6 track, figure, in an auto-fill grid of 300px columns. The name is `--text-2`; the dot and the fill carry the identity. Under 760px the track goes and the figure right-aligns.
+- **Terminal row**: one row inside the terminals panel, separated from its siblings by `--line`. Reading order across it: what it is doing, what it is working on, how long, what you can do about it. Register at 15px with a dot beside the rung, prompt at 17px clamped to two lines (the expansion holds the rest), the mono clock and id over a single row of quiet buttons in a side column, so every row's controls sit in the same place. Land is drawn only when it can run, and then it is the one primary. A row whose state changed since the last render is lit for 1.4 s (`is-changed`), the one motion the rows own. Rows carry a 1.5 percent white hover.
+- **Background entry**: the one-line field under the terminals panel, joined to it as its footer when the panel has rows, a well of its own otherwise. Its choices (repo, ladder, pipeline) are quiet chips inside the sentence; More settings is the one text link.
+- **First run**: with no terminal, the terminals region is one lit panel: the three commands in `--e0` wells, each with a Copy, and one line on what appears with the first turn. It is the first screen a new reader sees and the screenshot the docs open with (`docs/screenshots/board-empty.png`).
+- **Ledger cell**: a count, a line of meta (at most three lines) and one verb (View, Browse, New card), on the ground with no panel, the verbs on one baseline across the four cells. Settings is a fifth row in the same grammar. A disclosure carries a CSS chevron that turns when it is open; no typed `>`.
 - **Drawer**: `--e1`, radius 12px, `--sink`. Anything a disclosure opens.
-- **Buttons**: radius 10px, min-height 36px, weight 700. Filled `--accent` for the primary, `--e3` with a `--control-edge` border for secondary. Land is the primary only when it can run: a disabled control never wears the accent.
+- **Buttons**: radius 10px, min-height 36px, weight 700. Filled `--accent` for the primary, `--e3` with a `--control-edge` border for secondary. Land is the primary only when it can run: a disabled control never wears the accent, and in a terminal row it is not drawn at all. End and Remove are quiet at rest and turn `--danger-text` on hover; the confirm row is where the decision is made. The masthead's page link (Floor, Board) is a secondary button, not an underlined word.
+- **Verdict link**: when the verdict names a terminal, the h1 is a button in its own clothes (`.verdict-link`) that scrolls to that row and focuses its prompt; the accent appears on hover only.
 - **Command row** (site): mono command in a `--e1` well with `--sink`, radius 12px, a Copy button that says `copied` for 1.4 s.
 - **Board recreation** (site): the board's own anatomy in DOM — the verdict sentence, login panels, terminal rows, the ledger — in the board's own colours. When the board's anatomy changes, these change in the same pass.
 
@@ -93,10 +99,10 @@ Focus: a 2px solid `--focus` (`#EDF2FA`) outline at 2px offset, one treatment fo
 
 ## Motion
 
-- Board: one animation, the breathing dot on a running terminal, 2400ms. Nothing else moves on its own. The elapsed clock and the connection word prove liveness with real data.
+- Board: two animations. The breathing dot on a running terminal, 2400ms, and a 1400ms settle on a row whose state just changed (a blue wash at 14 percent fading to nothing). Nothing else moves on its own. The elapsed clock and the connection word prove liveness with real data.
 - Site: one choreographed sequence, the live handoff terminal typing at reading speed when it enters the viewport. A Replay button restarts it.
 - Easing `cubic-bezier(.2,0,0,1)` on the board, `cubic-bezier(0.16, 1, 0.3, 1)` on the site; 150 to 320ms for hover and press feedback. No scroll-reveal fades, no parallax, no hover scale.
-- `prefers-reduced-motion: reduce` disables the running dot, every transition and the press translate; the site renders the full transcript static and hides Replay.
+- `prefers-reduced-motion: reduce` disables the running dot, the settle, every transition and the press translate; the site renders the full transcript static and hides Replay.
 
 ## Verifying a change to either surface
 
