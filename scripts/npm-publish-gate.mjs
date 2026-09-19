@@ -7,6 +7,7 @@
 import { appendFileSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { releaseSection } from './release-notes.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const EXPECTED_REPOSITORY = 'https://github.com/ucsandman/legcli.git'
@@ -103,6 +104,9 @@ try {
   if (alias.repository?.url !== EXPECTED_REPOSITORY) {
     fail('alias package repository metadata does not match the npm trusted publisher binding')
   }
+  // The GitHub release ci.yml creates after the publish is this section, so a
+  // version nobody wrote up in CHANGELOG.md never reaches npm either.
+  releaseSection(readFileSync(join(root, 'CHANGELOG.md'), 'utf8'), pkg.version)
 
   const primaryPublished = await registryStatus(pkg.name, pkg.version)
   const aliasPublished = await registryStatus(alias.name, alias.version)

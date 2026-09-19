@@ -3,6 +3,28 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-09-19: eleven versions reached npm and none reached the GitHub releases page
+
+**Fixed by making the publish job create the tag and the GitHub release itself,
+from the version's CHANGELOG.md section, and by backfilling v0.7.0 to v0.15.1.**
+
+The releases page stopped at v0.6.0 (2026-09-15, the pre-rename name) while npm went on to
+0.15.1. Releases 0.2.0 to 0.6.0 had been made by hand with `gh release create`,
+batched on 09-11 and 09-15; once `publish-npm` in `.github/workflows/ci.yml`
+took over the npm side on 09-14, nothing tagged or drafted anything, and no
+check noticed, because a green publish job and a stale releases page look the
+same from the terminal. Wes found it on the page. The rule that holds is a
+mechanism, not a note: the publish job now runs `scripts/release-notes.mjs`
+and `gh release create v<version>` in the same job as `npm publish` (the job
+has `contents: write` for that one step), and `scripts/npm-publish-gate.mjs`
+refuses a version with no `## <version>` section in CHANGELOG.md, so a
+release nobody wrote up never reaches npm either. `test/release-notes.test.mjs`
+pins the extraction. The backfilled tags point at the commit each npm version
+was published from (`npm view @ucsandman/legcli time` matched against
+`git log --first-parent --before`), not at the `[RELEASE]` commit, since three
+of those needed a follow-up fix before the gate let them through. 0.6.1 and
+0.8.1 have CHANGELOG sections but never reached npm, so they have no release.
+
 ## 2026-09-18: 0.14.0 pushed, CI green everywhere, and npm still served 0.13.1
 
 **Fixed by putting the `repository` block back into the lockfile root

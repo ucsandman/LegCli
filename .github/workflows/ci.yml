@@ -81,7 +81,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # the tag and the GitHub release the publish creates
       id-token: write
     concurrency:
       group: publish-npm-main
@@ -110,3 +110,23 @@ jobs:
         if: steps.registry.outputs.alias_published == 'false'
         working-directory: packages/leg-agents
         run: npm publish --access public --provenance=false
+
+      # Every npm version gets a tag and a GitHub release with its CHANGELOG
+      # section, in the same job, so the releases page cannot fall behind npm
+      # again (it sat at 0.6.0 while npm reached 0.15.1, docs/ERRORS.md
+      # 2026-09-19). Idempotent: an existing release is left alone.
+      - name: Tag and publish the GitHub release
+        if: steps.registry.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release v$version already exists"
+            exit 0
+          fi
+          node scripts/release-notes.mjs "$version" > /tmp/release-notes.md
+          title=$(node scripts/release-notes.mjs "$version" --title)
+          gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$title" --notes-file /tmp/release-notes.md
+          echo "released v$version: $title"
