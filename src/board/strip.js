@@ -125,6 +125,10 @@
     const box = document.getElementById('capacity-tokens')
     if (!box) return
     box.textContent = ''
+    // the name column fits the longest login on the strip, so "claude/work"
+    // never runs into its own track and every row's track still starts flush
+    const widest = Math.max(7, ...(list || []).map((a) => String(H.accountLabel(a)).length))
+    box.style.setProperty('--cap-name', `${widest}ch`)
     for (const a of list || []) box.appendChild(capToken(a))
   }
 

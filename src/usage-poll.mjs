@@ -19,7 +19,7 @@
 // endpoint reads moved here.
 import { LAYOUT, readAccounts, envFor } from './accounts.mjs'
 import { listSessions, isActive, updateSession, appendEvent } from './sessions.mjs'
-import { recordUsage, noteUsageError } from './usage.mjs'
+import { recordUsage, noteUsageError, notePoll } from './usage.mjs'
 import { fetchClaudeUsage } from './taps/claude-usage.mjs'
 import { fetchGrokUsage } from './taps/grok.mjs'
 import { readCodexUsage } from './taps/codex.mjs'
@@ -202,6 +202,9 @@ export function createUsagePollers({
         if (noted.changed) onLog(`${agent}/${account} usage: ${r.error}`)
       }
       st.delay = r.ok ? intervalMs : Math.min(maxMs, Math.max(intervalMs, st.delay) * 2)
+      // the promise the terminals read (src/usage.mjs boardIsPolling): a backed
+      // off poller is still a poller, and no terminal should read past it
+      try { notePoll(agent, account, Date.now() + st.delay) } catch {}
       return { ...r, changed }
     })()
     st.inFlight = run.finally(() => { st.inFlight = null })

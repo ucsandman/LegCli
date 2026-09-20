@@ -237,7 +237,10 @@ code { font-family: var(--mono); font-size: 0.94em; }
    name is text: identity is the dot and the fill, never the colour of a word */
 .capacity-strip { display: flex; align-items: flex-start; gap: 12px 32px; flex-wrap: nowrap; min-height: 44px; font-size: var(--t-0); }
 .cap-tokens { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px 40px; flex: 1 1 auto; min-width: 0; }
-.cap-token { display: grid; grid-template-columns: 8px 7ch 120px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 28px; }
+/* the name column is as wide as the longest login on the strip (strip.js sets
+   --cap-name on the container): a second claude login reads "claude/work",
+   and a fixed 7ch put the slash over the track */
+.cap-token { display: grid; grid-template-columns: 8px var(--cap-name, 7ch) 120px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 28px; }
 .cap-name { font-weight: var(--w-head); color: var(--text-2); }
 .cap-track { position: relative; flex: none; width: 120px; height: 6px; background: var(--track); border-radius: 999px; box-shadow: var(--sink); overflow: hidden; }
 .cap-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--calm); }
@@ -704,7 +707,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
      with its state word carries the whole fact on its own */
   .capacity-strip { display: block; }
   .cap-tokens { grid-template-columns: 1fr; }
-  .cap-token { grid-template-columns: 8px 7ch minmax(0, 1fr); }
+  .cap-token { grid-template-columns: 8px var(--cap-name, 7ch) minmax(0, 1fr); }
   .cap-track { display: none; }
   .cap-figure { grid-column: 3; text-align: right; }
   .cap-open { margin-left: 0; margin-top: 12px; }

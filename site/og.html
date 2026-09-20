@@ -16,19 +16,22 @@ h1 { margin: 0; font-size: 84px; line-height: 1.0; letter-spacing: -0.025em; fon
 .cmd { display: inline-flex; flex: none; white-space: nowrap; align-items: center; gap: 28px; font-family: "Azeret Mono", monospace; font-size: 26px; font-weight: 500; padding: 18px 26px; background: #171A1D; border: 1px solid #35383D; border-radius: 12px; box-shadow: inset 0 1px 3px rgba(0,0,0,.5); }
 .cmd span { color: #B9BEC6; font-family: "Atkinson Hyperlegible Next", sans-serif; font-size: 20px; }
 .foot { display: flex; justify-content: space-between; align-items: flex-end; }
-.tags { font-size: 20px; color: #9399A1; white-space: nowrap; }
+.tags { font-size: 20px; color: #9399A1; white-space: nowrap; font-weight: 400; }
+.top { display: flex; justify-content: space-between; align-items: center; }
 </style>
 </head>
 <body>
 <div class="card">
+  <div class="top">
   <div class="brand">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#F3F4F7"/><path d="M8 5.5v8.5l4 4h5" stroke="#0E1012" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
     Leg
   </div>
+  <div class="tags">Claude Code · Codex · agy · Grok · local</div>
+  </div>
   <h1>Your agent hits the limit. The next one keeps your place.</h1>
   <div class="foot">
     <div class="cmd">npm install -g @ucsandman/legcli <span>then leg claude</span></div>
-    <div class="tags">Claude Code · Codex · agy · Grok · local · $79</div>
   </div>
 </div>
 </body>

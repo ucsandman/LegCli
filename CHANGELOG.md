@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.16.1 (2026-09-19)
+
+Three things that nagged every session, and the sharecard.
+
+- **The terminal no longer claims "no board is reading claude usage" while
+  one is.** A 429 from the usage endpoint backs the board's poller off for up
+  to ten minutes; the terminal read the stale record as "no board", said so,
+  and started its own reads, one more request a minute at an endpoint already
+  refusing. The poller now writes `next_poll_at` on every attempt, a refusal
+  included, and the terminal stands down while that promise is not overdue
+  (`boardIsPolling`, src/usage.mjs). A board that is genuinely gone still
+  gets the old line and the old fallback.
+- **`leg claude` opens the board only when nobody is looking at it.**
+  `/api/health` reports `viewers`, the count of browser tabs on the event
+  stream; a second terminal on a board that is already on screen adds no tab.
+  A guarded board (share on) says no count and opens as before.
+- **A second claude login fits its row on the capacity strip.** The name
+  column was a fixed 7ch, and "claude/work" ran into its own track. The
+  column is now as wide as the longest login on the strip, set by strip.js,
+  so every row's track still starts flush.
+- **The sharecard reaches X.** robots.txt said `Disallow: /og` to keep the
+  card's source page out of the index, and that prefix also blocked
+  `/og.png`, so X drew a bare link for four days. The line is `/og$` with an
+  explicit `Allow: /og.png`; the card's foot no longer overflows the frame
+  and the image URL is `?v=5`.
+
 ## 0.16.0 (2026-09-19)
 
 The board reads as one product: a polish pass inside the 2026-09-15

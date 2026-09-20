@@ -246,3 +246,35 @@ test('the failure line names the clock time it started', () => {
   assert.equal(clockTime(new Date(2026, 8, 18, 0, 5).toISOString()), '12:05 AM')
   assert.equal(clockTime('not a time'), 'just now')
 })
+
+test('every attempt, a refusal included, promises the next reading on the record, and a terminal reads boardIsPolling from it', async () => {
+  const { boardIsPolling, usageIsStale } = await import('../src/usage.mjs')
+  const answers = [OK, RATE_LIMITED]
+  const armed = []
+  const poller = createUsagePollers({
+    agents: ['claude'],
+    accounts: () => ({ claude: ['default'] }),
+    intervalMs: 60_000,
+    maxMs: 600_000,
+    fetchers: { claude: async () => answers.shift() ?? OK },
+    schedule: (fn, ms) => { armed.push({ ms, fn }); return armed.length },
+    cancel: () => {},
+  })
+  try {
+    await poller.start()
+    let u = readUsage('claude', 'default')
+    const now = Date.now()
+    assert.ok(Date.parse(u.next_poll_at) - now > 50_000 && Date.parse(u.next_poll_at) - now <= 60_000, `a 60s promise, got ${u.next_poll_at}`)
+    await armed.at(-1).fn()
+    u = readUsage('claude', 'default')
+    assert.equal(u.error, 'usage endpoint 429: rate_limit_error')
+    assert.ok(Date.parse(u.next_poll_at) - now > 110_000, `the refusal promises the backed-off read, got ${u.next_poll_at}`)
+    // ten minutes on: the last good reading is stale, the promise is not overdue,
+    // and the terminal stands down instead of announcing "no board"
+    const later = now + 100_000
+    assert.equal(usageIsStale({ ...u, observed_at: new Date(now - 6 * 60_000).toISOString() }, later), true)
+    assert.equal(boardIsPolling(u, later), true, 'a backed-off board is still a board')
+    assert.equal(boardIsPolling(u, Date.parse(u.next_poll_at) + 91_000), false, 'a promise 90s overdue is a board that is gone')
+    assert.equal(boardIsPolling({ ...u, next_poll_at: null }), false, 'an older board that never promised leaves the old rule in force')
+  } finally { poller.stop() }
+})

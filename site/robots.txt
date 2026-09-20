@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
-Disallow: /og
+Allow: /og.png
+Disallow: /og$
 Disallow: /og.html
 Disallow: /thanks
 Disallow: /thanks.html

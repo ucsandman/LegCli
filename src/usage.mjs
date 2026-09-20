@@ -47,7 +47,7 @@ export function readUsage(agent, account = 'default') {
 }
 
 function emptyUsage(agent, account) {
-  return { agent, account, five_hour: null, seven_day: null, limited_until: null, limited_reason: null, limited_at: null, source: null, observed_at: null, available_at: null, updated_at: null, buckets: [], walls: {}, history: {}, extra_usage: null, facts: null, error: null, error_since: null }
+  return { agent, account, five_hour: null, seven_day: null, limited_until: null, limited_reason: null, limited_at: null, source: null, observed_at: null, available_at: null, updated_at: null, buckets: [], walls: {}, history: {}, extra_usage: null, facts: null, error: null, error_since: null, next_poll_at: null }
 }
 
 // The READING's health, which is not the login's health: a 429 from the usage
@@ -80,6 +80,24 @@ export function noteUsageError(agent, account, error, { at = new Date().toISOStr
     return u
   })
   return { error: value.error ?? null, error_since: value.error_since ?? null, changed }
+}
+
+// The board's poller says when it will read this login next, on every attempt
+// it makes, a refusal included. A terminal deciding whether to read the login
+// itself (src/attach.mjs) asks this, not the age of the last good reading: a
+// 429 backs the poller off up to ten minutes, and in that window the last
+// reading is stale while a board is still very much on the login. The old
+// test read that as "no board", printed as much, and added a request a minute
+// to an endpoint that was already refusing.
+export function notePoll(agent, account, nextAtMs) {
+  return mutate(agent, account, (u) => { u.next_poll_at = new Date(nextAtMs).toISOString(); return u })
+}
+
+// → true while a poller has promised a next reading that is not yet overdue.
+// The grace covers the endpoint's own timeout on top of the promised moment.
+export function boardIsPolling(u, nowMs = Date.now(), graceMs = 90 * 1000) {
+  const nextMs = Date.parse(u?.next_poll_at ?? '')
+  return Number.isFinite(nextMs) && nowMs <= nextMs + graceMs
 }
 
 // The ring key for a bucket: the kind alone when it is account-wide, the kind

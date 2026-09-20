@@ -24,7 +24,7 @@ import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.m
 import { canonPath, realPath, writeJsonAtomic } from './fsx.mjs'
 import { whoami, readShare, isOn as shareIsOn } from './share.mjs'
 import { readAccounts, envFor, refreshAccount } from './accounts.mjs'
-import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, usageIsStale, isAvailable, wallActive, rungLabel, skipLine, keepsConversation as keepsConversationRule } from './usage.mjs'
+import { recordUsage, markLimited, chooseNext, candidates, fmtReset, WARN_PCT, readUsage, usageIsStale, boardIsPolling, isAvailable, wallActive, rungLabel, skipLine, keepsConversation as keepsConversationRule } from './usage.mjs'
 import { entitlement, allows, describe as describeLicense } from './license.mjs'
 import { writeSettings, userStatusLine, transcriptTail as claudeTail, modelAlias, modelFromTranscript, printable } from './taps/claude.mjs'
 import { modelFlagFor } from './buckets.mjs'
@@ -118,9 +118,13 @@ export async function ensureBoard({ open = true, wait = true } = {}) {
   const host = shared ? share.bind : '127.0.0.1'
   const url = `http://${host}:${port}`
   if ((process.env.LEG_NO_BOARD || process.env.BATON_NO_BOARD) === '1') return { url: null, started: false, skipped: true }
-  // the board is opened whether or not this terminal is the one that started
-  // it: `leg claude` in a second terminal still means "show me the board"
-  if (await health(port, host)) { if (open) openBoard(url); return { url, started: false } }
+  // A board that is already up is opened only when nobody is looking at it:
+  // `viewers` is the count of browser tabs on its event stream (src/server.mjs
+  // /api/health). Every `leg claude` used to open one more tab of a board that
+  // was already on screen. A guarded board (share on, 401 on health) says no
+  // count, and is opened as before.
+  const h = await health(port, host)
+  if (h) { if (open && !(Number.isFinite(h.viewers) && h.viewers > 0)) openBoard(url); return { url, started: false } }
   // A board that is merely busy misses the health deadline while still owning
   // the port. Treating that as "no board" spawned a second server that could
   // only die of EADDRINUSE, and the poll below then waited the full fifteen
@@ -620,8 +624,10 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   // record and, when nothing has refreshed it for five minutes, reads the
   // endpoint itself at the old once-a-minute cadence. A board that is polling
   // keeps that record fresh, so with one up this costs a readUsage() a minute
-  // and no request. Said once, so a terminal doing its own reading is never a
-  // mystery.
+  // and no request. A board backed off by a 429 has promised its next read on
+  // the record (`next_poll_at`), and the terminal waits for it: its own read
+  // would only be one more request at an endpoint already refusing. Said
+  // once, so a terminal doing its own reading is never a mystery.
   let fallbackTimer = null
   if ((agent === 'claude' || agent === 'grok') && !NO_USAGE_POLL) {
     const source = agent === 'claude' ? 'claude usage endpoint' : 'grok billing proxy'
@@ -631,7 +637,10 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
     let announced = false
     const pollUsage = async () => {
       if (!isCurrentLeg(readSession(sid), { pid: child.pid, agent, account })) return
-      if (!usageIsStale(readUsage(agent, account))) return // a board is reading this login
+      // a board is reading this login: its last reading is fresh, or it has
+      // promised the next one (a 429 backs it off, which is not its absence)
+      const own = readUsage(agent, account)
+      if (!usageIsStale(own) || boardIsPolling(own)) return
       if (!announced) { announced = true; say(`no board is reading ${agent} usage, so this terminal reads it itself once a minute`) }
       const r = await readOwn()
       const s = readSession(sid)

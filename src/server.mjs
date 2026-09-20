@@ -1209,7 +1209,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
         const you = { ...viewer, share: { on: shared, people: shared ? share.people.length : 0 } }
         if (!canCards) return send(res, 200, { ok: true, version: VERSION, you })
         const cards = listCards()
-        return send(res, 200, { ok: true, pid: process.pid, version: VERSION, bind, port, home: canMachine ? home() : null, you, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: await detectTools(), columns: columnsFor(cards), cards: cards.length })
+        return send(res, 200, { ok: true, pid: process.pid, version: VERSION, bind, port, home: canMachine ? home() : null, you, viewers: sse.clients.size, scheduler: { ...schedulerStatus(), in_process: Boolean(sched), max_concurrent: MAX_CONCURRENT }, tools: await detectTools(), columns: columnsFor(cards), cards: cards.length })
       }
       if (req.method === 'GET' && path === '/api/adapters') return send(res, 200, { adapters: await adaptersInfo() })
       if (req.method === 'GET' && path === '/api/presets') return send(res, 200, { presets: PRESETS })
