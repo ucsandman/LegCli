@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.16.2 (2026-10-01)
+
+Permission bypass and folder trust are now opt-in.
 
 - Interactive auto-approve is now off unless explicitly enabled by a CLI flag,
   recognized environment value, or saved boolean preference. Missing, corrupt,
