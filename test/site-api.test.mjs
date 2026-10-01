@@ -440,3 +440,244 @@ test('an ignored Stripe event makes no email-delivery claim', async () => {
   assert.equal(res.statusCode, 200)
   assert.deepEqual(JSON.parse(res.body), { received: true })
 })
+
+// Checkout and license delivery: delayed Personal payments, and Team keys
+// that read their seats from the subscription as it is now.
+
+const keyPayload = (key) => JSON.parse(Buffer.from(key.replace(/^(LEG|BATON)-/, '').split('.')[0], 'base64url').toString('utf8'))
+const personalSession = (over = {}) => ({
+  id: 'cs_test_delayed', object: 'checkout.session', mode: 'payment', status: 'complete', payment_status: 'paid', created: 1789084800,
+  customer_details: { email: 'buyer@example.test' },
+  line_items: { data: [{ price: { lookup_key: 'leg_personal' }, quantity: 1 }] },
+  ...over
+})
+
+// A Stripe and Resend double: the session Stripe returns now (which can differ
+// from the copy inside an event), and every email Resend was asked to send.
+function stripeAndResend({ session, subscription, resend = () => jsonResponse({ id: '<TEST_MESSAGE_ID>' }) } = {}) {
+  const calls = { stripe: [], emails: [] }
+  globalThis.fetch = async (url, options = {}) => {
+    url = String(url)
+    if (url.includes('api.resend.com')) {
+      calls.emails.push({ idempotencyKey: options.headers['Idempotency-Key'], ...JSON.parse(options.body) })
+      return resend(calls.emails.length)
+    }
+    calls.stripe.push(url)
+    if (url.includes('/checkout/sessions/')) return jsonResponse(session)
+    if (url.includes('/subscriptions/')) return jsonResponse(subscription)
+    throw new Error(`unexpected request: ${url}`)
+  }
+  return calls
+}
+const emailedKey = (email) => email.text.match(/Key:\n(\S+)/)[1]
+
+function webhookEnv() {
+  const secret = '<TEST_WEBHOOK_SECRET>'
+  process.env.STRIPE_WEBHOOK_SECRET = secret
+  process.env.RESEND_API_KEY = '<TEST_RESEND_API_KEY>'
+  return secret
+}
+
+test('a delayed Personal payment that succeeds is fulfilled once from the re-read session', async () => {
+  const secret = webhookEnv()
+  const calls = stripeAndResend({ session: personalSession() })
+  const event = { id: 'evt_async_ok', type: 'checkout.session.async_payment_succeeded', data: { object: personalSession() } }
+  const res = await callWebhook(event, secret)
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(JSON.parse(res.body), { received: true, delivery: { status: 'accepted' } })
+  assert.equal(calls.stripe.length, 1)
+  assert.match(calls.stripe[0], /\/checkout\/sessions\/cs_test_delayed\?/)
+  assert.equal(calls.emails.length, 1)
+  assert.deepEqual(calls.emails[0].to, ['buyer@example.test'])
+  assert.equal(calls.emails[0].idempotencyKey, 'stripe-webhook:evt_async_ok:checkout.session.async_payment_succeeded')
+  const payload = keyPayload(emailedKey(calls.emails[0]))
+  assert.equal(payload.plan, 'personal')
+  assert.equal(payload.seats, 1)
+})
+
+test('a delayed-success event whose session Stripe still reports unpaid issues no key', async () => {
+  const secret = webhookEnv()
+  const calls = stripeAndResend({ session: personalSession({ payment_status: 'unpaid' }) })
+  const event = { id: 'evt_async_unpaid', type: 'checkout.session.async_payment_succeeded', data: { object: personalSession() } }
+  const res = await callWebhook(event, secret)
+  assert.equal(calls.emails.length, 0)
+  assert.equal(JSON.parse(res.body).key, undefined)
+  assert.equal(JSON.parse(res.body).delivery, undefined)
+})
+
+test('a delayed-success event for a non-Personal one-time price issues no key', async () => {
+  const secret = webhookEnv()
+  const impostor = personalSession({ line_items: { data: [{ price: { lookup_key: 'leg_team' }, quantity: 1 }] } })
+  const calls = stripeAndResend({ session: impostor })
+  const res = await callWebhook({ id: 'evt_async_team_price', type: 'checkout.session.async_payment_succeeded', data: { object: impostor } }, secret)
+  assert.equal(res.statusCode, 200)
+  assert.equal(JSON.parse(res.body).error, 'this checkout is not for a Leg plan')
+  assert.equal(calls.emails.length, 0)
+  const unrelated = personalSession({ line_items: { data: [{ price: { lookup_key: 'unrelated_personal', metadata: { plan: 'personal' } }, quantity: 1 }] } })
+  const again = stripeAndResend({ session: unrelated })
+  const res2 = await callWebhook({ id: 'evt_async_unrelated', type: 'checkout.session.async_payment_succeeded', data: { object: unrelated } }, secret)
+  assert.equal(res2.statusCode, 200)
+  assert.equal(JSON.parse(res2.body).error, 'this checkout is not for a Leg plan')
+  assert.equal(again.emails.length, 0)
+})
+
+test('a delayed payment that fails, or a checkout that completes unpaid, issues no key and calls nobody', async () => {
+  const secret = webhookEnv()
+  const calls = stripeAndResend({ session: personalSession({ payment_status: 'unpaid' }) })
+  const unpaid = personalSession({ payment_status: 'unpaid' })
+  const completed = await callWebhook({ id: 'evt_completed_unpaid', type: 'checkout.session.completed', data: { object: unpaid } }, secret)
+  const failed = await callWebhook({ id: 'evt_async_failed', type: 'checkout.session.async_payment_failed', data: { object: unpaid } }, secret)
+  for (const res of [completed, failed]) {
+    assert.equal(res.statusCode, 200)
+    assert.deepEqual(JSON.parse(res.body), { received: true })
+  }
+  assert.deepEqual(calls, { stripe: [], emails: [] })
+})
+
+test('delayed success arriving before the unpaid completion sends exactly one key', async () => {
+  const secret = webhookEnv()
+  // by the time either event is handled, Stripe reports the session paid
+  const calls = stripeAndResend({ session: personalSession() })
+  const succeeded = await callWebhook({ id: 'evt_order_success', type: 'checkout.session.async_payment_succeeded', data: { object: personalSession() } }, secret)
+  const completed = await callWebhook({ id: 'evt_order_completed', type: 'checkout.session.completed', data: { object: personalSession({ payment_status: 'unpaid' }) } }, secret)
+  assert.equal(succeeded.statusCode, 200)
+  assert.equal(completed.statusCode, 200)
+  assert.equal(calls.emails.length, 1)
+  assert.equal(calls.emails[0].idempotencyKey, 'stripe-webhook:evt_order_success:checkout.session.async_payment_succeeded')
+})
+
+test('a delayed-success replay after a mail failure retries with the same key and idempotency key', async () => {
+  const secret = webhookEnv()
+  const calls = stripeAndResend({
+    session: personalSession(),
+    resend: (n) => n === 1 ? { ok: false, status: 500, json: async () => ({ message: 'resend unavailable' }) } : jsonResponse({ id: '<TEST_MESSAGE_ID>' })
+  })
+  const event = { id: 'evt_async_retry', type: 'checkout.session.async_payment_succeeded', data: { object: personalSession() } }
+  const first = await callWebhook(event, secret)
+  assert.equal(first.statusCode, 500, 'a failed send asks Stripe to retry')
+  assert.equal(JSON.parse(first.body).delivery, undefined)
+  const second = await callWebhook(event, secret)
+  assert.equal(second.statusCode, 200)
+  assert.deepEqual(JSON.parse(second.body), { received: true, delivery: { status: 'accepted' } })
+  const third = await callWebhook(event, secret)
+  assert.equal(third.statusCode, 200)
+  assert.equal(calls.emails.length, 3)
+  assert.deepEqual(new Set(calls.emails.map((e) => e.idempotencyKey)), new Set(['stripe-webhook:evt_async_retry:checkout.session.async_payment_succeeded']))
+  assert.equal(new Set(calls.emails.map(emailedKey)).size, 1, 'every attempt carries the same key')
+})
+
+test('a delayed-success event without mail configuration is a retryable failure', async () => {
+  const secret = webhookEnv()
+  delete process.env.RESEND_API_KEY
+  const calls = stripeAndResend({ session: personalSession() })
+  let res
+  const logs = await captureErrors(async () => { res = await callWebhook({ id: 'evt_async_nomail', type: 'checkout.session.async_payment_succeeded', data: { object: personalSession() } }, secret) })
+  assert.equal(res.statusCode, 500)
+  assert.deepEqual(JSON.parse(res.body), { received: true, delivery: { status: 'failed', reason: 'missing_resend_api_key', retryable: true } })
+  assert.equal(calls.emails.length, 0)
+  assert.deepEqual(logs, ['Leg license delivery failed: reason=missing_resend_api_key retryable=true'])
+})
+
+test('a delayed-success event for a Team subscription checkout sends no second key', async () => {
+  const secret = webhookEnv()
+  const session = personalSession({ id: 'cs_test_team_async', mode: 'subscription', subscription: teamSubscription(), line_items: { data: [{ price: { lookup_key: 'leg_team' }, quantity: 4 }] } })
+  const calls = stripeAndResend({ session, subscription: teamSubscription() })
+  const res = await callWebhook({ id: 'evt_async_team', type: 'checkout.session.async_payment_succeeded', data: { object: session } }, secret)
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(JSON.parse(res.body), { received: true })
+  assert.equal(calls.emails.length, 0)
+})
+
+test('an unsigned delayed-success event is refused before any request', async () => {
+  webhookEnv()
+  const calls = stripeAndResend({ session: personalSession() })
+  const res = await callWebhook({ id: 'evt_async_forged', type: 'checkout.session.async_payment_succeeded', data: { object: personalSession() } }, 'whsec_wrong')
+  assert.equal(res.statusCode, 400)
+  assert.equal(res.body, 'bad signature')
+  assert.deepEqual(calls, { stripe: [], emails: [] })
+})
+
+const teamSession = (quantity, subscription) => ({
+  id: 'cs_test_teamseats', mode: 'subscription', status: 'complete', payment_status: 'paid', created: 1789084800,
+  customer_details: { email: 'buyer@example.test' }, subscription,
+  line_items: { data: [{ price: { lookup_key: 'leg_team' }, quantity }] }
+})
+// the current period ends 2026-11-12, so a key from it is valid through 2026-11-15
+const teamItem = (quantity, over = {}) => ({ price: { lookup_key: 'leg_team' }, quantity, current_period_end: 1794441600, ...over })
+
+async function keyFromCheckout(sessionId = 'cs_test_teamseats') {
+  const res = response()
+  await keyHandler({ method: 'GET', url: `/api/key?session_id=${sessionId}` }, res)
+  return res
+}
+
+for (const [label, bought, now] of [['an increase', 3, 5], ['a decrease', 5, 2]]) {
+  test(`an old Team checkout link after ${label} in seats returns the subscription's current seats and period`, async () => {
+    const sub = teamSubscription({ id: 'sub_seatchange', items: { data: [teamItem(now)] } })
+    stripeAndResend({ session: teamSession(bought, sub) })
+    const res = await keyFromCheckout()
+    assert.equal(res.statusCode, 200)
+    const body = JSON.parse(res.body)
+    assert.equal(body.seats, now)
+    assert.equal(body.expires, '2026-11-15')
+    assert.equal(keyPayload(body.key).seats, now)
+  })
+}
+
+test('checkout, refresh and renewal sign the same Team payload for the same subscription', async () => {
+  const secret = webhookEnv()
+  const sub = teamSubscription({ id: 'sub_consistent', items: { data: [teamItem(7)] } })
+  const calls = stripeAndResend({ session: teamSession(2, sub), subscription: sub })
+  const checkout = keyPayload(JSON.parse((await keyFromCheckout()).body).key)
+  const refresh = keyPayload(JSON.parse((await callKeyRefresh({ key: teamProof(sub.id, { seats: 2 }) })).body).key)
+  const renewal = await callWebhook({ id: 'evt_renewal_consistent', type: 'invoice.paid', data: { object: { subscription: sub.id, billing_reason: 'subscription_cycle', customer_email: 'buyer@example.test' } } }, secret)
+  assert.equal(renewal.statusCode, 200)
+  const renewed = keyPayload(emailedKey(calls.emails[0]))
+  // a refresh is proved by the old key, not an email address, so it signs no email hash
+  const withoutEmail = (payload) => { const copy = { ...payload }; delete copy.email_hash; return copy }
+  assert.equal(checkout.seats, 7)
+  assert.deepEqual(withoutEmail(refresh), withoutEmail(checkout))
+  assert.deepEqual(renewed, checkout)
+})
+
+test('an old Team checkout link for a canceled subscription returns no key', async () => {
+  stripeAndResend({ session: teamSession(4, teamSubscription({ id: 'sub_canceled_link', status: 'canceled' })) })
+  const res = await keyFromCheckout()
+  assert.equal(res.statusCode, 402)
+  assert.deepEqual(JSON.parse(res.body), { error: 'the subscription is canceled' })
+})
+
+test('a Team seat count that is missing, zero, negative, fractional or text issues no key', async () => {
+  for (const quantity of [undefined, null, 0, -1, 2.5, '3', Number.NaN]) {
+    const sub = teamSubscription({ id: 'sub_badseats', items: { data: [teamItem(quantity)] } })
+    assert.throws(() => lib.licenseFromSubscription(sub), (error) => {
+      assert.equal(error.status, 400, `quantity ${String(quantity)}`)
+      assert.match(error.message, /no valid Leg Team seat count/)
+      return true
+    })
+    stripeAndResend({ session: teamSession(3, sub) })
+    const res = await keyFromCheckout()
+    assert.equal(res.statusCode, 400, `checkout with quantity ${String(quantity)}`)
+    assert.equal(JSON.parse(res.body).key, undefined)
+  }
+})
+
+test('a subscription with two Leg Team items is ambiguous and issues no key', async () => {
+  const sub = teamSubscription({ id: 'sub_twoitems', items: { data: [teamItem(3), teamItem(9)] } })
+  assert.throws(() => lib.licenseFromSubscription(sub), (error) => {
+    assert.equal(error.status, 400)
+    assert.match(error.message, /more than one Leg Team item/)
+    return true
+  })
+  stripeAndResend({ subscription: sub })
+  const res = await callKeyRefresh({ key: teamProof(sub.id) })
+  assert.equal(res.statusCode, 400)
+  assert.equal(JSON.parse(res.body).key, undefined)
+})
+
+test('the one Leg Team item is found beside an unrelated item, for its seats and its period', () => {
+  const sub = teamSubscription({ id: 'sub_mixed', items: { data: [{ price: { lookup_key: 'unrelated_addon' }, quantity: 40, current_period_end: 1791763200 }, teamItem(6)] } })
+  const { payload } = lib.licenseFromSubscription(sub)
+  assert.equal(payload.seats, 6)
+  assert.equal(payload.expires, '2026-11-15')
+})

@@ -62,13 +62,24 @@ async function ensureLink(price, { adjustable, mode }) {
   return { link, created: true }
 }
 
+// Every event site/api/webhook.js fulfils. A delayed payment (a bank debit)
+// completes checkout unpaid and is fulfilled on async_payment_succeeded, so an
+// endpoint created before that event existed gets it added, keeping its others.
+const WEBHOOK_EVENTS = ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'invoice.paid']
+
 async function ensureWebhook() {
   const url = `${SITE}/api/webhook`
   const existing = await stripe('/webhook_endpoints', { query: { limit: 100 } })
   const have = existing.data.find((w) => w.url === url && w.status === 'enabled')
-  if (have) return { endpoint: have, secret: null, created: false }
-  const endpoint = await stripe('/webhook_endpoints', { method: 'POST', body: { url, enabled_events: ['checkout.session.completed', 'invoice.paid'], description: 'Leg license delivery' } })
-  return { endpoint, secret: endpoint.secret, created: true }
+  if (have) {
+    const enabled = have.enabled_events || []
+    const added = enabled.includes('*') ? [] : WEBHOOK_EVENTS.filter((e) => !enabled.includes(e))
+    if (added.length === 0) return { endpoint: have, secret: null, created: false, added }
+    const endpoint = await stripe(`/webhook_endpoints/${have.id}`, { method: 'POST', body: { enabled_events: [...enabled, ...added] } })
+    return { endpoint, secret: null, created: false, added }
+  }
+  const endpoint = await stripe('/webhook_endpoints', { method: 'POST', body: { url, enabled_events: WEBHOOK_EVENTS, description: 'Leg license delivery' } })
+  return { endpoint, secret: endpoint.secret, created: true, added: [] }
 }
 
 function setEnv(pairs) {
@@ -96,4 +107,4 @@ setEnv({ [`STRIPE_${mode}_PAYMENT_LINK_PERSONAL`]: lp.link.url, [`STRIPE_${mode}
 console.log(`${mode} mode against ${SITE}`)
 console.log(`personal  ${personal.price.id} $79 once      link ${lp.link.url}${personal.created ? ' (created)' : ''}`)
 console.log(`team      ${team.price.id} $12/seat/mo   link ${lt.link.url}${team.created ? ' (created)' : ''}`)
-console.log(`webhook   ${wh.endpoint.id} -> ${wh.endpoint.url} ${wh.created ? '(created; secret written to .env)' : '(existing; secret unchanged)'}`)
+console.log(`webhook   ${wh.endpoint.id} -> ${wh.endpoint.url} ${wh.created ? '(created; secret written to .env)' : `(existing; secret unchanged${wh.added.length ? `; added ${wh.added.join(', ')}` : ''})`}`)

@@ -30,7 +30,8 @@
     </div>
     <div class="state" id="fail" hidden>
       <p class="lead">The key could not be fetched: <span id="why"></span></p>
-      <p class="muted">The same key is in the email from Leg, and Stripe's receipt has your order. If neither arrives in a few minutes, reply to the receipt.</p>
+      <p class="muted">If you paid by bank debit or transfer, Stripe can take a few business days to confirm the payment, and the key is issued only once it does. Reopen this link after that and the key will be here.</p>
+      <p class="muted">Still no key? Write to <a href="mailto:legcli@practicalsystems.io">legcli@practicalsystems.io</a> from the address you paid with and include your Stripe receipt. Keys can be resent any number of times.</p>
     </div>
   </div>
 </main>
@@ -48,7 +49,10 @@
     document.getElementById('cmd').textContent = 'leg license activate ' + j.key;
     var b = document.getElementById('copy'); b.setAttribute('data-copy', 'leg license activate ' + j.key);
     b.addEventListener('click', function () { navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1400); }); });
-    document.getElementById('emailed').textContent = j.email ? 'A copy went to ' + j.email + '.' : '';
+    // /api/key proves the key, not the email: the webhook sends that copy
+    // separately, and this page cannot see whether it went out or arrived.
+    var keep = 'Keep the key above; reopening this link shows it again.';
+    document.getElementById('emailed').textContent = j.email ? 'Leg also emails a copy to ' + j.email + ', but this page cannot confirm that it was sent or delivered. ' + keep : keep;
     show('ok');
   }).catch(function (e) { document.getElementById('why').textContent = e.message; show('fail'); });
 })();

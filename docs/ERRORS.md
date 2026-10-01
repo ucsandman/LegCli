@@ -3,6 +3,25 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-10-01: checkout could skip a paid key, issue stale Team seats, and claim an email it never checked
+
+**Fixed by fulfilling `checkout.session.async_payment_succeeded` for Personal,
+reading Team seats and period from the subscription's one Leg Team item, and
+rewording the thanks page. Found by review, not by a buyer.**
+
+Three gaps in `site/`, each covered by a test that failed first. A bank-debit
+Personal purchase completes checkout with `payment_status: unpaid`; the
+webhook skipped that and had no handler for the later success event, and
+`scripts/stripe-setup.mjs` never subscribed to it, so the buyer paid and got
+no email. `licenseFromSession` passed the checkout's original quantity into
+`licenseFromSubscription`, so reopening an old thanks link after a seat change
+signed a fresh key with the old seats and the new expiry. `site/thanks.html`
+said "A copy went to" from the checkout address alone, and its error state
+said the key "is in the email from Leg", when nothing on that path knows
+whether an email was sent. The rule that holds: a page states only what its
+own request proved, and every key is signed from Stripe's current object,
+never from a number captured at checkout.
+
 ## 2026-10-01: the 0.16.2 release run failed one Linux test that the release did not touch
 
 **Fixed by having the test wait up to 2 s for the status line after it sees

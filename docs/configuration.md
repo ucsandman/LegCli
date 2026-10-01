@@ -211,6 +211,13 @@ normal Leg use.
 | `LEG_LICENSE_PRIVATE_KEY` | private signing key for license issuance; never commit it | `site/api/key.js`, `scripts/vercel-env.mjs` |
 | `NPM_TOKEN` | external npm publishing automation only; repository scripts do not read it | (none) |
 
+The Stripe webhook endpoint (`/api/webhook`) must receive
+`checkout.session.completed`, `checkout.session.async_payment_succeeded` and
+`invoice.paid`. A bank-debit Personal purchase completes checkout unpaid and
+gets its key only from `checkout.session.async_payment_succeeded`.
+`scripts/stripe-setup.mjs` creates the endpoint with all three and adds any
+missing one to an existing endpoint.
+
 ## Adapter binary overrides
 
 Each points at a specific CLI binary (or, when it ends `.mjs`/`.cjs`/`.js`,

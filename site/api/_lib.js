@@ -64,6 +64,7 @@ async function licenseFromSession(sessionId) {
   const plan = planOf(item?.price);
   if (!plan) { const e = new Error('this checkout is not for a Leg plan'); e.status = 400; throw e; }
   if (s.mode === 'subscription' && plan !== 'team') { const e = new Error('this checkout is not for a Leg plan'); e.status = 400; throw e; }
+  if (s.mode === 'payment' && plan !== 'personal') { const e = new Error('this checkout is not for a Leg plan'); e.status = 400; throw e; }
   const email = s.customer_details?.email || s.customer_email || '';
   if (plan === 'personal') {
     const issued = isoDay(s.created);
@@ -71,16 +72,23 @@ async function licenseFromSession(sessionId) {
     return { key: signLicense(payload), payload, email };
   }
   const sub = typeof s.subscription === 'object' ? s.subscription : await stripe(`/subscriptions/${s.subscription}`);
-  return licenseFromSubscription(sub, { email, seats: item.quantity || 1 });
+  return licenseFromSubscription(sub, { email });
 }
 
-function licenseFromSubscription(sub, { email, seats } = {}) {
+// Seats and period come from the subscription's one Leg Team item as it is
+// now, never from the checkout's original quantity, so the thanks link, a
+// refresh and a renewal sign the same payload after a seat change. A count
+// that is not a positive integer, or two Team items, is refused, not guessed.
+function licenseFromSubscription(sub, { email } = {}) {
+  const items = (sub.items?.data || []).filter((i) => planOf(i?.price) === 'team');
+  if (items.length === 0) { const e = new Error('this subscription is not for a Leg Team plan'); e.status = 400; throw e; }
+  if (items.length > 1) { const e = new Error('this subscription has more than one Leg Team item'); e.status = 400; throw e; }
+  const [item] = items;
+  if (!Number.isSafeInteger(item.quantity) || item.quantity < 1) { const e = new Error('this subscription has no valid Leg Team seat count'); e.status = 400; throw e; }
   const active = ['active', 'trialing', 'past_due'].includes(sub.status);
   if (!active) { const e = new Error(`the subscription is ${sub.status}`); e.status = 402; throw e; }
-  const item = sub.items?.data?.[0];
-  if (planOf(item?.price) !== 'team') { const e = new Error('this subscription is not for a Leg Team plan'); e.status = 400; throw e; }
-  const periodEnd = item?.current_period_end || sub.current_period_end;
-  const payload = { v: 1, id: 'lic_' + sha(sub.id).slice(0, 20), plan: 'team', seats: seats || item?.quantity || 1, email_hash: emailHash(email || ''), issued: isoDay(sub.created), expires: plusDays(periodEnd, 3), sub: sub.id };
+  const periodEnd = item.current_period_end || sub.current_period_end;
+  const payload = { v: 1, id: 'lic_' + sha(sub.id).slice(0, 20), plan: 'team', seats: item.quantity, email_hash: emailHash(email || ''), issued: isoDay(sub.created), expires: plusDays(periodEnd, 3), sub: sub.id };
   return { key: signLicense(payload), payload, email: email || '' };
 }
 

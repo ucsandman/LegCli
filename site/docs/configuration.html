@@ -509,6 +509,12 @@ normal Leg use.</p>
 <td>(none)</td>
 </tr>
 </tbody></table>
+<p>The Stripe webhook endpoint (<code>/api/webhook</code>) must receive
+<code>checkout.session.completed</code>, <code>checkout.session.async_payment_succeeded</code> and
+<code>invoice.paid</code>. A bank-debit Personal purchase completes checkout unpaid and
+gets its key only from <code>checkout.session.async_payment_succeeded</code>.
+<code>scripts/stripe-setup.mjs</code> creates the endpoint with all three and adds any
+missing one to an existing endpoint.</p>
 <h2 id="adapter-binary-overrides"><a class="anchor" href="#adapter-binary-overrides">Adapter binary overrides</a></h2>
 <p>Each points at a specific CLI binary (or, when it ends <code>.mjs</code>/<code>.cjs</code>/<code>.js</code>,
 a Node entry point run via <code>node &lt;entry&gt;</code>), instead of Leg&#39;s own
