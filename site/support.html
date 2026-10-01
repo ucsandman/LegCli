@@ -67,14 +67,14 @@
 
 <h2 id="license-keys">License keys</h2>
 
-<p>Your key arrives by email straight after checkout, from <code>legcli@practicalsystems.io</code>. Activate it with:</p>
+<p>Your key is on the page checkout returns you to, and a copy is emailed from <code>legcli@practicalsystems.io</code> once Stripe confirms the payment. A card payment confirms at once; a bank debit can take a few business days, and the key is issued only then. Activate it with:</p>
 
 <pre><code>leg license activate &lt;key&gt;</code></pre>
 
 <p>Common problems, in the order they happen:</p>
 
 <ul>
-  <li><strong>The email has not arrived.</strong> Check spam, then write to us with the email address you paid with. Keys can be resent any number of times.</li>
+  <li><strong>The email has not arrived.</strong> Reopen the link checkout sent you to, which shows the key again once the payment is confirmed. Check spam, then write to us with the email address you paid with. Keys can be resent any number of times.</li>
   <li><strong>The key is refused.</strong> Run <code>leg license status</code> and send us what it prints. Keys are Ed25519 tokens verified offline, so a refusal is a real signature or date problem, never a server being down.</li>
   <li><strong>A new release stopped accepting a Personal key.</strong> A Personal license covers every release dated on or before the date printed in your key. The releases it already covers keep working; a newer one needs a renewal. <code>leg license status</code> prints the date.</li>
   <li><strong>You changed machines.</strong> Personal is one named person on any number of machines, so activate the same key again on the new one. <code>leg license deactivate</code> exists if you want the old machine to stop carrying it.</li>

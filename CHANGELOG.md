@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.16.3 (2026-10-01)
+
+Checkout delivers keys for delayed payments, and Team keys carry today's seats.
+
+- A Personal purchase paid by bank debit completes checkout unpaid. Its key is
+  now emailed when Stripe confirms the payment
+  (`checkout.session.async_payment_succeeded`), after the session is read back
+  from Stripe and checked as paid and as the Personal price. Unpaid and failed
+  payments still get no key, and a replayed or out-of-order event sends one key.
+- A Team key from the checkout link, `leg license refresh` or a renewal now
+  reads its seats and period from the subscription's current Leg Team item,
+  so reopening an old checkout link after a seat change no longer signs the
+  original seat count. A seat count that is not a positive whole number, or a
+  subscription with two Team items, gets no key.
+- The thanks page no longer says the key "went to" your email: the page shows
+  the key it fetched and says it cannot confirm the emailed copy. When the
+  key cannot be fetched yet, it explains the bank-debit wait and where to write.
+- `scripts/stripe-setup.mjs` subscribes the webhook to the delayed-payment
+  event, and adds it to an existing endpoint without dropping the others.
+
 ## 0.16.2 (2026-10-01)
 
 Permission bypass and folder trust are now opt-in.
