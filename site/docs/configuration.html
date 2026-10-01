@@ -87,15 +87,21 @@ variables yourself in that case.</p>
 </tr>
 <tr>
 <td><code>LEG_AUTO_APPROVE</code></td>
-<td><code>1</code></td>
-<td>launch interactive agents in auto-approve mode (set to <code>0</code>, <code>false</code>, or <code>off</code> to disable)</td>
+<td>(unset, off unless explicitly saved)</td>
+<td><code>1</code>, <code>true</code>, or <code>on</code> opts into interactive permission bypass; other values disable it</td>
 <td><code>src/preferences.mjs</code></td>
 </tr>
 <tr>
 <td><code>LEG_NO_AUTO_APPROVE</code></td>
 <td>(unset)</td>
-<td>set to <code>1</code> to opt out of auto-approve mode</td>
+<td><code>1</code>, <code>true</code>, or <code>on</code> disables auto-approve, even if the environment also opts in</td>
 <td><code>src/preferences.mjs</code></td>
+</tr>
+<tr>
+<td><code>LEG_TRUST</code></td>
+<td><code>never</code></td>
+<td><code>auto</code> opts into client folder-trust config writes, including external Claude imports; <code>never</code> disables future writes</td>
+<td><code>src/trust.mjs</code></td>
 </tr>
 <tr>
 <td><code>LEG_WARN_PCT</code></td>
@@ -177,20 +183,49 @@ record under <code>$LEG_HOME/sessions/</code>.</p>
 <p><code>CLAUDE_CONFIG_DIR</code> and <code>CODEX_HOME</code> are set for the child when the session
 runs on a named account; see <a href="#accounts">Accounts</a> below.</p>
 <h3 id="auto-approve-launch-mode"><a class="anchor" href="#auto-approve-launch-mode">Auto-approve launch mode</a></h3>
-<p>By default, Leg starts interactive sessions (<code>leg claude</code>, <code>leg codex</code>, <code>leg agy</code>, and <code>leg grok</code>) in permissive auto-approve mode so you never sit through repetitive tool permission prompts:</p>
+<p>By default, Leg adds no permission bypass to interactive sessions (<code>leg claude</code>,
+<code>leg codex</code>, <code>leg agy</code>, and <code>leg grok</code>). Each client&#39;s own approval configuration
+and prompts apply. To opt in for one terminal, pass <code>--auto-approve</code>. This adds:</p>
 <ul>
 <li>Claude: <code>--dangerously-skip-permissions</code></li>
 <li>Codex: <code>--ask-for-approval never</code></li>
 <li>agy: <code>--dangerously-skip-permissions</code></li>
 <li>Grok: <code>--always-approve</code></li>
 </ul>
-<p>These flags are injected at spawn time and only affect sessions launched through Leg. Your global CLI configurations (<code>~/.claude.json</code>, <code>~/.codex/config.toml</code>, <code>~/.gemini/settings.json</code>) remain untouched.</p>
-<p>To opt out and keep standard approval prompts:</p>
+<p>These flags reduce client permission checks; Claude and agy bypass tool permission
+prompts, Grok approves tools automatically, and Codex stops asking for approval
+while retaining its configured sandbox. Explicit native permission-mode arguments
+take precedence over Leg&#39;s injected flags. Native arguments are passed through:
+<code>--no-auto-approve</code> does not remove a bypass flag you supplied to the client or
+override the client&#39;s own saved settings.</p>
+<p>Resolution order, highest first:</p>
 <ol>
-<li>CLI flag: pass <code>--no-auto-approve</code> when starting a session (e.g. <code>leg claude --no-auto-approve</code>).</li>
-<li>Environment variable: set <code>LEG_AUTO_APPROVE=0</code> or <code>LEG_NO_AUTO_APPROVE=1</code> (or legacy <code>BATON_AUTO_APPROVE=0</code> / <code>BATON_NO_AUTO_APPROVE=1</code>).</li>
-<li>Persistent preference: set <code>&quot;auto_approve&quot;: false</code> in <code>~/.leg/preferences.json</code>.</li>
+<li>CLI: <code>--auto-approve</code> enables; <code>--no-auto-approve</code> disables. If both occur,
+the opt-out wins and both are consumed. Put Leg switches before <code>--</code>.</li>
+<li>Environment: <code>LEG_NO_AUTO_APPROVE=1</code> disables even alongside
+<code>LEG_AUTO_APPROVE=1</code>. Otherwise <code>LEG_AUTO_APPROVE</code> enables only for <code>1</code>,
+<code>true</code>, or <code>on</code> (case-insensitive, surrounding whitespace ignored). Empty
+and unrecognized opt-in values disable rather than fall back to a saved opt-in.</li>
+<li>Preferences: only the JSON boolean <code>&quot;auto_approve&quot;: true</code> in
+<code>~/.leg/preferences.json</code> enables it. Missing, malformed and non-boolean
+settings resolve off.</li>
 </ol>
+<p>Each <code>LEG_</code> variable takes precedence over its corresponding legacy <code>BATON_</code>
+alias. Existing saved booleans are preserved, including <code>true</code> saved by an older
+release. Set <code>&quot;auto_approve&quot;: false</code>, export <code>LEG_AUTO_APPROVE=0</code>, or use
+<code>--no-auto-approve</code> to disable that opt-in. Reading or launching does not rewrite
+preferences. A terminal takes one permission snapshot at startup and keeps it
+through handoffs; later preference edits affect new terminals.</p>
+<p>This also applies to native resume, <code>leg history continue</code>, and card takeover.
+Background cards use their separately restricted headless adapter modes and
+reject bypass flags; this preference does not enable them.</p>
+<p>Auto-approve changes launch arguments, not client configuration. The separate
+<code>LEG_TRUST=auto</code> opt-in writes client trust records before launches and handoffs,
+including approval of external <code>CLAUDE.md</code> imports. Default <code>LEG_TRUST=never</code>
+leaves those prompts to the client. Turning it off stops future writes without
+revoking existing trust. See the <a href="/docs/readme#the-folder-trust-answer">files and behavior</a>.
+The optional <a href="/docs/harness">portable harness</a> has its own explicit enable step and
+can also write client configuration.</p>
 <h3 id="the-hand-off-ladder"><a class="anchor" href="#the-hand-off-ladder">The hand-off ladder</a></h3>
 <p><code>~/.leg/preferences.json</code> also holds the ladder a terminal falls down when its
 login stops (<code>src/preferences.mjs</code>), alongside the older <code>handoff_order</code>:</p>

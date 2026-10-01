@@ -115,14 +115,18 @@ test('binding(): no buckets at all falls back to the hottest legacy window, so t
 
 test('a model wall leaves the login open; recordUsage clears it once its clock passes', () => {
   const later = nowS() + 7200
-  usage.recordUsage('claude', 'wall-model', { five_hour: { pct: 29, resets_at: later }, seven_day: { pct: 47, resets_at: later }, buckets: claudeUsage.bucketsFrom(LIVE) }, 'test')
+  // Keep the model reset in the future and distinct from the login reset.
+  // The recorded LIVE timestamp eventually expires and exercises the fallback.
+  const modelReset = later + 3600
+  const buckets = claudeUsage.bucketsFrom(LIVE).map((b) => b.model === 'fable' ? { ...b, resets_at: modelReset } : b)
+  usage.recordUsage('claude', 'wall-model', { five_hour: { pct: 29, resets_at: later }, seven_day: { pct: 47, resets_at: later }, buckets }, 'test')
   const u = usage.markLimited('claude', 'wall-model', { reason: 'model_limit', source: 'claude StopFailure', scope: 'model', model: 'fable', evidence: "You've reached your Fable limit." })
   assert.equal(u.limited_until, null, 'a Fable wall does not wall the login')
   assert.equal(u.limited_reason, null)
   assert.equal(usage.isAvailable(u), true, 'claude/sonnet can still be handed work')
   assert.equal(u.walls.fable.limited_reason, 'model_limit')
   assert.equal(u.walls.fable.evidence, "You've reached your Fable limit.")
-  assert.equal(u.walls.fable.limited_until, 1790190000, 'the wall takes the model bucket\'s own reset')
+  assert.equal(u.walls.fable.limited_until, modelReset, 'the wall takes the model bucket\'s own reset')
   assert.equal(usage.wallActive(u.walls.fable), true)
   assert.equal(usage.wallActive(u.walls.opus), false, 'a model with no wall is not walled')
 

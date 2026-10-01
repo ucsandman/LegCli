@@ -94,14 +94,20 @@ markers that make a nested Claude refuse to start; `sanitizeEnv`
 starts normally. It becomes its own session with its own row on the board,
 unrelated to the parent's.
 
-**Why are `--dangerously-skip-permissions` and similar flags never
-available?**
-Each adapter's `argv()` calls `assertAllowed()`
+**When can Leg bypass client permission prompts?**
+Interactive sessions add no bypass by default. `--auto-approve`,
+`LEG_AUTO_APPROVE=1`, or a saved `"auto_approve": true` explicitly opts in.
+`--no-auto-approve` disables Leg's injected bypass for a terminal; native client
+flags and settings remain yours. See [precedence and effects](configuration.md#auto-approve-launch-mode).
+Folder trust is separate: `LEG_TRUST=auto` authorizes trust config writes,
+including external Claude imports; it is off by default.
+
+Background card adapters always call `assertAllowed()`
 (`src/adapters/common.mjs`), which checks the requested mode against that
 adapter's `allowed` list and rejects any flag on its `forbiddenFlags` list,
 before anything spawns. Requesting `bypassPermissions`, `--yolo`,
-`--full-auto`, `danger-full-access`, or similar throws immediately; nothing
-ever runs with permission checks off.
+`--full-auto`, `danger-full-access`, or similar throws immediately in these
+headless adapters, even when interactive auto-approve is enabled.
 
 **What actually happens when a pipeline leg hits a usage limit?**
 (For an interactive session, see [concepts.md](concepts.md#handoff-interactive).)

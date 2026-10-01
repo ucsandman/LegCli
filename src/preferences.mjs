@@ -286,13 +286,14 @@ export function requireHarness(patch, current = HARNESS_DEFAULTS) {
 export function preferencesFile() { return join(home(), 'preferences.json') }
 
 export function resolveAutoApprove({ env = process.env, preferences = null, cliFlag = null } = {}) {
-  if (cliFlag !== null && cliFlag !== undefined) return Boolean(cliFlag)
+  if (cliFlag !== null && cliFlag !== undefined) return cliFlag === true
+  const enabled = (value) => /^(1|true|on)$/i.test(String(value ?? '').trim())
+  // An explicit environment opt-out wins over an environment opt-in.
+  if (enabled(env.LEG_NO_AUTO_APPROVE ?? env.BATON_NO_AUTO_APPROVE)) return false
   const envVal = env.LEG_AUTO_APPROVE ?? env.BATON_AUTO_APPROVE
-  if (envVal !== undefined) return envVal !== '0' && envVal !== 'false' && envVal !== 'off'
-  if ((env.LEG_NO_AUTO_APPROVE ?? env.BATON_NO_AUTO_APPROVE) === '1') return false
+  if (envVal !== undefined) return enabled(envVal)
   const prefs = preferences ?? readPreferences()
-  if (typeof prefs?.auto_approve === 'boolean') return prefs.auto_approve
-  return true
+  return prefs?.auto_approve === true
 }
 
 // Where a terminal that is waiting on a human says so. `notify_terminal` is on
@@ -303,7 +304,7 @@ export function resolveAutoApprove({ env = process.env, preferences = null, cliF
 // for a permission nobody wanted is worse than no toggle.
 const defaults = () => {
   const ladder = defaultLadder()
-  return { handoff_order: orderFromLadder(ladder), handoff_ladder: ladder, climb_back: 'next-handoff', may_spend: false, reserve: {}, auto_approve: true, notify_terminal: true, notify_board: false, harness: { ...HARNESS_DEFAULTS } }
+  return { handoff_order: orderFromLadder(ladder), handoff_ladder: ladder, climb_back: 'next-handoff', may_spend: false, reserve: {}, auto_approve: false, notify_terminal: true, notify_board: false, harness: { ...HARNESS_DEFAULTS } }
 }
 
 // The file verbatim, or null when there is not one Leg can parse. Used by
@@ -327,7 +328,7 @@ export function readPreferences() {
       climb_back: normalizeClimbBack(value?.climb_back),
       may_spend: value?.may_spend === true,
       reserve: normalizeReserve(value?.reserve),
-      auto_approve: value?.auto_approve !== false,
+      auto_approve: value?.auto_approve === true,
       notify_terminal: value?.notify_terminal !== false,
       notify_board: value?.notify_board === true,
       harness: normalizeHarness(value?.harness),
@@ -338,6 +339,7 @@ export function readPreferences() {
 }
 
 export function writePreferences(patch) {
+  if (patch?.auto_approve !== undefined && typeof patch.auto_approve !== 'boolean') throw new TypeError('auto_approve must be a boolean')
   // Writing one of the two rewrites the other: the ladder is the shape Leg
   // walks, `handoff_order` is the shape every older reader knows, and they may
   // never disagree on disk.
@@ -364,7 +366,7 @@ export function writePreferences(patch) {
     if (climbBack !== undefined) next.climb_back = climbBack
     if (reserve !== undefined) next.reserve = reserve
     if (patch?.may_spend !== undefined) next.may_spend = Boolean(patch.may_spend)
-    if (patch?.auto_approve !== undefined) next.auto_approve = Boolean(patch.auto_approve)
+    if (patch?.auto_approve !== undefined) next.auto_approve = patch.auto_approve
     if (patch?.notify_terminal !== undefined) next.notify_terminal = Boolean(patch.notify_terminal)
     if (patch?.notify_board !== undefined) next.notify_board = Boolean(patch.notify_board)
     if (patch?.harness !== undefined) next.harness = requireHarness(patch.harness, current.harness)

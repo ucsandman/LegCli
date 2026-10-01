@@ -50,9 +50,8 @@ export function licenseHome(home, payload = {}) {
 }
 
 export function testEnv(home, extra = {}) {
-  // BATON_TRUST=never: a test spawns agents in throwaway repos, and without
-  // this the suite would write a trust record for every one of them into the
-  // developer's own ~/.claude.json, ~/.codex/config.toml and ~/.gemini.
+  // Pin permission and trust settings so the developer's explicit opt-ins
+  // cannot affect a test. Tests of these settings clear or override them.
   const { BATON_UNLICENSED, ...rest } = extra
   if (rest.BATON_QUIET !== undefined && rest.LEG_QUIET === undefined) rest.LEG_QUIET = rest.BATON_QUIET
   if (rest.BATON_PORT !== undefined && rest.LEG_PORT === undefined) rest.LEG_PORT = rest.BATON_PORT
@@ -71,6 +70,9 @@ export function testEnv(home, extra = {}) {
   // injects its own fetchers or clears this variable.
   const base = { LEG_NO_USAGE_POLL: '1', BATON_NO_USAGE_POLL: '1', LEG_HOME: home, BATON_HOME: home, LEG_HARNESS_HOME: home, BATON_HARNESS_HOME: home, LEG_TIMERS_MS: '60000,120000', BATON_TIMERS_MS: '60000,120000', LEG_POLL_MS: '50', BATON_POLL_MS: '50', LEG_QUIET: '1', BATON_QUIET: '1', LEG_TRUST: 'never', BATON_TRUST: 'never', LEG_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64, BATON_PUBLIC_KEY_B64: TEST_PUBLIC_KEY_B64 }
   const env = Object.assign({}, process.env, base, rest)
+  for (const key of ['LEG_AUTO_APPROVE', 'BATON_AUTO_APPROVE', 'LEG_NO_AUTO_APPROVE', 'BATON_NO_AUTO_APPROVE']) {
+    if (!Object.hasOwn(rest, key)) delete env[key]
+  }
   if (BATON_UNLICENSED !== '1') licenseHome(home)
   delete env.DASHCLAW_URL
   delete env.DASHCLAW_API_KEY

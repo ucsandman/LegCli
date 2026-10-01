@@ -660,7 +660,8 @@ async function main() {
   claude|codex|agy|grok [args...]   the normal interactive agent in this terminal; args pass straight through
                                 the board opens once, the session shows as a card, usage is tracked, a limit hands off
                                 a second live session in one checkout gets its own worktree (--no-worktree to share)
-                                auto-approve mode (--no-auto-approve to opt out)
+                                native client approvals by default; --auto-approve opts into permission bypass
+                                --no-auto-approve overrides a saved opt-in; LEG_TRUST=auto separately opts into trust writes
                                 --resume-card <id> takes over a background card: this terminal opens in that card's
                                 worktree, primed from its bundle (Take over on the board pauses it and prints this)
   sessions ls|show|events|handoff|end|rm|simulate-limit <id>

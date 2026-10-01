@@ -66,9 +66,10 @@
 <p><img src="https://legcli.com/img/docs/terminals-1280.png" alt="The Leg board at 1280px: a headline naming the terminal that has waited on you longest; under it a capacity strip with claude at 63 percent of its fable week, codex back on Saturday, agy with no figure and grok with no reading, and a button that opens the login panels; then four terminal rows, each with its status, repo and branch, uncommitted and unpushed counts, agent and model, the prompt, the one thing worth knowing and its buttons; then the one-line field for starting a background task, joined to the panel; then counts for finished terminals, what landed, conversations and finished cards"></p>
 <p>You keep using your coding agents exactly as you do today, in any terminal,
 from your own config directory: Leg adds its hooks in a separate per-session
-settings file and never edits yours (unless you turn on the <a href="/docs/harness">portable
-harness</a>, which writes only marked, backed-up, Leg-owned
-files and regions). <code>leg claude --model opus</code> is
+settings file. Client approval and trust behavior is preserved by default.
+Permission bypass requires <a href="/docs/configuration#auto-approve-launch-mode">explicit opt-in</a>.
+Client config writes require the separate <a href="#the-folder-trust-answer">folder-trust opt-in</a>
+or <a href="/docs/harness">portable harness</a>. <code>leg claude --model opus</code> is
 <code>claude --model opus</code> with four things running alongside it:</p>
 <ol>
 <li><strong>A board.</strong> Opened once in your browser, reused after that. Every Leg
@@ -110,19 +111,20 @@ starts that agent from the bundle.</li>
 <code>XAI_API_KEY</code>, <code>CLAUDECODE</code>, <code>CLAUDE_CODE_*</code>, <code>CLAUDE_EFFORT</code>, and
 <code>CLAUDE_PLUGIN_DATA</code> before any agent starts. It then sets
 <code>CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0</code> for a detached
-Claude print session. Leg never edits <code>~/.claude/settings.json</code> or any other
-settings file of yours; its hooks ride in a separate per-session <code>--settings</code>
-file. The one thing it does write outside <code>~/.leg</code> by default is the
-folder-trust answer, below; the optional <a href="/docs/harness">portable harness</a>
-is the other, and only after <code>leg harness enable</code>. <code>leg uninstall</code> removes only <code>~/.leg</code>.</p>
+Claude print session. Leg&#39;s hooks ride in a separate per-session <code>--settings</code>
+file. Automatic folder-trust writes are off by default; <code>LEG_TRUST=auto</code>
+opts into the client config changes below. The optional
+<a href="/docs/harness">portable harness</a> can also write client configuration,
+only after <code>leg harness enable</code>. <code>leg uninstall</code> removes only <code>~/.leg</code>;
+it does not remove existing client trust answers.</p>
 <h3 id="the-folder-trust-answer"><a class="anchor" href="#the-folder-trust-answer">The folder-trust answer</a></h3>
 <p>Each agent CLI asks once, the first time it runs in a directory, whether you
 trust that folder, and Claude Code asks a second question when a <code>CLAUDE.md</code>
-above the repo imports a file from outside it. A handoff fires when the limit
-hits, which is usually when nobody is watching, so an agent that stopped on
-that prompt would sit there until morning with the bundle already written.</p>
-<p>Before starting an agent, Leg records the same answer you would have given,
-for the repository you already chose by typing <code>leg claude</code> in it:</p>
+above the repo imports a file from outside it. These prompts remain in place
+by default, including during handoffs. An unattended handoff may wait for you.</p>
+<p>Set <code>LEG_TRUST=auto</code> only if you want Leg to record trust before agent launches
+and handoffs. This is independent of auto-approve mode and authorizes these
+client config writes, including approval of external <code>CLAUDE.md</code> imports:</p>
 <table>
 <thead>
 <tr>
@@ -151,18 +153,29 @@ for the repository you already chose by typing <code>leg claude</code> in it:</p
 <td><code>~/.gemini/antigravity-cli/settings.json</code></td>
 <td><code>trustedWorkspaces: [&quot;&lt;repo&gt;&quot;, &quot;&lt;worktree&gt;&quot;]</code></td>
 </tr>
+<tr>
+<td>agy</td>
+<td><code>~/.gemini/config/projects/default-cli-project.json</code></td>
+<td>writable Git folder resources</td>
+</tr>
+<tr>
+<td>agy</td>
+<td>existing <code>~/.gemini/trustedFolders.json</code></td>
+<td><code>TRUST_FOLDER</code> entries</td>
+</tr>
 </tbody></table>
 <p>For Claude Code this is the documented remedy: its permissions guide says to
 set <code>projects[&quot;&lt;path&gt;&quot;].hasTrustDialogAccepted</code> to <code>true</code> in <code>~/.claude.json</code>,
 where <code>&lt;path&gt;</code> is the repository root.</p>
-<p>Leg never creates one of those files: if it is not there, that CLI has not
-run as you yet and its own first-run flow is next, with you at the keyboard. It
-never rewrites a file to say what it already says, and it never removes what is
-already in one. When it approves an external <code>CLAUDE.md</code> import it prints the
+<p>Claude and Codex trust updates require an existing config file. agy can create
+its settings or project file when the corresponding config directory already
+exists. Existing trust decisions are retained. When Leg approves an external
+<code>CLAUDE.md</code> import it prints the
 full path of every file it approved, to the terminal and to the session
 timeline on the board, so the approval is on the record rather than invisible.</p>
-<p>Set <code>LEG_TRUST=never</code> to switch all of it off and answer the prompts
-yourself.</p>
+<p><code>LEG_TRUST=never</code> disables future trust writes; it does not revoke trust already
+recorded. Unset, empty and unrecognized values also leave automatic trust off.
+The legacy <code>BATON_TRUST=auto</code> opt-in remains supported when <code>LEG_TRUST</code> is unset.</p>
 <h2 id="contents"><a class="anchor" href="#contents">Contents</a></h2>
 <ul>
 <li><a href="#60-second-run">60-second run</a></li>
@@ -195,8 +208,10 @@ leg claude
 <a href="http://127.0.0.1:4747">http://127.0.0.1:4747</a> and opens it; later sessions reuse it. Anything after the
 agent name passes straight through (<code>leg codex -m gpt-5.3-codex-spark</code>,
 <code>leg claude --resume</code>). The agent&#39;s own prompt and permission flags pass
-through unchanged, and your settings file is never edited: Leg&#39;s hooks ride
-in a separate per-session <code>--settings</code> file.</p>
+through unchanged. Leg adds no permission bypass by default; <code>--auto-approve</code>
+opts in and <code>--no-auto-approve</code> overrides a saved opt-in for that terminal.
+Leg&#39;s hooks ride in a separate per-session <code>--settings</code> file. Folder-trust
+and portable-harness writes each require their own opt-in.</p>
 <p>Leg is commercial, source-available software, and the source is on
 <a href="https://github.com/ucsandman/legcli">GitHub</a>: every <code>.mjs</code> file that runs is in the package you just installed, at
 <code>$(npm root -g)/legcli/src</code>, and the license lets you read it and modify
@@ -553,10 +568,13 @@ close to OpenAI&#39;s &quot;circumvent any rate limits&quot; wording and Anthrop
 happens after you run <code>leg accounts add</code>; that is your call.</p>
 <h2 id="what-is-and-is-not-touched"><a class="anchor" href="#what-is-and-is-not-touched">What is and is not touched</a></h2>
 <ul>
-<li><strong>Never edited</strong>: <code>~/.claude/settings.json</code>, <code>~/.claude.json</code>,
-<code>~/.codex/config.toml</code>, agy&#39;s files, your repo&#39;s settings. Claude Code gets
-hooks through a per-session <code>--settings</code> file under <code>~/.leg</code>; codex and
-agy get nothing injected.</li>
+<li><strong>Client configuration unchanged by default</strong>: Claude Code gets hooks through
+a per-session <code>--settings</code> file under <code>~/.leg</code>. Permission bypass is an
+explicit launch opt-in, separate from the config writes listed below.</li>
+<li><strong>Written only with <code>LEG_TRUST=auto</code></strong>: folder-trust records in
+<code>~/.claude.json</code>, <code>~/.codex/config.toml</code>, and agy&#39;s trust files, plus approval
+of external Claude imports. See <a href="#the-folder-trust-answer">the complete list</a>.
+<code>LEG_TRUST=never</code> stops future writes and leaves existing trust in place.</li>
 <li><strong>Read, never written</strong>: each agent&#39;s own history (<code>~/.claude/projects</code>,
 <code>~/.codex/sessions</code>, <code>~/.grok/sessions</code>, <code>~/.gemini/antigravity-cli</code>,
 <code>~/.copilot/session-state</code>) for <code>leg history</code>; the index it builds lives

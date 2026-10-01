@@ -15,9 +15,10 @@
 
 You keep using your coding agents exactly as you do today, in any terminal,
 from your own config directory: Leg adds its hooks in a separate per-session
-settings file and never edits yours (unless you turn on the [portable
-harness](docs/harness.md), which writes only marked, backed-up, Leg-owned
-files and regions). `leg claude --model opus` is
+settings file. Client approval and trust behavior is preserved by default.
+Permission bypass requires [explicit opt-in](docs/configuration.md#auto-approve-launch-mode).
+Client config writes require the separate [folder-trust opt-in](#the-folder-trust-answer)
+or [portable harness](docs/harness.md). `leg claude --model opus` is
 `claude --model opus` with four things running alongside it:
 
 1. **A board.** Opened once in your browser, reused after that. Every Leg
@@ -60,22 +61,23 @@ Subscription logins only: Leg strips `ANTHROPIC_API_KEY`,
 `XAI_API_KEY`, `CLAUDECODE`, `CLAUDE_CODE_*`, `CLAUDE_EFFORT`, and
 `CLAUDE_PLUGIN_DATA` before any agent starts. It then sets
 `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for a detached
-Claude print session. Leg never edits `~/.claude/settings.json` or any other
-settings file of yours; its hooks ride in a separate per-session `--settings`
-file. The one thing it does write outside `~/.leg` by default is the
-folder-trust answer, below; the optional [portable harness](docs/harness.md)
-is the other, and only after `leg harness enable`. `leg uninstall` removes only `~/.leg`.
+Claude print session. Leg's hooks ride in a separate per-session `--settings`
+file. Automatic folder-trust writes are off by default; `LEG_TRUST=auto`
+opts into the client config changes below. The optional
+[portable harness](docs/harness.md) can also write client configuration,
+only after `leg harness enable`. `leg uninstall` removes only `~/.leg`;
+it does not remove existing client trust answers.
 
 ### The folder-trust answer
 
 Each agent CLI asks once, the first time it runs in a directory, whether you
 trust that folder, and Claude Code asks a second question when a `CLAUDE.md`
-above the repo imports a file from outside it. A handoff fires when the limit
-hits, which is usually when nobody is watching, so an agent that stopped on
-that prompt would sit there until morning with the bundle already written.
+above the repo imports a file from outside it. These prompts remain in place
+by default, including during handoffs. An unattended handoff may wait for you.
 
-Before starting an agent, Leg records the same answer you would have given,
-for the repository you already chose by typing `leg claude` in it:
+Set `LEG_TRUST=auto` only if you want Leg to record trust before agent launches
+and handoffs. This is independent of auto-approve mode and authorizes these
+client config writes, including approval of external `CLAUDE.md` imports:
 
 | agent | file | what is written |
 |---|---|---|
@@ -83,20 +85,23 @@ for the repository you already chose by typing `leg claude` in it:
 | claude | the same entry, only when such an import exists | `hasClaudeMdExternalIncludesApproved`, `hasClaudeMdExternalIncludesWarningShown` |
 | codex | `~/.codex/config.toml` | `[projects."<repo>"] trust_level = "trusted"` |
 | agy | `~/.gemini/antigravity-cli/settings.json` | `trustedWorkspaces: ["<repo>", "<worktree>"]` |
+| agy | `~/.gemini/config/projects/default-cli-project.json` | writable Git folder resources |
+| agy | existing `~/.gemini/trustedFolders.json` | `TRUST_FOLDER` entries |
 
 For Claude Code this is the documented remedy: its permissions guide says to
 set `projects["<path>"].hasTrustDialogAccepted` to `true` in `~/.claude.json`,
 where `<path>` is the repository root.
 
-Leg never creates one of those files: if it is not there, that CLI has not
-run as you yet and its own first-run flow is next, with you at the keyboard. It
-never rewrites a file to say what it already says, and it never removes what is
-already in one. When it approves an external `CLAUDE.md` import it prints the
+Claude and Codex trust updates require an existing config file. agy can create
+its settings or project file when the corresponding config directory already
+exists. Existing trust decisions are retained. When Leg approves an external
+`CLAUDE.md` import it prints the
 full path of every file it approved, to the terminal and to the session
 timeline on the board, so the approval is on the record rather than invisible.
 
-Set `LEG_TRUST=never` to switch all of it off and answer the prompts
-yourself.
+`LEG_TRUST=never` disables future trust writes; it does not revoke trust already
+recorded. Unset, empty and unrecognized values also leave automatic trust off.
+The legacy `BATON_TRUST=auto` opt-in remains supported when `LEG_TRUST` is unset.
 
 ## Contents
 
@@ -135,8 +140,10 @@ That is the whole setup. The first `leg <agent>` starts the board on
 http://127.0.0.1:4747 and opens it; later sessions reuse it. Anything after the
 agent name passes straight through (`leg codex -m gpt-5.3-codex-spark`,
 `leg claude --resume`). The agent's own prompt and permission flags pass
-through unchanged, and your settings file is never edited: Leg's hooks ride
-in a separate per-session `--settings` file.
+through unchanged. Leg adds no permission bypass by default; `--auto-approve`
+opts in and `--no-auto-approve` overrides a saved opt-in for that terminal.
+Leg's hooks ride in a separate per-session `--settings` file. Folder-trust
+and portable-harness writes each require their own opt-in.
 
 Leg is commercial, source-available software, and the source is on
 [GitHub](https://github.com/ucsandman/legcli): every `.mjs` file that runs is in the package you just installed, at
@@ -520,10 +527,13 @@ happens after you run `leg accounts add`; that is your call.
 
 ## What is and is not touched
 
-- **Never edited**: `~/.claude/settings.json`, `~/.claude.json`,
-  `~/.codex/config.toml`, agy's files, your repo's settings. Claude Code gets
-  hooks through a per-session `--settings` file under `~/.leg`; codex and
-  agy get nothing injected.
+- **Client configuration unchanged by default**: Claude Code gets hooks through
+  a per-session `--settings` file under `~/.leg`. Permission bypass is an
+  explicit launch opt-in, separate from the config writes listed below.
+- **Written only with `LEG_TRUST=auto`**: folder-trust records in
+  `~/.claude.json`, `~/.codex/config.toml`, and agy's trust files, plus approval
+  of external Claude imports. See [the complete list](#the-folder-trust-answer).
+  `LEG_TRUST=never` stops future writes and leaves existing trust in place.
 - **Read, never written**: each agent's own history (`~/.claude/projects`,
   `~/.codex/sessions`, `~/.grok/sessions`, `~/.gemini/antigravity-cli`,
   `~/.copilot/session-state`) for `leg history`; the index it builds lives

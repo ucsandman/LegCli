@@ -152,10 +152,12 @@ test('no-global-fetch: Node code under src/ never calls global fetch (Node 24 on
   assert.deepEqual(grep(/(^|[^a-zA-Z_.])fetch\(/, nodeFiles), [])
 })
 
-test('no-yolo-flags: forbidden flags appear only inside forbiddenFlags declarations, and no argv emits one', async () => {
+test('no-yolo-flags: headless adapters never emit bypass flags', async () => {
   const forbidden = [/--dangerously-skip-permissions/, /--allow-dangerously-skip-permissions/, /--dangerously-bypass-approvals-and-sandbox/, /--yolo/, /--always-approve/, /bypassPermissions/, /danger-full-access/]
   for (const re of forbidden) {
-    const hits = grep(re).filter((h) => !/forbiddenFlags|allowed: \[|NOT|never|not /.test(h))
+    // Interactive opt-in is covered through actual launches in
+    // permission-launch.test.mjs; background adapters have no such opt-in.
+    const hits = grep(re, sourceFiles().filter((f) => f !== join(SRC, 'attach.mjs'))).filter((h) => !/forbiddenFlags|allowed: \[|NOT|never|not /.test(h))
     assert.deepEqual(hits, [], `${re} outside a forbidden-list declaration`)
   }
   for (const name of names()) {
