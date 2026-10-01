@@ -3,6 +3,20 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-10-01: the 0.16.2 release run failed one Linux test that the release did not touch
+
+**Not fixed yet; the failed jobs were re-run and passed, and 0.16.2 published.**
+
+`with no board, the terminal reads its own claude usage instead of going into
+the wall blind` (test/attach-e2e.test.mjs) failed on ubuntu-latest with "one
+line per outage, not one per poll; got 0". The release commit changed only
+version strings. `updateSession` (src/sessions.mjs) writes session.json and
+then appends the event, two writes under one lock, and the test reads both
+without the lock: it stops polling the moment `usage_error` is on the session
+and counts events straight away, so a runner that reads between the two writes
+sees 0. A first occurrence. Fix candidates: the test polls until the event
+count settles, or the event is appended before session.json is written.
+
 ## 2026-09-19: eleven versions reached npm and none reached the GitHub releases page
 
 **Fixed by making the publish job create the tag and the GitHub release itself,
