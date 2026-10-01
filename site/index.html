@@ -84,7 +84,7 @@
       <div class="cmd"><code>pip install -U context-handoff-bundle</code><button class="copy" type="button" data-copy="pip install -U context-handoff-bundle">Copy</button></div>
     </div>
     <p>Then type <code>leg claude</code> where you would have typed <code>claude</code>. Same session, same flags.</p>
-    <p class="facts">Node 22 or newer. Zero runtime dependencies. Free for 14 days, then $79 once, with 30 days to ask for your money back. Binds 127.0.0.1 and leaves your settings files alone.</p>
+    <p class="facts">Node 22 or newer. Zero runtime dependencies. Free for 14 days, then $79 once, with 30 days to ask for your money back. Binds 127.0.0.1. Permission bypass and client trust writes each require opt-in.</p>
   </div>
 </section>
 
@@ -229,7 +229,7 @@
     <div class="cols">
       <div class="stack">
         <h2 id="one-word-h">One word in front of the command you already type.</h2>
-        <p><code>leg claude --model opus</code> is <code>claude --model opus</code> with Leg alongside. The agent's own prompt and permission flags pass through unchanged. Leg's hooks ride in a separate per-session settings file; your own settings file is never edited.</p>
+        <p><code>leg claude --model opus</code> runs Claude with Leg alongside. Your prompt and permission flags pass through. Leg adds no permission bypass by default. <code>--auto-approve</code> opts in, and <code>--no-auto-approve</code> overrides a saved opt-in. Hooks use a separate per-session settings file. The separate <code>LEG_TRUST=auto</code> opt-in writes client trust records and can approve external <code>CLAUDE.md</code> imports. The optional portable harness can also write client config. <a href="/docs/configuration#auto-approve-launch-mode">Permission and trust settings</a>.</p>
         <p>The first <code>leg &lt;agent&gt;</code> starts the board at <code>http://127.0.0.1:4747</code> and opens it. Later sessions reuse it.</p>
       </div>
       <div class="stack">

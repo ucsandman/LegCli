@@ -99,9 +99,11 @@ test('limit → every option out → waits for the first reset → starts codex 
   assert.match(err, /codex is back; starting it from the bundle/)
   // the stub claude never saw the API key; codex got BATON_CODEX_ARGS and the resume prompt, in the repo
   const [claude] = records(stubDir, 'claude-')
+  assert.equal(claude.argv.includes('--dangerously-skip-permissions'), false)
   assert.equal(claude.api_key, null, 'ANTHROPIC_API_KEY stripped')
   assert.deepEqual(claude.argv.slice(0, 2), ['--model', 'haiku'])
   const [codex] = records(stubDir, 'codex-')
+  assert.equal(codex.argv.includes('--ask-for-approval'), false, 'default handoff preserves native approvals')
   assert.deepEqual(codex.argv.slice(0, 2), ['-m', 'cheap-model'])
   assert.match(codex.argv[codex.argv.length - 1], /taking over an interactive coding session from claude/)
   assert.equal(codex.session, s.session_id)
@@ -260,6 +262,7 @@ test('leg <agent> --resume-card opens the terminal in the card\'s own worktree, 
 
   const [rec] = records(stubDir, 'codex-')
   assert.ok(rec, 'the agent started')
+  assert.equal(rec.argv.includes('--ask-for-approval'), false, 'card takeover preserves native approvals')
   assert.equal(canonPath(rec.cwd), canonPath(wt.path), `started in ${rec.cwd}, not the card's worktree ${wt.path}`)
   const prompt = rec.argv[rec.argv.length - 1]
   assert.match(prompt, /Taking over a background card/)

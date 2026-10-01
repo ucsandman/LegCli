@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Interactive auto-approve is now off unless explicitly enabled by a CLI flag,
+  recognized environment value, or saved boolean preference. Missing, corrupt,
+  or invalid settings keep native client approval behavior. Existing saved
+  booleans remain in effect, including `true` persisted by an older release.
+- `--no-auto-approve` wins conflicting Leg switches. Environment opt-out wins
+  conflicting environment settings. Native permission modes are preserved.
+- Automatic folder-trust writes now require `LEG_TRUST=auto` (or the legacy
+  alias). This separate opt-in can write client configs and approve external
+  Claude imports. Disabling it leaves existing trust records in place.
+- Corrected CLI help, package, README and site claims about permission defaults
+  and client config writes. Added launch and settings regressions using stubs.
+
 ## 0.16.1 (2026-09-19)
 
 Three things that nagged every session, and the sharecard.

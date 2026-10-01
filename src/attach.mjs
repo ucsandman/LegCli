@@ -475,9 +475,10 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
   // a leg Leg starts on its own (after a hand-off) takes BATON_<AGENT>_ARGS,
   // e.g. BATON_CODEX_ARGS="-m gpt-5-mini" to keep a test chain on cheap models
   if (prompt) args = [...(process.env[`LEG_${agent.toUpperCase()}_ARGS`] ?? process.env[`BATON_${agent.toUpperCase()}_ARGS`] ?? '').split(/\s+/).filter(Boolean), ...args]
+  const hasOption = (...flags) => args.some((arg) => flags.some((flag) => arg === flag || arg.startsWith(`${flag}=`)))
   if (agent === 'claude') {
     const settings = writeSettings(sessionId, { statusLine: userStatusLine(process.env.CLAUDE_CONFIG_DIR || (account !== 'default' ? envFor('claude', account).CLAUDE_CONFIG_DIR : undefined)) })
-    const autoFlags = autoApprove && !args.includes('--dangerously-skip-permissions') ? ['--dangerously-skip-permissions'] : [] // auto-approve: not forbidden for interactive sessions
+    const autoFlags = autoApprove === true && !hasOption('--dangerously-skip-permissions', '--permission-mode', '--permission-prompts') ? ['--dangerously-skip-permissions'] : [] // explicit interactive opt-in only
     // `-n, --name <name>`: "Set a display name for this session (shown in the
     // prompt box, /resume picker, and terminal title)" — fixtures/help/claude.txt
     // line 132, in the general Options section, not one of the flags marked
@@ -490,19 +491,25 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
     argv.push(...resumeFlags, ...args, ...modelFlags(agent, args, model), ...autoFlags, ...nameFlags, '--settings', settings)
     if (prompt) argv.push(prompt)
   } else if (agent === 'codex') {
-    const hasApproval = args.includes('--ask-for-approval') || args.includes('-a') || args.some((x) => typeof x === 'string' && x.startsWith('--ask-for-approval='))
-    const autoFlags = autoApprove && !hasApproval ? ['--ask-for-approval', 'never'] : []
+    const hasApprovalConfig = args.some((arg, i) => {
+      const value = arg === '-c' || arg === '--config' ? args[i + 1]
+        : arg.startsWith('--config=') ? arg.slice(9) : arg.startsWith('-c') ? arg.slice(2).replace(/^=/, '') : ''
+      return /^['"]?approval_policy['"]?\s*=/.test(value ?? '')
+    })
+    const hasApproval = hasOption('--ask-for-approval', '-a', '--approve-for-me', '--full-auto', '--dangerously-bypass-approvals-and-sandbox', '--yolo')
+      || args.some((arg) => /^-a[^-]/.test(arg)) || hasApprovalConfig
+    const autoFlags = autoApprove === true && !hasApproval ? ['--ask-for-approval', 'never'] : []
     argv.push(...args, ...modelFlags(agent, args, model), ...autoFlags)
     if (prompt) argv.push(prompt)
   } else if (agent === 'agy') {
     const log = join(sessionDir(sessionId), 'agy.log')
-    const autoFlags = autoApprove && !args.includes('--dangerously-skip-permissions') ? ['--dangerously-skip-permissions'] : [] // auto-approve: not forbidden for interactive sessions
+    const autoFlags = autoApprove === true && !hasOption('--dangerously-skip-permissions') ? ['--dangerously-skip-permissions'] : [] // explicit interactive opt-in only
     argv.push(...args, ...modelFlags(agent, args, model), ...autoFlags, '--log-file', log)
     if (prompt) argv.push('-i', prompt)
   } else if (agent === 'grok') {
     const log = join(sessionDir(sessionId), 'grok.log')
-    const hasApprove = args.includes('--always-approve') || args.includes('--yolo') || args.includes('--approval-mode=yolo') // auto-approve check: not forbidden for interactive sessions
-    const autoFlags = autoApprove && !hasApprove ? ['--always-approve'] : [] // auto-approve: not forbidden for interactive sessions
+    const hasApprove = hasOption('--always-approve', '--yolo', '--approval-mode', '--permission-mode')
+    const autoFlags = autoApprove === true && !hasApprove ? ['--always-approve'] : [] // explicit interactive opt-in only
     argv.push(...args, ...modelFlags(agent, args, model), ...autoFlags, '--debug-file', log)
     if (prompt) argv.push(prompt)
   }
@@ -534,10 +541,8 @@ export function checkpointGate() {
 async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApprove = resolveAutoApprove(), model = null, resume = null }) {
   const sid = session.session_id
   refreshAccount(agent, account)
-  // A handoff happens when the limit hits, which is usually when nobody is
-  // watching. An agent that has never run in this folder would stop on its
-  // first-run trust prompt and wait for a keypress that is not coming, so the
-  // answer goes on file before the agent starts. BATON_TRUST=never opts out.
+  // Trust prompts remain the client's by default. LEG_TRUST=auto separately
+  // opts into writing trust answers before the agent starts.
   const trust = ensureTrust(agent, session.cwd, { cwd: session.cwd })
   const trusted = trustLine(trust)
   if (trusted) { say(trusted); appendEvent(sid, { type: 'trust', summary: trusted }) }
@@ -973,14 +978,13 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   // second worktree on its branch is what Take over exists to avoid.
   const shareCheckout = args.includes('--no-worktree') || Boolean(continued) || Boolean(card)
   args = args.filter((a) => a !== '--no-worktree')
-  let autoApproveCli = null
-  if (args.includes('--no-auto-approve')) {
-    autoApproveCli = false
-    args = args.filter((a) => a !== '--no-auto-approve')
-  } else if (args.includes('--auto-approve')) {
-    autoApproveCli = true
-    args = args.filter((a) => a !== '--auto-approve')
-  }
+  // Consume both Leg switches even when they conflict; the opt-out wins.
+  // After --, the remaining arguments belong to the client.
+  const endOfOptions = args.indexOf('--')
+  const options = endOfOptions < 0 ? args : args.slice(0, endOfOptions)
+  const tail = endOfOptions < 0 ? [] : args.slice(endOfOptions)
+  const autoApproveCli = options.includes('--no-auto-approve') ? false : options.includes('--auto-approve') ? true : null
+  args = [...options.filter((a) => a !== '--no-auto-approve' && a !== '--auto-approve'), ...tail]
   const autoApprove = resolveAutoApprove({ cliFlag: autoApproveCli })
   const cwd = card ? realPath(cardWorkRoot(card)) : (cwdOpt ? realPath(cwdOpt) : process.cwd())
   const board = await ensureBoard({ open, wait: false })

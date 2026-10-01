@@ -141,14 +141,19 @@ markers that make a nested Claude refuse to start; <code>sanitizeEnv</code>
 (<code>src/env.mjs</code>) strips them along with the API-key variables, so the child
 starts normally. It becomes its own session with its own row on the board,
 unrelated to the parent&#39;s.</p>
-<p><strong>Why are <code>--dangerously-skip-permissions</code> and similar flags never
-available?</strong>
-Each adapter&#39;s <code>argv()</code> calls <code>assertAllowed()</code>
+<p><strong>When can Leg bypass client permission prompts?</strong>
+Interactive sessions add no bypass by default. <code>--auto-approve</code>,
+<code>LEG_AUTO_APPROVE=1</code>, or a saved <code>&quot;auto_approve&quot;: true</code> explicitly opts in.
+<code>--no-auto-approve</code> disables Leg&#39;s injected bypass for a terminal; native client
+flags and settings remain yours. See <a href="/docs/configuration#auto-approve-launch-mode">precedence and effects</a>.
+Folder trust is separate: <code>LEG_TRUST=auto</code> authorizes trust config writes,
+including external Claude imports; it is off by default.</p>
+<p>Background card adapters always call <code>assertAllowed()</code>
 (<code>src/adapters/common.mjs</code>), which checks the requested mode against that
 adapter&#39;s <code>allowed</code> list and rejects any flag on its <code>forbiddenFlags</code> list,
 before anything spawns. Requesting <code>bypassPermissions</code>, <code>--yolo</code>,
-<code>--full-auto</code>, <code>danger-full-access</code>, or similar throws immediately; nothing
-ever runs with permission checks off.</p>
+<code>--full-auto</code>, <code>danger-full-access</code>, or similar throws immediately in these
+headless adapters, even when interactive auto-approve is enabled.</p>
 <p><strong>What actually happens when a pipeline leg hits a usage limit?</strong>
 (For an interactive session, see <a href="/docs/concepts#handoff-interactive">concepts.md</a>.)
 <code>src/limits.mjs</code> classifies the leg&#39;s exit code, output and diff evidence as

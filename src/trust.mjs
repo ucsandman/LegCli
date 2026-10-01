@@ -1,16 +1,9 @@
 // trust — records the folder-trust answer each agent CLI asks for on its first
 // run in a directory, before Leg spawns that agent.
 //
-// Why this exists: the handoff is the product. When claude hits its 5-hour
-// limit at 3am, Leg writes the bundle and starts codex in the same terminal
-// with nobody there. If the incoming agent has never run in that folder it
-// stops on a full-screen "Is this a project you trust?" prompt and waits for a
-// keypress that is not coming, and the handoff the user paid for silently
-// becomes a stalled terminal they find in the morning.
-//
-// Each CLI already stores that answer in a file, so the fix is to write the
-// same answer the user would have clicked, for the repository they already
-// chose by typing `leg claude` in it:
+// Off by default. LEG_TRUST=auto explicitly opts into recording trust before
+// a launch or handoff. Choosing a repository is not itself consent to trust
+// it or its external CLAUDE.md imports. Opt-in may write:
 //
 //   claude  ~/.claude.json            projects["<repo>"].hasTrustDialogAccepted
 //           (or $CLAUDE_CONFIG_DIR/.claude.json)
@@ -23,14 +16,13 @@
 // <path> is the repository root", and its error text prints the same sentence.
 //
 // Three rules this module holds to, because it writes files Leg does not own:
-//   1. Never create a config file that is not already there. A missing file
-//      means that CLI has never run here, so its own first-run flow (login,
-//      onboarding) is about to happen with the user present anyway. Skip.
+//   1. Claude and Codex require an existing config file. agy requires an
+//      existing config directory and may create its trust files there.
 //   2. Never rewrite a file to say what it already says. No write, no risk.
 //   3. Never lose what is already in the file. Read, add, write atomically,
 //      under the same cross-process lock the rest of Leg uses.
 //
-// BATON_TRUST=never turns all of it off; the prompts come back.
+// LEG_TRUST=never turns all of it off; existing trust answers are not removed.
 import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve, dirname, parse, isAbsolute } from 'node:path'
@@ -51,8 +43,8 @@ export function repoRootOf(dir) {
 }
 
 export function trustPolicy(env = process.env) {
-  const raw = String(env.LEG_TRUST ?? env.BATON_TRUST ?? 'auto').trim().toLowerCase()
-  return raw === 'never' || raw === 'off' || raw === '0' ? 'never' : 'auto'
+  const raw = String(env.LEG_TRUST ?? env.BATON_TRUST ?? '').trim().toLowerCase()
+  return raw === 'auto' ? 'auto' : 'never'
 }
 
 // ---- claude ----
@@ -469,7 +461,7 @@ const ENSURE = { claude: ensureClaudeTrust, codex: ensureCodexTrust, agy: ensure
 
 // Returns a result even when nothing was written, so the caller can say why.
 export function ensureTrust(agent, repo, { env = process.env, cwd = repo } = {}) {
-  if (trustPolicy(env) === 'never') return { agent, wrote: [], imports: [], skipped: 'BATON_TRUST=never' }
+  if (trustPolicy(env) === 'never') return { agent, wrote: [], imports: [], skipped: 'automatic trust is off (set LEG_TRUST=auto to opt in)' }
   const fn = ENSURE[agent]
   if (!fn) return { agent, wrote: [], imports: [], skipped: `no trust record for ${agent}` }
   try {
@@ -487,6 +479,5 @@ export function trustLine(result) {
   const what = result.agent === 'claude' && result.imports?.length
     ? `trusted ${result.root} for claude, and allowed ${result.imports.length} external CLAUDE.md import${result.imports.length === 1 ? '' : 's'}: ${result.imports.join(', ')}`
     : `trusted ${result.root} for ${result.agent}`
-  return `${what} (recorded in ${result.file}; BATON_TRUST=never turns this off)`
+  return `${what} (recorded in ${result.file}; LEG_TRUST=never turns this off)`
 }
-

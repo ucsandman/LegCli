@@ -29,12 +29,17 @@ const read = (f) => JSON.parse(readFileSync(f, 'utf8'))
 
 // ---- policy ----
 
-test('the default policy is auto, and BATON_TRUST=never turns it off', () => {
-  assert.equal(trustPolicy({}), 'auto')
-  assert.equal(trustPolicy({ BATON_TRUST: 'auto' }), 'auto')
-  for (const off of ['never', 'off', '0', 'NEVER', ' never ']) {
-    assert.equal(trustPolicy({ BATON_TRUST: off }), 'never', `${off} should turn trust recording off`)
+test('trust requires explicit opt-in, with LEG taking precedence over BATON', () => {
+  assert.equal(trustPolicy({}), 'never')
+  for (const key of ['LEG_TRUST', 'BATON_TRUST']) {
+    for (const on of ['auto', 'AUTO', ' auto ']) assert.equal(trustPolicy({ [key]: on }), 'auto')
+    for (const off of ['never', 'off', '0', 'NEVER', ' never ', '', 'typo', 'true', '1']) {
+      assert.equal(trustPolicy({ [key]: off }), 'never', `${key}=${off}`)
+    }
   }
+  assert.equal(trustPolicy({ LEG_TRUST: 'never', BATON_TRUST: 'auto' }), 'never')
+  assert.equal(trustPolicy({ LEG_TRUST: '', BATON_TRUST: 'auto' }), 'never')
+  assert.equal(trustPolicy({ LEG_TRUST: 'auto', BATON_TRUST: 'never' }), 'auto')
 })
 
 test('BATON_TRUST=never writes nothing at all', () => {
@@ -43,7 +48,7 @@ test('BATON_TRUST=never writes nothing at all', () => {
   const before = readFileSync(file, 'utf8')
   const r = ensureTrust('claude', repo, { env: { ...env, BATON_TRUST: 'never' } })
   assert.deepEqual(r.wrote, [])
-  assert.equal(r.skipped, 'BATON_TRUST=never')
+  assert.match(r.skipped, /automatic trust is off/)
   assert.equal(readFileSync(file, 'utf8'), before, 'the config must be byte-identical')
 })
 
@@ -250,7 +255,7 @@ test('the printed line names the repo, the file, and every import it approved', 
   const { env } = claudeHome()
   const line = trustLine(ensureClaudeTrust(repo, { env }))
   assert.match(line, /shared\.md/, 'the approved import is named, not counted')
-  assert.match(line, /BATON_TRUST=never/, 'the line says how to turn it off')
+  assert.match(line, /LEG_TRUST=never/, 'the line says how to turn it off')
   assert.equal(trustLine({ agent: 'claude', wrote: [] }), null, 'nothing written, nothing printed')
 })
 
@@ -379,13 +384,13 @@ test('agy: no ~/.gemini at all means no write', () => {
 
 test('an agent with no trust record of its own is a no-op, not an error', () => {
   const repo = initRepo('baton-trust-repo-')
-  const r = ensureTrust('fake', repo, { env: {} })
+  const r = ensureTrust('fake', repo, { env: { LEG_TRUST: 'auto' } })
   assert.deepEqual(r.wrote, [])
   assert.match(r.skipped, /no trust record/)
 })
 
 test('a failure to write a trust record never throws at the caller', () => {
-  const r = ensureTrust('claude', join(tmpdir(), 'baton-no-such-repo-at-all'), { env: { CLAUDE_CONFIG_DIR: join(tmpdir(), 'baton-no-such-cfg') } })
+  const r = ensureTrust('claude', join(tmpdir(), 'baton-no-such-repo-at-all'), { env: { LEG_TRUST: 'auto', CLAUDE_CONFIG_DIR: join(tmpdir(), 'baton-no-such-cfg') } })
   assert.deepEqual(r.wrote, [])
   assert.ok(r.skipped, 'it reports why rather than failing the session')
 })
