@@ -5,7 +5,8 @@ occurrence has to be written down or a repeat is never countable.
 
 ## 2026-10-01: the 0.16.2 release run failed one Linux test that the release did not touch
 
-**Not fixed yet; the failed jobs were re-run and passed, and 0.16.2 published.**
+**Fixed by having the test wait up to 2 s for the status line after it sees
+`usage_error`. The failed jobs were re-run and passed, and 0.16.2 published.**
 
 `with no board, the terminal reads its own claude usage instead of going into
 the wall blind` (test/attach-e2e.test.mjs) failed on ubuntu-latest with "one
@@ -14,8 +15,10 @@ version strings. `updateSession` (src/sessions.mjs) writes session.json and
 then appends the event, two writes under one lock, and the test reads both
 without the lock: it stops polling the moment `usage_error` is on the session
 and counts events straight away, so a runner that reads between the two writes
-sees 0. A first occurrence. Fix candidates: the test polls until the event
-count settles, or the event is appended before session.json is written.
+sees 0. A 300 ms pause injected between the two writes reproduced it every
+time; with the wait, the test passed three of three under the same pause and
+still failed when the event was never written. Product code is unchanged:
+reordering the writes would only move the gap to the other side.
 
 ## 2026-09-19: eleven versions reached npm and none reached the GitHub releases page
 

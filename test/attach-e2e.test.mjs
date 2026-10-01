@@ -157,7 +157,13 @@ test('with no board, the terminal reads its own claude usage instead of going in
   assert.ok(s?.usage_error, `the terminal never read its own usage in 20 s; stderr: ${err}`)
   assert.match(s.usage_error, /no claude\.ai login found/, 'the card says what it could not read')
   assert.match(err, /no board is reading claude usage/, 'and the terminal says why it is doing the reading')
-  const said = readEvents(s.session_id).filter((e) => e.type === 'status' && /usage unavailable/.test(e.summary))
+  // usage_error and its status line are two writes (session.json, then the
+  // event: updateSession in src/sessions.mjs), and this reads without the
+  // lock, so the line can trail the field it just saw (docs/ERRORS.md 2026-10-01)
+  const unavailable = () => readEvents(s.session_id).filter((e) => e.type === 'status' && /usage unavailable/.test(e.summary))
+  const t1 = Date.now()
+  while (unavailable().length === 0 && Date.now() - t1 < 2000) await sleep(50)
+  const said = unavailable()
   assert.equal(said.length, 1, `one line per outage, not one per poll; got ${said.length}`)
   requestControl(s.session_id, { end: true })
   await new Promise((r) => child.on('exit', r))
