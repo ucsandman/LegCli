@@ -681,3 +681,130 @@ test('the one Leg Team item is found beside an unrelated item, for its seats and
   assert.equal(payload.seats, 6)
   assert.equal(payload.expires, '2026-11-15')
 })
+
+const freePersonalSession = (over = {}) => personalSession({
+  id: 'cs_test_freepersonal', payment_status: 'no_payment_required', amount_total: 0,
+  line_items: { has_more: false, data: [{ price: { lookup_key: 'leg_personal', type: 'one_time' }, quantity: 1 }] },
+  ...over
+})
+const completedEvent = (session) => ({ id: 'evt_freepersonal', type: 'checkout.session.completed', data: { object: session } })
+
+for (const payment_status of ['paid', 'no_payment_required']) {
+  for (const lookup_key of ['leg_personal', 'baton_personal']) {
+    test(`a completed zero-total ${lookup_key} checkout marked ${payment_status} returns and emails the same license`, async () => {
+      const secret = webhookEnv()
+      const session = freePersonalSession({ payment_status, line_items: { has_more: false, data: [{ price: { lookup_key, type: 'one_time' }, quantity: 1 }] } })
+      const calls = stripeAndResend({ session })
+      const key = await keyFromCheckout(session.id)
+      assert.equal(key.statusCode, 200)
+      const body = JSON.parse(key.body)
+      assert.equal(body.plan, 'personal')
+      assert.equal(body.seats, 1)
+      assert.equal(calls.emails.length, 0, 'fetching a key does not claim or send email')
+      const hook = await callWebhook(completedEvent(session), secret)
+      assert.equal(hook.statusCode, 200)
+      assert.deepEqual(JSON.parse(hook.body), { received: true, delivery: { status: 'accepted' } })
+      assert.equal(calls.stripe.length, 2, 'both paths re-read the session from Stripe')
+      assert.equal(calls.emails.length, 1)
+      assert.equal(emailedKey(calls.emails[0]), body.key)
+      assert.doesNotMatch(calls.emails[0].text, /Your receipt is in the email from Stripe/)
+    })
+  }
+}
+
+test('a free completion event cannot override an ineligible current Stripe checkout', async () => {
+  const secret = webhookEnv()
+  const item = freePersonalSession().line_items.data[0]
+  const items = (data, has_more = false) => ({ line_items: { data, has_more } })
+  const cases = [
+    ...['open', 'expired', undefined].map((status) => [`status ${status}`, { status }]),
+    ...['setup', 'subscription', 'unknown', undefined].map((mode) => [`mode ${mode}`, { mode }]),
+    ...['unpaid', undefined].map((payment_status) => [`payment status ${payment_status}`, { payment_status }]),
+    ...[1, -1, null, undefined, false, '0'].map((amount_total) => [`amount ${String(amount_total)}`, { amount_total }]),
+    ['subscription attached', { subscription: 'sub_unexpected' }],
+    ...[0, 2, 1.5, undefined, '1'].map((quantity) => [`quantity ${quantity}`, items([{ ...item, quantity }])]),
+    ...['leg_team', 'unrelated_personal', undefined].map((lookup_key) => [`price ${lookup_key}`, items([{ ...item, price: { ...item.price, lookup_key, metadata: { plan: 'personal' } } }])]),
+    ['recurring price', items([{ ...item, price: { ...item.price, type: 'recurring' } }])],
+    ['missing price type', items([{ ...item, price: { lookup_key: 'leg_personal' } }])],
+    ['two line items', items([item, item])],
+    ['more line items', items([item], true)],
+    ['unknown pagination', { line_items: { data: [item] } }],
+    ['missing item data', { line_items: { has_more: false } }],
+    ['null item', items([null])],
+    ['no line items', items([])],
+    ['missing line items', { line_items: undefined }]
+  ]
+  for (const [label, over] of cases) {
+    const session = freePersonalSession(over)
+    const calls = stripeAndResend({ session })
+    const key = await keyFromCheckout(session.id)
+    assert.ok(key.statusCode >= 400, `${label}: key endpoint must refuse`)
+    assert.equal(JSON.parse(key.body).key, undefined, label)
+    // The signed event says the order is valid; Stripe's current answer wins.
+    const hook = await callWebhook(completedEvent(freePersonalSession()), secret)
+    assert.equal(JSON.parse(hook.body).delivery, undefined, label)
+    assert.ok(JSON.parse(hook.body).error, `${label}: no silent success`)
+    assert.equal(calls.emails.length, 0, label)
+    assert.equal(calls.stripe.length, 2, label)
+  }
+})
+
+test('a free checkout retries mail failure with the same license and idempotency key', async () => {
+  const secret = webhookEnv()
+  const session = freePersonalSession()
+  const calls = stripeAndResend({ session, resend: (n) => n === 1
+    ? { ok: false, status: 503, json: async () => ({ message: 'mail unavailable' }) }
+    : jsonResponse({ id: '<TEST_MESSAGE_ID>' }) })
+  const first = await callWebhook(completedEvent(session), secret)
+  assert.equal(first.statusCode, 500)
+  assert.equal(JSON.parse(first.body).delivery, undefined)
+  const second = await callWebhook(completedEvent(session), secret)
+  assert.equal(second.statusCode, 200)
+  assert.equal(JSON.parse(second.body).delivery.status, 'accepted')
+  assert.equal(calls.emails.length, 2)
+  assert.equal(emailedKey(calls.emails[0]), emailedKey(calls.emails[1]))
+  assert.deepEqual(calls.emails.map((e) => e.idempotencyKey), [
+    'stripe-webhook:evt_freepersonal:checkout.session.completed',
+    'stripe-webhook:evt_freepersonal:checkout.session.completed'
+  ])
+})
+
+test('a free checkout reports missing mail configuration or recipient without claiming delivery', async () => {
+  for (const missing of ['configuration', 'recipient']) {
+    const secret = webhookEnv()
+    if (missing === 'configuration') delete process.env.RESEND_API_KEY
+    const session = freePersonalSession(missing === 'recipient' ? { customer_details: {} } : {})
+    const calls = stripeAndResend({ session })
+    let res
+    await captureErrors(async () => { res = await callWebhook(completedEvent(session), secret) })
+    assert.equal(res.statusCode, missing === 'configuration' ? 500 : 200)
+    assert.deepEqual(JSON.parse(res.body).delivery, {
+      status: 'failed', reason: missing === 'configuration' ? 'missing_resend_api_key' : 'missing_recipient', retryable: missing === 'configuration'
+    })
+    assert.equal(calls.emails.length, 0)
+  }
+})
+
+test('a forged free checkout event is rejected before Stripe or email is contacted', async () => {
+  webhookEnv()
+  const session = freePersonalSession()
+  const calls = stripeAndResend({ session })
+  const res = await callWebhook(completedEvent(session), 'whsec_wrong')
+  assert.equal(res.statusCode, 400)
+  assert.equal(res.body, 'bad signature')
+  assert.deepEqual(calls, { stripe: [], emails: [] })
+})
+
+test('the Personal no-cost rule preserves completed eligible Team subscription checkout', async () => {
+  const secret = webhookEnv()
+  const sub = teamSubscription()
+  const session = { ...teamSession(4, sub), payment_status: 'no_payment_required' }
+  const calls = stripeAndResend({ session })
+  const key = await keyFromCheckout(session.id)
+  assert.equal(key.statusCode, 200)
+  assert.equal(JSON.parse(key.body).plan, 'team')
+  const hook = await callWebhook(completedEvent(session), secret)
+  assert.equal(hook.statusCode, 200)
+  assert.equal(JSON.parse(hook.body).delivery.status, 'accepted')
+  assert.equal(emailedKey(calls.emails[0]), JSON.parse(key.body).key)
+})

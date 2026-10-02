@@ -54,14 +54,22 @@ function planOf(price) {
   return null;
 }
 
-// A paid Checkout Session becomes exactly one license. The id is derived from
-// the session (personal) or the subscription (team), so the thanks page, the
-// webhook and a refresh all produce the same key for the same purchase.
+// A paid or completed no-cost Personal checkout becomes exactly one license.
+// The id is derived from the session (personal) or the subscription (team), so
+// the thanks page, webhook and refresh produce the same key for the purchase.
 async function licenseFromSession(sessionId) {
   const s = await stripe(`/checkout/sessions/${sessionId}`, { query: { expand: ['line_items.data.price', 'subscription'] } });
-  if (s.payment_status !== 'paid' && !(s.mode === 'subscription' && s.status === 'complete')) { const e = new Error('this checkout is not paid'); e.status = 402; throw e; }
   const item = s.line_items?.data?.[0];
   const plan = planOf(item?.price);
+  // no_payment_required alone can also describe setup or deferred billing.
+  // Only this complete, unambiguous Personal order needs no money collected.
+  // All fields come from Stripe's current session, not the webhook's snapshot.
+  const freePersonal = s.payment_status === 'no_payment_required'
+    && s.mode === 'payment' && s.status === 'complete' && s.amount_total === 0
+    && s.subscription == null && s.line_items?.has_more === false
+    && Array.isArray(s.line_items.data) && s.line_items.data.length === 1 && item?.quantity === 1
+    && item.price?.type === 'one_time' && plan === 'personal';
+  if (!freePersonal && s.payment_status !== 'paid' && !(s.mode === 'subscription' && s.status === 'complete')) { const e = new Error('this checkout is not paid'); e.status = 402; throw e; }
   if (!plan) { const e = new Error('this checkout is not for a Leg plan'); e.status = 400; throw e; }
   if (s.mode === 'subscription' && plan !== 'team') { const e = new Error('this checkout is not for a Leg plan'); e.status = 400; throw e; }
   if (s.mode === 'payment' && plan !== 'personal') { const e = new Error('this checkout is not for a Leg plan'); e.status = 400; throw e; }
@@ -98,7 +106,7 @@ async function sendKeyEmail({ to, key, payload, idempotencyKey }) {
   if (!to) return { skipped: true, reason: 'missing_recipient', retryable: false };
   const plan = payload.plan === 'team' ? `Team, ${payload.seats} seat${payload.seats === 1 ? '' : 's'}` : 'Personal';
   const until = payload.plan === 'team' ? `It renews with your subscription and is valid through ${payload.expires}; a renewed key is emailed each period, and "leg license refresh" fetches it.` : `It covers every Leg release dated on or before ${payload.updates_until}. The version you have keeps working after that.`;
-  const text = `Your Leg license (${plan})\n\nKey:\n${key}\n\nActivate it on each machine:\n\n  leg license activate ${key}\n\n${until}\n\nYour receipt is in the email from Stripe. Reply to this email for help.\n\n${SITE}\n`;
+  const text = `Your Leg license (${plan})\n\nKey:\n${key}\n\nActivate it on each machine:\n\n  leg license activate ${key}\n\n${until}\n\nReply to this email for help.\n\n${SITE}\n`;
   const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json', ...(idempotencyKey && { 'Idempotency-Key': idempotencyKey }) }, body: JSON.stringify({ from: FROM, to: [to], subject: `Your Leg ${payload.plan === 'team' ? 'Team' : 'Personal'} license key`, text, reply_to: (process.env.LEG_MAIL_REPLY_TO || process.env.BATON_MAIL_REPLY_TO) || undefined }) });
   const j = await r.json().catch(() => ({}));
   if (r.status === 409 && j.name === 'invalid_idempotent_request') return { skipped: true, reason: 'idempotency_payload_mismatch', retryable: false };

@@ -3,6 +3,20 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-10-02: a completed zero-dollar Personal checkout could get no license or email
+
+**Fixed by accepting a narrowly validated no-cost Personal order in the shared
+issuer and passing its completion event through that issuer.** A local mock
+of a completed, zero-total `no_payment_required` checkout returned 402 from
+`/api/key`, while the webhook returned `{ received: true }` without sending
+anything. No live order was needed to reproduce it. The new path re-reads
+Stripe and requires a complete one-time checkout, numeric total zero, no
+subscription, and one unit of the recognized Personal price in a complete
+line-item list. Paid and eligible Team paths are unchanged. Regressions cover
+both payment statuses, invalid current Stripe data behind a valid-looking
+event, mail failure/retry, missing delivery configuration and bad signatures.
+The license email also stops assuming Stripe has already emailed a receipt.
+
 ## 2026-10-01: checkout could skip a paid key, issue stale Team seats, and claim an email it never checked
 
 **Fixed by fulfilling `checkout.session.async_payment_succeeded` for Personal,

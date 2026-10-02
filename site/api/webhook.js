@@ -1,6 +1,6 @@
-// POST /api/webhook   Stripe events: a paid checkout emails the key; a delayed
-// Personal payment emails it when it clears; a paid renewal invoice emails a
-// fresh Team key. Signature-checked on the raw body.
+// POST /api/webhook   Stripe events: paid checkouts and no-cost Personal orders
+// email the key; a delayed Personal payment emails it when it clears; a paid
+// renewal invoice emails a fresh Team key. Signature-checked on the raw body.
 'use strict';
 const { licenseFromSession, licenseFromSubscription, sendKeyEmail, verifyStripeSignature, readRaw, sha, stripe } = require('./_lib.js');
 
@@ -27,7 +27,10 @@ module.exports = async (req, res) => {
     let delivery;
     if (event.type === 'checkout.session.completed') {
       const s = event.data.object;
-      if (s.payment_status === 'paid' || s.mode === 'subscription') {
+      // A 100%-off Personal order can complete without a payment. The shared
+      // issuer re-reads Stripe and validates its mode, total and price before
+      // either this webhook or /api/key can issue its license.
+      if (s.payment_status === 'paid' || s.mode === 'subscription' || (s.mode === 'payment' && s.payment_status === 'no_payment_required')) {
         const { key, payload, email } = await licenseFromSession(s.id);
         delivery = deliveryOf(await sendKeyEmail({ to: email, key, payload, idempotencyKey: emailIdempotencyKey(event.id, 'checkout.session.completed') }));
       }

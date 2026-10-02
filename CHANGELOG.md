@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- A completed, zero-total Personal checkout marked `no_payment_required` now
+  shows and emails its license. Both paths re-read Stripe and require exactly
+  one unit of a recognized one-time Personal price, with no subscription or
+  further line items. Unpaid, incomplete and unrelated orders remain refused.
+- License emails no longer claim that Stripe has already emailed a receipt.
+
 ## 0.16.3 (2026-10-01)
 
 Checkout delivers keys for delayed payments, and Team keys carry today's seats.

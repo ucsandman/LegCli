@@ -214,9 +214,17 @@ normal Leg use.
 The Stripe webhook endpoint (`/api/webhook`) must receive
 `checkout.session.completed`, `checkout.session.async_payment_succeeded` and
 `invoice.paid`. A bank-debit Personal purchase completes checkout unpaid and
-gets its key only from `checkout.session.async_payment_succeeded`.
+gets its emailed key from `checkout.session.async_payment_succeeded`.
 `scripts/stripe-setup.mjs` creates the endpoint with all three and adds any
 missing one to an existing endpoint.
+
+A completed Personal checkout with `payment_status: no_payment_required` is
+also fulfilled by `checkout.session.completed` and by the thanks page's key
+request. Stripe's current session must have mode `payment`, numeric total zero,
+no subscription, and exactly one unit of a one-time price with lookup key
+`leg_personal` or `baton_personal`; the line-item list must be complete.
+Neither an unpaid order nor a free subscription to a Personal price qualifies.
+Fetching the key does not send email or confirm that email was delivered.
 
 ## Adapter binary overrides
 
