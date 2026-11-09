@@ -14,12 +14,14 @@ import { home } from './store.mjs'
 import { writeJsonAtomic, withFileLock } from './fsx.mjs'
 import { scrub } from './redact.mjs'
 import { HANDOFF_AGENTS, ALL_HANDOFF_AGENTS, normalizeHandoffOrder } from './preferences.mjs'
+import { SESSION_STATES, SESSION_ACTIVE_STATES, canTransition } from './session-lifecycle.mjs'
 
 export const AGENTS = HANDOFF_AGENTS
 export const SUPERVISED_AGENTS = ALL_HANDOFF_AGENTS
 export const HANDOFF_ORDER_CAPABILITY = 'handoff_order_v1'
-export const SESSION_STATUSES = ['starting', 'running', 'warning', 'limit', 'handing_off', 'waiting', 'handed_off', 'ended', 'lost']
-const ACTIVE = ['starting', 'running', 'warning', 'limit', 'handing_off', 'waiting']
+// the lifecycle, its edges and its labels live in src/session-lifecycle.mjs
+export const SESSION_STATUSES = SESSION_STATES
+const ACTIVE = SESSION_ACTIVE_STATES
 
 const now = () => new Date().toISOString()
 
@@ -96,7 +98,17 @@ export function createSession({ id, agent, account = 'default', cwd, repo = null
 // then happen inside one cross-process lock, so concurrent hook/tap/poller
 // processes cannot lose an accumulated field (files_touched, turns) to a
 // last-writer-wins race. Callers that only set fixed values pass a plain object.
-export function updateSession(id, patch, { event } = {}) {
+//
+// `onIllegal` checks a status change against src/session-lifecycle.mjs inside
+// the lock, against the record as it is now and not a stale read: 'skip' writes
+// nothing and returns the current record, 'drop_status' writes everything but
+// the status. Neither throws. A refused write's event becomes one
+// `transition_refused` line; with no event the refusal is silent, so the
+// poller cannot fill a timeline. Without onIllegal the write is unchecked: that
+// is the seed path tests and dev scripts use, and no status writer in src/ may
+// take it (test/session-lifecycle.test.mjs scans for one).
+export function updateSession(id, patch, { event, onIllegal } = {}) {
+  if (onIllegal !== undefined && onIllegal !== 'skip' && onIllegal !== 'drop_status') throw new TypeError(`onIllegal must be 'skip' or 'drop_status', not ${onIllegal}`)
   // run.json's lock budget (250 tries, a 10 s steal), not withFileLock's
   // default: past 1.2 s the default runs the read-modify-write UNLOCKED, and
   // this file has the most writers in Leg — the terminal's poll, the claude
@@ -106,7 +118,17 @@ export function updateSession(id, patch, { event } = {}) {
   return withFileLock(join(sessionDir(id), '.session.lock'), () => {
     const cur = readSession(id)
     if (!cur) return null
-    const delta = typeof patch === 'function' ? patch(cur) : patch
+    let delta = typeof patch === 'function' ? patch(cur) : patch
+    let ev = event
+    if (onIllegal && delta.status !== undefined && delta.status !== cur.status && !canTransition(cur.status, delta.status)) {
+      ev = event ? { type: 'transition_refused', from: cur.status, to: delta.status, summary: `${delta.status} refused while ${cur.status}: ${event.summary ?? ''}` } : null
+      if (onIllegal === 'skip') {
+        if (ev) appendEvent(id, ev)
+        return cur
+      }
+      delta = { ...delta }
+      delete delta.status
+    }
     const next = { ...cur, ...delta, updated_at: now() }
     if (delta.limits && cur.limits) next.limits = { ...cur.limits, ...delta.limits }
     // every agent conversation this session has been: a hand-off overwrites
@@ -119,7 +141,7 @@ export function updateSession(id, patch, { event } = {}) {
       }
     }
     writeJsonAtomic(join(sessionDir(id), 'session.json'), next)
-    if (event) appendEvent(id, event)
+    if (ev) appendEvent(id, ev)
     return next
   }, { retries: 250, staleMs: 10000 })
 }
@@ -217,7 +239,9 @@ export function reapLost(sessions = listSessions()) {
   const out = []
   for (const s of sessions) {
     if (isActive(s) && !pidAlive(s.runner_pid)) {
-      out.push(updateSession(s.session_id, { status: 'lost', ended_at: now() }, { event: { type: 'lost', summary: `runner pid ${s.runner_pid} is gone; session marked lost` } }) ?? s)
+      // 'skip': the list was read outside the lock, and a runner whose final
+      // 'ended' won the race keeps its record and its ended_at
+      out.push(updateSession(s.session_id, { status: 'lost', ended_at: now() }, { event: { type: 'lost', summary: `runner pid ${s.runner_pid} is gone; session marked lost` }, onIllegal: 'skip' }) ?? s)
     } else out.push(s)
   }
   return out

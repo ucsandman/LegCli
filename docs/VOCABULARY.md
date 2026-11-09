@@ -10,8 +10,10 @@ changes.
 ## Session statuses
 
 One interactive terminal under `leg claude|codex|agy`. Source:
-`src/sessions.mjs` `SESSION_STATUSES`; board labels from `STATUS` in
-`src/board/sessions.js`.
+`src/session-lifecycle.mjs` `SESSION_STATES` (re-exported as `SESSION_STATUSES`
+from `src/sessions.mjs`); board labels from `SESSION_STATE_LABELS`, mirrored
+by `STATUS` in `src/board/sessions.js`. The moves between them are the edge
+table in [cli-contracts.md](cli-contracts.md#the-terminal-lifecycle).
 
 | status | board label | active? | meaning |
 |--------|-------------|---------|---------|
@@ -21,7 +23,7 @@ One interactive terminal under `leg claude|codex|agy`. Source:
 | `limit` | limit hit | yes | the agent reported its usage limit; the account is walled |
 | `handing_off` | handing off | yes | the bundle is being saved and the next option chosen |
 | `waiting` | waiting for reset | yes | every option is walled; the terminal counts down to the first reset (`session.waiting`) and then starts that agent from the bundle |
-| `handed_off` | handed off | no | this leg is done; the next agent owns the terminal |
+| `handed_off` | handed off | no | legacy: never written by this version and has no way in or out; kept so an older record still reads |
 | `ended` | ended | no | the agent exited, or End was pressed |
 | `lost` | lost | no | the runner process that owned the terminal is gone; never shown as live |
 
@@ -51,6 +53,7 @@ Source: the `appendEvent`/`updateSession` call sites in `src/attach.mjs`,
 | `continued` | the session was started by `leg history continue` on a conversation the agent's own store holds; `session.json` carries `continued_from: { id, provider, native_id }` |
 | `ended` | the session ended |
 | `lost` | the runner pid is gone; the session was marked `lost` |
+| `transition_refused` | a status write the lifecycle refused (`from`, `to`), recorded in place of the writer's own event with its text: a StopFailure from a child that is handing off, a reap that lost the race to `ended` |
 | `error` | a spawn error, a tap error, a failed bundle checkpoint, or an error the agent reported |
 | `status` | a note that does not fit another type |
 | `harness` | the portable harness was prepared for the leg starting now: the destination's state (`synced`, `partial`, `stale`, `attention`, `unsupported`, `source`, `error`) with what was dropped in the body |

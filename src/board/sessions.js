@@ -16,12 +16,18 @@
 (function () {
   'use strict'
   // 6.3: the nine shipped status words, unchanged, each with the tone of its
-  // 7px mark. The word carries the meaning; the mark is aria-hidden.
+  // 7px mark. The word carries the meaning; the mark is aria-hidden. The words
+  // mirror SESSION_STATE_LABELS in src/session-lifecycle.mjs, which this file
+  // cannot import; test/session-lifecycle.test.mjs holds the two equal.
   const STATUS = {
     starting: ['starting', 'run'], running: ['running', 'run'], warning: ['near limit', 'warn'], limit: ['limit hit', 'danger'],
     handing_off: ['handing off', 'warn'], waiting: ['waiting for reset', 'warn'], handed_off: ['handed off', 'idle'], ended: ['ended', 'idle'], lost: ['lost', 'danger'],
   }
   const WIN_WORDS = { '5h': '5 hour', '7d': '7 day' }
+  // what the server says a human may do to this terminal now (`actions` on the
+  // row, src/session-lifecycle.mjs sessionActions): a control that can only be
+  // refused is not drawn
+  const can = (s, verb) => (s.actions || []).includes(verb)
   const IDS = ['claude', 'codex', 'agy', 'grok', 'fake']
   // Mirrors MODEL_ALIASES and ALL_HANDOFF_AGENTS in src/buckets.mjs and
   // src/preferences.mjs. This file is served to a browser and cannot import
@@ -1628,7 +1634,7 @@
     // that cannot be picked carries the reason in its own label, so nothing is
     // greyed out without saying why.
     const targets = Array.isArray(s.handoff_targets) ? s.handoff_targets : []
-    if (s.active && targets.length) {
+    if (can(s, 'handoff') && targets.length) {
       const pick = el('div', { class: 'form-row' })
       const selectId = `handoff-to-${s.session_id}`
       pick.appendChild(el('label', { for: selectId }, ['Hand off now to']))
@@ -1673,8 +1679,7 @@
       wrap.appendChild(pick)
     }
 
-    const editableNow = ['starting', 'running', 'warning', 'limit', 'waiting'].includes(s.status)
-    if (!s.hidden && editableNow) {
+    if (!s.hidden && can(s, 'edit_order')) {
       let state = sessionEditors.get(s.session_id)
       // this terminal's own ladder, else the machine default it would take on
       // its next launch. A terminal that cannot be edited in place still shows
@@ -1961,7 +1966,7 @@
       }
       actions.appendChild(land)
     }
-    if (s.active) {
+    if (can(s, 'handoff')) {
       const h = el('button', { type: 'button', class: 'btn btn-secondary', title: 'save the bundle, stop this agent, start the next option in the same terminal', 'data-focus-key': `handoff:${s.session_id}` }, ['Hand off now'])
       // the same confirm row End and the picker already use. This stops the
       // current turn of a working agent, and the `h` key presses this button:
@@ -1972,15 +1977,15 @@
     const details = el('button', { type: 'button', class: 'btn btn-secondary', 'aria-expanded': drawer.id === s.session_id ? 'true' : 'false', 'data-focus-key': `details:${s.session_id}` }, ['Details'])
     details.addEventListener('click', () => (drawer.id === s.session_id ? closeSessionDrawer() : openSessionDrawer(s.session_id, 'details')))
     actions.appendChild(details)
-    if (s.active) {
+    if (can(s, 'end')) {
       const e = el('button', { type: 'button', class: 'btn btn-danger', 'data-focus-key': `end:${s.session_id}` }, ['End'])
       // the second verb only where a card can continue: a terminal outside a
       // git repository has no branch for a card to work on (the route says so
       // with a 409, and a control that can only fail is not offered)
       e.addEventListener('click', ask('End this terminal? The agent stops and the bundle is kept.', 'End', 'end',
-        s.repo && canCards() ? { verb: 'End, and keep going as a card', action: 'end-as-card', title: 'write the bundle, hand this checkout to a background card that continues the task, and end this terminal' } : null))
+        s.repo && canCards() && can(s, 'end_as_card') ? { verb: 'End, and keep going as a card', action: 'end-as-card', title: 'write the bundle, hand this checkout to a background card that continues the task, and end this terminal' } : null))
       actions.appendChild(e)
-    } else {
+    } else if (can(s, 'remove')) {
       const r = el('button', { type: 'button', class: 'btn btn-danger', 'data-focus-key': `remove:${s.session_id}` }, ['Remove'])
       r.addEventListener('click', ask(s.worktree
         ? `Remove this terminal? Its worktree at ${s.worktree.path} and its branch ${s.worktree.branch} go with it.`
@@ -1993,11 +1998,16 @@
       }
     }
     for (const r of s.requests || []) {
-      const ok = el('button', { type: 'button', class: 'btn btn-primary', title: `hand this terminal off for ${r.by}` }, [`Approve ${r.by}`])
-      ok.addEventListener('click', () => act(s.session_id, `requests/${encodeURIComponent(r.by)}/approve`, ok))
+      // Approve is a Hand off now for someone else: offered when that is; a
+      // request kept pending meanwhile can be approved once it is again
+      if (can(s, 'approve_request')) {
+        const ok = el('button', { type: 'button', class: 'btn btn-primary', title: `hand this terminal off for ${r.by}` }, [`Approve ${r.by}`])
+        ok.addEventListener('click', () => act(s.session_id, `requests/${encodeURIComponent(r.by)}/approve`, ok))
+        actions.appendChild(ok)
+      }
       const no = el('button', { type: 'button', class: 'btn btn-danger' }, [`Dismiss ${r.by}`])
       no.addEventListener('click', () => act(s.session_id, `requests/${encodeURIComponent(r.by)}/dismiss`, no))
-      actions.append(ok, no)
+      actions.appendChild(no)
     }
     side.appendChild(actions)
     term.appendChild(row)

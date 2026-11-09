@@ -427,9 +427,9 @@ cannot run is omitted too, with its reason hoisted above the panel.
 |--------|------------|--------------|
 | Land | always, disabled with the reason printed under it when the session has no worktree of its own, while it is landing, or when the worktree is gone | `POST /api/sessions/:id/land` (202): commits what the agent left on `leg/<id>`, rebases it onto its base, runs the tests, fast-forwards the base or bounces; the panel's sentence shows the result |
 | Request handoff | the board is shared and this terminal is someone else's | `POST /api/sessions/:id/request-handoff` (202): asks the owner; nothing happens until they approve |
-| Approve `<name>` / Dismiss `<name>` | the board is shared and someone asked for a hand-off on your terminal | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
+| Approve `<name>` / Dismiss `<name>` | the board is shared and someone asked for a hand-off on your terminal; Approve only while Hand off now is offered, so a request made while the terminal is handing off or waiting stays pending until then | `POST /api/sessions/:id/requests/<name>/approve` (or `/dismiss`): approving hands the terminal off, and the event says who it was for |
 | Details | any terminal of yours | `GET /api/sessions/:id/detail`: the transcript, the files changed with their line counts, the timeline and the current bundle; `GET /api/sessions/:id/diff?file=<path>` for one file, capped at 400 lines, refused for any path outside that terminal's own tree |
-| Hand off now | the session is active | asks first in the row's confirm row (`Hands off to the first open rung of this terminal's ladder. The current turn stops.`), then `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal. It stops a working agent mid-turn, so it asks whether the mouse or the `h` key pressed it |
+| Hand off now | the status is `starting`, `running`, `warning` or `limit` (not while it is already handing off or waiting for a reset) | asks first in the row's confirm row (`Hands off to the first open rung of this terminal's ladder. The current turn stops.`), then `POST /api/sessions/:id/handoff`: saves the bundle, stops this agent, starts the next option in the same terminal. It stops a working agent mid-turn, so it asks whether the mouse or the `h` key pressed it |
 | Change the ladder | inside the expansion, while the status is `starting`, `running`, `warning`, `limit` or `waiting` | `POST /api/sessions/:id/handoff-order` with the whole `handoff_ladder`; an older wrapper instead saves the machine default and says to restart the terminal |
 | End | the session is active | `POST /api/sessions/:id/end`: stops the agent, ends the session |
 | Remove | the session is not active | `DELETE /api/sessions/:id`: safely prunes the session record, worktree, and merged branch only when the worktree is clean and the branch is already on its base; otherwise it leaves them and explains why |
@@ -438,7 +438,9 @@ cannot run is omitted too, with its reason hoisted above the panel.
 End, Remove and Remove record confirm first: the button row is replaced in place
 by one sentence and its buttons, focus moves to Cancel, and Escape cancels. End
 offers a second verb, **End, and keep going as a card**, when the terminal is in
-a repository and the reader may use cards.
+a repository, the reader may use cards, and it is not handing off (the runner
+is saving its own bundle then). Which of these a row shows comes from the
+row's `actions` (docs/cli-contracts.md, the terminal lifecycle).
 There is no modal and no browser `confirm()`. Settings has the same ladder
 editor for the default copied by new terminals.
 

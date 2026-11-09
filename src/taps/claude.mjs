@@ -232,7 +232,7 @@ export function handleHook(sessionId, p) {
   switch (p.hook_event_name) {
     case 'SessionStart':
       // reducer: one hook process per tool call, so read `cur` inside the lock
-      updateSession(sessionId, (cur) => ({ ...base, status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'agent_ready', summary: `claude session ${p.session_id ?? '?'} (${p.source ?? 'startup'})` } })
+      updateSession(sessionId, (cur) => ({ ...base, status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'agent_ready', summary: `claude session ${p.session_id ?? '?'} (${p.source ?? 'startup'})` }, onIllegal: 'drop_status' })
       return 'session start'
     case 'UserPromptSubmit': {
       // the human typed, so whatever was being waited on has been answered
@@ -270,7 +270,7 @@ export function handleHook(sessionId, p) {
     }
     case 'Stop':
       // reducer: never turn a 'limit'/'handing_off' back to 'running' by racing
-      updateSession(sessionId, (cur) => ({ ...base, ...clearHumanWait(cur), status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'turn_done', summary: String(p.last_assistant_message ?? '').slice(0, 160) || 'turn done' } })
+      updateSession(sessionId, (cur) => ({ ...base, ...clearHumanWait(cur), status: cur.status === 'starting' ? 'running' : cur.status }), { event: { type: 'turn_done', summary: String(p.last_assistant_message ?? '').slice(0, 160) || 'turn done' }, onIllegal: 'drop_status' })
       return 'stop'
     case 'StopFailure': {
       if (p.error === 'rate_limit') {
@@ -293,7 +293,10 @@ export function handleHook(sessionId, p) {
           evidence: detail,
         })
         const resets = hit.scope === 'model' ? (u.walls?.[hit.model]?.limited_until ?? null) : u.limited_until
-        updateSession(sessionId, { ...base, status: 'limit', limit: { reason: 'rate_limit', detail, resets_at: resets, at: new Date().toISOString(), simulated, scope: hit.scope, model: hit.model ?? null } }, { event: { type: 'limit', summary: `claude usage limit${simulated ? ' (simulated)' : ''}${hit.scope === 'model' ? ` (${hit.model})` : ''}: ${detail.slice(0, 160)}` } })
+        // the wall is on the usage record above whatever happens here: a
+        // StopFailure from a child that is handing off, waiting or gone does
+        // not move the status, and its line becomes transition_refused
+        updateSession(sessionId, { ...base, status: 'limit', limit: { reason: 'rate_limit', detail, resets_at: resets, at: new Date().toISOString(), simulated, scope: hit.scope, model: hit.model ?? null } }, { event: { type: 'limit', summary: `claude usage limit${simulated ? ' (simulated)' : ''}${hit.scope === 'model' ? ` (${hit.model})` : ''}: ${detail.slice(0, 160)}` }, onIllegal: 'drop_status' })
         return 'LIMIT'
       }
       appendEvent(sessionId, { type: 'error', summary: `claude ${p.error}: ${String(p.last_assistant_message ?? p.error_details ?? '').slice(0, 160)}` })
@@ -336,7 +339,7 @@ export function handleStatusline(sessionId, p, raw = '') {
     if (warn && cur.status === 'running') patch.status = 'warning'
     if (!warn && cur.status === 'warning') patch.status = 'running'
     return patch
-  }, warn && !s.warning ? { event: { type: 'warning', summary: `claude ${hot[0]} window at ${Math.round(hot[1].pct)}%` } } : {})
+  }, { event: warn && !s.warning ? { type: 'warning', summary: `claude ${hot[0]} window at ${Math.round(hot[1].pct)}%` } : undefined, onIllegal: 'drop_status' })
   const next = s.chain?.[0] ? `${s.chain[0].agent}${s.chain[0].account !== 'default' ? '/' + s.chain[0].account : ''}` : 'nothing'
   const pct = limits ? ` 5h ${limits.five_hour ? Math.round(limits.five_hour.pct) + '%' : '-'} · 7d ${limits.seven_day ? Math.round(limits.seven_day.pct) + '%' : '-'}` : ''
   const text = warn ? `⚠ leg: ${hot[0]} at ${Math.round(hot[1].pct)}% → next ${next}${pct}` : `leg ·${pct || ' limits pending'} · next ${next} · board ${s.board_url ?? ''}`

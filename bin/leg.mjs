@@ -60,10 +60,13 @@ async function cardAdd(args) {
 // clears after two minutes. codex has no Leg-owned input, so it is refused.
 // `sessionsApi` is the already-imported src/sessions.mjs namespace: the
 // `sessions` command group loads it once and passes it through.
-function simulateLimit(sessionsApi, s, { message = null } = {}) {
+// `lifecycle` is src/session-lifecycle.mjs, loaded by the same group.
+function simulateLimit(sessionsApi, s, { message = null, lifecycle } = {}) {
   const { isActive, sessionDir, appendEvent, readSession } = sessionsApi
   if (!isActive(s)) die(3, `session ${s.session_id} is not active`)
-  if (['limit', 'handing_off'].includes(s.status)) die(3, `session ${s.session_id} is already ${s.status}`)
+  // a terminal that is handing off or waiting cannot move to limit, so a
+  // simulated wall there would only be refused by the hook's write
+  if (!lifecycle.canTransition(s.status, 'limit')) die(3, `session ${s.session_id} is already ${s.status}`)
   if (s.agent === 'claude') {
     const payload = {
       hook_event_name: 'StopFailure', error: 'rate_limit', session_id: s.agent_session_id ?? undefined, transcript_path: s.transcript_path ?? undefined,
@@ -234,21 +237,31 @@ async function main() {
   }
   if (group === 'sessions') {
     const sessionsApi = await import('../src/sessions.mjs')
+    const lifecycle = await import('../src/session-lifecycle.mjs')
     const { listSessions, readSession, isActive, removeSession, readLand, requestControl } = sessionsApi
+    // what a human may do now, and the states the record can move to
+    const withMoves = (x) => ({ ...x, actions: lifecycle.sessionActions(x), allowed_next: lifecycle.nextStates(x.status) })
+    // the same sentence the board's 409 carries, on stderr, exit 3
+    const allow = (x, verb) => {
+      try { lifecycle.assertAction(x, verb) } catch (err) {
+        if (err instanceof lifecycle.IllegalSessionTransition) die(3, err.message)
+        throw err
+      }
+    }
     const readSessionEvents = sessionsApi.readEvents
     const list = listSessions()
     if (cmd === 'ls' || !cmd) {
-      if (args.json) return out(JSON.stringify(list, null, 2))
+      if (args.json) return out(JSON.stringify(list.map(withMoves), null, 2))
       if (!list.length) return out('(no sessions)')
       for (const s of list) out(`${s.session_id}  [${s.status}]  ${s.agent}${s.account !== 'default' ? '/' + s.account : ''}  ${s.repo_name ?? s.cwd}${s.branch ? '@' + s.branch : ''}  turns=${s.turns}  ${s.limits ? `5h ${s.limits.five_hour?.pct ?? '-'}% 7d ${s.limits.seven_day?.pct ?? '-'}%` : ''}  ${String(s.task ?? '').slice(0, 50)}`)
       return
     }
     const id = args._[0] || die(2, `usage: leg sessions ${cmd} <session-id>${cmd === 'handoff' ? ' [--to <agent>[/<account>]]' : ''}`)
     const s = readSession(id) || die(3, `session not found: ${id}`)
-    if (cmd === 'show') return out(JSON.stringify({ session: s, events: readSessionEvents(id) }, null, 2))
+    if (cmd === 'show') { const m = withMoves(s); return out(JSON.stringify({ session: s, events: readSessionEvents(id), actions: m.actions, allowed_next: m.allowed_next }, null, 2)) }
     if (cmd === 'events') { for (const e of readSessionEvents(id)) out(`${e.ts}  ${String(e.type).padEnd(18)}  ${e.summary}`); return }
     if (cmd === 'handoff') {
-      if (!isActive(s)) die(3, `session ${id} is not active`)
+      allow(s, 'handoff')
       // --to names the destination, the same choice the board's picker makes.
       // Validated here for the same reason it is validated there: a pick that
       // is not a destination, is not installed, or is at its wall must be
@@ -275,7 +288,7 @@ async function main() {
       requestControl(id, { handoff: true })
       return out(`handoff requested for ${id}`)
     }
-    if (cmd === 'end') { if (!isActive(s)) die(3, `session ${id} is not active`); requestControl(id, { end: true }); return out(`end requested for ${id}`) }
+    if (cmd === 'end') { allow(s, 'end'); requestControl(id, { end: true }); return out(`end requested for ${id}`) }
     if (cmd === 'rm') {
       if (isActive(s)) die(3, `session ${id} is still active; end it first`)
       // a land runs in the board's process: land.json is the only place this
@@ -298,7 +311,7 @@ async function main() {
     // is the only way to reach a per-model wall without waiting for one:
     // --message "You've reached your Fable limit." walls fable and leaves the
     // rest of the login open (src/buckets.mjs).
-    if (cmd === 'simulate-limit') return simulateLimit(sessionsApi, s, { message: typeof args.message === 'string' ? args.message : null })
+    if (cmd === 'simulate-limit') return simulateLimit(sessionsApi, s, { message: typeof args.message === 'string' ? args.message : null, lifecycle })
     die(2, `unknown sessions command "${cmd}" (ls|show|events|handoff|end|rm|simulate-limit)`)
   }
   if (group === 'ladder') {

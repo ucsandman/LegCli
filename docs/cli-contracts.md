@@ -610,6 +610,102 @@ Board routes: `PATCH /api/settings` (owner only) also accepts
 `POST /api/sessions/:id/handoff` accepts `target.model` alongside
 `target.agent` and `target.account` (source: src/server.mjs).
 
+### The terminal lifecycle
+
+A terminal's `status` moves only along the edges below (source:
+src/session-lifecycle.mjs `SESSION_EDGES`). `createSession` writes the first
+`starting`. `ended` and `handed_off` have no way out; `handed_off` is never
+written by this version and is kept so an older record still reads. A
+same-status write is not a transition. `actor` is who makes the move: a human
+on the board or the CLI (`user`), the agent's own signal (`agent`), the
+board's usage poller (`cron`), or the runner (`system`).
+
+| from | to | actor | note |
+|------|----|-------|------|
+| `starting` | `running` | agent | claude SessionStart/Stop hooks (taps/claude.mjs); agy/grok first prompt (attach.mjs tick) |
+| `starting` | `running` | system | a non-claude first leg starts running (attach.mjs runLeg) |
+| `starting` | `warning` | agent | agy/grok first prompt and the warning threshold in the same tick (attach.mjs) |
+| `starting` | `limit` | agent | claude StopFailure (taps/claude.mjs); codex/agy/grok wall in the tick (attach.mjs) |
+| `starting` | `limit` | cron | codex reports ordinary usage unavailable (usage-poll.mjs) |
+| `starting` | `handing_off` | user | Hand off now or Approve, written by the runner (attach.mjs tick) |
+| `starting` | `ended` | user | End (attach.mjs tick, then the final write) |
+| `starting` | `ended` | system | the spawn throws, or the agent exits (attach.mjs) |
+| `starting` | `lost` | system | the runner pid is gone (sessions.mjs reapLost) |
+| `running` | `warning` | agent | a usage window crossed the warning threshold (taps/claude.mjs status line, attach.mjs tick) |
+| `running` | `limit` | agent | claude StopFailure; codex/agy/grok wall in the tick |
+| `running` | `limit` | cron | codex reports ordinary usage unavailable (usage-poll.mjs) |
+| `running` | `handing_off` | user | Hand off now or Approve (attach.mjs tick) |
+| `running` | `ended` | user | End |
+| `running` | `ended` | system | the agent exits (attach.mjs final write) |
+| `running` | `lost` | system | reapLost |
+| `warning` | `running` | agent | the window dropped back under the threshold (taps/claude.mjs status line) |
+| `warning` | `limit` | agent | claude StopFailure; codex/agy/grok wall in the tick |
+| `warning` | `limit` | cron | codex reports ordinary usage unavailable (usage-poll.mjs) |
+| `warning` | `handing_off` | user | Hand off now or Approve (attach.mjs tick) |
+| `warning` | `ended` | user | End |
+| `warning` | `ended` | system | the agent exits (attach.mjs final write) |
+| `warning` | `lost` | system | reapLost |
+| `limit` | `handing_off` | system | the next option is claimed (attach.mjs claimHandoffChoice) |
+| `limit` | `handing_off` | user | Hand off now while claude stood down at its own limit (attach.mjs tick) |
+| `limit` | `waiting` | system | every option is out (attach.mjs all-out wait) |
+| `limit` | `ended` | user | End |
+| `limit` | `ended` | system | LEG_NO_HANDOFF=1, or a stood-down claude exits (attach.mjs final write) |
+| `limit` | `lost` | system | reapLost |
+| `handing_off` | `starting` | system | the next leg starts, claude (attach.mjs runLeg) |
+| `handing_off` | `running` | system | the next leg starts, codex/agy/grok (attach.mjs runLeg) |
+| `handing_off` | `waiting` | system | no destination is open after a board request (attach.mjs all-out wait) |
+| `handing_off` | `ended` | system | the next spawn throws, the strict harness refuses every destination (exit 5), or the 12-leg cap (exit 3) |
+| `handing_off` | `ended` | user | End, honored at the leg boundary before the next leg starts (attach.mjs legBoundary) |
+| `handing_off` | `lost` | system | reapLost |
+| `waiting` | `handing_off` | system | the first reset arrived and the next option is claimed (attach.mjs claimHandoffChoice) |
+| `waiting` | `ended` | user | End or Ctrl-C during the countdown (attach.mjs, exit 3) |
+| `waiting` | `ended` | system | the runner exits (attach.mjs final write) |
+| `waiting` | `lost` | system | reapLost |
+| `lost` | `ended` | system | a runner the board reaped as lost exits after all (attach.mjs final write) |
+
+Every status write in src/ goes through `updateSession(id, patch, { onIllegal })`,
+which checks the move inside `.session.lock` against the record as it is
+then: `'skip'` writes nothing, `'drop_status'` writes everything but the
+status. Neither throws, and a refused write's event is recorded as one
+`transition_refused` line instead. So a stale tick cannot put `warning`
+over a `limit` a hook wrote, the poller cannot put `limit` over
+`waiting`, and `reapLost` cannot mark an `ended` record `lost`.
+
+What a human may do is `actions` on every `GET /api/sessions` row, and
+`actions` plus `allowed_next` (`nextStates(status)`) beside the record on
+`GET /api/sessions/:id`, `leg sessions show <id>` and each record of
+`leg sessions ls --json`. The verbs: `handoff` and `approve_request`
+(`starting`, `running`, `warning`, `limit`), `end` (every active
+status), `end_as_card` (active, except `handing_off`: the runner is saving
+its own bundle then), `edit_order` (active, except `handing_off`), and
+`remove` (not active). The board draws Hand off now, the Hand off now to
+picker, Approve, End, End and keep going as a card, the ladder editor and
+Remove from them.
+
+`POST /api/sessions/:id/handoff`, `/end`, `/end-as-card` and
+`/requests/<name>/approve` refuse a verb that is not in `actions` with 409:
+
+```json
+{ "error": "session s-x is handing off: Hand off now is not available now (it can: end)",
+  "code": "illegal_transition", "current": "handing_off", "requested": "handing_off",
+  "allowed": ["ended"], "actions": ["end"] }
+```
+
+`error` stays the sentence the board prints, and for a terminal that is not
+active it is still `session <id> is not active`. `allowed` is where a human
+may move it from here. The `handoff-order` 409 keeps its sentence and gains
+`current` and `actions`. `leg sessions handoff|end <id>` print the same
+sentence on stderr and exit 3, and `leg sessions simulate-limit <id>` on a
+terminal that cannot move to `limit` exits 3 with `session <id> is already
+<status>` (source: bin/leg.mjs).
+
+The hand-off window: End pressed while a terminal is handing off is honored at
+the leg boundary, before the next agent starts, with exit 0 and the line `end
+requested during the hand-off; the next leg was not started`. Hand off now and
+Approve are refused while `handing_off` and `waiting`; one that raced in is
+dropped at the boundary with `a hand-off requested during the hand-off was
+dropped` (source: src/attach.mjs `legBoundary`).
+
 ### GET /api/models
 
 The models this machine can start each agent on, so a rung and a card can name

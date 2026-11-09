@@ -155,7 +155,9 @@ export function createUsagePollers({
   // claude's failure line, must never follow codex onto the card. The event is
   // written after, and only if the patch was the right terminal's.
   function pushToSession(id, agent, account, patch, event) {
-    const next = updateSession(id, (cur) => (cur.agent === agent && cur.account === account && isActive(cur) ? patch : {}))
+    // drop_status: a codex wall never moves a waiting or handing_off terminal
+    // back to limit; the percentages still land
+    const next = updateSession(id, (cur) => (cur.agent === agent && cur.account === account && isActive(cur) ? patch : {}), { onIllegal: 'drop_status' })
     if (event && next && next.agent === agent && next.account === account) appendEvent(id, event)
     return next
   }

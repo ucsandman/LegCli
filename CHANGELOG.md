@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- A terminal's status now moves only along one table
+  (`src/session-lifecycle.mjs`, written up in docs/cli-contracts.md), checked
+  inside the session lock: a stale tick no longer turns `limit` back into
+  `warning`, the usage poller no longer turns `waiting` into `limit`, and a
+  terminal that ended is no longer marked `lost`. End pressed during a
+  hand-off now stops before the next agent starts instead of killing it on its
+  first tick. Hand off now, Approve and End and keep going as a card are no
+  longer offered while they cannot work; a raced request gets a 409 carrying
+  `code: "illegal_transition"`, `current`, `allowed` and `actions`
+  (exit 3 from `leg sessions`). Session rows and `GET /api/sessions/:id`
+  carry `actions`, and the record read adds `allowed_next`.
+
 - A completed, zero-total Personal checkout marked `no_payment_required` now
   shows and emails its license. Both paths re-read Stripe and require exactly
   one unit of a recognized one-time Personal price, with no subscription or

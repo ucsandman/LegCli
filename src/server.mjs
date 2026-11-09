@@ -31,6 +31,7 @@ import { scrub } from './runner.mjs'
 import { resolveChb } from './handoff.mjs'
 import { listSessions, readSession, readEvents as readSessionEvents, requestControl, removeSession, overlaps, isActive, sessionsRoot, reapLost, readLand, readLandings, readRequests, writeRequests, appendEvent as appendSessionEvent, updateSession, HANDOFF_ORDER_CAPABILITY, SUPERVISED_AGENTS } from './sessions.mjs'
 import { sessionDetail, sessionDiff, DiffInputError } from './session-detail.mjs'
+import { ORDER_EDITABLE_STATES, IllegalSessionTransition, assertAction, sessionActions, nextStates } from './session-lifecycle.mjs'
 import { hasRecentSynthesis } from './synthesis.mjs'
 import { refreshPointers } from './resume.mjs'
 import { landSession, landBlocker, landingNow, pruneSessionWorktree, canLand, prepareLanding, applyLandFix } from './land.mjs'
@@ -745,6 +746,9 @@ export function sessionsView({ viewer = null, share = null, read = readUsage } =
       ...(guest ? {} : { capacity: binding(readUsageOnce(s.agent, s.account), s.model ?? null) }),
       can_edit_handoff_order: s.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY) ?? false,
       active: isActive(s),
+      // what a human may do to this terminal now; the board draws its buttons
+      // from it (src/session-lifecycle.mjs sessionActions)
+      actions: sessionActions(s),
       has_synthesis: hasRecentSynthesis(s, { index: synthesisIndex }),
       overlap: ov.get(s.session_id) ?? [],
       elapsed_ms: Date.now() - Date.parse(s.started_at),
@@ -810,6 +814,13 @@ function send(res, status, body, headers = {}) {
   const data = typeof body === 'string' ? body : JSON.stringify(body)
   res.writeHead(status, { 'Content-Type': typeof body === 'string' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers })
   res.end(data)
+}
+
+// The 409 for a session action the lifecycle refuses: `error` stays the
+// sentence the board prints, and the rest says what the terminal is and what
+// it can do instead (src/session-lifecycle.mjs assertAction).
+function refusalBody(err) {
+  return { error: err.message, code: err.code, current: err.current, requested: err.requested, allowed: err.allowed, actions: err.actions }
 }
 
 function readBody(req) {
@@ -1310,7 +1321,14 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           const approve = parts[5] === 'approve'
           // check liveness before mutating the request, so a session that ended
           // just before Approve does not leave the request stuck in 'approved'
-          if (approve && !isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
+          // and before mutating it, a terminal that is handing off or waiting:
+          // Approve is Hand off now, and that is not available then
+          if (approve) {
+            try { assertAction(sess, 'approve_request') } catch (err) {
+              if (err instanceof IllegalSessionTransition) return send(res, 409, refusalBody(err))
+              throw err
+            }
+          }
           hit.state = approve ? 'approved' : 'dismissed'
           hit.answered_at = new Date().toISOString()
           hit.answered_by = viewer.name
@@ -1334,6 +1352,8 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
             session: asGuest ? scrubOwnerUsage(sess) : sess,
             events: asGuest ? events.filter((e) => !isUsageFailureEvent(e)) : events,
             requests: readRequests(id),
+            actions: sessionActions(sess),
+            allowed_next: nextStates(sess.status),
           })
         }
         // the card's drawer: what the agent last said, what it changed, what it
@@ -1358,8 +1378,8 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           if (!sess.runtime_capabilities?.includes(HANDOFF_ORDER_CAPABILITY)) {
             return send(res, 409, { error: 'this terminal started before order changes were available; save the order as the default, then restart the terminal when ready' })
           }
-          if (!['starting', 'running', 'warning', 'limit', 'waiting'].includes(sess.status)) {
-            return send(res, 409, { error: `handoff order cannot change while this terminal is ${sess.status}` })
+          if (!ORDER_EDITABLE_STATES.includes(sess.status)) {
+            return send(res, 409, { error: `handoff order cannot change while this terminal is ${sess.status}`, current: sess.status, actions: sessionActions(sess) })
           }
           const body = await readBody(req)
           try {
@@ -1371,9 +1391,11 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
             const rungs = ladder ?? ladderFor({ handoff_order: order })
             const summary = ladder ? `handoff ladder changed to ${rungs.map((r) => rungLabel(r)).join(' → ')}` : `handoff order changed to ${order.join(' → ')}`
             const next = updateSession(id, (current) => {
-              if (!['starting', 'running', 'warning', 'limit', 'waiting'].includes(current.status)) {
+              if (!ORDER_EDITABLE_STATES.includes(current.status)) {
                 const conflict = new Error(`handoff order cannot change while this terminal is ${current.status}`)
                 conflict.statusCode = 409
+                conflict.current = current.status
+                conflict.actions = sessionActions(current)
                 throw conflict
               }
               return {
@@ -1386,7 +1408,7 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
             return send(res, 200, { session: next })
           } catch (err) {
             if (err instanceof TypeError) return send(res, 400, { error: err.message })
-            if (err.statusCode === 409) return send(res, 409, { error: err.message })
+            if (err.statusCode === 409) return send(res, 409, { error: err.message, current: err.current, actions: err.actions })
             throw err
           }
         }
@@ -1435,7 +1457,12 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           // a card is the pipeline board, which belongs to the owner and the
           // operators of this machine even when the terminal is the caller's
           if (!canCards) return send(res, 403, { error: 'the pipeline board belongs to the owner and the operators of this machine' })
-          if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
+          // refused while handing_off too: the runner is saving its own bundle
+          // on this slug, and a second save would collide with it
+          try { assertAction(sess, 'end_as_card') } catch (err) {
+            if (err instanceof IllegalSessionTransition) return send(res, 409, refusalBody(err))
+            throw err
+          }
           if (!sess.repo) return send(res, 409, { error: 'this terminal is not in a git repository, so there is no branch for a card to continue on' })
           let bundle
           try {
@@ -1520,7 +1547,13 @@ export function createBoardServer({ bind, port, token = process.env.LEG_TOKEN ||
           return send(res, 201, { card: next, bundle: { id: bundle.id, path: bundle.path }, carried: { files: carriedFiles, adopted: Boolean(adopted) } })
         }
         if (req.method === 'POST' && (parts[3] === 'handoff' || parts[3] === 'end')) {
-          if (!isActive(sess)) return send(res, 409, { error: `session ${id} is not active` })
+          // outside the session lock, as before: a request that races into the
+          // hand-off window is settled by the runner's leg boundary
+          // (src/attach.mjs legBoundary), which ends or drops it
+          try { assertAction(sess, parts[3]) } catch (err) {
+            if (err instanceof IllegalSessionTransition) return send(res, 409, refusalBody(err))
+            throw err
+          }
           if (parts[3] === 'end') {
             requestControl(id, { end: true, by: actor.id })
             log(`end requested for ${id} by ${actor.id}`)

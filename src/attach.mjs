@@ -566,14 +566,14 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   try {
     child = spawn(spec.bin, spec.args, { cwd: spec.cwd, env: spec.env, stdio: 'inherit', windowsHide: false })
   } catch (err) {
-    updateSession(sid, { status: 'ended', ended_at: new Date().toISOString() }, { event: { type: 'error', summary: `${agent} failed to start: ${err.message}` } })
+    updateSession(sid, { status: 'ended', ended_at: new Date().toISOString() }, { event: { type: 'error', summary: `${agent} failed to start: ${err.message}` }, onIllegal: 'skip' })
     return { reason: 'exit', code: 127 }
   }
   // every leg starts on its own card: the agent that just left takes its
   // percentages, its warning and its usage source with it
   // the model goes with it: the next leg's argv is the only thing Leg knows
   // about the model until that agent's own transcript says otherwise
-  updateSession(sid, { pid: child.pid, agent, account, model: modelFromArgs(agent, args) ?? model ?? null, status: agent === 'claude' ? 'starting' : 'running', limit: null, warning: null, limits: null, usage_source: null, usage_error: null })
+  updateSession(sid, { pid: child.pid, agent, account, model: modelFromArgs(agent, args) ?? model ?? null, status: agent === 'claude' ? 'starting' : 'running', limit: null, warning: null, limits: null, usage_source: null, usage_error: null }, { onIllegal: 'drop_status' })
 
   // taps
   let rollout = null; let tail = null
@@ -732,7 +732,8 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
           patch.turns = turns; patch.last_activity = new Date().toISOString()
           if (!s.task) patch.task = prompts[0].text.slice(0, 500)
           if (!s.agent_session_id && prompts[0].conversationId) patch.agent_session_id = prompts[0].conversationId
-          if (s.status === 'starting') patch.status = 'running'
+          // never over a limit this same tick found above
+          if (s.status === 'starting' && !patch.status) patch.status = 'running'
         }
       }
       // grok: log text + prompts
@@ -751,7 +752,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
           patch.turns = turns; patch.last_activity = new Date().toISOString()
           if (!s.task) patch.task = prompts[0].text.slice(0, 500)
           if (!s.agent_session_id && prompts[0].sessionId) patch.agent_session_id = prompts[0].sessionId
-          if (s.status === 'starting') patch.status = 'running'
+          if (s.status === 'starting' && !patch.status) patch.status = 'running'
         }
       }
       // warning threshold (every agent; claude's limits arrive via the usage poller)
@@ -777,7 +778,9 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
           try { await saveSessionBundleAsync(at, { messages: messagesFor(agent, at), why: 'checkpoint' }) } catch (err) { appendEvent(sid, { type: 'error', summary: `bundle checkpoint failed: ${err.message.slice(0, 160)}` }) }
         })
       }
-      const next = Object.keys(patch).length ? updateSession(sid, patch) : s
+      // `s` was read at the top of the tick: the status in this patch is
+      // checked against the record as it is under the lock
+      const next = Object.keys(patch).length ? updateSession(sid, patch, { onIllegal: 'drop_status' }) : s
       const ctl = takeControl(sid)
       // end wins over a merged handoff: control.json now merges writes, so a
       // record can carry both; End (stop entirely) is the stronger, latest intent
@@ -787,11 +790,12 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
           ? { agent: String(ctl.target.agent), account: String(ctl.target.account ?? 'default'), ...(ctl.target.model ? { model: String(ctl.target.model) } : {}) }
           : null
         const toWhom = picked ? ` to ${rungLabel(picked)}` : ''
-        updateSession(sid, { status: 'handing_off', handoff: { reason: `requested from the board${ctl.by ? ` by ${ctl.by}` : ''}`, at: new Date().toISOString(), by: ctl.by ?? null, requested_to: picked } }, { event: { type: 'handoff_requested', by: ctl.by ?? null, summary: `hand off${toWhom} requested from the board${ctl.by ? ` by ${ctl.by}` : ''}` } })
+        updateSession(sid, { status: 'handing_off', handoff: { reason: `requested from the board${ctl.by ? ` by ${ctl.by}` : ''}`, at: new Date().toISOString(), by: ctl.by ?? null, requested_to: picked } }, { event: { type: 'handoff_requested', by: ctl.by ?? null, summary: `hand off${toWhom} requested from the board${ctl.by ? ` by ${ctl.by}` : ''}` }, onIllegal: 'skip' })
         clearInterval(timer); killTree(child.pid); restoreTerminal(); stop({ reason: 'handoff', code: null, target: picked }); return
       }
-      // a stale warning patch can overwrite status:'limit' from the hook, but the
-      // limit OBJECT survives the clobber — hand off on either signal
+      // a stale warning patch used to overwrite status:'limit' from the hook;
+      // updateSession now refuses limit → warning under the lock. The limit
+      // OBJECT is still read too — hand off on either signal
       if ((next.status === 'limit' || next.limit) && (process.env.LEG_NO_HANDOFF || process.env.BATON_NO_HANDOFF) !== '1') {
         // Claude Code is waiting at the limit itself: stand down rather than
         // kill a child that is about to resume on its own. Said once, with the
@@ -845,6 +849,21 @@ function messagesFor(agent, s) {
   if (agent === 'claude') return claudeTail(s.transcript_path)
   if (agent === 'codex') return codexTail(s.transcript_path)
   return []
+}
+
+// Between two legs: the board's End or Hand off now arrived while this terminal
+// was handing off. End stops here, before the next agent is spawned, with the
+// exit an End during a leg gives (0). A hand-off is already under way, so a
+// second one is dropped and said so; the board offers neither Hand off now
+// nor Approve while handing_off, so only a raced request gets here.
+export function legBoundary(sid) {
+  const ctl = takeControl(sid)
+  if (ctl?.end) {
+    appendEvent(sid, { type: 'status', by: ctl.by ?? null, summary: `end requested during the hand-off${ctl.by ? ` by ${ctl.by}` : ''}; the next leg was not started` })
+    return { end: true }
+  }
+  if (ctl?.handoff) appendEvent(sid, { type: 'status', by: ctl.by ?? null, summary: 'a hand-off requested during the hand-off was dropped' })
+  return { end: false }
 }
 
 // Choose and commit the next provider under the same session-file lock used by
@@ -907,7 +926,9 @@ export function claimHandoffChoice({ sid, agent, account, model = null, installe
         at: new Date().toISOString(),
       },
     }
-  })
+  }, { onIllegal: 'skip' })
+  // a claim the lifecycle refused (a record already ended or lost) is not a claim
+  claimed = claimed && session?.status === 'handing_off'
   return { choice, claimed, session }
 }
 
@@ -1070,6 +1091,9 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
   // unbounded: the 12-leg cap below stops a runaway chain, and the all-out wait
   // bounds a wait; a normal session runs one leg and exits
   for (let leg = 0; ; leg++) {
+    // a request written while the last leg was handing off is read here, not
+    // by the next leg's first tick (which would kill the agent it just started)
+    if (leg > 0 && legBoundary(sid).end) { exit = 0; break }
     const s = readSession(sid)
     const r = await runLeg({ agent, account, args: legArgs, session: s, prompt, boardUrl: board.url, autoApprove, model: legModel, resume: legResume })
     if (r.reason === 'exit') { exit = r.code ?? 0; break }
@@ -1107,14 +1131,14 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       // `type: 'reset'` tells this apart from the Notification hook's
       // `waiting` (a human being waited on). Same key, two shapes, one
       // discriminator; see the field comment in src/sessions.mjs.
-      updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { type: 'reset', agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` } })
+      updateSession(sid, { status: 'waiting', all_out: all, waiting: first ? { type: 'reset', agent: first.agent, account: first.account, resets_at: first.resets_at, since: new Date().toISOString() } : null }, { event: { type: 'all_out', summary: `every option is out; waiting for ${label} at ${first ? fmtReset(first.resets_at) : 'unknown'}` }, onIllegal: 'skip' })
       const r2 = await waitInTerminal({ sid, label, resetsAt: first?.resets_at ?? null })
       if (r2 === 'cancelled') { cancelled = true; break }
       claim = claimHandoffChoice({ sid, agent, account, model: cur.model ?? null, installed, bundle, reason: r.reason, exclude: excluded, prefer, automatic: r.reason !== 'handoff' })
       choice = claim.choice
     }
     if (cancelled) {
-      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), waiting: null }, { event: { type: 'ended', summary: 'quit while waiting for a reset (exit 3)' } })
+      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), waiting: null }, { event: { type: 'ended', summary: 'quit while waiting for a reset (exit 3)' }, onIllegal: 'skip' })
       exit = 3
       break
     }
@@ -1132,7 +1156,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     }
     if (blocked) {
       say('every remaining option was refused by the strict harness policy; stopping (exit 5). Fix what needs attention (leg harness status) or relax the policy (leg harness policy sync), then run leg again in this directory.')
-      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: 5, waiting: null }, { event: { type: 'ended', summary: 'strict harness policy refused every destination; stopped (exit 5)' } })
+      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: 5, waiting: null }, { event: { type: 'ended', summary: 'strict harness policy refused every destination; stopped (exit 5)' }, onIllegal: 'skip' })
       exit = 5
       break
     }
@@ -1153,7 +1177,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
       // promise a hand-off that never happened. The path and the reader are the
       // true part.
       say(`reached the 12-leg hand-off limit for one session; stopping.${bundle?.path ? ` The bundle is at ${bundle.path}; \`leg resume\` prints the hand-off it describes. A fresh \`leg <agent>\` here is a new session and does not load it: point that agent at the file.` : ' No bundle was saved for this hand-off.'}`)
-      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: 3 }, { event: { type: 'ended', summary: 'reached the 12-leg hand-off limit; stopped (exit 3)' } })
+      updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: 3 }, { event: { type: 'ended', summary: 'reached the 12-leg hand-off limit; stopped (exit 3)' }, onIllegal: 'skip' })
       exit = 3
       break
     }
@@ -1202,7 +1226,7 @@ export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null
     })
   }
   const fin = readSession(sid)
-  if (fin && fin.status !== 'ended') updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: exit }, { event: { type: 'ended', summary: `session ended (exit ${exit})` } })
+  if (fin && fin.status !== 'ended') updateSession(sid, { status: 'ended', ended_at: new Date().toISOString(), exit_code: exit }, { event: { type: 'ended', summary: `session ended (exit ${exit})` }, onIllegal: 'skip' })
   // Every way out of the loop arrives here: a clean exit, a cancelled wait, the
   // 12-leg cap, an agent that never started. The terminal is gone, so RESUME.md
   // must stop describing it as live — Leg owns that file, and leaving the last
