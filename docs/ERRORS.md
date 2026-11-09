@@ -3,6 +3,26 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-11-09: CI went red because the committed docs site was not regenerated after a docs/ edit
+
+**Fixed by running `npm run docs` and committing the four regenerated
+site/docs pages (e05c48d).** The session-lifecycle commit (c2cf858) changed
+docs/cli-contracts.md and the board guide without rebuilding site/, and the CI
+job "The committed docs site matches docs/" diffs site/ after a rebuild. Any
+change under docs/ ships with `npm run docs` in the same commit.
+
+## 2026-11-09: the two digest tests expire with the calendar (open, fixture decision)
+
+**Not fixed.** `test/digest.test.mjs` ("leg digest prints it, --json returns
+the record, and a bad window exits 2" and "GET /api/digest answers the owner
+and refuses a guest and an operator") build sessions and cards with absolute
+early-October timestamps and assert `needs you: 3` inside the default 30-day
+window. The assertion output now reads "51d ago" for the fixture rows, so only
+one lands inside the window: both tests fail locally and in CI (green on
+c036f83 on 2026-10-02, red on c2cf858 on 2026-11-09 with no digest code
+change in between). The fix is fixture timestamps relative to `Date.now()`,
+which is a test edit and therefore Wes's call.
+
 ## 2026-10-02: a completed zero-dollar Personal checkout could get no license or email
 
 **Fixed by accepting a narrowly validated no-cost Personal order in the shared
