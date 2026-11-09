@@ -58,11 +58,25 @@
 <h1 id="changelog"><a class="anchor" href="#changelog">Changelog</a></h1>
 <h2 id="unreleased"><a class="anchor" href="#unreleased">Unreleased</a></h2>
 <ul>
-<li>A completed, zero-total Personal checkout marked <code>no_payment_required</code> now
+<li><p>A terminal&#39;s status now moves only along one table
+(<code>src/session-lifecycle.mjs</code>, written up in docs/cli-contracts.md), checked
+inside the session lock: a stale tick no longer turns <code>limit</code> back into
+<code>warning</code>, the usage poller no longer turns <code>waiting</code> into <code>limit</code>, and a
+terminal that ended is no longer marked <code>lost</code>. End pressed during a
+hand-off now stops before the next agent starts instead of killing it on its
+first tick. Hand off now, Approve and End and keep going as a card are no
+longer offered while they cannot work; a raced request gets a 409 carrying
+<code>code: &quot;illegal_transition&quot;</code>, <code>current</code>, <code>allowed</code> and <code>actions</code>
+(exit 3 from <code>leg sessions</code>). Session rows and <code>GET /api/sessions/:id</code>
+carry <code>actions</code>, and the record read adds <code>allowed_next</code>.</p>
+</li>
+<li><p>A completed, zero-total Personal checkout marked <code>no_payment_required</code> now
 shows and emails its license. Both paths re-read Stripe and require exactly
 one unit of a recognized one-time Personal price, with no subscription or
-further line items. Unpaid, incomplete and unrelated orders remain refused.</li>
-<li>License emails no longer claim that Stripe has already emailed a receipt.</li>
+further line items. Unpaid, incomplete and unrelated orders remain refused.</p>
+</li>
+<li><p>License emails no longer claim that Stripe has already emailed a receipt.</p>
+</li>
 </ul>
 <h2 id="0163-2026-10-01"><a class="anchor" href="#0163-2026-10-01">0.16.3 (2026-10-01)</a></h2>
 <p>Checkout delivers keys for delayed payments, and Team keys carry today&#39;s seats.</p>

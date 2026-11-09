@@ -777,6 +777,297 @@ remove the last rung left; <code>leg ladder spend on|off</code> flips <code>may_
 <code>{handoff_order}</code> or <code>{handoff_ladder}</code> and rewrites both on the session.
 <code>POST /api/sessions/:id/handoff</code> accepts <code>target.model</code> alongside
 <code>target.agent</code> and <code>target.account</code> (source: src/server.mjs).</p>
+<h3 id="the-terminal-lifecycle"><a class="anchor" href="#the-terminal-lifecycle">The terminal lifecycle</a></h3>
+<p>A terminal&#39;s <code>status</code> moves only along the edges below (source:
+src/session-lifecycle.mjs <code>SESSION_EDGES</code>). <code>createSession</code> writes the first
+<code>starting</code>. <code>ended</code> and <code>handed_off</code> have no way out; <code>handed_off</code> is never
+written by this version and is kept so an older record still reads. A
+same-status write is not a transition. <code>actor</code> is who makes the move: a human
+on the board or the CLI (<code>user</code>), the agent&#39;s own signal (<code>agent</code>), the
+board&#39;s usage poller (<code>cron</code>), or the runner (<code>system</code>).</p>
+<table>
+<thead>
+<tr>
+<th>from</th>
+<th>to</th>
+<th>actor</th>
+<th>note</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>starting</code></td>
+<td><code>running</code></td>
+<td>agent</td>
+<td>claude SessionStart/Stop hooks (taps/claude.mjs); agy/grok first prompt (attach.mjs tick)</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td><code>running</code></td>
+<td>system</td>
+<td>a non-claude first leg starts running (attach.mjs runLeg)</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td><code>warning</code></td>
+<td>agent</td>
+<td>agy/grok first prompt and the warning threshold in the same tick (attach.mjs)</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td><code>limit</code></td>
+<td>agent</td>
+<td>claude StopFailure (taps/claude.mjs); codex/agy/grok wall in the tick (attach.mjs)</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td><code>limit</code></td>
+<td>cron</td>
+<td>codex reports ordinary usage unavailable (usage-poll.mjs)</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td><code>handing_off</code></td>
+<td>user</td>
+<td>Hand off now or Approve, written by the runner (attach.mjs tick)</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td><code>ended</code></td>
+<td>user</td>
+<td>End (attach.mjs tick, then the final write)</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td><code>ended</code></td>
+<td>system</td>
+<td>the spawn throws, or the agent exits (attach.mjs)</td>
+</tr>
+<tr>
+<td><code>starting</code></td>
+<td><code>lost</code></td>
+<td>system</td>
+<td>the runner pid is gone (sessions.mjs reapLost)</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td><code>warning</code></td>
+<td>agent</td>
+<td>a usage window crossed the warning threshold (taps/claude.mjs status line, attach.mjs tick)</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td><code>limit</code></td>
+<td>agent</td>
+<td>claude StopFailure; codex/agy/grok wall in the tick</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td><code>limit</code></td>
+<td>cron</td>
+<td>codex reports ordinary usage unavailable (usage-poll.mjs)</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td><code>handing_off</code></td>
+<td>user</td>
+<td>Hand off now or Approve (attach.mjs tick)</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td><code>ended</code></td>
+<td>user</td>
+<td>End</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td><code>ended</code></td>
+<td>system</td>
+<td>the agent exits (attach.mjs final write)</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td><code>lost</code></td>
+<td>system</td>
+<td>reapLost</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td><code>running</code></td>
+<td>agent</td>
+<td>the window dropped back under the threshold (taps/claude.mjs status line)</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td><code>limit</code></td>
+<td>agent</td>
+<td>claude StopFailure; codex/agy/grok wall in the tick</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td><code>limit</code></td>
+<td>cron</td>
+<td>codex reports ordinary usage unavailable (usage-poll.mjs)</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td><code>handing_off</code></td>
+<td>user</td>
+<td>Hand off now or Approve (attach.mjs tick)</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td><code>ended</code></td>
+<td>user</td>
+<td>End</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td><code>ended</code></td>
+<td>system</td>
+<td>the agent exits (attach.mjs final write)</td>
+</tr>
+<tr>
+<td><code>warning</code></td>
+<td><code>lost</code></td>
+<td>system</td>
+<td>reapLost</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td><code>handing_off</code></td>
+<td>system</td>
+<td>the next option is claimed (attach.mjs claimHandoffChoice)</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td><code>handing_off</code></td>
+<td>user</td>
+<td>Hand off now while claude stood down at its own limit (attach.mjs tick)</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td><code>waiting</code></td>
+<td>system</td>
+<td>every option is out (attach.mjs all-out wait)</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td><code>ended</code></td>
+<td>user</td>
+<td>End</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td><code>ended</code></td>
+<td>system</td>
+<td>LEG_NO_HANDOFF=1, or a stood-down claude exits (attach.mjs final write)</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td><code>lost</code></td>
+<td>system</td>
+<td>reapLost</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td><code>starting</code></td>
+<td>system</td>
+<td>the next leg starts, claude (attach.mjs runLeg)</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td><code>running</code></td>
+<td>system</td>
+<td>the next leg starts, codex/agy/grok (attach.mjs runLeg)</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td><code>waiting</code></td>
+<td>system</td>
+<td>no destination is open after a board request (attach.mjs all-out wait)</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td><code>ended</code></td>
+<td>system</td>
+<td>the next spawn throws, the strict harness refuses every destination (exit 5), or the 12-leg cap (exit 3)</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td><code>ended</code></td>
+<td>user</td>
+<td>End, honored at the leg boundary before the next leg starts (attach.mjs legBoundary)</td>
+</tr>
+<tr>
+<td><code>handing_off</code></td>
+<td><code>lost</code></td>
+<td>system</td>
+<td>reapLost</td>
+</tr>
+<tr>
+<td><code>waiting</code></td>
+<td><code>handing_off</code></td>
+<td>system</td>
+<td>the first reset arrived and the next option is claimed (attach.mjs claimHandoffChoice)</td>
+</tr>
+<tr>
+<td><code>waiting</code></td>
+<td><code>ended</code></td>
+<td>user</td>
+<td>End or Ctrl-C during the countdown (attach.mjs, exit 3)</td>
+</tr>
+<tr>
+<td><code>waiting</code></td>
+<td><code>ended</code></td>
+<td>system</td>
+<td>the runner exits (attach.mjs final write)</td>
+</tr>
+<tr>
+<td><code>waiting</code></td>
+<td><code>lost</code></td>
+<td>system</td>
+<td>reapLost</td>
+</tr>
+<tr>
+<td><code>lost</code></td>
+<td><code>ended</code></td>
+<td>system</td>
+<td>a runner the board reaped as lost exits after all (attach.mjs final write)</td>
+</tr>
+</tbody></table>
+<p>Every status write in src/ goes through <code>updateSession(id, patch, { onIllegal })</code>,
+which checks the move inside <code>.session.lock</code> against the record as it is
+then: <code>&#39;skip&#39;</code> writes nothing, <code>&#39;drop_status&#39;</code> writes everything but the
+status. Neither throws, and a refused write&#39;s event is recorded as one
+<code>transition_refused</code> line instead. So a stale tick cannot put <code>warning</code>
+over a <code>limit</code> a hook wrote, the poller cannot put <code>limit</code> over
+<code>waiting</code>, and <code>reapLost</code> cannot mark an <code>ended</code> record <code>lost</code>.</p>
+<p>What a human may do is <code>actions</code> on every <code>GET /api/sessions</code> row, and
+<code>actions</code> plus <code>allowed_next</code> (<code>nextStates(status)</code>) beside the record on
+<code>GET /api/sessions/:id</code>, <code>leg sessions show &lt;id&gt;</code> and each record of
+<code>leg sessions ls --json</code>. The verbs: <code>handoff</code> and <code>approve_request</code>
+(<code>starting</code>, <code>running</code>, <code>warning</code>, <code>limit</code>), <code>end</code> (every active
+status), <code>end_as_card</code> (active, except <code>handing_off</code>: the runner is saving
+its own bundle then), <code>edit_order</code> (active, except <code>handing_off</code>), and
+<code>remove</code> (not active). The board draws Hand off now, the Hand off now to
+picker, Approve, End, End and keep going as a card, the ladder editor and
+Remove from them.</p>
+<p><code>POST /api/sessions/:id/handoff</code>, <code>/end</code>, <code>/end-as-card</code> and
+<code>/requests/&lt;name&gt;/approve</code> refuse a verb that is not in <code>actions</code> with 409:</p>
+<pre><code class="language-json">{ &quot;error&quot;: &quot;session s-x is handing off: Hand off now is not available now (it can: end)&quot;,
+  &quot;code&quot;: &quot;illegal_transition&quot;, &quot;current&quot;: &quot;handing_off&quot;, &quot;requested&quot;: &quot;handing_off&quot;,
+  &quot;allowed&quot;: [&quot;ended&quot;], &quot;actions&quot;: [&quot;end&quot;] }
+</code></pre>
+<p><code>error</code> stays the sentence the board prints, and for a terminal that is not
+active it is still <code>session &lt;id&gt; is not active</code>. <code>allowed</code> is where a human
+may move it from here. The <code>handoff-order</code> 409 keeps its sentence and gains
+<code>current</code> and <code>actions</code>. <code>leg sessions handoff|end &lt;id&gt;</code> print the same
+sentence on stderr and exit 3, and <code>leg sessions simulate-limit &lt;id&gt;</code> on a
+terminal that cannot move to <code>limit</code> exits 3 with <code>session &lt;id&gt; is already &lt;status&gt;</code> (source: bin/leg.mjs).</p>
+<p>The hand-off window: End pressed while a terminal is handing off is honored at
+the leg boundary, before the next agent starts, with exit 0 and the line <code>end requested during the hand-off; the next leg was not started</code>. Hand off now and
+Approve are refused while <code>handing_off</code> and <code>waiting</code>; one that raced in is
+dropped at the boundary with <code>a hand-off requested during the hand-off was dropped</code> (source: src/attach.mjs <code>legBoundary</code>).</p>
 <h3 id="get-apimodels"><a class="anchor" href="#get-apimodels">GET /api/models</a></h3>
 <p>The models this machine can start each agent on, so a rung and a card can name
 one. Owner and operator only; a guest gets the same 403 <code>/api/adapters</code> and

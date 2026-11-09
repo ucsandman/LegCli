@@ -506,7 +506,7 @@ cannot run is omitted too, with its reason hoisted above the panel.</p>
 </tr>
 <tr>
 <td>Approve <code>&lt;name&gt;</code> / Dismiss <code>&lt;name&gt;</code></td>
-<td>the board is shared and someone asked for a hand-off on your terminal</td>
+<td>the board is shared and someone asked for a hand-off on your terminal; Approve only while Hand off now is offered, so a request made while the terminal is handing off or waiting stays pending until then</td>
 <td><code>POST /api/sessions/:id/requests/&lt;name&gt;/approve</code> (or <code>/dismiss</code>): approving hands the terminal off, and the event says who it was for</td>
 </tr>
 <tr>
@@ -516,7 +516,7 @@ cannot run is omitted too, with its reason hoisted above the panel.</p>
 </tr>
 <tr>
 <td>Hand off now</td>
-<td>the session is active</td>
+<td>the status is <code>starting</code>, <code>running</code>, <code>warning</code> or <code>limit</code> (not while it is already handing off or waiting for a reset)</td>
 <td>asks first in the row&#39;s confirm row (<code>Hands off to the first open rung of this terminal&#39;s ladder. The current turn stops.</code>), then <code>POST /api/sessions/:id/handoff</code>: saves the bundle, stops this agent, starts the next option in the same terminal. It stops a working agent mid-turn, so it asks whether the mouse or the <code>h</code> key pressed it</td>
 </tr>
 <tr>
@@ -543,7 +543,9 @@ cannot run is omitted too, with its reason hoisted above the panel.</p>
 <p>End, Remove and Remove record confirm first: the button row is replaced in place
 by one sentence and its buttons, focus moves to Cancel, and Escape cancels. End
 offers a second verb, <strong>End, and keep going as a card</strong>, when the terminal is in
-a repository and the reader may use cards.
+a repository, the reader may use cards, and it is not handing off (the runner
+is saving its own bundle then). Which of these a row shows comes from the
+row&#39;s <code>actions</code> (docs/cli-contracts.md, the terminal lifecycle).
 There is no modal and no browser <code>confirm()</code>. Settings has the same ladder
 editor for the default copied by new terminals.</p>
 <h3 id="the-expansion"><a class="anchor" href="#the-expansion">The expansion</a></h3>

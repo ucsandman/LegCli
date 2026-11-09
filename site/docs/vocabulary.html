@@ -64,8 +64,10 @@ Regenerate this by re-running the greps in each section header if the source
 changes.</p>
 <h2 id="session-statuses"><a class="anchor" href="#session-statuses">Session statuses</a></h2>
 <p>One interactive terminal under <code>leg claude|codex|agy</code>. Source:
-<code>src/sessions.mjs</code> <code>SESSION_STATUSES</code>; board labels from <code>STATUS</code> in
-<code>src/board/sessions.js</code>.</p>
+<code>src/session-lifecycle.mjs</code> <code>SESSION_STATES</code> (re-exported as <code>SESSION_STATUSES</code>
+from <code>src/sessions.mjs</code>); board labels from <code>SESSION_STATE_LABELS</code>, mirrored
+by <code>STATUS</code> in <code>src/board/sessions.js</code>. The moves between them are the edge
+table in <a href="/docs/cli-contracts#the-terminal-lifecycle">cli-contracts.md</a>.</p>
 <table>
 <thead>
 <tr>
@@ -115,7 +117,7 @@ changes.</p>
 <td><code>handed_off</code></td>
 <td>handed off</td>
 <td>no</td>
-<td>this leg is done; the next agent owns the terminal</td>
+<td>legacy: never written by this version and has no way in or out; kept so an older record still reads</td>
 </tr>
 <tr>
 <td><code>ended</code></td>
@@ -202,6 +204,10 @@ overlap flags and for the accounts strip&#39;s live dot.</p>
 <tr>
 <td><code>lost</code></td>
 <td>the runner pid is gone; the session was marked <code>lost</code></td>
+</tr>
+<tr>
+<td><code>transition_refused</code></td>
+<td>a status write the lifecycle refused (<code>from</code>, <code>to</code>), recorded in place of the writer&#39;s own event with its text: a StopFailure from a child that is handing off, a reap that lost the race to <code>ended</code></td>
 </tr>
 <tr>
 <td><code>error</code></td>
