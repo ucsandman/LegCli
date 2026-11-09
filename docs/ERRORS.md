@@ -11,17 +11,20 @@ docs/cli-contracts.md and the board guide without rebuilding site/, and the CI
 job "The committed docs site matches docs/" diffs site/ after a rebuild. Any
 change under docs/ ships with `npm run docs` in the same commit.
 
-## 2026-11-09: the two digest tests expire with the calendar (open, fixture decision)
+## 2026-11-09: the two digest tests expired with the calendar
 
-**Not fixed.** `test/digest.test.mjs` ("leg digest prints it, --json returns
-the record, and a bad window exits 2" and "GET /api/digest answers the owner
-and refuses a guest and an operator") build sessions and cards with absolute
-early-October timestamps and assert `needs you: 3` inside the default 30-day
-window. The assertion output now reads "51d ago" for the fixture rows, so only
-one lands inside the window: both tests fail locally and in CI (green on
-c036f83 on 2026-10-02, red on c2cf858 on 2026-11-09 with no digest code
-change in between). The fix is fixture timestamps relative to `Date.now()`,
-which is a test edit and therefore Wes's call.
+**Fixed by anchoring the fixtures on the real clock** (`test/digest.test.mjs`:
+`NOW = Date.now()`, every timestamp `at(hoursAgo)` from it). The seed used to
+sit at a fixed 2026-09-18, and the two end-to-end tests ("leg digest prints
+it, --json returns the record, and a bad window exits 2" and "GET /api/digest
+answers the owner and refuses a guest and an operator") go through the CLI and
+the route, which read `Date.now()`: once the fixture rows were more than 30
+days old only one landed inside the `--since 30d` window and `needs you: 3`
+failed. CI was green on c036f83 (2026-10-02) and red on c2cf858 (2026-11-09)
+with no digest code change between them. The in-process tests kept passing
+because they pass `now: NOW` explicitly. Rule: a fixture an end-to-end path
+reads against the wall clock is written relative to `Date.now()`, never as a
+date.
 
 ## 2026-10-02: a completed zero-dollar Personal checkout could get no license or email
 

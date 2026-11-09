@@ -22,7 +22,10 @@ const D = await import('../src/digest.mjs')
 const sessions = await import('../src/sessions.mjs')
 const { createBoardServer } = await import('../src/server.mjs')
 
-const NOW = Date.parse('2026-09-18T08:00:00.000Z')
+// Anchored on the real clock: the CLI and the route read Date.now(), so a
+// fixed date here fell out of their 30-day window after a month and the two
+// end-to-end tests went red on the calendar (docs/ERRORS.md, 2026-11-09).
+const NOW = Date.now()
 const at = (hoursAgo) => new Date(NOW - hoursAgo * 3600000).toISOString()
 
 function session(id, extra = {}) {
@@ -71,7 +74,7 @@ test('parseSince reads 8h, 30m, 2d and an ISO time, and refuses anything else by
   assert.equal(D.parseSince('8h', NOW), NOW - 8 * 3600000)
   assert.equal(D.parseSince('30m', NOW), NOW - 30 * 60000)
   assert.equal(D.parseSince('2d', NOW), NOW - 2 * 86400000)
-  assert.equal(D.parseSince('2026-09-18T06:00:00.000Z', NOW), NOW - 2 * 3600000)
+  assert.equal(D.parseSince(at(2), NOW), NOW - 2 * 3600000, 'an ISO time is read as is')
   assert.equal(D.parseSince(undefined, NOW), NOW - 8 * 3600000, 'the default window is 8h')
   assert.throws(() => D.parseSince('yesterday', NOW), /bad --since "yesterday"/)
 })
@@ -100,7 +103,7 @@ test('a window with nothing in it says so with its volume, never an empty succes
   // ended records only (a live terminal always counts), and a window that
   // closed before any of them moved
   const ended = sessions.listSessions().filter((s) => !sessions.isActive(s))
-  const later = Date.parse('2027-01-01T00:00:00.000Z')
+  const later = NOW + 365 * 86400000
   const d = D.buildDigest({ since: '1m', now: later, sessions: ended })
   assert.deepEqual([d.volume.terminals, d.volume.cards, d.volume.landings, d.volume.events], [0, 0, 0, 0])
   const text = D.renderDigest(d, { now: later })
