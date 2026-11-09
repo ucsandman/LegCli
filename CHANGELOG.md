@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.17.0 (2026-11-09)
+
+A terminal's status moves only along one lifecycle table, and a zero-total Personal checkout delivers its license.
 
 - A terminal's status now moves only along one table
   (`src/session-lifecycle.mjs`, written up in docs/cli-contracts.md), checked
