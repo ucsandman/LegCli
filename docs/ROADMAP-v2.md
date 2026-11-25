@@ -95,9 +95,10 @@ event names its actor, a board that reads only the ledger, and an auth/bind seam
    waiting on a human; the same test red across two legs of one card. Printed
    only, never acted on; a `looping` state waits for a false-positive study on
    real transcripts. Design in `docs/review-2026-09-18.md`.
-8. **The digest on the board.** `leg digest` and `/api/digest` shipped in
-   0.15.0; the panel above Terminals on the first load of the day is the
-   human surface it still lacks. Same review doc.
+8. ~~**The digest on the board.**~~ — done. `leg digest` and `/api/digest`
+   shipped in 0.15.0; 0.18.0 shipped the section above Terminals
+   (`src/board/digest.js`, [board guide](board-guide.md#while-you-were-away)),
+   read once when the page opens, with Hide for today.
 
 Also on the list: per-station prompt templates editable from the board, lease
 suggestions from the diff of the previous leg, and a floor view that shows

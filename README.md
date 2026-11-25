@@ -395,6 +395,14 @@ its last event, every landing with who pressed Land, and last the walls
 standing right now with their reset times. Nothing new is recorded; a window
 with nothing in it says so with its counts.
 
+The board shows the same record. **While you were away** sits above
+Terminals and reads `/api/digest` once when the page opens, for the last 8
+hours: one line of volume, then `Needs you` with a row per item, most urgent
+first, and every lost terminal on one row. A window where nothing moved is
+one line that still says how many terminals and cards it read. **Hide for
+today** closes it in that browser until the next calendar day. Owner only: a
+guest or an operator on a shared board does not see it.
+
 ## The board
 
 `leg <agent>` opens it; `leg open` reopens it; `leg down` stops it.

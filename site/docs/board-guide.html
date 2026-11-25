@@ -54,7 +54,7 @@
     </ul>
   </nav>
   <main id="doc" class="docs-body">
-<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#screenshots">Screenshots</a></li><li><a href="#the-verdict-and-the-logins">The verdict and the logins</a></li><li><a href="#terminals">Terminals</a></li><li><a href="#the-ledger">The ledger</a></li><li><a href="#a-shared-board-more-than-one-human">A shared board (more than one human)</a></li><li><a href="#background-tasks-page-layout">Background tasks: page layout</a></li><li><a href="#order">Order</a></li><li><a href="#card-row">Card row</a></li><li><a href="#card-expansion">Card expansion</a></li><li><a href="#new-card-form">New card form</a></li><li><a href="#buttons">Buttons</a></li><li><a href="#what-a-state-looks-like">What a state looks like</a></li><li><a href="#floor-view">Floor view</a></li><li><a href="#keyboard-and-accessibility">Keyboard and accessibility</a></li><li><a href="#see-also">See also</a></li></ul></nav>
+<nav class="toc" aria-label="On this page"><p class="toc-title">On this page</p><ul><li><a href="#screenshots">Screenshots</a></li><li><a href="#the-verdict-and-the-logins">The verdict and the logins</a></li><li><a href="#while-you-were-away">While you were away</a></li><li><a href="#terminals">Terminals</a></li><li><a href="#the-ledger">The ledger</a></li><li><a href="#a-shared-board-more-than-one-human">A shared board (more than one human)</a></li><li><a href="#background-tasks-page-layout">Background tasks: page layout</a></li><li><a href="#order">Order</a></li><li><a href="#card-row">Card row</a></li><li><a href="#card-expansion">Card expansion</a></li><li><a href="#new-card-form">New card form</a></li><li><a href="#buttons">Buttons</a></li><li><a href="#what-a-state-looks-like">What a state looks like</a></li><li><a href="#floor-view">Floor view</a></li><li><a href="#keyboard-and-accessibility">Keyboard and accessibility</a></li><li><a href="#see-also">See also</a></li></ul></nav>
 <h1 id="board-guide"><a class="anchor" href="#board-guide">Board guide</a></h1>
 <p>For anyone using the Leg board day to day: what every element means and when
 it shows up. The board is one page, read top to bottom: <strong>the verdict</strong> (one
@@ -245,6 +245,28 @@ its label. The caption at the foot of the drawer reads <code>Times are local.</c
 10080-minute windows to 5h and 7d. The active <code>leg codex</code> attach also polls
 that response. A percentage alone does not clear a limit wall: Leg waits for
 an explicit available answer from the backend.</p>
+<h2 id="while-you-were-away"><a class="anchor" href="#while-you-were-away">While you were away</a></h2>
+<p><code>src/board/digest.js</code> draws it, from <code>GET /api/digest?since=8h</code>: the record
+<code>leg digest</code> prints (<a href="/docs/concepts#the-digest">concepts</a>). It sits between the
+logins and Terminals, and it reads once, when the page opens. Nothing in it
+updates afterwards; the live region of the page is still Terminals.</p>
+<p>It has three states:</p>
+<ul>
+<li><strong>Something needs you.</strong> One line of volume (<code>In the last 8 hours: 9 terminals, 2 cards and 1 landing moved; 11 events read.</code>), then <code>Needs you</code>
+with its count and one row per item in the server&#39;s order: a terminal
+waiting on you, a card waiting or failed, then lost terminals. Each row is
+the status word, the agent and short id, the message, and how long ago.
+Every lost terminal shares one row, with up to four names and then <code>and N more</code>, so the count beside <code>Needs you</code> can be higher than the number of
+rows.</li>
+<li><strong>Nothing moved.</strong> One line: <code>Nothing moved in the last 8 hours. Read 3 terminals and 1 card on disk.</code> The counts stay, so a quiet night and an
+empty home do not read the same.</li>
+<li><strong>Not shown.</strong> The route is owner only, like the audit trail. A guest or an
+operator on a shared board gets a 403 and the section stays hidden. Any
+other failure also draws nothing.</li>
+</ul>
+<p><strong>Hide for today</strong> closes it and stores today&#39;s date in that browser. Until
+the next calendar day the section stays closed and the board does not ask
+the server for the digest at all.</p>
 <h2 id="terminals"><a class="anchor" href="#terminals">Terminals</a></h2>
 <p><code>src/board/sessions.js</code> renders the region from <code>GET /api/sessions</code>, refreshed
 by the server-sent <code>sessions</code> event, re-sorted every 15 s, with the elapsed

@@ -350,7 +350,9 @@ entry carries the events worth a line (`limit`, `handoff`, `all_out`,
 `lost`, `ended`, `landed`, `bounced`, `continued`, `harness_blocked`), never
 the running commentary. The audit trail ([Share](#share-more-than-one-human))
 is the same data as a flat list of actors; the digest is the same data
-grouped by what to do about it.
+grouped by what to do about it. The board draws `volume` and `attention` for
+the last 8 hours in a section above Terminals
+([board guide](board-guide.md#while-you-were-away)).
 
 ## Cards, stations and pipelines
 

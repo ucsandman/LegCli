@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.18.0 (2026-11-25)
+
+The board shows what happened while you were away.
+
+- **A section above Terminals reads the digest.** It asks `/api/digest` once
+  when the board opens, for the last 8 hours: the record `leg digest` prints.
+  It gives the volume (terminals, cards and landings that moved, events read)
+  and what needs you, most urgent first: a terminal waiting on you, a card
+  waiting or failed, every lost terminal on one row.
+- **A window where nothing moved is one line**, and it still says how many
+  terminals and cards it read.
+- **Hide for today** closes it in that browser until the next calendar day
+  and skips the read.
+- **Owner only.** A guest or an operator on a shared board gets a 403 and
+  sees nothing. `test/digest.test.mjs` now asserts that refusal for both; its
+  title had said so since 0.15.0 and its body had not.
+- Written up in docs/board-guide.md. This closes item 8 of
+  docs/ROADMAP-v2.md.
+
 ## 0.17.2 (2026-11-25)
 
 `leg <agent>` now says so when that agent's CLI cannot be started, and Claude Code installed with npm on Windows starts.

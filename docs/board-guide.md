@@ -224,6 +224,34 @@ For Codex, the board reads the app-server's read-only
 that response. A percentage alone does not clear a limit wall: Leg waits for
 an explicit available answer from the backend.
 
+## While you were away
+
+`src/board/digest.js` draws it, from `GET /api/digest?since=8h`: the record
+`leg digest` prints ([concepts](concepts.md#the-digest)). It sits between the
+logins and Terminals, and it reads once, when the page opens. Nothing in it
+updates afterwards; the live region of the page is still Terminals.
+
+It has three states:
+
+- **Something needs you.** One line of volume (`In the last 8 hours: 9
+  terminals, 2 cards and 1 landing moved; 11 events read.`), then `Needs you`
+  with its count and one row per item in the server's order: a terminal
+  waiting on you, a card waiting or failed, then lost terminals. Each row is
+  the status word, the agent and short id, the message, and how long ago.
+  Every lost terminal shares one row, with up to four names and then `and N
+  more`, so the count beside `Needs you` can be higher than the number of
+  rows.
+- **Nothing moved.** One line: `Nothing moved in the last 8 hours. Read 3
+  terminals and 1 card on disk.` The counts stay, so a quiet night and an
+  empty home do not read the same.
+- **Not shown.** The route is owner only, like the audit trail. A guest or an
+  operator on a shared board gets a 403 and the section stays hidden. Any
+  other failure also draws nothing.
+
+**Hide for today** closes it and stores today's date in that browser. Until
+the next calendar day the section stays closed and the board does not ask
+the server for the digest at all.
+
 ## Terminals
 
 `src/board/sessions.js` renders the region from `GET /api/sessions`, refreshed
