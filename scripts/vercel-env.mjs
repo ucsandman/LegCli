@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 // Push the site's secrets from .env to the Vercel project without printing
-// them: each value goes to `vercel env add NAME production` on stdin.
-//   node --env-file=.env scripts/vercel-env.mjs --mode test|live --site https://legcli.com
+// them: each value goes to `vercel env add NAME <target>` on stdin.
+// Target per mode: --mode live writes Production, --mode test writes Preview
+// (all branches), so test keys can never replace Production's live keys.
+//   node --env-file=.env scripts/vercel-env.mjs --mode test|live [--site https://legcli.com] [--dry]
+// --dry prints `env rm|add NAME target` per variable, never a value, and
+// exits before the Vercel CLI is looked up.
 import { spawnSync } from 'node:child_process'
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => a.startsWith('--') ? [a.slice(2), all[i + 1]] : []).filter((x) => x.length))
 if (!['test', 'live'].includes(args.mode)) {
-  console.error('Usage: node scripts/vercel-env.mjs --mode test|live [--site URL]')
+  console.error('Usage: node scripts/vercel-env.mjs --mode test|live [--site URL] [--dry]')
   process.exit(2)
 }
 const live = args.mode === 'live'
+const target = live ? 'production' : 'preview'
+const dry = process.argv.includes('--dry')
 const vars = {
   STRIPE_SECRET_KEY: live ? process.env.STRIPE_SECRET_KEY : process.env.STRIPE_TEST_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET: live ? process.env.STRIPE_LIVE_WEBHOOK_SECRET : process.env.STRIPE_TEST_WEBHOOK_SECRET,
@@ -25,6 +31,11 @@ const vars = {
 }
 const missing = Object.entries(vars).filter(([, v]) => !v).map(([k]) => k)
 if (missing.length) { console.error('missing in .env: ' + missing.join(', ')); process.exit(2) }
+if (dry) {
+  for (const k of Object.keys(vars)) console.log(`env rm ${k} ${target}
+env add ${k} ${target}`)
+  process.exit(0)
+}
 // The Vercel CLI's JS entry, run with this node: no shell, so a value with
 // shell characters is never interpreted and the repo's no-shell rule holds.
 import { existsSync } from 'node:fs'
@@ -34,7 +45,7 @@ const roots = [process.env.APPDATA && join(process.env.APPDATA, 'npm', 'node_mod
 const vercelJs = roots.map((r) => join(r, 'vercel', 'dist', 'index.js')).find((f) => existsSync(f))
 if (!vercelJs) { console.error('vercel CLI not found in a global node_modules; npm i -g vercel'); process.exit(2) }
 for (const [k, v] of Object.entries(vars)) {
-  spawnSync(process.execPath, [vercelJs, 'env', 'rm', k, 'production', '--yes'], { cwd: 'site', encoding: 'utf8' })
-  const r = spawnSync(process.execPath, [vercelJs, 'env', 'add', k, 'production'], { cwd: 'site', input: v, encoding: 'utf8' })
+  spawnSync(process.execPath, [vercelJs, 'env', 'rm', k, target, '--yes'], { cwd: 'site', encoding: 'utf8' })
+  const r = spawnSync(process.execPath, [vercelJs, 'env', 'add', k, target], { cwd: 'site', input: v, encoding: 'utf8' })
   console.log(`${k.padEnd(28)} ${r.status === 0 ? 'set' : 'FAILED ' + (r.stderr || r.stdout).split('\n').filter(Boolean).slice(-1)[0]}`)
 }
