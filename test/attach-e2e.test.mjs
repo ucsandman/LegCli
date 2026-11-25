@@ -292,3 +292,66 @@ test('leg <agent> --resume-card opens the terminal in the card\'s own worktree, 
   assert.equal(await new Promise((r) => miss.on('exit', r)), 3, missErr)
   assert.match(missErr, /no card matches "card-nope"/)
 })
+
+// ---- an agent that cannot be started says why ------------------------------
+// Each of these used to exit 127 with nothing on the terminal, after the trial
+// had started and a session record had been written for an agent that was never
+// there. Every home here is fresh and unlicensed, so a trial.json in it can only
+// have come from this run. The other agents point at the stubs, so nothing asks
+// a real CLI on this machine for its version.
+function notStartedEnv(home, extra = {}) {
+  return testEnv(home, {
+    BATON_UNLICENSED: '1', BATON_NO_BOARD: '1', BATON_NO_OPEN: '1',
+    BATON_CLAUDE_BIN: join(STUBS, 'claude.mjs'), BATON_CODEX_BIN: join(STUBS, 'codex.mjs'), BATON_AGY_BIN: join(STUBS, 'agy.mjs'),
+    LEG_GROK_BIN: join(STUBS, 'no-grok-here.mjs'), CLAUDE_CONFIG_DIR: emptyClaudeHome,
+    ...extra,
+  })
+}
+async function runToExit(args, env, cwd) {
+  const child = batonSpawn(args, env, { cwd })
+  let err = ''
+  child.stderr.on('data', (d) => { err += d }); child.stdout.resume()
+  const code = await new Promise((r) => child.on('exit', r))
+  return { code, err }
+}
+const sessionsIn = (home) => existsSync(join(home, 'sessions')) ? readdirSync(join(home, 'sessions')) : []
+
+test('a claude that is not installed: two lines naming where Leg looked and how to install, exit 127, no trial and no session', async () => {
+  const home = makeHome()
+  const { code, err } = await runToExit(['claude'], notStartedEnv(home, { LEG_CLAUDE_BIN: 'leg-no-such-claude' }), initRepo('not-installed-'))
+  assert.equal(code, 127, err)
+  assert.match(err, /claude is not installed/)
+  assert.match(err, /leg-no-such-claude/, 'it names what it looked for')
+  assert.ok(err.includes('https://claude.com/claude-code'), `the install hint: ${err}`)
+  assert.ok(err.includes('LEG_CLAUDE_BIN'), `the override: ${err}`)
+  assert.equal(err.split('\n').filter((l) => l.startsWith('[leg] ')).length, 2, `two lines, nothing else:\n${err}`)
+  assert.equal(existsSync(join(home, 'trial.json')), false, 'no trial day spent on an agent that never ran')
+  assert.deepEqual(sessionsIn(home), [], 'no session record')
+})
+
+test('a codex whose binary path does not exist says so the same way, with the npm command', async () => {
+  const home = makeHome()
+  const missing = join(mkdtempSync(join(tmpdir(), 'no-codex-')), 'gone', 'codex.exe')
+  const { code, err } = await runToExit(['codex'], notStartedEnv(home, { LEG_CODEX_BIN: missing }), initRepo('not-installed-codex-'))
+  assert.equal(code, 127, err)
+  assert.match(err, /codex is not installed/)
+  assert.ok(err.includes(missing), `names the path it checked: ${err}`)
+  assert.ok(err.includes('npm i -g @openai/codex'), `the install hint: ${err}`)
+  assert.ok(err.includes('LEG_CODEX_BIN'), `the override: ${err}`)
+  assert.equal(existsSync(join(home, 'trial.json')), false)
+  assert.deepEqual(sessionsIn(home), [])
+})
+
+test('a bin that exists but cannot be started (a directory) says the agent did not start, and the session ends with exit 127', async () => {
+  const home = makeHome()
+  const dir = mkdtempSync(join(tmpdir(), 'claude-is-a-dir-'))
+  const { code, err } = await runToExit(['claude'], notStartedEnv(home, { LEG_CLAUDE_BIN: dir }), initRepo('not-started-'))
+  assert.equal(code, 127, err)
+  assert.match(err, /claude did not start: /)
+  assert.ok(err.includes('LEG_CLAUDE_BIN'), `the override: ${err}`)
+  const [sid] = sessionsIn(home)
+  assert.ok(sid, 'the session was recorded: the bin was there, so the leg was tried')
+  const s = JSON.parse(readFileSync(join(home, 'sessions', sid, 'session.json'), 'utf8'))
+  assert.equal(s.status, 'ended')
+  assert.equal(s.exit_code, 127)
+})

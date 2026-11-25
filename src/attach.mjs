@@ -19,6 +19,7 @@ import { home, readCard, listCards } from './store.mjs'
 import { loadResume } from './handoff.mjs'
 import { worktreePath } from './worktree.mjs'
 import { get as getAdapter } from './adapters/index.mjs'
+import { onPath } from './adapters/common.mjs'
 import { SUPERVISED_AGENTS, HANDOFF_ORDER_CAPABILITY, newSessionId, createSession, readSession, updateSession, appendEvent, takeControl, clearControl, sessionDir, listSessions, reapLost, isActive, workRoot } from './sessions.mjs'
 import { ensure as ensureWorktree, remove as removeWorktree } from './worktree.mjs'
 import { canonPath, realPath, writeJsonAtomic } from './fsx.mjs'
@@ -35,7 +36,7 @@ import { scanLog, promptsSince, logSize } from './taps/agy.mjs'
 import { fetchGrokUsage, scanLog as scanGrokLog, promptsSince as grokPromptsSince } from './taps/grok.mjs'
 import { saveSessionBundle, saveSessionBundleAsync, resumePrompt, sessionCommitDelta } from './bundle.mjs'
 import { endSessionPointer } from './resume.mjs'
-import { openBoard, pidfile } from './launcher.mjs'
+import { openBoard, pidfile, INSTALL_HINT } from './launcher.mjs'
 import { LAYOUT } from './accounts.mjs'
 import { captureLive } from './live-capture.mjs'
 import { waitForReset, fmtCountdown } from './wait.mjs'
@@ -300,6 +301,36 @@ export function cachedVersionProbe(name, target, { probe = probeVersion, now = D
   try { mkdirSync(home(), { recursive: true }); writeJsonAtomic(file, { ...disk, [name]: { installed, bin: target, at: now } }) } catch {}
   return installed
 }
+
+// Whether `leg <agent>` can start the agent at all, asked before anything is
+// written: an agent that is not there used to start a trial day and leave a
+// session record, then exit 127 with nothing on the terminal. The target is the
+// one spawnSpec spawns. A path is one existsSync. A bare name is found the way a
+// shell-less spawn finds it (onPath); only when that misses is it asked for
+// --version, so an install onPath cannot see still counts. Only a failure to
+// spawn means missing: ENOENT, or EACCES, which is what execvp answers instead
+// when one PATH entry cannot be searched (WSL puts such a Windows folder on
+// PATH, so a missing name there is EACCES, never ENOENT). A CLI that runs and
+// fails its --version is there, and its leg says why.
+// → null when the agent is there, else where Leg looked, for the terminal line
+export async function agentMissing(agent) {
+  const { bin, viaNode, entry } = (await loadAdapter(agent)).resolve()
+  const target = viaNode ? (entry ?? bin) : bin
+  const AGENT = agent.toUpperCase()
+  const override = [`LEG_${AGENT}_BIN`, `BATON_${AGENT}_BIN`].find((k) => process.env[k])
+  if (/[\\/]/.test(target)) {
+    if (existsSync(target)) return null
+    return override ? `${override} names ${target}, and no file is there` : `Leg looked for ${target}, and no file is there`
+  }
+  if (onPath(target)) return null
+  const r = spawnSync(target, ['--version'], { timeout: 8000, stdio: 'ignore', windowsHide: true })
+  if (!['ENOENT', 'EACCES'].includes(r.error?.code)) return null
+  const shell = process.platform === 'win32' ? ' (a .cmd or .ps1 there does not count: Leg starts agents without a shell)' : ''
+  return override ? `${override} names ${target}, and nothing on PATH by that name can be run${shell}` : `Leg looked for ${target} on PATH and found nothing it can run${shell}`
+}
+
+// The way out, on every line that says an agent could not be started.
+const installLine = (agent) => `Install: ${INSTALL_HINT[agent]}, or set LEG_${agent.toUpperCase()}_BIN to the full path of the ${agent} program.`
 
 let installedCache = null
 export async function installedAgents() {
@@ -566,6 +597,7 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   try {
     child = spawn(spec.bin, spec.args, { cwd: spec.cwd, env: spec.env, stdio: 'inherit', windowsHide: false })
   } catch (err) {
+    say(`${agent} did not start: ${err.message}. ${installLine(agent)}`)
     updateSession(sid, { status: 'ended', ended_at: new Date().toISOString() }, { event: { type: 'error', summary: `${agent} failed to start: ${err.message}` }, onIllegal: 'skip' })
     return { reason: 'exit', code: 127 }
   }
@@ -591,7 +623,9 @@ async function runLeg({ agent, account, args, session, prompt, boardUrl, autoApp
   const checkpoint = checkpointGate()
   let stop = null
   const done = new Promise((res) => { stop = res })
-  child.on('error', (err) => { appendEvent(sid, { type: 'error', summary: `${agent} spawn error: ${err.message}` }); stop({ reason: 'exit', code: 127 }) })
+  // a child with no pid never started (ENOENT, EACCES); the other 'error' events
+  // come from a running child and are not this sentence
+  child.on('error', (err) => { if (!child.pid) say(`${agent} did not start: ${err.message}. ${installLine(agent)}`); appendEvent(sid, { type: 'error', summary: `${agent} spawn error: ${err.message}` }); stop({ reason: 'exit', code: 127 }) })
   child.on('exit', (code) => stop({ reason: 'exit', code: code ?? -1 }))
 
   // The percentages are NOT read here. One poller per login lives in the board
@@ -973,6 +1007,10 @@ function prepareLegHarness({ sid, from, to }) {
 // there), and the session record carries the agent's id from the start.
 export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null, continued = null } = {}) {
   if (!SUPERVISED_AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy|grok)`)
+  // before the trial, the board and the session record: none of them is
+  // wanted for an agent this machine cannot start
+  const missing = await agentMissing(agent)
+  if (missing) { say(`${agent} is not installed: ${missing}.`); say(installLine(agent)); return 127 }
   // the paid gate: a valid key, or no session (exit 4). The bare agent is never
   // affected; only what Leg adds is licensed.
   const ent = entitlement()

@@ -166,7 +166,12 @@ These are what a pipeline card's chain spawns. Unchanged since 0.2.0.
 ### claude (headless)
 
 - **Binary**: `LEG_CLAUDE_BIN`, else `~/.local/bin/claude.exe` (Windows)
-  or `~/.local/bin/claude`, else `claude` on PATH.
+  or `~/.local/bin/claude`, else `claude` on PATH. On Windows Leg spawns
+  without a shell, so only a `claude.exe` or `claude.com` on PATH counts;
+  when there is none, Leg starts the npm package's own program,
+  `%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe`,
+  because an npm install puts only `claude.cmd` and `claude.ps1` shims on PATH
+  (`src/adapters/claude.mjs` `resolve()`, `onPath` in `src/adapters/common.mjs`).
 - **Argv**: `claude -p --output-format json --permission-mode <mode>`, plus
   `--max-turns <n>`, `--resume <session-id>`, `--model <name>`,
   `--allowedTools <a,b>` when set.

@@ -54,7 +54,7 @@ function version(bin, args = ['--version']) {
   return (r.stdout || r.stderr).trim().split('\n')[0].slice(0, 60)
 }
 
-const INSTALL_HINT = {
+export const INSTALL_HINT = {
   claude: 'https://claude.com/claude-code (then `claude` to log in)',
   codex: 'npm i -g @openai/codex (then `codex login`)',
   agy: 'Antigravity CLI (`agy`), log in once interactively',

@@ -147,8 +147,11 @@ stops working. TLS is served from a certificate pair you supply (`leg share on
 Tailscale or a network you trust.
 
 **What if the CLI I want isn't installed?**
-`node bin/leg.mjs up --dry` prints a preflight table with `ok`/`missing`
-per adapter. A missing adapter only matters if a card's chain names it: that
+`leg up --dry` prints a preflight table with `ok`/`missing`
+per adapter. `leg claude` (or `codex`, `agy`, `grok`) with that CLI missing
+says so in two lines, naming where Leg looked, the install command and the
+`LEG_<AGENT>_BIN` override, and exits 127 before it starts a trial day or
+records a session. A missing adapter only matters if a card's chain names it: that
 leg fails to launch (`launch_failed`), which does not advance the chain,
 install and log in, then press Rerun. A chain only needs the adapters it
 names; leave a missing one out.

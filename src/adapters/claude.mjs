@@ -1,9 +1,11 @@
 // claude adapter — Claude Code headless (`claude -p --output-format json`).
 // Facts and sources: docs/cli-contracts.md § claude.
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { sanitizeEnv } from '../env.mjs'
-import { assertAllowed, firstExisting } from './common.mjs'
+import { resolveNpmCliEntry } from './resolve.mjs'
+import { assertAllowed, firstExisting, onPath } from './common.mjs'
 
 const adapter = {
   name: 'claude',
@@ -15,9 +17,19 @@ const adapter = {
   },
   forbiddenFlags: ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--permission-mode=bypassPermissions', 'bypassPermissions'],
   resolve() {
-    const bin = (process.env.LEG_CLAUDE_BIN || process.env.BATON_CLAUDE_BIN) || firstExisting([
+    let bin = (process.env.LEG_CLAUDE_BIN || process.env.BATON_CLAUDE_BIN) || firstExisting([
       join(homedir(), '.local', 'bin', process.platform === 'win32' ? 'claude.exe' : 'claude'),
-    ], 'claude')
+    ], null)
+    // Installed with npm on Windows, Claude Code puts only claude, claude.cmd
+    // and claude.ps1 on PATH, and a shell-less spawn runs none of them. The
+    // package's own bin is the native program ("bin": {"claude":
+    // "bin/claude.exe"} in 2.1.332, read from a real install), so that is what
+    // starts. POSIX npm links a runnable claude onto PATH, so POSIX is unchanged.
+    if (!bin && process.platform === 'win32' && !onPath('claude')) {
+      const entry = resolveNpmCliEntry('@anthropic-ai/claude-code', 'claude')
+      if (entry && existsSync(entry)) bin = entry
+    }
+    bin ||= 'claude'
     return { bin, viaNode: /\.(mjs|cjs|js)$/.test(bin), entry: null }
   },
   argv(opts = {}) {

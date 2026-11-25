@@ -57,6 +57,14 @@ At most one tiny prompt per CLI, each on its cheapest model, with a scratch
 - Binary: `~/.local/bin/claude.exe` (native exe, 211 MB); Leg resolves it
   there first, else `claude` on PATH; `LEG_CLAUDE_BIN` overrides (source: `ls
   ~/.local/bin/claude.exe`; src/adapters/claude.mjs `resolve()`).
+- Windows npm install: `npm i -g @anthropic-ai/claude-code` puts only
+  `claude`, `claude.cmd` and `claude.ps1` shims in the npm prefix, and a
+  shell-less spawn runs none of them. The package's `bin` is
+  `{"claude": "bin/claude.exe"}`, the native program its postinstall copies
+  in, so when PATH has no `claude.exe` or `claude.com` Leg spawns
+  `%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe`
+  directly (source: a real global install into a scratch prefix, whose
+  `bin\claude.exe --version` answered `2.1.332 (Claude Code)`; observed-live).
 - Headless argv (exact, from fixtures/live/claude/cmd.txt):
   `claude.exe -p --output-format json --permission-mode acceptEdits`
   with the prompt on **stdin** (stdin: `pipe`). Optional: `--max-turns N`,

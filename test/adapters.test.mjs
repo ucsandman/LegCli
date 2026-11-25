@@ -137,3 +137,96 @@ test('parseResult: claude json, codex jsonl', async () => {
   assert.deepEqual(x.errors, ['notice'])
   assert.equal(codex.parseResult(''), null)
 })
+
+// ---- onPath: what a shell-less spawn would actually run --------------------
+// Leg spawns every agent without a shell. On Windows that means libuv's own
+// search (the cwd, then each PATH entry; the name as given only when it has an
+// extension, then .com, then .exe), and a claude.cmd shim on PATH is not
+// something it can start. The platform is injected so both rules run on every
+// OS; the files are real.
+test('onPath on win32 finds x.com and x.exe, never x.cmd or x.ps1, honours quoted entries, else null', async () => {
+  const { onPath } = await import('../src/adapters/common.mjs')
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const root = mkdtempSync(join(tmpdir(), 'leg-onpath-win-'))
+  const [cwd, shims, exes, coms, spaced] = ['cwd', 'shims', 'exes', 'coms', 'with space'].map((d) => { mkdirSync(join(root, d)); return join(root, d) })
+  writeFileSync(join(shims, 'x.cmd'), '@echo off\n')
+  writeFileSync(join(shims, 'x.ps1'), '\n')
+  writeFileSync(join(shims, 'x'), '#!/bin/sh\n')
+  writeFileSync(join(exes, 'x.exe'), '')
+  writeFileSync(join(coms, 'x.com'), '')
+  writeFileSync(join(coms, 'x.exe'), '')
+  mkdirSync(join(exes, 'y.exe'))
+  writeFileSync(join(spaced, 'q.exe'), '')
+  const win = (PATH) => ({ env: { PATH }, platform: 'win32', cwd })
+  assert.equal(onPath('x', win(shims)), null, 'a .cmd, a .ps1 and an extensionless script are not runnable without a shell')
+  assert.equal(onPath('x', win([shims, exes].join(';'))), join(exes, 'x.exe'))
+  assert.equal(onPath('x', win([coms, exes].join(';'))), join(coms, 'x.com'), '.com is tried before .exe')
+  assert.equal(onPath('q', win(`${shims};"${spaced}"`)), join(spaced, 'q.exe'), 'a quoted entry is unquoted')
+  assert.equal(onPath('y', win(exes)), null, 'a directory named y.exe is not a program')
+  assert.equal(onPath('x.cmd', win(exes)), null)
+  assert.equal(onPath('x.exe', win(exes)), join(exes, 'x.exe'), 'a name with an extension is tried as given')
+  assert.equal(onPath('x', { env: { Path: exes }, platform: 'win32', cwd }), join(exes, 'x.exe'), 'Windows spells it Path as often as PATH')
+  writeFileSync(join(cwd, 'x.exe'), '')
+  assert.equal(onPath('x', win(coms)), join(cwd, 'x.exe'), 'the cwd is searched first')
+  assert.equal(onPath('nothing', win([shims, exes, coms].join(';'))), null)
+})
+
+test('onPath on POSIX wants a regular file with the execute bit', { skip: process.platform === 'win32' ? 'Windows has no execute bit: every file passes X_OK there, so the case cannot fail on this OS' : false }, async () => {
+  const { onPath } = await import('../src/adapters/common.mjs')
+  const { mkdtempSync, mkdirSync, writeFileSync, chmodSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const root = mkdtempSync(join(tmpdir(), 'leg-onpath-posix-'))
+  const [a, b] = ['a', 'b'].map((d) => { mkdirSync(join(root, d)); return join(root, d) })
+  writeFileSync(join(a, 'x'), '#!/bin/sh\n')
+  chmodSync(join(a, 'x'), 0o644)
+  mkdirSync(join(a, 'y'))
+  const posix = { env: { PATH: [a, b].join(':') }, platform: 'linux', cwd: root }
+  assert.equal(onPath('x', posix), null, 'not executable')
+  assert.equal(onPath('y', posix), null, 'a directory')
+  writeFileSync(join(b, 'x'), '#!/bin/sh\n')
+  chmodSync(join(b, 'x'), 0o755)
+  assert.equal(onPath('x', posix), join(b, 'x'))
+})
+
+// Claude Code installed with npm on Windows leaves claude, claude.cmd and
+// claude.ps1 on PATH, none of which a shell-less spawn can run, and the real
+// program at node_modules/@anthropic-ai/claude-code/bin/claude.exe: that
+// package's "bin" is {"claude": "bin/claude.exe"} (read from a real install of
+// 2.1.332 on 2026-11-25). The fixture below is that layout, under APPDATA.
+test('claude resolve() on Windows falls back to the npm package\'s claude.exe when PATH holds only the shims', { skip: process.platform === 'win32' ? false : 'resolve() reads process.platform, and the npm fallback exists only on Windows; POSIX npm puts a runnable claude symlink on PATH' }, async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const root = mkdtempSync(join(tmpdir(), 'leg-claude-npm-'))
+  const prefix = join(root, 'appdata', 'npm')
+  const pkg = join(prefix, 'node_modules', '@anthropic-ai', 'claude-code')
+  mkdirSync(join(pkg, 'bin'), { recursive: true })
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@anthropic-ai/claude-code', version: '2.1.332', bin: { claude: 'bin/claude.exe' } }))
+  for (const shim of ['claude', 'claude.cmd', 'claude.ps1']) writeFileSync(join(prefix, shim), '')
+  const exe = join(pkg, 'bin', 'claude.exe')
+  const keys = ['APPDATA', 'USERPROFILE', 'HOME', 'PATH', 'LEG_CLAUDE_BIN', 'BATON_CLAUDE_BIN']
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]))
+  try {
+    process.env.APPDATA = join(root, 'appdata')
+    process.env.USERPROFILE = join(root, 'home') // no ~/.local/bin/claude.exe
+    process.env.HOME = join(root, 'home')
+    process.env.PATH = prefix
+    delete process.env.LEG_CLAUDE_BIN
+    delete process.env.BATON_CLAUDE_BIN
+    const claude = (await import('../src/adapters/claude.mjs')).default
+    // the package is there but its postinstall never ran: no claude.exe yet
+    assert.deepEqual(claude.resolve(), { bin: 'claude', viaNode: false, entry: null }, 'a bin path that does not exist is not returned')
+    writeFileSync(exe, '')
+    assert.deepEqual(claude.resolve(), { bin: exe, viaNode: false, entry: null })
+    assert.equal(claude.argv({ prompt: 'x' }).bin, exe, 'the headless leg spawns it directly')
+    // a claude.exe on PATH wins over the npm package, as it would for a shell
+    const elsewhere = join(root, 'bin'); mkdirSync(elsewhere); writeFileSync(join(elsewhere, 'claude.exe'), '')
+    process.env.PATH = `${elsewhere};${prefix}`
+    assert.equal(claude.resolve().bin, 'claude')
+  } finally {
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k] }
+  }
+})

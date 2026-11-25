@@ -214,7 +214,12 @@ prompt as its first positional argument: <code>claude &quot;&lt;prompt&gt;&quot;
 <h3 id="claude-headless"><a class="anchor" href="#claude-headless">claude (headless)</a></h3>
 <ul>
 <li><strong>Binary</strong>: <code>LEG_CLAUDE_BIN</code>, else <code>~/.local/bin/claude.exe</code> (Windows)
-or <code>~/.local/bin/claude</code>, else <code>claude</code> on PATH.</li>
+or <code>~/.local/bin/claude</code>, else <code>claude</code> on PATH. On Windows Leg spawns
+without a shell, so only a <code>claude.exe</code> or <code>claude.com</code> on PATH counts;
+when there is none, Leg starts the npm package&#39;s own program,
+<code>%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe</code>,
+because an npm install puts only <code>claude.cmd</code> and <code>claude.ps1</code> shims on PATH
+(<code>src/adapters/claude.mjs</code> <code>resolve()</code>, <code>onPath</code> in <code>src/adapters/common.mjs</code>).</li>
 <li><strong>Argv</strong>: <code>claude -p --output-format json --permission-mode &lt;mode&gt;</code>, plus
 <code>--max-turns &lt;n&gt;</code>, <code>--resume &lt;session-id&gt;</code>, <code>--model &lt;name&gt;</code>,
 <code>--allowedTools &lt;a,b&gt;</code> when set.</li>

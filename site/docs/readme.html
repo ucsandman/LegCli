@@ -725,6 +725,13 @@ retries every minute; an active Codex session also keeps its rollout tap as a
 fallback for percentages and the wall signal.</li>
 <li><strong>agy&#39;s card has no percentage</strong>: expected, agy exposes none. Leg sees the
 wall when agy hits it.</li>
+<li><strong><code>leg claude</code> says &quot;claude is not installed&quot; or &quot;did not start&quot;</strong>: Leg
+found nothing it can run, and the line says where it looked. Leg starts
+agents without a shell, so on Windows a <code>claude.cmd</code> on PATH does not count;
+Claude Code installed with npm is found through its package instead. A CLI
+installed somewhere else: set <code>LEG_CLAUDE_BIN</code> (or <code>LEG_CODEX_BIN</code>,
+<code>LEG_AGY_BIN</code>, <code>LEG_GROK_BIN</code>) to its full path. Leg exits 127 before it
+starts a trial day or records a session.</li>
 <li><strong>A session shows <code>lost</code></strong>: the terminal that ran <code>leg &lt;agent&gt;</code> is gone
 (closed, crashed, machine slept through a kill). Remove it from the board.</li>
 <li><strong>Nested session</strong>: <code>leg claude</code> typed inside a Claude Code shell works;

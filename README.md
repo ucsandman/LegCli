@@ -696,6 +696,13 @@ DNS-rebound hostname from inheriting local access. Either way there is no TLS.
   fallback for percentages and the wall signal.
 - **agy's card has no percentage**: expected, agy exposes none. Leg sees the
   wall when agy hits it.
+- **`leg claude` says "claude is not installed" or "did not start"**: Leg
+  found nothing it can run, and the line says where it looked. Leg starts
+  agents without a shell, so on Windows a `claude.cmd` on PATH does not count;
+  Claude Code installed with npm is found through its package instead. A CLI
+  installed somewhere else: set `LEG_CLAUDE_BIN` (or `LEG_CODEX_BIN`,
+  `LEG_AGY_BIN`, `LEG_GROK_BIN`) to its full path. Leg exits 127 before it
+  starts a trial day or records a session.
 - **A session shows `lost`**: the terminal that ran `leg <agent>` is gone
   (closed, crashed, machine slept through a kill). Remove it from the board.
 - **Nested session**: `leg claude` typed inside a Claude Code shell works;

@@ -136,6 +136,15 @@ stderr are 0 bytes, and codex&#39;s is the one stdin notice. observed-live.</p>
 <li><p>Binary: <code>~/.local/bin/claude.exe</code> (native exe, 211 MB); Leg resolves it
 there first, else <code>claude</code> on PATH; <code>LEG_CLAUDE_BIN</code> overrides (source: <code>ls ~/.local/bin/claude.exe</code>; src/adapters/claude.mjs <code>resolve()</code>).</p>
 </li>
+<li><p>Windows npm install: <code>npm i -g @anthropic-ai/claude-code</code> puts only
+<code>claude</code>, <code>claude.cmd</code> and <code>claude.ps1</code> shims in the npm prefix, and a
+shell-less spawn runs none of them. The package&#39;s <code>bin</code> is
+<code>{&quot;claude&quot;: &quot;bin/claude.exe&quot;}</code>, the native program its postinstall copies
+in, so when PATH has no <code>claude.exe</code> or <code>claude.com</code> Leg spawns
+<code>%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe</code>
+directly (source: a real global install into a scratch prefix, whose
+<code>bin\claude.exe --version</code> answered <code>2.1.332 (Claude Code)</code>; observed-live).</p>
+</li>
 <li><p>Headless argv (exact, from fixtures/live/claude/cmd.txt):
 <code>claude.exe -p --output-format json --permission-mode acceptEdits</code>
 with the prompt on <strong>stdin</strong> (stdin: <code>pipe</code>). Optional: <code>--max-turns N</code>,
