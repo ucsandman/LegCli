@@ -26,7 +26,7 @@ questions."
 |-----|---------|--------------|---------|
 | claude | 2.1.332 | 2026-11-25: one `--max-turns 1 --model haiku` prompt on the base argv, exit 0, `subtype:"success"` (fixtures/live/claude/max-turns-probe.json); the runner task was last run 2026-09-11 on 2.1.268: exit 0, file yes, DONE yes, 20 s | `src/adapters/claude.mjs` |
 | codex | codex-cli 0.154.0 | 2026-11-25 with `-m gpt-5.6-luna`: exit 0, file yes, DONE yes, 52 s (2026-09-11 on the previous pin: 28 s) | `src/adapters/codex.mjs` |
-| agy | 1.5.17 | 2026-11-25: exit 1 at the sign-in prompt after parsing every flag, because agy is signed out on this machine (fixtures/live/agy/signed-out-probe.json). 2026-09-11 on the previous pin: attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (`--add-dir`) exit 0, file yes, DONE yes, 41 s | `src/adapters/agy.mjs` |
+| agy | 1.5.17 | 2026-11-25, signed in: exit 0, file yes, DONE yes, 18 s on gemini-3.8-flash-low (fixtures/live/agy/run.json). Earlier the same day, signed out: exit 1 at the sign-in prompt after parsing every flag (fixtures/live/agy/signed-out-probe.json). 2026-09-11 on the previous pin: attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (`--add-dir`) exit 0, file yes, DONE yes, 41 s | `src/adapters/agy.mjs` |
 | grok | 1.0.34 | exit 1, no file, no DONE: the account answered `402 Payment Required: Grok Build usage balance exhausted`, classified `limit` (re-probed 2026-09-17; the 2026-09-11 run on 0.2.51 was not logged in) | `src/adapters/grok.mjs` |
 
 The auth-source check: the build shell carried `ANTHROPIC_API_KEY` and
@@ -47,7 +47,7 @@ At most one tiny prompt per CLI, each on its cheapest model, with a scratch
 - codex headless argv: observed-live. The runner task with `-m gpt-5.6-luna` exited 0 with the file and DONE written (fixtures/live/codex/).
 - codex usage: observed-live. `readCodexUsage()` returned `ok: true`, `available: true` and a `seven_day` window.
 - codex wall (`usage_limit_exceeded`): docs-only on 0.154.0.
-- agy headless argv: observed-live up to the sign-in prompt (fixtures/live/agy/signed-out-probe.json); the success path is docs-only on 1.5.17.
+- agy headless argv: observed-live, a signed-in run to exit 0 (fixtures/live/agy/run.json) and a signed-out run up to the sign-in prompt (fixtures/live/agy/signed-out-probe.json). A live quota wall was not re-observed on this version; the wall strings are still in the binary.
 - agy wall: the shipped `agy.exe` still contains `RESOURCE_EXHAUSTED`, "it resets in" and "out of quota"; a live wall is docs-only on 1.5.17.
 - grok: fixtures only (`--help` and `--version` re-captured); the account balance is exhausted, so no prompt was spent.
 

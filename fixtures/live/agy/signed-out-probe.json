@@ -17,5 +17,5 @@
     "it resets in": "present",
     "out of quota": "present"
   },
-  "conclusion": "agy 1.5.17 parses every flag Leg's headless argv passes (a Go flag error would end the run before the sign-in prompt) and still prints one JSON envelope on stdout when it fails. This machine's agy is signed out, so the success path and a live quota wall were not re-observed on 1.5.17; the wall strings Leg's tap matches are still in the shipped binary."
+  "conclusion": "agy 1.5.17 parses every flag Leg's headless argv passes (a Go flag error would end the run before the sign-in prompt) and still prints one JSON envelope on stdout when it fails. This machine's agy was signed out for this run, so it did not reach the success path; a signed-in run later the same day did (run.json in this directory). A live quota wall was not re-observed on 1.5.17; the wall strings Leg's tap matches are still in the shipped binary."
 }

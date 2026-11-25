@@ -22,7 +22,7 @@
       "version": "1.5.17",
       "npm": null,
       "probe": "agy --version",
-      "note": "Antigravity CLI is a closed Go binary with no npm package, so drift is only visible from a machine that has it installed. On 1.5.17 (2026-11-25) every flag Leg passes is still in agy --help, a headless run through the runner parsed Leg's argv and returned its JSON envelope, and the shipped binary still contains RESOURCE_EXHAUSTED, 'it resets in' and 'out of quota'. This machine's agy is signed out, so the success path and a live quota wall were not re-observed on 1.5.17 (fixtures/live/agy/signed-out-probe.json)."
+      "note": "Antigravity CLI is a closed Go binary with no npm package, so drift is only visible from a machine that has it installed. On 1.5.17 (2026-11-25) every flag Leg passes is still in agy --help, a headless run through the runner parsed Leg's argv and returned its JSON envelope, and the shipped binary still contains RESOURCE_EXHAUSTED, 'it resets in' and 'out of quota'. This machine's agy was signed out for the first run (fixtures/live/agy/signed-out-probe.json); signed in later the same day, a run through the runner exited 0 and wrote its file (fixtures/live/agy/run.json). A live quota wall was not re-observed on 1.5.17."
     },
     "grok": {
       "label": "grok",

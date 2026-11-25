@@ -55,7 +55,7 @@ Off by default. `leg harness enable` makes a handoff carry the working environme
 
 ## Verified
 
-Re-verified on 2026-11-25: Claude Code 2.1.332 and codex-cli 0.154.0 were run. agy 1.5.17 was signed out and grok 1.0.34 had no balance, so nothing was run on those two: agy's flags and limit strings and grok's flags were re-read. 1150 tests.
+Re-verified on 2026-11-25: Claude Code 2.1.332, codex-cli 0.154.0 and agy 1.5.17 were run. grok 1.0.34 had no balance, so nothing was run on it: its flags were re-read. 1150 tests.
 
 ## Docs
 
