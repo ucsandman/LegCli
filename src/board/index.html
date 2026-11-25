@@ -56,6 +56,20 @@
     </div>
   </section>
 
+  <!-- What happened while you were away: the record `leg digest` prints, read
+       once on load from /api/digest. Owner only, so it ships hidden and
+       digest.js shows it only when the route answers; a guest's 403 leaves
+       nothing here. Hide for today closes it until the next calendar day. -->
+  <section class="digest" id="digest" aria-labelledby="digest-head" hidden>
+    <div class="digest-head">
+      <h2 id="digest-head">While you were away</h2>
+      <button type="button" class="btn btn-secondary" id="digest-hide">Hide for today</button>
+    </div>
+    <p class="digest-meta" id="digest-meta"></p>
+    <h3 class="digest-sub" id="digest-sub" hidden></h3>
+    <ul class="digest-list" id="digest-list"></ul>
+  </section>
+
   <section class="region-terminals" aria-labelledby="terminals-head">
     <div class="section-head">
       <h2 id="terminals-head">Terminals</h2>
@@ -393,5 +407,6 @@
 <script src="sessions.js" defer></script>
 <script src="history.js" defer></script>
 <script src="audit.js" defer></script>
+<script src="digest.js" defer></script>
 </body>
 </html>

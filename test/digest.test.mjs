@@ -21,6 +21,7 @@ process.env.LEG_QUIET = '1'
 const D = await import('../src/digest.mjs')
 const sessions = await import('../src/sessions.mjs')
 const { createBoardServer } = await import('../src/server.mjs')
+const share = await import('../src/share.mjs')
 
 // Anchored on the real clock: the CLI and the route read Date.now(), so a
 // fixed date here fell out of their 30-day window after a month and the two
@@ -153,4 +154,30 @@ test('GET /api/digest answers the owner and refuses a guest and an operator', as
     assert.equal(bad.status, 400)
     assert.match(bad.json.error, /bad --since/)
   } finally { await srv.stop() }
+
+  // the refusal, on a shared board: the same roster shape and bearer tokens
+  // test/roles-tls-audit.test.mjs builds. The digest names repositories and
+  // prompts, so an operator (who runs the pipeline) is refused with the guest.
+  const tokens = { owner: share.newToken(), operator: share.newToken(), guest: share.newToken() }
+  const people = [
+    { name: 'ada', role: 'owner', token_sha256: share.hashToken(tokens.owner) },
+    { name: 'dana', role: 'operator', token_sha256: share.hashToken(tokens.operator) },
+    { name: 'sam', role: 'guest', token_sha256: share.hashToken(tokens.guest) },
+  ]
+  const shared = createBoardServer({ bind: '127.0.0.1', port: 0, token: '', scheduler: false, share: { version: 1, on: true, bind: '127.0.0.1', bind_kind: 'address', port: 0, owner: 'ada', loopback_owner: false, people } })
+  const { port: sharedPort } = await shared.start()
+  const as = (who) => new Promise((resolvePromise, reject) => {
+    http.get({ host: '127.0.0.1', port: sharedPort, path: '/api/digest?since=30d', headers: { Authorization: `Bearer ${tokens[who]}` } }, (res) => { let t = ''; res.on('data', (c) => { t += c }); res.on('end', () => resolvePromise({ status: res.statusCode, json: (() => { try { return JSON.parse(t) } catch { return null } })() })) }).on('error', reject)
+  })
+  try {
+    for (const who of ['guest', 'operator']) {
+      const r = await as(who)
+      assert.equal(r.status, 403, `a ${who} may not read the digest (${r.status})`)
+      assert.match(r.json.error, /belongs to the owner of this machine/, `${who}: refused by the machine gate, not by a missing route`)
+      assert.equal(r.json.volume, undefined, `${who}: and is told nothing about what moved`)
+    }
+    const owner = await as('owner')
+    assert.equal(owner.status, 200, 'the owner of the shared board still reads it')
+    assert.equal(owner.json.volume.terminals, 4)
+  } finally { await shared.stop() }
 })

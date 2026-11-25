@@ -923,3 +923,51 @@ input[type="number"] { font: inherit; font-size: var(--t-0); color: var(--text);
 /* the entry's help line sits after Start on the same row */
 #card-entry .confirm-row .field-help { flex: 0 1 auto; }
 /* ---- end of the second pass ----------------------------------------------- */
+
+/* ---- 2026-11-25: while you were away (digest.js) ------------------------ */
+/* What happened in the last 8 hours, read once on load from /api/digest. It
+   is history, so it sits on the ground like the ledger and is never a raised
+   panel: it cannot compete with the terminals under it (DESIGN.md rule 3).
+   Its rows speak the terminal rows' grammar: a mark and a status word, a dot
+   beside the agent's name, the short id in the data face, a muted clock. The
+   three columns (status, who over what, clock) line up across rows through a
+   subgrid. */
+.digest { padding-top: 32px; }
+.digest-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+.digest-head h2 { font-size: var(--t-2); font-weight: var(--w-head); letter-spacing: -.012em; }
+.digest-meta { margin-top: 6px; font-size: var(--t-0); color: var(--text-2); }
+.digest-sub { margin-top: 18px; font-size: var(--t-1); font-weight: var(--w-head); }
+.digest-list { margin-top: 6px; display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 24px; }
+/* an empty grid still lays out its column gaps, 48px of nothing in a line */
+.digest-list:empty { display: none; }
+.digest-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; padding: 12px 0; font-size: var(--t-0); }
+.digest-row + .digest-row { border-top: 1px solid var(--line); }
+.digest-kind { display: inline-flex; align-items: center; gap: 8px; font-weight: var(--w-head); color: var(--text-2); white-space: nowrap; }
+/* who and what share a line while they fit and wrap when they do not, so a
+   wide board spends one line per row and a narrow one stacks them */
+.digest-body { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px; }
+.digest-who { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--text-2); }
+.digest-term { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.digest-term .dot { width: 7px; height: 7px; }
+.digest-more { color: var(--text-3); }
+.digest-what { flex: 1 1 32ch; min-width: 0; color: var(--text); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.digest-when { color: var(--text-3); white-space: nowrap; text-align: right; }
+/* a window where nothing moved is one line, heading and sentence side by
+   side, the grammar of an empty station on the floor */
+.digest.is-quiet { display: flex; align-items: baseline; gap: 6px 16px; flex-wrap: wrap; }
+.digest.is-quiet .digest-head { display: contents; }
+.digest.is-quiet .digest-head h2 { font-size: var(--t-1); }
+.digest.is-quiet .digest-meta { order: 1; margin-top: 0; color: var(--text-3); }
+.digest.is-quiet #digest-hide { order: 2; margin-left: auto; }
+
+@media (max-width: 760px) {
+  .digest { padding-top: 24px; }
+  /* one column: the status word and the clock share a line, then who over what */
+  .digest-list { display: block; }
+  .digest-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+  .digest-when { order: 1; margin-left: auto; }
+  .digest-body { order: 2; flex: 1 0 100%; }
+  /* a control that wraps onto its own line starts it, as the strip's does */
+  .digest.is-quiet #digest-hide { margin-left: 0; }
+}
+/* ---- end of the digest block ------------------------------------------- */

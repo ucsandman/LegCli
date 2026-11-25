@@ -18,6 +18,7 @@ const FLOOR_HTML = readFileSync(join(ROOT, 'src/board/floor.html'), 'utf8')
 const BOARD_JS = readFileSync(join(ROOT, 'src/board/board.js'), 'utf8')
 const FLOOR_JS = readFileSync(join(ROOT, 'src/board/floor.js'), 'utf8')
 const HISTORY_JS = readFileSync(join(ROOT, 'src/board/history.js'), 'utf8')
+const DIGEST_JS = readFileSync(join(ROOT, 'src/board/digest.js'), 'utf8')
 
 // ---- WCAG relative luminance / contrast ----
 function hexToRgb(hex) {
@@ -124,7 +125,7 @@ test('every chip/pill colour meets WCAG UI-component contrast (>= 3.0:1) against
 
 // ---- tab order / focus ring / reduced motion ----
 test('no positive tabindex anywhere in the board sources', () => {
-  for (const [name, src] of [['index.html', INDEX_HTML], ['floor.html', FLOOR_HTML], ['board.js', BOARD_JS], ['floor.js', FLOOR_JS]]) {
+  for (const [name, src] of [['index.html', INDEX_HTML], ['floor.html', FLOOR_HTML], ['board.js', BOARD_JS], ['floor.js', FLOOR_JS], ['digest.js', DIGEST_JS]]) {
     const bad = src.match(/tabindex\s*[:=]\s*["']?([1-9]\d*)/i)
     assert.equal(bad, null, `${name}: positive tabindex found (${bad?.[0]})`)
   }
@@ -326,7 +327,7 @@ test('every class the board puts in the DOM has a rule in board.css', () => {
   const SESSIONS_JS = readFileSync(join(ROOT, 'src/board/sessions.js'), 'utf8')
   const sources = {
     'board.js': BOARD_JS, 'sessions.js': SESSIONS_JS, 'floor.js': FLOOR_JS, 'history.js': HISTORY_JS,
-    'index.html': INDEX_HTML, 'floor.html': FLOOR_HTML,
+    'digest.js': DIGEST_JS, 'index.html': INDEX_HTML, 'floor.html': FLOOR_HTML,
   }
   const missing = []
   for (const [name, src] of Object.entries(sources)) {
@@ -407,5 +408,33 @@ test('every dialog is announced by the heading it shows', () => {
     } else {
       assert.equal(label, heading, `${id}: the announced name and the heading on screen say different things`)
     }
+  }
+})
+
+// The digest above Terminals (digest.js). It is the owner's alone, so it ships
+// hidden and a guest's 403 leaves nothing to announce; it is named by the
+// heading it shows; its one control is a named button in index.html, which the
+// sweep above already reads, and digest.js builds none of its own.
+test('the digest section is named by its heading, ships hidden, and builds no control', () => {
+  assert.match(INDEX_HTML, /<section class="digest" id="digest" aria-labelledby="digest-head" hidden>/)
+  assert.match(INDEX_HTML, /<h2 id="digest-head">While you were away<\/h2>/, 'aria-labelledby points at the heading on screen')
+  assert.match(INDEX_HTML, /<button type="button" class="btn btn-secondary" id="digest-hide">Hide for today<\/button>/)
+  assert.deepEqual(extractElCalls(DIGEST_JS, ['button', 'input', 'select', 'textarea', 'a']), [], 'digest.js builds no control')
+  for (const deco of ["class: `dot id-${a.agent}`, 'aria-hidden': 'true'", "class: `mark tone-${tone}`, 'aria-hidden': 'true'"]) {
+    assert.ok(DIGEST_JS.includes(deco), `the dot and the mark are decoration; the word beside each is the reading (${deco.split(',')[0]})`)
+  }
+})
+
+// It sits on the ground, not on a panel (DESIGN.md rule 3), so every colour it
+// sets is measured against --e0, the surface actually painted behind it.
+test('every colour the digest sets meets AA (>= 4.5:1) against the ground it sits on', (t) => {
+  const ground = resolveColor('var(--e0)')
+  const rules = findRules(CSS, /^\.digest/).filter((r) => ruleColor(r.body))
+  assert.ok(rules.length >= 6, `expected the digest's colour rules in board.css, found ${rules.length}`)
+  for (const r of rules) {
+    const fg = ruleColor(r.body)
+    const ratio = contrast(fg, ground)
+    t.diagnostic(`${r.selector} :: ${fg} on ${ground} -> ${ratio.toFixed(2)}:1`)
+    assert.ok(ratio >= 4.5, `${r.selector} contrast ${ratio.toFixed(2)}:1 < 4.5:1 (${fg} on ${ground})`)
   }
 })
