@@ -3,6 +3,24 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-11-25: "re-verified on agy and grok" was written for two CLIs that were never run
+
+**Fixed on the pages before the 0.17.1 push; the CHANGELOG headline and the
+GitHub release title went out still saying it.** The re-pin wrote one line for
+all four CLIs: "re-verified against Claude Code 2.1.332, codex-cli 0.154.0, agy
+1.5.17 and grok 1.0.34". Claude Code and codex were run. agy was signed out on
+the machine, so its run stopped at the sign-in prompt, and grok had no balance;
+for those two only the help text and (for agy) the limit strings in the binary
+were re-read. The honest detail sat in `fixtures/verified.json` and
+docs/cli-contracts.md, one click away from a summary line that claimed more.
+
+- **Fix.** README.md, site/index.html and site/llms.txt now say which CLIs
+  were run and which were re-read, on the same line as the date.
+- **The lesson that generalises.** A line that says "verified on" names only
+  what was run. Anything that was read and not run says so in the same
+  sentence, not in a file the summary links to. Before a re-pin, check that
+  every CLI is signed in and funded; one that is not gets its own wording.
+
 ## 2026-11-25: the weekly Tap drift job was red ten weeks running and nobody saw it
 
 **Fixed by judging the pin's age instead of its equality, and by giving a red

@@ -1,8 +1,36 @@
 # Changelog
 
+## 0.17.2 (2026-11-25)
+
+`leg <agent>` now says so when that agent's CLI cannot be started, and Claude Code installed with npm on Windows starts.
+
+- **A missing agent is named, with the way out.** `leg claude`, `codex`, `agy`
+  or `grok` with that CLI missing used to exit 127 with nothing on the
+  terminal, after starting a trial day and writing a session record. It now
+  prints two lines (where Leg looked, the install command, and the
+  `LEG_<AGENT>_BIN` override) and exits 127 before the trial, the board or a
+  session record.
+- **A CLI that is there but cannot be started says why.** A directory or a
+  `.cmd` where the program should be prints `<agent> did not start` with the
+  reason and the same two ways out. The exit stays 127.
+- **Claude Code installed with npm on Windows starts.** npm puts only
+  `claude`, `claude.cmd` and `claude.ps1` on PATH, and Leg starts agents
+  without a shell, so none of them ran. When PATH holds only those shims, Leg
+  now runs the package's own `bin/claude.exe`. Checked against a real npm
+  install of 2.1.332 in a scratch prefix. Not covered: an npm prefix other
+  than `%APPDATA%\npm` (nvm-windows, a custom prefix), and pnpm or yarn shims.
+- **On WSL a missing agent is still recognised.** One unsearchable Windows
+  folder on PATH turns "not found" into "permission denied" there; both now
+  count as missing.
+- **The FAQ's preflight command is `leg up --dry`.**
+- **Correction to 0.17.1.** Its headline said the taps were re-verified on
+  agy and grok. Neither was run: agy was signed out and grok had no balance.
+  The headline below now says so, as the README and the site already did
+  (docs/ERRORS.md).
+
 ## 0.17.1 (2026-11-25)
 
-The taps are re-verified on Claude Code 2.1.332, codex-cli 0.154.0, agy 1.5.17 and grok 1.0.34, and the weekly drift check now fails only when that verification is more than 30 days old.
+The taps are re-checked on the CLIs installed today (Claude Code 2.1.332 and codex-cli 0.154.0 were run; agy 1.5.17 and grok 1.0.34 were re-read, not run), and the weekly drift check now fails only when that check is more than 30 days old.
 
 - **Re-verified on the CLIs installed today.** Every flag Leg passes was
   re-read from each CLI's `--help` (`fixtures/help/`), and a new test
