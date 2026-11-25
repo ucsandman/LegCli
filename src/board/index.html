@@ -57,7 +57,8 @@
   </section>
 
   <!-- What happened while you were away: the record `leg digest` prints, read
-       once on load from /api/digest. Owner only, so it ships hidden and
+       from /api/digest on load and again when a tab left open comes back into
+       view with a read over 30 minutes old. Owner only, so it ships hidden and
        digest.js shows it only when the route answers; a guest's 403 leaves
        nothing here. Hide for today closes it until the next calendar day. -->
   <section class="digest" id="digest" aria-labelledby="digest-head" hidden>

@@ -248,8 +248,10 @@ an explicit available answer from the backend.</p>
 <h2 id="while-you-were-away"><a class="anchor" href="#while-you-were-away">While you were away</a></h2>
 <p><code>src/board/digest.js</code> draws it, from <code>GET /api/digest?since=8h</code>: the record
 <code>leg digest</code> prints (<a href="/docs/concepts#the-digest">concepts</a>). It sits between the
-logins and Terminals, and it reads once, when the page opens. Nothing in it
-updates afterwards; the live region of the page is still Terminals.</p>
+logins and Terminals, and it reads on arrival: when the page opens, and again
+when a tab that was left open comes back into view with a read more than 30
+minutes old or from another calendar day. There is no timer and nothing
+arrives over the event stream; the live region of the page is still Terminals.</p>
 <p>It has three states:</p>
 <ul>
 <li><strong>Something needs you.</strong> One line of volume (<code>In the last 8 hours: 9 terminals, 2 cards and 1 landing moved; 11 events read.</code>), then <code>Needs you</code>
@@ -266,7 +268,8 @@ other failure also draws nothing.</li>
 </ul>
 <p><strong>Hide for today</strong> closes it and stores today&#39;s date in that browser. Until
 the next calendar day the section stays closed and the board does not ask
-the server for the digest at all.</p>
+the server for the digest at all. A tab left open overnight shows it again
+the first time it is looked at the next day.</p>
 <h2 id="terminals"><a class="anchor" href="#terminals">Terminals</a></h2>
 <p><code>src/board/sessions.js</code> renders the region from <code>GET /api/sessions</code>, refreshed
 by the server-sent <code>sessions</code> event, re-sorted every 15 s, with the elapsed

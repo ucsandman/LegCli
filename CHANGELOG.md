@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.18.1 (2026-11-25)
+
+A board tab left open reads "While you were away" again when you come back to it.
+
+- **The section re-reads on return.** 0.18.0 read `/api/digest` once, when
+  the page loaded, so a tab left open overnight still showed last night's
+  digest in the morning, with its "17m ago" times frozen. It now asks again
+  when the tab comes back into view and the last read is more than 30 minutes
+  old. There is still no timer and nothing arrives over the event stream.
+- **Hide for today ends at midnight in an open tab too.** A tab hidden
+  yesterday shows the section the first time it is looked at the next day.
+  While it is hidden, looking at the tab asks the server nothing.
+- **A read that is refused on return takes the section down**, the same as on
+  load.
+
 ## 0.18.0 (2026-11-25)
 
 The board shows what happened while you were away.

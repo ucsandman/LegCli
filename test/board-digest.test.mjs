@@ -6,7 +6,9 @@
 // nothing moved is one line that still says how much it read; a busy window
 // prints its volume and what needs a person, most urgent first, with the lost
 // terminals said once as one line; "Hide for today" keeps the panel closed for
-// the rest of the calendar day and skips the read entirely.
+// the rest of the calendar day and skips the read entirely; a tab left open
+// asks again when it comes back into view with a read more than 30 minutes
+// old, or on a new calendar day, and never on a timer.
 //
 // src/board/digest.js runs in the browser and the repo has no DOM harness, so
 // it is run here against a stub document, the way test/floor-page.test.mjs
@@ -38,10 +40,24 @@ function node(tag = 'div') {
   return n
 }
 
+// A clock the page can be moved along: the script's Date is this one, so a tab
+// left open for hours is `advance`, not a sleep.
+function clock() {
+  let offset = 0
+  class PageDate extends Date {
+    constructor(...args) { if (args.length) super(...args); else super(Date.now() + offset) }
+    static now() { return Date.now() + offset }
+  }
+  return { Date: PageDate, advance(ms) { offset += ms } }
+}
+
 // index.html ships the section hidden; the stub starts it the same way
 function load({ respond, hiddenFor = '' } = {}) {
   const els = new Map()
+  const docListeners = {}
   const doc = {
+    visibilityState: 'visible',
+    addEventListener: (k, fn) => { docListeners[k] = fn },
     createElement: (t) => node(t),
     createTextNode: (t) => ({ textContent: String(t) }),
     getElementById: (id) => { if (!els.has(id)) { const n = node(); if (id === 'digest') n.hidden = true; els.set(id, n) } return els.get(id) },
@@ -49,18 +65,22 @@ function load({ respond, hiddenFor = '' } = {}) {
   const store = new Map(hiddenFor ? [['legDigestHidden', hiddenFor]] : [])
   const localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) }
   const calls = []
-  const fetchImpl = async (url, opts) => { calls.push({ url, opts }); return respond(url) }
-  new Function('document', 'localStorage', 'fetch', DIGEST_JS)(doc, localStorage, fetchImpl)
-  return { el: (id) => doc.getElementById(id), calls, store }
+  const fetchImpl = async (url, opts) => { calls.push({ url, opts }); return respond(url, calls.length) }
+  const time = clock()
+  new Function('document', 'localStorage', 'fetch', 'Date', DIGEST_JS)(doc, localStorage, fetchImpl, time.Date)
+  // the tab going to the background and coming back, as the browser reports it
+  const show = (state = 'visible') => { doc.visibilityState = state; docListeners.visibilitychange?.() }
+  return { el: (id) => doc.getElementById(id), calls, store, advance: time.advance, show }
 }
 
 const json = (status, body) => ({ ok: status >= 200 && status < 300, status, statusText: status === 403 ? 'Forbidden' : 'OK', json: async () => body })
 const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)) }
 const at = (hoursAgo) => new Date(Date.now() - hoursAgo * 3600000).toISOString()
-function today() {
-  const d = new Date()
+function todayPlus(ms) {
+  const d = new Date(Date.now() + ms)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+const today = () => todayPlus(0)
 
 const QUIET = {
   since: at(8), until: at(0),
@@ -137,6 +157,68 @@ test('Hide for today closes the panel and skips the read until the next calendar
   const tomorrow = load({ respond: () => json(200, BUSY), hiddenFor: '2000-01-01' })
   await settle()
   assert.equal(tomorrow.el('digest').hidden, false, 'a hide from another day has run out')
+})
+
+const MINUTE = 60 * 1000
+
+test('a tab left open asks again when it comes back into view with a read over 30 minutes old, and not before', async () => {
+  const b = load({ respond: (url, n) => json(200, n === 1 ? BUSY : QUIET) })
+  await settle()
+  assert.equal(b.calls.length, 1)
+  assert.equal(b.el('digest-list').children.length, 3)
+
+  b.show('hidden'); b.show('visible')
+  await settle()
+  assert.equal(b.calls.length, 1, 'coming straight back is not a new arrival')
+
+  b.advance(29 * MINUTE)
+  b.show('hidden'); b.show('visible')
+  await settle()
+  assert.equal(b.calls.length, 1, 'a read 29 minutes old still stands')
+
+  b.advance(2 * MINUTE)
+  b.show('hidden')
+  await settle()
+  assert.equal(b.calls.length, 1, 'a tab going to the background asks nothing')
+  b.show('visible')
+  await settle()
+  assert.equal(b.calls.length, 2, 'a read 31 minutes old is asked again when the tab is looked at')
+  assert.equal(b.calls[1].url, '/api/digest?since=8h')
+  assert.equal(b.el('digest-meta').textContent, 'Nothing moved in the last 8 hours. Read 12 terminals and 3 cards on disk.', 'and the page now says what the second read said')
+  assert.equal(b.el('digest-list').children.length, 0, 'with none of the first read left on it')
+  assert.equal(b.el('digest').hidden, false)
+})
+
+test('a hide that ran out overnight opens the panel the next time the tab is looked at', async () => {
+  const b = load({ respond: () => json(200, BUSY), hiddenFor: today() })
+  await settle()
+  assert.equal(b.calls.length, 0)
+  assert.equal(b.el('digest').hidden, true)
+
+  // 31 minutes on is the same calendar day unless this runs in the last half
+  // hour before midnight, where the hide has already run out
+  const sameDay = todayPlus(31 * MINUTE) === today() ? 0 : 1
+  b.advance(31 * MINUTE)
+  b.show('hidden'); b.show('visible')
+  await settle()
+  assert.equal(b.calls.length, sameDay, 'still hidden today: looking at the tab costs the server nothing')
+
+  b.advance(24 * 60 * MINUTE)
+  b.show('hidden'); b.show('visible')
+  await settle()
+  assert.equal(b.calls.length, sameDay + 1, 'the next calendar day the hide has run out and the board asks')
+  assert.equal(b.el('digest').hidden, false)
+})
+
+test('a read that is refused when the tab comes back takes the panel down', async () => {
+  const b = load({ respond: (url, n) => (n === 1 ? json(200, BUSY) : json(403, { error: 'this is the map of the machine itself' })) })
+  await settle()
+  assert.equal(b.el('digest').hidden, false)
+  b.advance(31 * MINUTE)
+  b.show('hidden'); b.show('visible')
+  await settle()
+  assert.equal(b.calls.length, 2)
+  assert.equal(b.el('digest').hidden, true, 'a refusal draws nothing, on the second read as on the first')
 })
 
 test('index.html: the section ships hidden above Terminals, and digest.js loads after audit.js', () => {

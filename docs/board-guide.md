@@ -228,8 +228,10 @@ an explicit available answer from the backend.
 
 `src/board/digest.js` draws it, from `GET /api/digest?since=8h`: the record
 `leg digest` prints ([concepts](concepts.md#the-digest)). It sits between the
-logins and Terminals, and it reads once, when the page opens. Nothing in it
-updates afterwards; the live region of the page is still Terminals.
+logins and Terminals, and it reads on arrival: when the page opens, and again
+when a tab that was left open comes back into view with a read more than 30
+minutes old or from another calendar day. There is no timer and nothing
+arrives over the event stream; the live region of the page is still Terminals.
 
 It has three states:
 
@@ -250,7 +252,8 @@ It has three states:
 
 **Hide for today** closes it and stores today's date in that browser. Until
 the next calendar day the section stays closed and the board does not ask
-the server for the digest at all.
+the server for the digest at all. A tab left open overnight shows it again
+the first time it is looked at the next day.
 
 ## Terminals
 

@@ -396,8 +396,9 @@ standing right now with their reset times. Nothing new is recorded; a window
 with nothing in it says so with its counts.
 
 The board shows the same record. **While you were away** sits above
-Terminals and reads `/api/digest` once when the page opens, for the last 8
-hours: one line of volume, then `Needs you` with a row per item, most urgent
+Terminals and reads `/api/digest` when the page opens, and again when a tab
+left open comes back into view with a read more than 30 minutes old, for the
+last 8 hours: one line of volume, then `Needs you` with a row per item, most urgent
 first, and every lost terminal on one row. A window where nothing moved is
 one line that still says how many terminals and cards it read. **Hide for
 today** closes it in that browser until the next calendar day. Owner only: a

@@ -2,11 +2,12 @@
 // `leg digest` prints (src/digest.mjs), owner-only like the audit trail
 // because it names repositories and prompts (src/server.mjs).
 //
-// It sits above Terminals and reads once, when the page loads: the question it
-// answers is asked on arrival, and nothing here arrives over SSE (DESIGN.md
-// rule 3: the live terminals lane is the only live region). Hide for today
-// keeps it closed in this browser until the next calendar day
-// (docs/review-2026-09-18.md, next move 3).
+// It sits above Terminals and reads on arrival: when the page loads, and again
+// when a tab that was left open comes back into view with a read more than 30
+// minutes old or from another calendar day. There is no timer and nothing here
+// arrives over SSE (DESIGN.md rule 3: the live terminals lane is the only live
+// region). Hide for today keeps it closed in this browser until the next
+// calendar day (docs/review-2026-09-18.md, next move 3).
 //
 // Three states and nothing else. A refusal, a guest's or an operator's 403 or
 // any other failure, draws nothing. A window where nothing moved is one line
@@ -23,6 +24,8 @@
   const SINCE = '8h'
   const SINCE_WORDS = 'the last 8 hours'
   const HIDDEN_KEY = 'legDigestHidden'
+  // how old a read may be before the tab coming back into view asks again
+  const STALE_MS = 30 * 60 * 1000
 
   // localStorage throws with site data blocked (sessions.js says where); a
   // board that cannot remember the hide shows the panel again, nothing worse
@@ -145,11 +148,17 @@
     }
   }
 
+  // when the server was last asked (or the hide last checked), and on which of
+  // the reader's calendar days
+  let readAt = 0
+  let readDay = ''
   async function load() {
-    if (stored(HIDDEN_KEY) === today()) return
+    readAt = Date.now()
+    readDay = today()
+    if (stored(HIDDEN_KEY) === readDay) { root.hidden = true; return }
     let d
-    try { d = await api(`/api/digest?since=${SINCE}`) } catch { return }
-    if (!d || !d.volume) return
+    try { d = await api(`/api/digest?since=${SINCE}`) } catch { root.hidden = true; return }
+    if (!d || !d.volume) { root.hidden = true; return }
     render(d)
     root.hidden = false
   }
@@ -157,6 +166,13 @@
   hide.addEventListener('click', () => {
     store(HIDDEN_KEY, today())
     root.hidden = true
+  })
+  // Coming back to a tab that was left open is an arrival too. A read older
+  // than STALE_MS, or one from another calendar day (a hide may have run out),
+  // is asked again the moment the tab is looked at.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    if (Date.now() - readAt >= STALE_MS || today() !== readDay) load()
   })
   load()
 })()

@@ -98,7 +98,8 @@ event names its actor, a board that reads only the ledger, and an auth/bind seam
 8. ~~**The digest on the board.**~~ — done. `leg digest` and `/api/digest`
    shipped in 0.15.0; 0.18.0 shipped the section above Terminals
    (`src/board/digest.js`, [board guide](board-guide.md#while-you-were-away)),
-   read once when the page opens, with Hide for today.
+   read when the page opens and when a tab left open is looked at again
+   (0.18.1), with Hide for today.
 
 Also on the list: per-station prompt templates editable from the board, lease
 suggestions from the diff of the previous leg, and a floor view that shows

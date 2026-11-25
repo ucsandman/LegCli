@@ -3,7 +3,7 @@
   "verifiedOn": "2026-11-25",
   "verifiedOnLong": "25 November 2026",
   "maxAgeDays": 30,
-  "tests": 1147,
+  "tests": 1150,
   "clis": {
     "claude": {
       "label": "Claude Code",
