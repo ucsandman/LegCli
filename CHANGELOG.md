@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.17.1 (2026-11-25)
+
+The taps are re-verified on Claude Code 2.1.332, codex-cli 0.154.0, agy 1.5.17 and grok 1.0.34, and the weekly drift check now fails only when that verification is more than 30 days old.
+
+- **Re-verified on the CLIs installed today.** Every flag Leg passes was
+  re-read from each CLI's `--help` (`fixtures/help/`), and a new test
+  (`test/cli-help-contract.test.mjs`) fails when a CLI drops one. A headless
+  claude run and a headless codex run completed. agy 1.5.17 was signed out on
+  the machine that ran this, so its part is the flags, the envelope it
+  returned at the sign-in prompt, and the three wall strings still present in
+  the binary. grok is still 1.0.34 and its help was re-captured. The record,
+  one line per tap, is in docs/cli-contracts.md.
+- **The codex pin is the version that was run, not npm's newest.** npm's
+  current codex-cli is 0.172.0. All 95 options in the three pinned codex help
+  pages (`codex`, `codex exec`, `codex exec resume`) are still in its help,
+  and the help-contract test passes against it. Its behaviour was not run.
+- **The status line from `--settings` still does not run** on Claude Code
+  2.1.332, so claude usage keeps coming from the usage endpoint.
+- **The drift check runs on a clock.** `npm run claims:drift` had failed every
+  Monday since 2026-09-21, because it compared the pin for equality against
+  CLIs that ship most days. It now prints the pinned, npm and local version of
+  each CLI and fails only when the pin is more than 30 days old. A red run
+  opens a GitHub issue and the next green run closes it. It also reads grok's
+  version correctly and asks the installed binaries, not only npm.
+- **`RELEASE_DATE` is the release date again.** `src/license.mjs` had carried
+  2026-09-18 since 0.14.0. A test now pins it to the date on this file's
+  newest heading. A Personal key whose `updates_until` is before 2026-11-25
+  does not activate this release.
+- **The repository is public, and the pages say so.** `site/llms.txt`, the
+  support page, getting-started and the docs index no longer call the source
+  repository private. The README's npm link and source path point at
+  `@ucsandman/legcli`, and the landing page's `softwareVersion` is pinned to
+  package.json by a test.
+- **Internal.** `scripts/vercel-env.mjs --mode test` writes the Preview
+  environment, never Production, and has a `--dry` that prints each target
+  without a value. CI actions run on Node 24.
+
 ## 0.17.0 (2026-11-09)
 
 A terminal's status moves only along one lifecycle table, and a zero-total Personal checkout delivers its license.

@@ -153,8 +153,10 @@ your own copy. There is nothing compiled, minified or bundled to see through.
 ## What Leg reads from each agent
 
 Nothing is guessed from screen scraping. Each tap was read from the CLI's
-source or documentation and then checked on a real machine (2026-11-25,
-Claude Code 2.1.332, codex-cli 0.154.0, agy 1.5.17, grok 1.0.34); the
+source or documentation and then checked on a real machine (2026-11-25:
+Claude Code 2.1.332 and codex-cli 0.154.0 were run; agy 1.5.17 was signed
+out and grok 1.0.34 had no balance, so nothing was run on those two, and
+agy's flags and limit strings and grok's flags were re-read); the
 rightmost column says which.
 
 | agent | usage percentages | the wall (limit hit) | how Leg attaches | status |

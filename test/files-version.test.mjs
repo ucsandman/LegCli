@@ -29,6 +29,20 @@ test(`site/index.html softwareVersion is package.json's ${version}`, () => {
   assert.equal(m[1], version)
 })
 
+// A Personal key activates when RELEASE_DATE is on or before its
+// updates_until, so a release that keeps an old date hands out releases the
+// key did not cover. It sat at 2026-09-18 from 0.14.0 through 0.17.0.
+test(`src/license.mjs RELEASE_DATE is the date CHANGELOG.md gives ${version}`, () => {
+  const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
+  const heading = changelog.match(/^## (\d+\.\d+\.\d+) \((\d{4}-\d{2}-\d{2})\)/m)
+  assert.ok(heading, 'CHANGELOG.md opens with a "## <version> (<date>)" heading')
+  assert.equal(heading[1], version, 'the newest CHANGELOG entry is the package.json version')
+  const src = readFileSync(join(root, 'src/license.mjs'), 'utf8')
+  const m = src.match(/export const RELEASE_DATE = '([^']+)'/)
+  assert.ok(m, 'src/license.mjs declares RELEASE_DATE')
+  assert.equal(m[1], heading[2])
+})
+
 test('the board says so when the process and the files disagree', () => {
   const src = readFileSync(join(root, 'src/board/board.js'), 'utf8')
   assert.match(src, /function versionSkew\(processVersion\)/)

@@ -2,6 +2,12 @@
 
 Durable product and design decisions that the code does not explain on its own. One entry per decision, newest first.
 
+## 2026-11-25: the source repository is public
+
+- **What.** github.com/ucsandman/legcli is public. Every surface that said the repository was private now says where it is: `site/llms.txt`, `site/support.html`, `docs/getting-started.md`, the docs index lede in `scripts/build-docs-site.mjs`, and `PRODUCT.md`.
+- **What stays.** Leg is commercial, source-available software under its license. The supported install is the npm package, not a clone, and mail is the support path.
+- **Not changed yet.** The publish job still passes `--provenance=false`. That flag was there because npm cannot generate public provenance for a private repository; with a public one it can, and turning it on is its own release.
+
 ## 2026-11-25: drift fails on an overdue pin, not on any new version
 
 - **What.** `node scripts/check-claims.mjs --strict` prints one row per pinned CLI (pinned, npm latest, local binary), counts the CLIs whose current version differs from the pin, and exits 1 only when `verifiedOn` in `fixtures/verified.json` is more than `maxAgeDays` (30) days before today: "re-verification overdue: verified <date>, <n> days ago, budget 30; <k> of <m> reachable CLIs moved". Inside the budget it prints "within budget, due by <date>; <k> moved" and exits 0. `--today` judges a chosen date and `--pin` reads another pin file. The weekly workflow turns a red run into one self-closing `tap-drift` issue.
@@ -90,7 +96,7 @@ agy trust writes may create files inside existing config directories.
 
 - **What.** Leg publishes from the existing `.github/workflows/ci.yml`; there is no separate release workflow or manual publish step. The publisher waits for the complete Ubuntu and Windows test matrix, then publishes only when the exact package version is absent from npm.
 - **Authentication.** The job uses npm trusted publishing and GitHub OIDC with `contents: read` and `id-token: write`. It has no `NPM_TOKEN`. The one-time npm trusted-publisher binding for `ucsandman/baton` and `ci.yml` was created on 2026-09-14; the first `0.4.2` workflow publication remains the end-to-end proof.
-- **Private source.** The repository stays private. npm accepts trusted publishing from a private repository but cannot generate public provenance for it, so the publish command explicitly uses `--provenance=false`.
+- ~~**Private source.** The repository stays private. npm accepts trusted publishing from a private repository but cannot generate public provenance for it, so the publish command explicitly uses `--provenance=false`.~~ Superseded 2026-11-25: the repository is public (see the entry of that date). The flag is still in the publish command.
 - **Failure behavior.** A validated registry 200 response skips an existing version. An exact-version 404 permits publication only when the candidate is a stable three-part version newer than npm's stable `latest`; this prevents an older queued run from moving the tag backward. Network failures, invalid JSON, unexpected statuses, prereleases, stale versions, and package/lock/repository metadata drift stop the job. Publish concurrency is serialized without cancelling an in-progress release.
 - **Retro.** Git, site deployment, and npm publication are separate release results and must be verified separately. A green skip proves idempotency only; `0.4.2` must actually publish once to prove unattended trusted publishing end to end.
 

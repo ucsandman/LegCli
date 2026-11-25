@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Renders the public docs to static HTML under site/docs, so a stranger can
-// read them without the repository. The repository is private and stays that
-// way, which means these pages are the only place the claims on the landing
-// page can be checked.
+// read them without cloning the repository: these pages are where the claims
+// on the landing page can be checked.
 //
 //   node scripts/build-docs-site.mjs
 //
@@ -277,7 +276,7 @@ for (const p of PAGES) {
       .join('\n')
     body = `<h1>Leg documentation</h1>
 <p class="lede">Leg is a local wrapper for coding-agent CLIs: type <code>leg claude</code>, <code>leg codex</code> or <code>leg agy</code> and you get the same interactive agent with a board beside it, usage tracking per agent and account, a handoff bundle kept current, and an automatic handoff to the next agent in the same terminal when the usage limit hits.</p>
-<p class="lede">The source repository is private. These pages carry the same text as the documentation shipped inside the npm package, so every claim on the site can be checked before you buy, and the source itself is readable at <code>$(npm root -g)/legcli/src</code> after you install.</p>
+<p class="lede">The source repository is public at <a href="https://github.com/ucsandman/legcli">github.com/ucsandman/legcli</a>. These pages carry the same text as the documentation shipped inside the npm package, so every claim on the site can be checked before you buy, and the source itself is readable at <code>$(npm root -g)/@ucsandman/legcli/src</code> after you install.</p>
 <ul class="doc-cards">
 ${cards}
 </ul>`
