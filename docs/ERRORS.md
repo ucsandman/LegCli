@@ -3,6 +3,28 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-11-25: the missing-agent check answered before the license gate, and only CI could see it
+
+**Fixed in `attach()` before 0.17.2 reached npm; the first 0.17.2 push failed
+CI and published nothing.** The new check that says "claude is not installed"
+ran ahead of `entitlement()`, so a machine with an ended trial and no claude
+got exit 127 and an install hint instead of exit 4 and where to buy.
+`test/license.test.mjs` ("the CLI refuses baton <agent> once the trial is
+over") caught it on the ubuntu runner. It was green on the author's machine,
+in the implementer's worktree and for the independent verifier, because all
+three ran where claude is installed.
+
+- **Fix.** `attach()` asks `entitlement({ startTrial: false })` first and
+  refuses with exit 4 when the gate is already closed, then checks for the
+  agent, then starts the trial. A missing agent still costs no trial day.
+- **The lesson that generalises.** A test that spawns `leg <agent>` passes or
+  fails on what the machine has installed. Before a push that changes
+  `attach()` startup, run the tests that spawn it once with the agent hidden:
+  `LEG_CLAUDE_BIN=leg-no-such-claude node --test test/license.test.mjs` went
+  red here in one run. Hiding every agent for the whole suite is not that
+  check: it overrides the fakes the hand-off tests install and fails about
+  twenty of them on any tree.
+
 ## 2026-11-25: "re-verified on agy and grok" was written for two CLIs that were never run
 
 **Fixed on the pages before the 0.17.1 push; the CHANGELOG headline and the

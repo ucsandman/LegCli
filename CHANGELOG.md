@@ -9,7 +9,8 @@
   terminal, after starting a trial day and writing a session record. It now
   prints two lines (where Leg looked, the install command, and the
   `LEG_<AGENT>_BIN` override) and exits 127 before the trial, the board or a
-  session record.
+  session record. An ended trial or a refused key still answers first, with
+  exit 4, whether or not the agent is installed.
 - **A CLI that is there but cannot be started says why.** A directory or a
   `.cmd` where the program should be prints `<agent> did not start` with the
   reason and the same two ways out. The exit stays 127.

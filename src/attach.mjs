@@ -1007,6 +1007,11 @@ function prepareLegHarness({ sid, from, to }) {
 // there), and the session record carries the agent's id from the start.
 export async function attach(agent, args = [], { open = true, cwd: cwdOpt = null, continued = null } = {}) {
   if (!SUPERVISED_AGENTS.includes(agent)) throw new Error(`unknown agent "${agent}" (claude|codex|agy|grok)`)
+  // A gate that is already closed speaks first: an ended trial or a refused key
+  // is exit 4 whether or not the agent is installed. It is asked without
+  // starting a trial, so the check below still runs before a trial day is spent.
+  const closed = entitlement({ startTrial: false })
+  if (!allows(closed, 'run')) { say(describeLicense(closed)); return 4 }
   // before the trial, the board and the session record: none of them is
   // wanted for an agent this machine cannot start
   const missing = await agentMissing(agent)

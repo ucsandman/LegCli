@@ -64,7 +64,8 @@ or <code>grok</code> with that CLI missing used to exit 127 with nothing on the
 terminal, after starting a trial day and writing a session record. It now
 prints two lines (where Leg looked, the install command, and the
 <code>LEG_&lt;AGENT&gt;_BIN</code> override) and exits 127 before the trial, the board or a
-session record.</li>
+session record. An ended trial or a refused key still answers first, with
+exit 4, whether or not the agent is installed.</li>
 <li><strong>A CLI that is there but cannot be started says why.</strong> A directory or a
 <code>.cmd</code> where the program should be prints <code>&lt;agent&gt; did not start</code> with the
 reason and the same two ways out. The exit stays 127.</li>
