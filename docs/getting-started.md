@@ -25,7 +25,7 @@ pip install -U context-handoff-bundle
 `@ucsandman/legcli` and exposes the same `leg` binary.
 
 The source repository is private, so there is no clone to install from. The
-source you run ships in the package: `$(npm root -g)/legcli/src`, plain
+source you run ships in the package: `$(npm root -g)/@ucsandman/legcli/src`, plain
 `.mjs`, nothing bundled. Read it before you trust it.
 
 ## 3. Run an agent

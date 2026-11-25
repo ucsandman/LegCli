@@ -20,6 +20,15 @@ for (const file of ['src/board/board.js', 'src/board/floor.js']) {
   })
 }
 
+// The landing page's JSON-LD tells search engines which version is current;
+// it sat at 0.14.0 through three releases because nothing pinned it.
+test(`site/index.html softwareVersion is package.json's ${version}`, () => {
+  const html = readFileSync(join(root, 'site/index.html'), 'utf8')
+  const m = html.match(/"softwareVersion":\s*"([^"]+)"/)
+  assert.ok(m, 'site/index.html declares softwareVersion')
+  assert.equal(m[1], version)
+})
+
 test('the board says so when the process and the files disagree', () => {
   const src = readFileSync(join(root, 'src/board/board.js'), 'utf8')
   assert.match(src, /function versionSkew\(processVersion\)/)

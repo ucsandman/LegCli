@@ -2,7 +2,8 @@
 // file, flushed per event (observed live 2026-09-11: file mtime == last line
 // timestamp). Leg tails that file; no hook is injected, so codex never shows
 // its "review new hooks" prompt for a Leg session.
-// Shapes (observed live, codex-cli 0.153.4, originator codex-tui):
+// Shapes (observed live, codex-cli 0.153.4, originator codex-tui; the rollout
+// of a 0.154.0 run on 2026-11-25, originator codex_exec, had the same ones):
 //   session_meta.payload  {id, cwd, originator, cli_version, source}
 //   event_msg.token_count.rate_limits {primary:{used_percent,window_minutes,resets_at}, secondary:{…}}
 //     primary = 300 min (5h), secondary = 10080 min (7d)

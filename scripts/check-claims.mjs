@@ -9,25 +9,50 @@
 // fixtures/verified.json? A surface that says "463 tests" while another says
 // "406" is a trust liability whichever one is right, so a mismatch fails.
 //
-// Strict asks: is the pin still true? An agent CLI ships most weeks, and
+// Strict asks: is the pin still fresh? An agent CLI ships most weeks, and
 // "verified against 2.1.268" quietly becomes a claim about a version nobody
-// runs any more. This half is scheduled weekly rather than run on every push,
-// because drift is not a broken build, it is a prompt to go and re-verify.
+// runs any more. Comparing for equality against a CLI that ships daily is red
+// every week (2026-11-09, 11-16 and 11-24), so strict prints what moved and
+// fails only once the dated verification is older than the pin's maxAgeDays.
+// This half is scheduled weekly rather than run on every push, because drift
+// is not a broken build, it is a prompt to go and re-verify.
+//
+//   --pin <file>        another pin file (default fixtures/verified.json)
+//   --today YYYY-MM-DD  the date to judge the pin's age against (implies --strict)
 //
 // Every verdict prints the number of things it looked at. A check that can
 // pass without touching anything is indistinguishable from a clean week.
 
 import { readFileSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const strict = process.argv.includes('--strict')
+const argValue = (name) => {
+  const i = process.argv.indexOf(name)
+  return i === -1 ? undefined : (process.argv[i + 1] ?? '')
+}
+const usage = (message) => { console.error(`check-claims: ${message}`); process.exit(2) }
+
+const todayArg = argValue('--today')
+const strict = process.argv.includes('--strict') || todayArg !== undefined
 const testsArg = process.argv.indexOf('--tests')
 const measuredTests = testsArg !== -1 ? Number(process.argv[testsArg + 1]) : null
 
-const pin = JSON.parse(readFileSync(join(root, 'fixtures', 'verified.json'), 'utf8'))
+const DAY = 86400000
+const dayOf = (s) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null
+  const t = Date.parse(`${s}T00:00:00Z`)
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === s ? t : null
+}
+if (todayArg !== undefined && dayOf(todayArg) === null) usage(`--today wants a real date as YYYY-MM-DD, got "${todayArg}"`)
+
+const pinArg = argValue('--pin')
+if (pinArg === '') usage('--pin wants a file')
+const pinPath = pinArg ? resolve(pinArg) : join(root, 'fixtures', 'verified.json')
+if (!existsSync(pinPath)) usage(`pin file not found: ${pinArg}`)
+const pin = JSON.parse(readFileSync(pinPath, 'utf8'))
 const problems = []
 let checked = 0
 
@@ -86,56 +111,76 @@ console.log(`claims: ${checked} version, count and date mentions checked across 
 
 // ---------------------------------------------------------------------- drift
 
+// A version command prints more than the version ("grok 1.0.34 (3736acbc8658)
+// [stable]", "codex-cli 0.154.0"), so every answer is reduced to its first
+// x.y.z before it is compared with a pin that only ever holds x.y.z.
+const semver = (text) => String(text ?? '').match(/\d+\.\d+\.\d+/)?.[0] ?? null
+
+// The binary Leg itself would spawn (the adapter's resolve()), then the bare
+// name on PATH. Spawned as argv and never through a shell, like every other
+// spawn in this repo; on Windows that means naming the extension ourselves.
+async function localVersion(key, probe) {
+  const [name, ...args] = probe.split(' ')
+  const candidates = []
+  try {
+    const { bin, viaNode, entry } = (await import(`../src/adapters/${key}.mjs`)).default.resolve()
+    candidates.push(viaNode ? [process.execPath, [entry ?? bin, ...args]] : [bin, args])
+  } catch { /* not a built-in adapter: PATH only */ }
+  for (const spelling of process.platform === 'win32' ? [`${name}.exe`, name] : [name]) candidates.push([spelling, args])
+  for (const [bin, argv] of candidates) {
+    try {
+      const v = semver(execFileSync(bin, argv, { encoding: 'utf8', timeout: 20000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }))
+      if (v) return v
+    } catch { /* try the next spelling */ }
+  }
+  return null
+}
+
+async function npmLatest(pkg) {
+  try {
+    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg)}/latest`, { headers: { Accept: 'application/json' } })
+    return res.ok ? semver((await res.json()).version) : null
+  } catch { return null }
+}
+
 if (strict) {
   let probed = 0
-  const drift = []
+  const moved = []
+  const total = Object.keys(pin.clis).length
+  const pad = Math.max(...Object.values(pin.clis).map((c) => c.label.length))
 
-  for (const [, cli] of Object.entries(pin.clis)) {
-    let current = null
-    let how = null
-
-    if (cli.npm) {
-      try {
-        const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(cli.npm)}/latest`, { headers: { Accept: 'application/json' } })
-        if (res.ok) { current = (await res.json()).version; how = `npm ${cli.npm}` }
-        else drift.push(`${cli.label}: npm returned ${res.status}, could not check`)
-      } catch (error) {
-        drift.push(`${cli.label}: npm request failed (${error.message}), could not check`)
-      }
-    } else {
-      // No registry to ask, so ask the binary if this machine has it. Spawned
-      // as argv and never through a shell, like every other spawn in this
-      // repo; on Windows that means naming the shim extension ourselves rather
-      // than letting cmd resolve it.
-      const [bin, ...args] = cli.probe.split(' ')
-      const candidates = process.platform === 'win32' ? [`${bin}.cmd`, `${bin}.exe`, bin] : [bin]
-      for (const candidate of candidates) {
-        try {
-          current = execFileSync(candidate, args, { encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'ignore'] }).trim().split('\n')[0].trim()
-          how = cli.probe
-          break
-        } catch { /* try the next spelling */ }
-      }
-      if (!current) {
-        console.log(`  ${cli.label}: no npm package and ${cli.probe} is not available here; not checked`)
-      }
-    }
-
+  // npm latest is printed for information only: what this machine runs is
+  // what the taps were verified on, and the registry is consulted for the
+  // "moved" count only where no local binary answers (a CI runner).
+  for (const [key, cli] of Object.entries(pin.clis)) {
+    const npm = cli.npm ? await npmLatest(cli.npm) : null
+    const local = cli.probe ? await localVersion(key, cli.probe) : null
+    console.log(`  ${cli.label.padEnd(pad)}  pinned ${cli.version.padEnd(9)} npm ${(npm ?? '-').padEnd(9)} local ${local ?? '-'}`)
+    const current = local ?? npm
     if (!current) continue
     probed++
-    if (current !== cli.version) {
-      drift.push(`${cli.label}: pinned ${cli.version}, current ${current} (${how})`)
-    }
+    if (current !== cli.version) moved.push(`${cli.label}: pinned ${cli.version}, now ${current} (${local ? 'local' : 'npm'})`)
   }
 
-  console.log(`drift: ${probed} of ${Object.keys(pin.clis).length} CLIs reachable and compared`)
+  console.log(`drift: ${probed} of ${total} CLIs reachable and compared`)
+  for (const m of moved) console.log(`  moved: ${m}`)
 
-  if (drift.length) {
-    console.error(`\nThe verified-against versions are behind. Re-run the taps on a real machine, then update fixtures/verified.json and every surface in the same commit.\n`)
-    for (const d of drift) console.error(`  - ${d}`)
+  const verified = dayOf(pin.verifiedOn)
+  const today = todayArg ?? new Date().toISOString().slice(0, 10)
+  const budget = Number.isInteger(pin.maxAgeDays) ? pin.maxAgeDays : 30
+  if (verified === null) {
+    console.error(`the pin's verifiedOn "${pin.verifiedOn}" is not a YYYY-MM-DD date`)
     process.exitCode = 1
-  } else if (probed > 0) {
-    console.log(`every reachable CLI still matches the pin of ${pin.verifiedOn}`)
+  } else {
+    const age = Math.round((dayOf(today) - verified) / DAY)
+    const due = new Date(verified + budget * DAY).toISOString().slice(0, 10)
+    if (age > budget) {
+      console.error(`re-verification overdue: verified ${pin.verifiedOn}, ${age} days ago, budget ${budget}; ${moved.length} of ${probed} reachable CLIs moved`)
+      console.error('Re-run the taps on a real machine, then update the pin and every surface in the same commit.')
+      process.exitCode = 1
+    } else {
+      console.log(`within budget, due by ${due}; ${moved.length} moved`)
+    }
   }
 }
 

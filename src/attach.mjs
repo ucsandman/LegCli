@@ -480,8 +480,8 @@ export async function spawnSpec(agent, { account, args, sessionId, prompt, cwd, 
     const settings = writeSettings(sessionId, { statusLine: userStatusLine(process.env.CLAUDE_CONFIG_DIR || (account !== 'default' ? envFor('claude', account).CLAUDE_CONFIG_DIR : undefined)) })
     const autoFlags = autoApprove === true && !hasOption('--dangerously-skip-permissions', '--permission-mode', '--permission-prompts') ? ['--dangerously-skip-permissions'] : [] // explicit interactive opt-in only
     // `-n, --name <name>`: "Set a display name for this session (shown in the
-    // prompt box, /resume picker, and terminal title)" — fixtures/help/claude.txt
-    // line 132, in the general Options section, not one of the flags marked
+    // prompt box, /resume picker, and terminal title)" — fixtures/help/claude.txt,
+    // the -n, --name line, in the general Options section, not one of the flags marked
     // "only works with --print", and two of its three surfaces (prompt box,
     // /resume picker) exist only in interactive mode. A name the human passed
     // themselves is never overwritten.

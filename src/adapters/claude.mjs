@@ -10,7 +10,7 @@ const adapter = {
   stdin: 'pipe', // the prompt goes to stdin; argv stays short
   modes: {
     default: 'acceptEdits',
-    // claude 2.1.268 --permission-mode choices; the bypass mode is never allowed.
+    // claude 2.1.332 --permission-mode choices; the bypass mode is never allowed.
     allowed: ['acceptEdits', 'auto', 'plan', 'manual', 'dontAsk'],
   },
   forbiddenFlags: ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--permission-mode=bypassPermissions', 'bypassPermissions'],

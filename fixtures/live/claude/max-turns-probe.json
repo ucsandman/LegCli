@@ -1,0 +1,24 @@
+{
+  "agent": "claude",
+  "signal": "max-turns-accepted",
+  "captured_at": "2026-11-25T17:03:00Z",
+  "source": "observed-live",
+  "claude_version": "2.1.332",
+  "probe": [
+    "claude -p --output-format json --permission-mode acceptEdits --max-turns 1 --model haiku \"reply ok\""
+  ],
+  "observed": {
+    "exit_code": 0,
+    "type": "result",
+    "subtype": "success",
+    "is_error": false,
+    "num_turns": 1,
+    "stop_reason": "end_turn",
+    "terminal_reason": "completed",
+    "result": "ok",
+    "modelUsage_keys": ["claude-haiku-5-5"]
+  },
+  "doc": "https://code.claude.com/docs/en/cli-reference",
+  "doc_line": "--max-turns  Limit the number of agentic turns (print mode only). No limit by default.",
+  "conclusion": "--max-turns is accepted in print mode even though `claude --help` does not list it (fixtures/help/claude.txt has no --max-turns line). The CLI reference documents it, so test/cli-help-contract.test.mjs allowlists this one flag with that URL. The same run also carries every other flag the claude adapter emits by default (-p, --output-format json, --permission-mode acceptEdits) plus --model, all accepted."
+}

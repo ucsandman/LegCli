@@ -393,7 +393,7 @@ test('claude usage endpoint: 404, a body that is not JSON, and a shape with no w
 })
 
 // Which terminal is this, and where is it working: `-n` for claude (the flag is
-// in fixtures/help/claude.txt line 132, general Options, and two of its three
+// in fixtures/help/claude.txt, the -n, --name line, general Options, and two of its three
 // surfaces are interactive-only), OSC 2 for the three CLIs with no title flag.
 test('the claude argv carries -n leg#<id> <repo>/<branch>, and a name the human passed is kept', async () => {
   const s = sessions.createSession({ id: 's-title-claude', agent: 'claude', cwd, repo: join(cwd, 'leg'), branch: 'main' })

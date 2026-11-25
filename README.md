@@ -147,15 +147,15 @@ and portable-harness writes each require their own opt-in.
 
 Leg is commercial, source-available software, and the source is on
 [GitHub](https://github.com/ucsandman/legcli): every `.mjs` file that runs is in the package you just installed, at
-`$(npm root -g)/legcli/src`, and the license lets you read it and modify
+`$(npm root -g)/@ucsandman/legcli/src`, and the license lets you read it and modify
 your own copy. There is nothing compiled, minified or bundled to see through.
 
 ## What Leg reads from each agent
 
 Nothing is guessed from screen scraping. Each tap was read from the CLI's
-source or documentation and then checked on a real machine (2026-09-11,
-Claude Code 2.1.268, codex-cli 0.153.4, agy 1.2.0); the rightmost column says
-which.
+source or documentation and then checked on a real machine (2026-11-25,
+Claude Code 2.1.332, codex-cli 0.154.0, agy 1.5.17, grok 1.0.34); the
+rightmost column says which.
 
 | agent | usage percentages | the wall (limit hit) | how Leg attaches | status |
 |-------|-------------------|----------------------|--------------------|--------|
@@ -165,8 +165,8 @@ which.
 | grok | `GET cli-chat-proxy.grok.com/v1/billing?format=credits` and `GET cli-chat-proxy.grok.com/v1/user?include=subscription` with OAuth token from `~/.grok/auth.json` (`creditUsagePercent`, `currentPeriod` weekly reset); polled every 60 s | `-32003` rate limit error, "You've hit the rate limit for your plan. Try again later.", "Rate limited (429)", `StopFailureKind::RateLimit` (`xai-org/grok-build`) | `--debug-file grok.log` per session; `~/.grok/sessions/<encoded-cwd>/prompt_history.jsonl` gives prompts and session id | verified by source and proxy endpoint |
 
 Why not Claude Code's status line JSON (`rate_limits.five_hour.used_percentage`):
-on 2.1.268 the custom `statusLine` Leg passes through `--settings` did not
-run, so the endpoint poll is the source. Leg still writes a `statusLine`
+on 2.1.268, 2.1.278 and 2.1.332 the custom `statusLine` Leg passes through
+`--settings` did not run, so the endpoint poll is the source. Leg still writes a `statusLine`
 entry that records the same fields, so the moment a build honours it the poll
 becomes a fallback.
 
@@ -289,7 +289,7 @@ already on the base. **Remove record** is a separate visible button with a
 confirmation: it removes only Leg's saved session record and deliberately
 keeps the worktree, branch, unmerged commits, and dirty files.
 
-Verified live on 2026-09-11 with three haiku sessions in a throwaway repo. The
+Probed live on 2026-09-11 with three haiku sessions in a throwaway repo. The
 first stayed in the checkout; the second and third each got a worktree and
 appended a line to README.md. Land on the second, clicked on the real board,
 ran the repo's tests and fast-forwarded main; Land on the third bounced with
@@ -340,7 +340,7 @@ The security pass that goes with it: every `/api` route needs a token, the
 event stream included; twenty wrong tokens from one address and that address
 waits a minute; one identity gets 600 requests a minute; a guest gets 403 on
 everything that is not theirs; and the tests send a bad and a missing token to
-every route. Verified live on 2026-09-11: two terminals on one machine, one wes's and
+every route. Probed live on 2026-09-11: two terminals on one machine, one wes's and
 one sam's; sam's board showed wes's card with the prompt hidden and only
 **Request handoff**, and sam's request reached wes's board (`~/.leg/board.log`:
 "hand-off requested … by sam").
@@ -499,7 +499,7 @@ Claude Code writes that directory; Leg only reads it.
 Same for codex (`CODEX_HOME`; `config.toml`, `AGENTS.md`, `skills`, `prompts`,
 `rules`, `plugins`, `agents`, `hooks`, `memories` shared; a codex hand-off
 still takes the bundle, because `codex resume` under a second `CODEX_HOME`
-has not been observed). agy 1.2.0 has no config-directory override, so it
+has not been observed). agy 1.5.17 lists no config-directory override, so it
 stays one account. Only the login lives in the account directory;
 `leg accounts rm` removes the junctions and the directory and never touches
 your real home.
@@ -764,8 +764,8 @@ Leg is commercial software under the [Leg License Agreement](LICENSE).
 It ships as readable JavaScript so you can see what it does on your machine,
 and you may modify it for your own use, but not redistribute it or work
 around the license check. Versions 0.2.0 and 0.3.0 were published under MIT
-and remain available. The version in this source tree is 0.15.0; see
-[npm](https://www.npmjs.com/package/legcli) for published versions and
+and remain available. See
+[npm](https://www.npmjs.com/package/@ucsandman/legcli) for published versions and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 The first 14 days are a **free trial**: install it, type `leg claude`, and

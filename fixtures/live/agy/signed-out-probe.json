@@ -1,0 +1,21 @@
+{
+  "agent": "agy",
+  "signal": "signed-out",
+  "captured_at": "2026-11-25T17:09:08Z",
+  "source": "observed-live",
+  "agy_version": "1.5.17",
+  "probe": "the scripts/probe.mjs task through src/runner.mjs launch; argv as in fixtures/live/agy/cmd.txt (-p, --output-format json, --mode accept-edits, --add-dir, --print-timeout 90m)",
+  "observed": {
+    "exit_code": 1,
+    "stdout_envelope": {"conversation_id":"","status":"ERROR","response":"","error":"authentication failed or timed out","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0},"finished_reason":"error"},
+    "stderr": "Authentication required. Please visit the URL to log in: <sign-in URL omitted> ... Waiting for authentication (timeout 60s)... Error: authentication timed out.",
+    "leg_outcome": "failed, handoff true",
+    "parsed": {"session_id": "", "last_message": "", "stop_reason": "ERROR"}
+  },
+  "binary_strings": {
+    "RESOURCE_EXHAUSTED": "present",
+    "it resets in": "present",
+    "out of quota": "present"
+  },
+  "conclusion": "agy 1.5.17 parses every flag Leg's headless argv passes (a Go flag error would end the run before the sign-in prompt) and still prints one JSON envelope on stdout when it fails. This machine's agy is signed out, so the success path and a live quota wall were not re-observed on 1.5.17; the wall strings Leg's tap matches are still in the shipped binary."
+}

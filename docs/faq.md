@@ -22,8 +22,8 @@ launch, and does not count as a usage limit.
 status line?**
 Because Claude Code 2.1.268 and 2.1.278 did not run a custom status line from a settings
 file Leg controls when this was tried on 2026-09-11 and 2026-09-19 (recorded in
-[DEVIATIONS.md](DEVIATIONS.md)); hooks from the same `--settings` file did
-fire. So the numbers come from
+[DEVIATIONS.md](DEVIATIONS.md)), and 2.1.332 still did not on 2026-11-25; hooks
+from the same `--settings` file did fire. So the numbers come from
 `GET api.anthropic.com/api/oauth/usage` with the login Claude Code already
 stored, which is the same data `/usage` shows. Leg still writes the
 `statusLine` entry, so the endpoint poll becomes a fallback the moment a build
@@ -41,7 +41,7 @@ session's directory and tails it for the rate limits, the prompts and the
 edited files.
 
 **Why does agy show no percentage?**
-Because agy exposes none. agy 1.2.0 is a closed Go binary; its own status line
+Because agy exposes none. agy 1.5.17 is a closed Go binary; its own status line
 fetches a quota summary from the backend and writes it nowhere on disk. The
 board shows "no % from agy" rather than an empty bar. The wall itself is still
 caught: Leg passes `--log-file` per session and watches for

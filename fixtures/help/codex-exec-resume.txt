@@ -49,6 +49,9 @@ Options:
           Run enabled hooks without requiring persisted hook trust for this invocation. DANGEROUS.
           Intended only for automation that already vets hook sources
 
+      --worktree
+          Run the session in a new managed Git worktree
+
       --thread-source <SOURCE>
           Source classification for newly created or forked threads
 

@@ -1,33 +1,70 @@
 name: Tap drift
 
-# "Verified against Claude Code 2.1.268" is a promise with a shelf life. The
-# agent CLIs ship most weeks, and a pinned version nobody runs any more is a
-# trust liability on the landing page, not a stale comment.
+# "Verified against Claude Code 2.1.332" is a promise with a shelf life. The
+# agent CLIs ship most weeks, so a weekly equality check against them is red
+# almost every week and says nothing new (2026-11-09, 11-16 and 11-24 went red
+# and nobody saw them: a failure that lives only in the Actions tab).
 #
-# This runs weekly and fails when any pinned CLI has moved. A failure is not a
-# broken build: it is the prompt to re-run the taps on a real machine and
-# update fixtures/verified.json and every surface in the same commit.
+# This runs weekly, prints which pinned CLIs have moved, and fails only when
+# the dated verification in fixtures/verified.json is older than its
+# maxAgeDays. A failure opens (or comments on) one issue labelled tap-drift; the
+# next green run closes it. A failure is not a broken build: it is the prompt
+# to re-run the taps on a real machine and update fixtures/verified.json and
+# every surface in the same commit.
 
 on:
   schedule:
     - cron: '17 13 * * 1'
   workflow_dispatch:
+    inputs:
+      today:
+        description: 'Judge the pin as if today were this date (YYYY-MM-DD). Empty means the real date.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   drift:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
 
-      # agy has no npm package, so on a runner it is simply not reachable and
-      # the check says so rather than passing quietly. Claude Code and Codex
-      # are both checked against the registry.
-      - name: Compare the pinned CLI versions against what those CLIs publish now
-        run: node scripts/check-claims.mjs --strict
+      # agy and grok have no npm package and no binary on a runner, so the
+      # check says they are not reachable rather than passing quietly. Claude
+      # Code and Codex are compared against the registry, for information.
+      # The input reaches the shell only through the environment.
+      - name: Compare the pin with what the CLIs publish and judge its age
+        env:
+          TODAY: ${{ inputs.today }}
+        run: set -o pipefail; node scripts/check-claims.mjs --strict ${TODAY:+--today "$TODAY"} 2>&1 | tee drift.txt
+
+      - name: Open or update the tap-drift issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create tap-drift --force --color B60205 --description 'The verified-against pin is overdue'
+          number=$(gh issue list --label tap-drift --state open --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file drift.txt
+          else
+            gh issue create --title 'Tap drift: the verified-against pin is overdue' --label tap-drift --body-file drift.txt
+          fi
+
+      - name: Close the tap-drift issue
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for number in $(gh issue list --label tap-drift --state open --json number --jq '.[].number'); do
+            gh issue close "$number" --comment "The pin is within budget again. $(grep -m 1 'within budget' drift.txt)"
+          done

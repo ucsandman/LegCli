@@ -2,6 +2,13 @@
 
 Durable product and design decisions that the code does not explain on its own. One entry per decision, newest first.
 
+## 2026-11-25: drift fails on an overdue pin, not on any new version
+
+- **What.** `node scripts/check-claims.mjs --strict` prints one row per pinned CLI (pinned, npm latest, local binary), counts the CLIs whose current version differs from the pin, and exits 1 only when `verifiedOn` in `fixtures/verified.json` is more than `maxAgeDays` (30) days before today: "re-verification overdue: verified <date>, <n> days ago, budget 30; <k> of <m> reachable CLIs moved". Inside the budget it prints "within budget, due by <date>; <k> moved" and exits 0. `--today` judges a chosen date and `--pin` reads another pin file. The weekly workflow turns a red run into one self-closing `tap-drift` issue.
+- **Why a clock and not equality.** Claude Code ships most days and codex most weeks. Failing on any difference was red from the first Monday after the pin (2026-09-21) and stayed red for ten weeks, so the job said nothing and nobody looked. What the public claim needs is that someone re-ran the taps recently, and a date answers that directly.
+- **Why "moved" uses the local binary first.** The version the taps were verified on is the version installed on the machine that ran them. npm latest is printed for information and counts as current only where no local binary answers (a CI runner), and versions are compared by their first x.y.z, so a version command's extra words are not drift.
+- **What this rules out.** A pin bumped to npm latest without a re-run: the claims say what was run here, so the pin names what `--version` printed on that machine, even when npm is ahead.
+
 ## 2026-09-18: a second claude login shares the conversation store, so an account switch keeps the conversation
 
 - **What.** `LAYOUT.claude.share` gains `projects`: `leg accounts add claude <name>` junctions Claude Code's conversation store into the account directory beside the harness directories, and `refreshAccount()` adds a missing junction to an account made before this before every launch. `keepsConversation()` in `src/usage.mjs` is the one rule that decides `--resume` over the bundle, for the terminal's switch and the board picker's `keeps_conversation` alike: a same-login downshift (as before), or another login of the same agent under which the transcript file exists. The history index skips a junctioned `projects` so a conversation is listed once.

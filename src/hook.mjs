@@ -6,7 +6,7 @@
 //   node hook.mjs claude-hook --session <id>
 //   node hook.mjs claude-statusline --session <id>
 // The status line entry records rate_limits when a Claude Code build runs it
-// (2.1.268 and 2.1.278 did not on this machine; see src/taps/claude-usage.mjs),
+// (2.1.268, 2.1.278 and 2.1.332 did not on this machine; see src/taps/claude-usage.mjs),
 // prints the user's own status line first, then one Leg line.
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'

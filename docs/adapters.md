@@ -15,8 +15,8 @@ markers from the child environment (`src/env.mjs` `sanitizeEnv`).
 ## What Leg reads from each agent
 
 Nothing is screen-scraped. Each tap was read from the CLI's own source or
-documentation, then checked on a real machine on 2026-09-11 (Claude Code
-2.1.268, codex-cli 0.153.4, agy 1.2.0). Lines that a live run or a fixture
+documentation, then checked on a real machine on 2026-11-25 (Claude Code
+2.1.332, codex-cli 0.154.0, agy 1.5.17, grok 1.0.34). Lines that a live run or a fixture
 backs say observed-live; lines read only from a CLI's source or
 documentation say docs-only.
 
@@ -63,7 +63,10 @@ documentation say docs-only.
   passed through `--settings` and again through a project
   `.claude/settings.local.json` left the built-in status line in place, while
   hooks from the same `--settings` file fired. No artifact of that check was
-  kept; the note lives in the `src/taps/claude-usage.mjs` header. The endpoint
+  kept; the note lives in the `src/taps/claude-usage.mjs` header. On
+  2026-11-25 the Leg sessions started after this machine moved to 2.1.332
+  logged hook events and not one `statusline rate_limits` line, while the same
+  hook command fed a `rate_limits` payload by hand wrote exactly one. The endpoint
   poll is therefore the live source; the status-line route becomes a fallback
   the moment a build honours it.
 - **Token handling**: the stored token is read by the polling process only,
@@ -113,8 +116,8 @@ documentation say docs-only.
 ### agy
 
 - **How Leg attaches**: `agy <your args> --log-file
-  <~/.leg/sessions/<id>/agy.log>`. agy 1.2.0 is a closed Go binary with no
-  hook surface.
+  <~/.leg/sessions/<id>/agy.log>`. agy 1.5.17 is a closed Go binary, and Leg
+  injects no hook into it.
 - **Usage percentages**: none. agy exposes no percentage anywhere on disk; its
   own status line fetches a quota summary from the backend and writes it
   nowhere. When agy is not walled the board shows a "no % from agy" chip
@@ -133,7 +136,7 @@ documentation say docs-only.
 - **Prompts and conversation id**: `~/.gemini/antigravity-cli/history.jsonl`,
   one `{ display, timestamp, workspace, conversationId }` per prompt. Observed
   live.
-- **One account only**: agy 1.2.0 has no config-directory override, so
+- **One account only**: agy 1.5.17 lists no config-directory override, so
   `leg accounts add agy …` is refused.
 
 ### grok

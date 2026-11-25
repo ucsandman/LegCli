@@ -13,7 +13,6 @@ Commands:
   logout            Remove stored authentication credentials
   mcp               Manage external MCP servers for Codex
   plugin            Manage Codex plugins
-  mcp-server        Start Codex as an MCP server (stdio)
   app-server        [experimental] Run the app server or related tooling
   remote-control    [experimental] Manage the app-server daemon with remote control enabled
   app               Launch the Desktop app (opens the app installer if missing)
@@ -104,6 +103,9 @@ Options:
 
   -C, --cd <DIR>
           Tell the agent to use the specified directory as its working root
+
+      --worktree
+          Run the session in a new managed Git worktree
 
       --add-dir <DIR>
           Additional directories that should be writable alongside the primary workspace

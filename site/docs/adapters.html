@@ -68,8 +68,8 @@ strip the API-key and base-URL variables and the Claude Code nested-session
 markers from the child environment (<code>src/env.mjs</code> <code>sanitizeEnv</code>).</p>
 <h2 id="what-leg-reads-from-each-agent"><a class="anchor" href="#what-leg-reads-from-each-agent">What Leg reads from each agent</a></h2>
 <p>Nothing is screen-scraped. Each tap was read from the CLI&#39;s own source or
-documentation, then checked on a real machine on 2026-09-11 (Claude Code
-2.1.268, codex-cli 0.153.4, agy 1.2.0). Lines that a live run or a fixture
+documentation, then checked on a real machine on 2026-11-25 (Claude Code
+2.1.332, codex-cli 0.154.0, agy 1.5.17, grok 1.0.34). Lines that a live run or a fixture
 backs say observed-live; lines read only from a CLI&#39;s source or
 documentation say docs-only.</p>
 <h3 id="claude"><a class="anchor" href="#claude">claude</a></h3>
@@ -115,7 +115,10 @@ Code 2.1.268 and 2.1.278 did not run it when it was tried on this machine
 passed through <code>--settings</code> and again through a project
 <code>.claude/settings.local.json</code> left the built-in status line in place, while
 hooks from the same <code>--settings</code> file fired. No artifact of that check was
-kept; the note lives in the <code>src/taps/claude-usage.mjs</code> header. The endpoint
+kept; the note lives in the <code>src/taps/claude-usage.mjs</code> header. On
+2026-11-25 the Leg sessions started after this machine moved to 2.1.332
+logged hook events and not one <code>statusline rate_limits</code> line, while the same
+hook command fed a <code>rate_limits</code> payload by hand wrote exactly one. The endpoint
 poll is therefore the live source; the status-line route becomes a fallback
 the moment a build honours it.</li>
 <li><strong>Token handling</strong>: the stored token is read by the polling process only,
@@ -164,8 +167,8 @@ live.</li>
 </ul>
 <h3 id="agy"><a class="anchor" href="#agy">agy</a></h3>
 <ul>
-<li><strong>How Leg attaches</strong>: <code>agy &lt;your args&gt; --log-file &lt;~/.leg/sessions/&lt;id&gt;/agy.log&gt;</code>. agy 1.2.0 is a closed Go binary with no
-hook surface.</li>
+<li><strong>How Leg attaches</strong>: <code>agy &lt;your args&gt; --log-file &lt;~/.leg/sessions/&lt;id&gt;/agy.log&gt;</code>. agy 1.5.17 is a closed Go binary, and Leg
+injects no hook into it.</li>
 <li><strong>Usage percentages</strong>: none. agy exposes no percentage anywhere on disk; its
 own status line fetches a quota summary from the backend and writes it
 nowhere. When agy is not walled the board shows a &quot;no % from agy&quot; chip
@@ -183,7 +186,7 @@ for the next one.</li>
 <li><strong>Prompts and conversation id</strong>: <code>~/.gemini/antigravity-cli/history.jsonl</code>,
 one <code>{ display, timestamp, workspace, conversationId }</code> per prompt. Observed
 live.</li>
-<li><strong>One account only</strong>: agy 1.2.0 has no config-directory override, so
+<li><strong>One account only</strong>: agy 1.5.17 lists no config-directory override, so
 <code>leg accounts add agy …</code> is refused.</li>
 </ul>
 <h3 id="grok"><a class="anchor" href="#grok">grok</a></h3>

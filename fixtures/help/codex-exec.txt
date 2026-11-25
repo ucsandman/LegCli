@@ -69,6 +69,9 @@ Options:
   -C, --cd <DIR>
           Tell the agent to use the specified directory as its working root
 
+      --worktree
+          Run the session in a new managed Git worktree
+
       --add-dir <DIR>
           Additional directories that should be writable alongside the primary workspace
 

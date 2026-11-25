@@ -3,6 +3,30 @@
 What broke, why, and what fixed it. One entry per failure, newest first. A first
 occurrence has to be written down or a repeat is never countable.
 
+## 2026-11-25: the weekly Tap drift job was red ten weeks running and nobody saw it
+
+**Fixed by judging the pin's age instead of its equality, and by giving a red
+run an issue that closes itself.** Every scheduled run from 2026-09-21 to
+2026-11-24 failed (`gh run list --workflow tap-drift.yml`); the spec that found
+it named only 11-09, 11-16 and 11-24. Three causes:
+
+- **Equality against a CLI that ships daily.** `scripts/check-claims.mjs
+  --strict` failed whenever npm's latest Claude Code or codex differed from the
+  pin, which was true by the first Monday (2.1.278 against 2.1.268 on 09-21)
+  and every Monday after. A check that is always red carries no signal. It now
+  prints pinned, npm and local per CLI, counts what moved, and exits 1 only when
+  `verifiedOn` is more than `maxAgeDays` (30) old.
+- **A failure visible only in the Actions tab.** The workflow had
+  `contents: read` and no notify step, so ten reds produced no issue, mail or
+  board signal. A red run now opens or comments on one `tap-drift` issue, and
+  the next green run closes it.
+- **grok's whole-line compare.** The local probe kept the whole first line of
+  `grok --version`, so `grok 1.0.34 (3736acbc8658) [stable]` never equalled the
+  pin `1.0.34`. The runner has no grok, so this never reached CI, but on this
+  machine the HEAD script listed grok as drifted with the same version. Every
+  answer is now reduced to its first x.y.z, and the local binary is probed for
+  claude and codex too, not only npm.
+
 ## 2026-11-09: CI went red because the committed docs site was not regenerated after a docs/ edit
 
 **Fixed by running `npm run docs` and committing the four regenerated

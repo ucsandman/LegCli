@@ -61,10 +61,12 @@ which facts were observed live on the build machine versus read from <code>--hel
 or docs. Two contracts per CLI: the headless argv a pipeline leg spawns
 (§ per CLI below), and the interactive tap <code>leg &lt;agent&gt;</code> reads
 (§ <a href="#interactive-taps">Interactive taps</a>). Evidence:
-<code>fixtures/help/&lt;cli&gt;.txt</code> (raw <code>--help</code>), <code>fixtures/live/&lt;cli&gt;/</code> (one real tiny
-task per CLI, run through <code>src/runner.mjs launch</code> on 2026-09-11 UTC, the
-evening of 2026-09-10 locally; paths under the local home directory are
-replaced with <code>~</code>), and the interactive checks run on 2026-09-11.</p>
+<code>fixtures/help/&lt;cli&gt;.txt</code> (raw <code>--help</code>, re-captured from the pinned versions
+on 2026-11-25; <code>test/cli-help-contract.test.mjs</code> fails when a flag Leg passes
+is missing from it), <code>fixtures/live/&lt;cli&gt;/</code> (one real tiny task per CLI, run
+through <code>src/runner.mjs launch</code> on 2026-09-11 UTC, the evening of 2026-09-10
+locally, with codex re-run on 2026-11-25; paths under the local home directory
+are replaced with <code>~</code>), and the interactive checks run on 2026-09-11.</p>
 <p>Every fact line ends with <code>(source: …)</code>. <code>observed-live</code> means the build machine
 did it; <code>docs-only</code> means the CLI&#39;s own <code>--help</code> or documentation says so and
 Leg has not seen it happen.</p>
@@ -84,20 +86,20 @@ questions.&quot;</p>
 </thead>
 <tbody><tr>
 <td>claude</td>
-<td>2.1.268</td>
-<td>exit 0, file yes, DONE yes, 20 s</td>
+<td>2.1.332</td>
+<td>2026-11-25: one <code>--max-turns 1 --model haiku</code> prompt on the base argv, exit 0, <code>subtype:&quot;success&quot;</code> (fixtures/live/claude/max-turns-probe.json); the runner task was last run 2026-09-11 on 2.1.268: exit 0, file yes, DONE yes, 20 s</td>
 <td><code>src/adapters/claude.mjs</code></td>
 </tr>
 <tr>
 <td>codex</td>
-<td>codex-cli 0.153.4</td>
-<td>exit 0, file yes, DONE yes, 28 s</td>
+<td>codex-cli 0.154.0</td>
+<td>2026-11-25 with <code>-m gpt-5.6-luna</code>: exit 0, file yes, DONE yes, 52 s (2026-09-11 on the previous pin: 28 s)</td>
 <td><code>src/adapters/codex.mjs</code></td>
 </tr>
 <tr>
 <td>agy</td>
-<td>1.2.0</td>
-<td>attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (<code>--add-dir</code>) exit 0, file yes, DONE yes, 41 s</td>
+<td>1.5.17</td>
+<td>2026-11-25: exit 1 at the sign-in prompt after parsing every flag, because agy is signed out on this machine (fixtures/live/agy/signed-out-probe.json). 2026-09-11 on the previous pin: attempt 1 exit 0 but wrote to its scratch workspace; attempt 2 (<code>--add-dir</code>) exit 0, file yes, DONE yes, 41 s</td>
 <td><code>src/adapters/agy.mjs</code></td>
 </tr>
 <tr>
@@ -112,9 +114,24 @@ questions.&quot;</p>
 them (<code>src/env.mjs</code>). No fixture contains &quot;another auth source&quot;
 (<code>grep -ril &quot;another auth source&quot; fixtures/live</code> is empty), claude&#39;s and agy&#39;s
 stderr are 0 bytes, and codex&#39;s is the one stdin notice. observed-live.</p>
+<h3 id="re-check-of-2026-11-25-one-line-per-tap"><a class="anchor" href="#re-check-of-2026-11-25-one-line-per-tap">Re-check of 2026-11-25, one line per tap</a></h3>
+<p>At most one tiny prompt per CLI, each on its cheapest model, with a scratch
+<code>LEG_HOME</code> and a scratch repo. Anything this run did not observe says docs-only.</p>
+<ul>
+<li>claude headless argv: observed-live. <code>-p --output-format json --permission-mode acceptEdits --max-turns 1 --model haiku &quot;reply ok&quot;</code> exited 0 with <code>subtype:&quot;success&quot;</code>, <code>num_turns:1</code>, <code>result:&quot;ok&quot;</code> (fixtures/live/claude/max-turns-probe.json).</li>
+<li>claude usage: observed-live. <code>fetchClaudeUsage()</code> answered 429 once, then 200 with <code>five_hour</code>, <code>seven_day</code> and <code>limits</code> among the response keys and the token not expired.</li>
+<li>claude wall (<code>StopFailure</code>): docs-only on 2.1.332; the 2026-09-11 capture stands.</li>
+<li>claude status line: observed-live that it does not run (§ claude tap, status line).</li>
+<li>codex headless argv: observed-live. The runner task with <code>-m gpt-5.6-luna</code> exited 0 with the file and DONE written (fixtures/live/codex/).</li>
+<li>codex usage: observed-live. <code>readCodexUsage()</code> returned <code>ok: true</code>, <code>available: true</code> and a <code>seven_day</code> window.</li>
+<li>codex wall (<code>usage_limit_exceeded</code>): docs-only on 0.154.0.</li>
+<li>agy headless argv: observed-live up to the sign-in prompt (fixtures/live/agy/signed-out-probe.json); the success path is docs-only on 1.5.17.</li>
+<li>agy wall: the shipped <code>agy.exe</code> still contains <code>RESOURCE_EXHAUSTED</code>, &quot;it resets in&quot; and &quot;out of quota&quot;; a live wall is docs-only on 1.5.17.</li>
+<li>grok: fixtures only (<code>--help</code> and <code>--version</code> re-captured); the account balance is exhausted, so no prompt was spent.</li>
+</ul>
 <h2 id="claude"><a class="anchor" href="#claude">claude</a></h2>
 <ul>
-<li><p>Version 2.1.268 (source: <code>claude --version</code>, fixtures/help/claude.version.txt).</p>
+<li><p>Version 2.1.332 (source: <code>claude --version</code>, fixtures/help/claude.version.txt).</p>
 </li>
 <li><p>Binary: <code>~/.local/bin/claude.exe</code> (native exe, 211 MB); Leg resolves it
 there first, else <code>claude</code> on PATH; <code>LEG_CLAUDE_BIN</code> overrides (source: <code>ls ~/.local/bin/claude.exe</code>; src/adapters/claude.mjs <code>resolve()</code>).</p>
@@ -123,7 +140,10 @@ there first, else <code>claude</code> on PATH; <code>LEG_CLAUDE_BIN</code> overr
 <code>claude.exe -p --output-format json --permission-mode acceptEdits</code>
 with the prompt on <strong>stdin</strong> (stdin: <code>pipe</code>). Optional: <code>--max-turns N</code>,
 <code>--resume &lt;session-id&gt;</code>, <code>--model &lt;alias|name&gt;</code>, <code>--allowedTools a,b</code>
-(source: <code>claude --help</code> lines for each flag; observed-live for the base argv).</p>
+(source: <code>claude --help</code> lines for each flag except <code>--max-turns</code>, which
+<code>--help</code> does not list: code.claude.com/docs/en/cli-reference documents it
+for print mode and 2.1.332 accepted it, fixtures/live/claude/max-turns-probe.json;
+observed-live for the base argv).</p>
 </li>
 <li><p>Output: ONE JSON object on stdout, printed only when the session ends
 (test/lessons.test.mjs <code>json-only-at-end</code>; observed-live: 20 s of silence
@@ -162,7 +182,7 @@ should name <code>model</code> to control spend; Leg passes it through as <code>
 </tr>
 </tbody></table>
 </li>
-<li><p>Permission modes (<code>--permission-mode</code> choices in 2.1.268): <code>acceptEdits</code>,
+<li><p>Permission modes (<code>--permission-mode</code> choices in 2.1.332): <code>acceptEdits</code>,
 <code>auto</code>, <code>bypassPermissions</code>, <code>manual</code>, <code>dontAsk</code>, <code>plan</code> (source: <code>claude --help</code>). Leg: default <code>acceptEdits</code>; allowed <code>acceptEdits</code>, <code>auto</code>, <code>plan</code>,
 <code>manual</code>, <code>dontAsk</code>; forbidden <code>bypassPermissions</code>,
 <code>--dangerously-skip-permissions</code>, <code>--allow-dangerously-skip-permissions</code>.
@@ -185,7 +205,7 @@ headless <code>-p</code> has no host to answer prompts anyway (source: <code>cla
 </ul>
 <h2 id="codex"><a class="anchor" href="#codex">codex</a></h2>
 <ul>
-<li><p>Version codex-cli 0.153.4 (source: <code>codex --version</code>).</p>
+<li><p>Version codex-cli 0.154.0 (source: <code>codex --version</code>).</p>
 </li>
 <li><p>Binary: npm package <code>@openai/codex</code> whose <code>bin/codex.js</code> only spawns the
 platform package&#39;s native exe. Leg spawns that exe directly:
@@ -241,7 +261,7 @@ messages.</p>
 <code>read-only</code>, <code>workspace-write</code>; forbidden <code>danger-full-access</code>,
 <code>--dangerously-bypass-approvals-and-sandbox</code>, <code>--dangerously-bypass-hook-trust</code>,
 <code>--approve-for-me</code> (routes approvals through automatic review), <code>--full-auto</code>
-(not present in 0.153.4 <code>exec --help</code>; kept on the forbidden list). Blast
+(not present in 0.154.0 <code>exec --help</code>; kept on the forbidden list). Blast
 radius is <code>-C &lt;worktree&gt;</code>; network off unless the chain entry sets
 <code>network: true</code> (PROTOCOL sandbox ladder). <code>workspace-write</code> allowed the
 write headless (observed-live).</p>
@@ -255,7 +275,7 @@ write headless (observed-live).</p>
 </ul>
 <h2 id="agy"><a class="anchor" href="#agy">agy</a></h2>
 <ul>
-<li><p>Version 1.2.0 (source: <code>agy --version</code>).</p>
+<li><p>Version 1.5.17 (source: <code>agy --version</code>).</p>
 </li>
 <li><p>Binary: <code>~/AppData/Local/agy/bin/agy.exe</code> (native); <code>LEG_AGY_BIN</code> overrides
 (source: <code>where agy</code>; src/adapters/agy.mjs).</p>
@@ -270,14 +290,18 @@ stdin <code>ignore</code>.</p>
 Attempt 2 adds <code>--add-dir &lt;worktree&gt;</code> and prefixes the prompt with
 &quot;Working directory: <worktree>&quot;; it wrote both files in the repo
 (observed-live).</li>
-<li><code>--print-timeout</code> defaults to 5m0s; Leg sets it from the kill timer in Go
-duration syntax so the supervisor decides what a runaway is (source: <code>agy --help</code>).</li>
+<li><code>--print-timeout</code> defaulted to 5m0s; on 1.5.17 it is optional and
+defaults to 0s, &quot;0 waits until the turn completes&quot;. Leg still sets it from
+the kill timer in Go duration syntax so the supervisor decides what a
+runaway is (source: <code>agy --help</code>).</li>
 </ul>
 </li>
 <li><p>Output: one JSON object: <code>conversation_id</code>, <code>status:&quot;SUCCESS&quot;</code>, <code>response</code>,
 <code>duration_seconds</code>, <code>num_turns</code>, <code>usage{input_tokens,output_tokens,thinking_tokens,cache_read_tokens,total_tokens}</code>
 (observed-live, fixtures/live/agy/out.log). Leg reads <code>conversation_id</code> as
-the session id, <code>response</code>, <code>status</code>.</p>
+the session id, <code>response</code>, <code>status</code>. A failed run prints the same object
+with <code>status:&quot;ERROR&quot;</code>, an <code>error</code> string and <code>finished_reason:&quot;error&quot;</code>
+(observed-live 2026-11-25 on 1.5.17, fixtures/live/agy/signed-out-probe.json).</p>
 </li>
 <li><p>Exit codes:</p>
 <table>
@@ -294,13 +318,19 @@ the session id, <code>response</code>, <code>status</code>.</p>
 <td>observed-live (both attempts; attempt 1 was a success in the wrong directory)</td>
 </tr>
 <tr>
+<td>1</td>
+<td>not signed in: a sign-in URL on stderr, 60 s of waiting, then the <code>status:&quot;ERROR&quot;</code> object</td>
+<td>observed-live 2026-11-25, fixtures/live/agy/signed-out-probe.json</td>
+</tr>
+<tr>
 <td>non-zero</td>
-<td>fatal/auth</td>
+<td>other fatal errors</td>
 <td>docs-only</td>
 </tr>
 </tbody></table>
 </li>
-<li><p>Modes (<code>--mode</code>): <code>accept-edits</code>, <code>plan</code> (source: <code>agy --help</code>). Leg: default
+<li><p>Modes (<code>--mode</code>): <code>accept-edits</code>, <code>plan</code>, and since 1.5.17 <code>auto</code>, which Leg
+does not pass (source: <code>agy --help</code>). Leg: default
 <code>accept-edits</code>; forbidden <code>--dangerously-skip-permissions</code>. <code>accept-edits</code>
 allowed the write headless (observed-live).</p>
 </li>
@@ -313,8 +343,11 @@ allowed the write headless (observed-live).</p>
 <h2 id="grok"><a class="anchor" href="#grok">grok</a></h2>
 <ul>
 <li><p>Version grok 1.0.34 (3736acbc8658) [stable] (source: <code>grok --version</code>,
-2026-09-17). The 2026-09-11 sweep saw 0.2.51 on a machine with no login; every
-line below was re-read on 1.0.34.</p>
+2026-09-17, and the same answer on 2026-11-25). The 2026-09-11 sweep saw 0.2.51 on a machine with no login; every
+line below was re-read on 1.0.34, and fixtures/help/grok.txt and
+grok.version.txt were re-captured from it on 2026-11-25 (the version file
+still held the 0.2.51 answer until then). No prompt was spent on 2026-11-25:
+the account balance is exhausted.</p>
 </li>
 <li><p>Binary: <code>~/.grok/bin/grok.exe</code> (native; also an npm shim on PATH);
 <code>LEG_GROK_BIN</code> overrides (source: <code>where grok</code>).</p>
@@ -429,7 +462,9 @@ record the board reads.</p>
 <p>What <code>leg claude|codex|agy|grok</code> reads while the real interactive CLI runs. Same
 tagging rule: <code>observed-live 2026-09-11</code> means the build machine did it;
 <code>docs-only</code> means the CLI&#39;s own source or documentation says so and Leg has
-not seen it happen. Machine: Claude Code 2.1.268, codex-cli 0.153.4, agy 1.2.0.</p>
+not seen it happen. Machine now: Claude Code 2.1.332, codex-cli 0.154.0,
+agy 1.5.17, grok 1.0.34 (the pin in <code>fixtures/verified.json</code>); an older dated
+tag was seen on the build that machine ran that day.</p>
 <p>Shared: the agent is spawned with stdio inherited and the user&#39;s arguments
 passed through (<code>src/attach.mjs</code> <code>spawnSpec</code>); the child environment is
 <code>sanitizeEnv(process.env, { interactive: true })</code> plus the account&#39;s config-dir
@@ -451,7 +486,7 @@ showed Leg&#39;s row in place of the user&#39;s (reported by a baton user,
 hook still firing.</li>
 <li>Terminal title: <code>-n, --name &lt;name&gt;</code> &quot;Set a display name for this session
 (shown in the prompt box, /resume picker, and terminal title)&quot; —
-fixtures/help/claude.txt line 132. It sits in the general Options block, not
+the <code>-n, --name</code> line of fixtures/help/claude.txt. It sits in the general Options block, not
 among the flags marked &quot;only works with --print&quot;, and two of its three
 surfaces (the prompt box, the <code>/resume</code> picker) exist only in interactive
 mode, so it is the interactive title flag. Leg passes
@@ -526,14 +561,20 @@ at 07:46:37Z and is kept, scrubbed, as
 path can also be run live with <code>leg sessions simulate-limit</code> (the same
 payload through <code>src/hook.mjs</code>, marked <code>leg_simulated</code>, never kept as
 evidence).</li>
-<li>Status line, not usable on 2.1.268 or 2.1.278: a custom <code>statusLine</code> command passed
+<li>Status line, not usable on 2.1.268, 2.1.278 or 2.1.332: a custom <code>statusLine</code> command passed
 through <code>--settings</code>, and again through a project
 <code>.claude/settings.local.json</code>, was not run at all when it was tried; an
 <code>echo</code> command at both levels left the built-in status line in place while
 hooks from the same <code>--settings</code> file fired (probed again 2026-09-19 on
 2.1.278 with a screenshot of two haiku sessions, not kept; 0 of 87 session
 hook logs on this machine hold a statusline entry; note in the
-src/taps/claude-usage.mjs header, 2026-09-11). Leg still writes the
+src/taps/claude-usage.mjs header, 2026-09-11). On 2026-11-25 (2.1.332) the
+status-line hook writes the line <code>statusline rate_limits=…</code> to the session&#39;s
+<code>hook.log</code> each time it runs: fed <code>{&quot;rate_limits&quot;:{&quot;five_hour&quot;:{&quot;used_percentage&quot;:12}}}</code>
+by hand in a scratch <code>LEG_HOME</code>, it wrote exactly 1. Across this machine&#39;s
+81 session hook logs that line occurs 0 times, including the 4 sessions
+started after 2.1.332 was installed, which logged 16 hook events between
+them. Leg still writes the
 <code>statusLine</code> entry, which records the
 same <code>rate_limits.five_hour</code> / <code>seven_day</code> fields
 (<a href="https://code.claude.com/docs/en/statusline">https://code.claude.com/docs/en/statusline</a>), so the endpoint poll becomes a
@@ -579,8 +620,8 @@ lines of an <code>apply_patch</code> payload (source: src/taps/codex.mjs; observ
 <h3 id="agy-tap"><a class="anchor" href="#agy-tap">agy tap</a></h3>
 <ul>
 <li>Attach: <code>agy &lt;args&gt; --log-file &lt;LEG_HOME&gt;/sessions/&lt;id&gt;/agy.log</code> (source:
-src/attach.mjs <code>spawnSpec</code>). agy 1.2.0 is a closed Go binary with no hook
-surface.</li>
+src/attach.mjs <code>spawnSpec</code>). agy 1.5.17 is a closed Go binary, and Leg
+injects no hook into it.</li>
 <li>Usage: none. No percentage is written to any file agy owns; its own status
 line fetches a quota summary from the backend and stores nothing (source:
 src/taps/agy.mjs header).</li>
@@ -598,7 +639,7 @@ is still the slot for the next one.</li>
 <code>{ display, timestamp, workspace, conversationId }</code> per prompt (source:
 src/taps/agy.mjs <code>historyFile</code>; shape observed on disk, last written
 2026-09-09, the 2026-09-11 agy leg produced no history entry).</li>
-<li>One account only: agy 1.2.0 has no config-directory override, so
+<li>One account only: agy 1.5.17 lists no config-directory override, so
 <code>LAYOUT.agy.env</code> is <code>null</code> and <code>accounts add agy</code> is refused (source:
 src/accounts.mjs).</li>
 </ul>

@@ -1,34 +1,35 @@
 {
-  "_comment": "The single source of truth for every dated, numbered claim Leg makes in public. scripts/check-claims.mjs asserts that each surface listed here states exactly these values, and --strict additionally compares the pinned CLI versions against what those CLIs currently publish. Re-verify on a real machine, then edit this file and every surface in the same commit.",
-  "verifiedOn": "2026-09-11",
-  "verifiedOnLong": "11 September 2026",
-  "tests": 955,
+  "_comment": "The single source of truth for every dated, numbered claim Leg makes in public. scripts/check-claims.mjs asserts that each surface listed here states exactly these values, and --strict additionally reports which pinned CLIs have moved (the local binary, or npm where none is installed) and fails once verifiedOn is more than maxAgeDays old. Re-verify on a real machine, then edit this file and every surface in the same commit.",
+  "verifiedOn": "2026-11-25",
+  "verifiedOnLong": "25 November 2026",
+  "maxAgeDays": 30,
+  "tests": 1131,
   "clis": {
     "claude": {
       "label": "Claude Code",
-      "version": "2.1.268",
+      "version": "2.1.332",
       "npm": "@anthropic-ai/claude-code",
       "probe": "claude --version"
     },
     "codex": {
       "label": "codex-cli",
-      "version": "0.153.4",
+      "version": "0.154.0",
       "npm": "@openai/codex",
       "probe": "codex --version"
     },
     "agy": {
       "label": "agy",
-      "version": "1.2.0",
+      "version": "1.5.17",
       "npm": null,
       "probe": "agy --version",
-      "note": "Antigravity CLI is a closed Go binary with no npm package, so drift is only visible from a machine that has it installed."
+      "note": "Antigravity CLI is a closed Go binary with no npm package, so drift is only visible from a machine that has it installed. On 1.5.17 (2026-11-25) every flag Leg passes is still in agy --help, a headless run through the runner parsed Leg's argv and returned its JSON envelope, and the shipped binary still contains RESOURCE_EXHAUSTED, 'it resets in' and 'out of quota'. This machine's agy is signed out, so the success path and a live quota wall were not re-observed on 1.5.17 (fixtures/live/agy/signed-out-probe.json)."
     },
     "grok": {
       "label": "grok",
       "version": "1.0.34",
       "npm": null,
       "probe": "grok --version",
-      "note": "Grok Build ships as a downloaded binary, not an npm package. Probed on 2026-09-17, separately from the 2026-09-11 sweep above: the flags came from grok --help and the headless envelope from the shipped exe, and scripts/probe.mjs reached the account and returned a real 402 wall. The success path of a grok leg is still unprobed for want of balance on the account."
+      "note": "Grok Build ships as a downloaded binary, not an npm package. Still 1.0.34 on 2026-11-25: the flags in fixtures/help/grok.txt were re-captured from grok --help, and no prompt was spent because the account balance is exhausted. The 402 wall in fixtures/live/grok/ was observed on 2026-09-17; the success path of a grok leg is still unprobed for want of balance on the account."
     }
   },
   "surfaces": [
